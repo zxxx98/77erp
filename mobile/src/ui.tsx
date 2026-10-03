@@ -19,7 +19,11 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaFrame,
+} from "react-native-safe-area-context";
 import {
   ArrowLeft,
   Box,
@@ -204,6 +208,7 @@ export function Card({ children }: PropsWithChildren) {
   return <View style={s.card}>{children}</View>;
 }
 export function KeyboardSafeArea({ children }: PropsWithChildren) {
+  const frame = useSafeAreaFrame();
   // At the window root, padding uses only the remaining keyboard overlap.
   // This also handles edge-to-edge windows where adjustResize does not shrink the root.
   return (
@@ -211,6 +216,7 @@ export function KeyboardSafeArea({ children }: PropsWithChildren) {
       testID="keyboard-safe-root"
       style={s.fill}
       behavior="padding"
+      keyboardVerticalOffset={frame.y}
     >
       <SafeAreaView style={s.fill}>{children}</SafeAreaView>
     </KeyboardAvoidingView>

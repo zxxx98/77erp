@@ -65,38 +65,44 @@ beforeEach(() => {
   keyboard(false);
 });
 
-test("keyboard avoidance covers edge-to-edge overlap without adding it again after native resize", async () => {
-  render(
-    <KeyboardSafeArea>
-      <RN.Text>表单内容</RN.Text>
-    </KeyboardSafeArea>,
-  );
-  const layout = (height: number) =>
-    fireEvent(screen.getByTestId("keyboard-safe-root"), "layout", {
-      nativeEvent: { layout: { x: 0, y: 0, width: 360, height } },
-      persist: () => {},
-    });
-  layout(800);
-  keyboard(true);
-  await waitFor(() =>
-    expect(screen.getByTestId("keyboard-safe-root")).toHaveStyle({
-      paddingBottom: 400,
-    }),
-  );
-  layout(400);
-  await waitFor(() =>
-    expect(screen.getByTestId("keyboard-safe-root")).toHaveStyle({
-      paddingBottom: 0,
-    }),
-  );
-  keyboard(false);
-  layout(800);
-  await waitFor(() =>
-    expect(screen.getByTestId("keyboard-safe-root")).toHaveStyle({
-      paddingBottom: 0,
-    }),
-  );
-});
+test.each([0, 24])(
+  "keyboard avoidance accounts for window origin %s without duplicating native resize",
+  async (origin) => {
+    jest
+      .mocked(useSafeAreaFrame)
+      .mockReturnValue({ x: 0, y: origin, width: 360, height: 800 - origin });
+    render(
+      <KeyboardSafeArea>
+        <RN.Text>表单内容</RN.Text>
+      </KeyboardSafeArea>,
+    );
+    const layout = (height: number) =>
+      fireEvent(screen.getByTestId("keyboard-safe-root"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 360, height } },
+        persist: () => {},
+      });
+    layout(800 - origin);
+    keyboard(true);
+    await waitFor(() =>
+      expect(screen.getByTestId("keyboard-safe-root")).toHaveStyle({
+        paddingBottom: 400,
+      }),
+    );
+    layout(400 - origin);
+    await waitFor(() =>
+      expect(screen.getByTestId("keyboard-safe-root")).toHaveStyle({
+        paddingBottom: 0,
+      }),
+    );
+    keyboard(false);
+    layout(800 - origin);
+    await waitFor(() =>
+      expect(screen.getByTestId("keyboard-safe-root")).toHaveStyle({
+        paddingBottom: 0,
+      }),
+    );
+  },
+);
 afterEach(() => {
   cleanup();
   keyboard(false);
