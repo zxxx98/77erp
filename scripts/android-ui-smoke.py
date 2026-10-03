@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 reports = pathlib.Path(sys.argv[1])
 package = "com.erp77.app"
@@ -24,13 +24,17 @@ workspace = {
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def do_GET(self):
+        print(f"Fixture GET {self.path}", flush=True)
         data = ({"initialized": True, "authenticated": True, "username": "layout-test"}
                 if self.path == "/api/auth/status" else workspace)
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -84,12 +88,13 @@ def restart():
     find(label="工作台")
 
 
-server = HTTPServer(("127.0.0.1", 8765), FixtureAPI)
+server = ThreadingHTTPServer(("127.0.0.1", 8765), FixtureAPI)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 try:
+    adb("reverse", "tcp:8765", "tcp:8765")
     snapshot("01-server")
     tap_node(find(class_name="android.widget.EditText"))
-    adb("shell", "input", "text", "http://10.0.2.2:8765")
+    adb("shell", "input", "text", "http://127.0.0.1:8765")
     adb("shell", "input", "keyevent", "4")
     tap("连接服务器")
     find(label="工作台")
@@ -123,6 +128,9 @@ try:
     time.sleep(2)
     snapshot("10-form-landscape-large-text")
     print("Native navigation and layout scenarios completed.", flush=True)
+except Exception:
+    snapshot("failure")
+    raise
 finally:
     server.shutdown()
     adb("shell", "settings", "put", "system", "font_scale", "1.0")
