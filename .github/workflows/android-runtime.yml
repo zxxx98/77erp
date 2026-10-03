@@ -1,0 +1,68 @@
+name: Android Runtime Check
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '已发布的 APK 标签（未指定 build_run 时使用）'
+        required: true
+        default: v1.1.0
+        type: string
+      build_run:
+        description: '可选：Android Release workflow run ID，验证尚未发布的构建产物'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [31, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Download the actual ARM64 release APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          BUILD_RUN: ${{ inputs.build_run }}
+        run: |
+          mkdir -p runtime-apk
+          if [ -n "$BUILD_RUN" ]; then
+            [[ "$BUILD_RUN" =~ ^[0-9]+$ ]]
+            gh run download "$BUILD_RUN" --pattern 'android-release-*' --dir runtime-apk
+          else
+            gh release download "$RELEASE_TAG" --pattern '*-arm64.apk' --dir runtime-apk
+          fi
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Launch and capture Android diagnostics
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: python3 scripts/android-runtime-smoke.py runtime-apk runtime-diagnostics
+      - name: Upload launch logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-runtime-api-${{ matrix.api }}
+          path: runtime-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
