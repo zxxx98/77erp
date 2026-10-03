@@ -120,8 +120,17 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/77erp-release.jks"
 
-  release:
+  runtime:
     needs: build
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/android-runtime.yml
+    with:
+      build_run: ${{ format('{0}', github.run_id) }}
+
+  release:
+    needs: [build, runtime]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5

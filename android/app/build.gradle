@@ -60,6 +60,9 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+    // Extract native libraries at install time instead of relying on direct APK loading.
+    // This also lets Android's ARM translation resolve them in runtime CI images.
+    packaging { jniLibs { useLegacyPackaging = true } }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

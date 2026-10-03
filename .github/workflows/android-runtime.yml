@@ -1,6 +1,15 @@
 name: Android Runtime Check
 
 on:
+  workflow_call:
+    inputs:
+      build_run:
+        required: true
+        type: string
+      release_tag:
+        required: false
+        default: ''
+        type: string
   workflow_dispatch:
     inputs:
       release_tag:
