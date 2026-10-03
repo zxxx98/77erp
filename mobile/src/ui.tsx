@@ -130,6 +130,7 @@ export function Field({
           placeholderTextColor={colors.muted}
           underlineColorAndroid="transparent"
           {...props}
+          numberOfLines={props.multiline ? props.numberOfLines : 1}
           style={[s.input, props.multiline && s.textarea, props.style]}
         />
         {accessory}
@@ -181,6 +182,7 @@ export function SearchField({
         accessibilityLabel={placeholder}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
+        numberOfLines={1}
         value={value}
         onChangeText={onChangeText}
         style={s.searchInput}
