@@ -4,7 +4,7 @@
 
 ## 使用方式
 
-- 支持 Android 8.0（API 26）及以上，系统必须支持 **ARM 64 位 `arm64-v8a`**。不支持 ARM 32 位、x86 和 x86_64。
+- 仅支持 Android 12（API 31）及以上，系统必须支持 **ARM 64 位 `arm64-v8a`**。不支持 Android 11 及以下、ARM 32 位、x86 和 x86_64。
 - 安装 Release 中的 `77ERP-版本号-arm64.apk`。AAB 用于应用商店，不能直接安装。
 - 首次启动填写服务器根地址，例如 `https://erp.example.com` 或当前测试服务 `http://158.178.243.20:28888`，不要加 `/api`。之后可从顶部「服务器」修改；切换服务器会清除旧登录会话。
 - App 使用服务器提供的 React 页面和同源 API，账号、商品、库存和单据均保存在服务器，需要联网。服务器需先部署本仓库的新版前端，才能使用原生扫码和文件保存。
@@ -69,7 +69,7 @@ git push origin v1.0.0
 1. 校验版本标签并读取签名 Secrets。
 2. 安装 Node.js 22 依赖，运行 API、版本号及浏览器测试，并构建 Web 前端。
 3. 运行 Android Release Lint，编译签名 APK 与 AAB。
-4. 检查产物实际包含的全部 `.so`：路径必须为 `arm64-v8a`，ELF 必须是 64 位 ARM；校验 APK 包名、版本和签名。
+4. 检查产物实际包含的全部 `.so`：路径必须为 `arm64-v8a`，ELF 必须是 64 位 ARM；校验 APK 最低系统版本为 API 31，以及包名、版本和签名。
 5. 上传 Actions 构建产物，自动创建 GitHub Release，附 APK、AAB 和 `SHA256SUMS`。
 
 Actions artifact 保留 30 天，Release 附件长期保留。失败时可查看上传的 Android Lint / 浏览器诊断报告，在同一版本的 Actions 页面点击 Re-run jobs 重试；如果修改了代码，使用新的版本号和标签。流水线不自动部署服务器；服务器前端更新仍按 README 的部署方式完成。

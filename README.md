@@ -4,7 +4,7 @@
 
 ## 安卓端
 
-提供 Android 8.0 及以上的 **ARM 64 位（arm64-v8a）**客户端，可配置服务器地址，复用现有账号和库存，支持原生摄像头扫码及 CSV / 条码标签保存。数据保存在服务器，使用时需要联网。
+提供 Android 12（API 31）及以上的 **ARM 64 位（arm64-v8a）**客户端，可配置服务器地址，复用现有账号和库存，支持原生摄像头扫码及 CSV / 条码标签保存。数据保存在服务器，使用时需要联网。
 
 推送与 `package.json` 版本一致的 `v1.0.0` 类标签后，由 GitHub Actions 编译并发布签名 APK / AAB，本地无需安卓编译环境。配置签名、版本号规则和发布步骤见 [安卓发布文档](docs/android.md)。[下载 APK](https://github.com/zxxx98/77erp/releases) · [查看流水线](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml)。
 

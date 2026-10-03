@@ -31,4 +31,7 @@ if __name__ == "__main__":
         raise ValueError(f"APK version mismatch: {package}")
     if "name='com.erp77.app'" not in package or "native-code: 'arm64-v8a'" not in metadata:
         raise ValueError("Unexpected application ID or APK architecture")
+    if not re.search(r"^sdkVersion:'31'$", metadata, re.MULTILINE):
+        raise ValueError("APK must require Android 12 (API 31) or later")
     print(f"APK version verified: {version_name} ({version_code})")
+    print("Minimum Android version verified: Android 12 (API 31)")
