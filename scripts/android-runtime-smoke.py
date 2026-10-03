@@ -57,5 +57,6 @@ try:
     if "连接工作空间" not in xml:
         raise RuntimeError("App did not render the native server setup screen")
     print("Native server setup rendered and process remained alive.", flush=True)
+    subprocess.run([sys.executable, "scripts/android-ui-smoke.py", str(report_dir)], check=True)
 finally:
     capture()
