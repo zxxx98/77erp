@@ -1,4 +1,4 @@
-# Android ARM64 客户端与发布
+# React Native Android ARM64 客户端与发布
 
 仓库：[zxxx98/77erp](https://github.com/zxxx98/77erp) · [构建记录](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml) · [安装包下载](https://github.com/zxxx98/77erp/releases)
 
@@ -6,12 +6,29 @@
 
 - 仅支持 Android 12（API 31）及以上，系统必须支持 **ARM 64 位 `arm64-v8a`**。不支持 Android 11 及以下、ARM 32 位、x86 和 x86_64。
 - 安装 Release 中的 `77ERP-版本号-arm64.apk`。AAB 用于应用商店，不能直接安装。
-- 首次启动填写服务器根地址，例如 `https://erp.example.com` 或当前测试服务 `http://158.178.243.20:28888`，不要加 `/api`。之后可从顶部「服务器」修改；切换服务器会清除旧登录会话。
-- App 使用服务器提供的 React 页面和同源 API，账号、商品、库存和单据均保存在服务器，需要联网。服务器需先部署本仓库的新版前端，才能使用原生扫码和文件保存。
-- 「手机扫码」调用 CameraX + 内置 ML Kit 模型，无需 Google Play 服务或额外下载模型；HTTP 服务器也能使用原生摄像头。首次扫码需授权相机，拒绝后可手动输入条码。
-- CSV 和条码 SVG 通过系统文件选择器保存，无需存储权限。返回键回退页面，顶部「刷新」重新连接；Android System WebView 过旧时会提示更新。
+- 首次启动填写服务器根地址，例如 `https://erp.example.com` 或当前测试服务 `http://158.178.243.20:28888`，不要加 `/api`。之后可从「更多 → 切换服务器」修改；切换服务器会清除旧登录会话。
+- 从 **1.1.0** 开始，所有业务页面使用 **React Native 原生控件**，运行在 Hermes 上。App 不使用 WebView，也不下载 HTML 页面；页面代码打包在 APK 内，界面更新需安装新版 APK。
+- 账号、商品、库存和单据均通过现有 JSON API 读取和修改，保存在服务器，业务操作需要联网。无需为原生版更新服务器的 Web 前端，也没有新增服务器接口。
+- 「扫码」调用 CameraX + 内置 ML Kit 模型，无需 Google Play 服务或额外下载模型；HTTP 服务器也能使用原生摄像头。首次扫码需授权相机，拒绝后可手动输入条码。
+- 下拉刷新同步数据，返回键退出详情或返回工作台。修改中的商品和单据在返回时提示确认；扫码只识别商品，入出库需要确认提交。
 
-客户端只对配置的服务器主页面开放扫码与文件保存能力，拒绝其他来源和子框架调用；外部 HTTP(S) 链接交给浏览器，HTTPS 证书错误不会被忽略。现有 HttpOnly / SameSite 登录会话与服务器同源校验保持有效。公网服务建议使用 HTTPS。
+## 原生功能与精简范围
+
+| 页面 | 原生功能 |
+| --- | --- |
+| 连接 / 登录 | 服务器配置、首次设置管理员、登录、密码显示切换、会话过期处理、退出 |
+| 工作台 | 商品种类、库存成本、今日采购 / 销售、库存预警、最近单据、快捷入出库 |
+| 商品 | 搜索 / 分类筛选、详情、新增 / 编辑、条码扫描录入、空条码自动生成 |
+| 库存 | 全部库存 / 库存预警 / 缺货筛选、商品详情、一键打开入出库 |
+| 扫码 | 查找 / 入库 / 出库三种模式、相机权限处理、手动条码输入 |
+| 单据 | 多商品入出库、数量 / 单价编辑、合并重复商品、库存校验、确认提交、记录筛选与详情 |
+| 更多 | 管理员信息、商户与仓库设置、切换服务器、退出登录 |
+
+安卓端省去 CSV 导出、SVG 标签下载、桌面表格 / 网格切换、键盘快捷键和趋势图，这些功能在 Web 端保留。原生界面沿用 Web 设计令牌：`#2563EB` 主色、`#F7F8FA` 背景、白色卡片、细边框和中文业务文案。
+
+网络请求由原生 OkHttp 完成，会话 Cookie 由原生层使用 Android Keystore AES-GCM 加密保存，并绑定服务器地址；JavaScript 层拿不到会话令牌。HTTPS 证书错误不会被忽略，不自动跟随服务器重定向，不自动重试入出库提交。若提交时网络中断，请先查看操作记录，避免重复入出库。Web 端原有 Cookie 与跨站请求保护不变，公网服务建议使用 HTTPS。
+
+从 1.0.0 覆盖安装后沿用服务器地址，需要重新登录；应用包名与签名保持不变，服务器业务数据不受影响。
 
 ## 一次性配置签名
 
@@ -37,7 +54,7 @@ keytool -genkeypair -v -keystore 77erp-release.jks -storetype JKS \
 
 ## 通过版本号发布
 
-`package.json` 是版本号唯一来源，`package-lock.json` 由 npm 同步。`versionName` 等于项目版本；`versionCode = major × 1,000,000 + minor × 1,000 + patch`。只支持 `x.y.z` 正式版本，major 不超过 2099，minor / patch 不超过 999，最低版本为 `0.0.1`。例如 `1.2.3` 对应 `1002003`。
+根目录 `package.json` 是版本号来源。`npm version` 会通过版本钩子自动同步 `mobile/package.json` 及两个 lock 文件并一起提交。`versionName` 等于项目版本；`versionCode = major × 1,000,000 + minor × 1,000 + patch`。只支持 `x.y.z` 正式版本，major 不超过 2099，minor / patch 不超过 999，最低版本为 `0.0.1`。例如 `1.2.3` 对应 `1002003`。
 
 后续发布只需：
 
@@ -48,12 +65,12 @@ git push origin main
 git push origin --follow-tags
 ```
 
-也可用 `npm version minor`、`npm version major` 或 `npm version 1.2.3` 指定版本。npm 会修改两个版本文件、创建提交和 `v版本号` 标签。首次发布当前 `1.0.0` 时：
+也可用 `npm version minor`、`npm version major` 或 `npm version 1.2.3` 指定版本。npm 会同步版本文件、创建提交和 `v版本号` 标签。发布已写入文件的当前 `1.1.0` 时：
 
 ```bash
-git tag -a v1.0.0 -m '77 ERP Android 1.0.0'
+git tag -a v1.1.0 -m '77 ERP React Native 1.1.0'
 git push origin main
-git push origin v1.0.0
+git push origin v1.1.0
 ```
 
 推送 `v*` 标签自动触发 Android 发布；普通代码推送不会构建 APK。标签必须与所指向提交的 `package.json` 版本完全一致。发布后的版本应递增，不要移动已发布标签。
@@ -62,18 +79,29 @@ git push origin v1.0.0
 
 ## 云端流水线
 
-全部 Android 编译在 GitHub 的 Ubuntu runner 完成，本地无需 Android Studio、SDK 或 Gradle 构建。仓库包含 Gradle 8.13 Wrapper，并固定发行包 SHA-256；使用 JDK 17、Android SDK 36、AGP 8.13.2。
+全部 Android 编译在 GitHub 的 Ubuntu runner 完成，本地无需 Android Studio、SDK 或 Gradle 构建。使用 React Native 0.81.5、React 19.1、JDK 17、Android SDK 36、NDK 27.1、Gradle 8.14.3 和 React Native 配套的 AGP 8.11.0。Gradle Wrapper 与发行包 SHA-256 均经过校验。
 
 流水线依次执行：
 
 1. 校验版本标签并读取签名 Secrets。
-2. 安装 Node.js 22 依赖，运行 API、版本号及浏览器测试，并构建 Web 前端。
-3. 运行 Android Release Lint，编译签名 APK 与 AAB。
-4. 检查产物实际包含的全部 `.so`：路径必须为 `arm64-v8a`，ELF 必须是 64 位 ARM；校验 APK 最低系统版本为 API 31，以及包名、版本和签名。
+2. 安装 Node.js 22 的 Web 与原生依赖，运行 API、版本号、Web 浏览器、React Native 组件 / 业务流程测试和 TypeScript 检查。
+3. 检查原生源码未引入 WebView，运行 Android Release Lint，打包 Hermes 应用代码并编译签名 APK 与 AAB。
+4. 检查产物包含 React Native 应用 bundle、Hermes 和 React Native 运行库；全部 `.so` 路径必须为 `arm64-v8a`，ELF 必须是 64 位 ARM；校验 APK 最低系统版本为 API 31，以及包名、版本和签名。
 5. 上传 Actions 构建产物，自动创建 GitHub Release，附 APK、AAB 和 `SHA256SUMS`。
 
 Actions artifact 保留 30 天，Release 附件长期保留。失败时可查看上传的 Android Lint / 浏览器诊断报告，在同一版本的 Actions 页面点击 Re-run jobs 重试；如果修改了代码，使用新的版本号和标签。流水线不自动部署服务器；服务器前端更新仍按 README 的部署方式完成。
 
 ## 验证边界
 
-浏览器测试覆盖原生消息接口与页面的扫码、权限错误和导出行为；原生源码、签名和架构由 GitHub Android 构建检查。首次安装仍需在 ARM64 真机验证：服务器连接、登录保持、相机授权/拒绝、实际条码识别、CSV/SVG 保存、返回键和覆盖安装。
+原生组件测试直接渲染 React Native 组件，覆盖首次初始化、商品建档、扫码取消 / 结果、出库校验与确认、防重复提交、读取服务器数据和原生导航。独立测试还覆盖金额、数量、HTTP 错误、会话失效和相机权限。Web 浏览器测试只验证 Web 本身。
+
+本地可运行不涉及 Android 编译的检查：
+
+```bash
+npm ci --prefix mobile
+npm run typecheck --prefix mobile
+npm test --prefix mobile
+node scripts/check-native-source.mjs
+```
+
+GitHub 负责 Android 编译、Lint、签名和产物检查。实际摄像头识别、Keystore 会话持久化、原生键盘布局、覆盖安装和具体机型兼容性仍需 ARM64 真机验证。

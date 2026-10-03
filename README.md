@@ -4,7 +4,9 @@
 
 ## 安卓端
 
-提供 Android 12（API 31）及以上的 **ARM 64 位（arm64-v8a）**客户端，可配置服务器地址，复用现有账号和库存，支持原生摄像头扫码及 CSV / 条码标签保存。数据保存在服务器，使用时需要联网。
+提供 Android 12（API 31）及以上的 **ARM 64 位（arm64-v8a）**客户端。从 1.1.0 开始使用 **React Native 原生界面 + Hermes**，不嵌入 Web 页面。可配置服务器地址，复用现有账号和库存，支持商品编辑、库存预警、原生摄像头扫码、多商品入出库、历史单据和商户设置。数据保存在服务器，使用时需要联网。
+
+安卓端沿用 Web 的蓝色、灰白背景和卡片样式，使用原生底部导航、列表、表单与弹窗。CSV / SVG 下载、桌面表格和键盘快捷操作保留在 Web 端。原生页面代码随 APK 发布，不受服务器前端更新影响。
 
 推送与 `package.json` 版本一致的 `v1.0.0` 类标签后，由 GitHub Actions 编译并发布签名 APK / AAB，本地无需安卓编译环境。配置签名、版本号规则和发布步骤见 [安卓发布文档](docs/android.md)。[下载 APK](https://github.com/zxxx98/77erp/releases) · [查看流水线](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml)。
 

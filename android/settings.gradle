@@ -1,16 +1,12 @@
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
+pluginManagement { includeBuild('../mobile/node_modules/@react-native/gradle-plugin') }
+plugins { id('com.facebook.react.settings') }
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+    ex.autolinkLibrariesFromCommand(
+        ['node', file('../mobile/node_modules/react-native/cli.js').absolutePath, 'config'],
+        file('../mobile'),
+        files('../mobile/package-lock.json', '../mobile/package.json', '../mobile/react-native.config.js')
+    )
 }
 rootProject.name = '77ERP'
 include ':app'
+includeBuild('../mobile/node_modules/@react-native/gradle-plugin')

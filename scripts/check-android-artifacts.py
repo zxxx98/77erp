@@ -9,7 +9,13 @@ import zipfile
 
 def check_native_libraries(path):
     with zipfile.ZipFile(path) as archive:
+        prefix = 'base/' if path.suffix == '.aab' else ''
+        if prefix + 'assets/index.android.bundle' not in archive.namelist():
+            raise ValueError(f"{path}: missing bundled React Native application")
         libraries = [name for name in archive.namelist() if name.endswith(".so")]
+        for required in ['libhermes.so', 'libreactnative.so']:
+            if prefix + 'lib/arm64-v8a/' + required not in libraries:
+                raise ValueError(f"{path}: missing native runtime {required}")
         if not libraries:
             raise ValueError(f"{path}: APK/AAB has no native libraries; cannot enforce ARM64 installation")
         for name in libraries:

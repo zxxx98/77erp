@@ -42,7 +42,6 @@ import JsBarcode from "jsbarcode";
 import "./styles.css";
 import { api } from "./api.js";
 import { AuthGate } from "./Auth.jsx";
-import { androidRequest, downloadFile, isAndroidApp } from "./android.js";
 
 const money = (v) =>
   new Intl.NumberFormat("zh-CN", {
@@ -343,12 +342,6 @@ function CameraScanner({ onResult }) {
   callback.current = onResult;
   useEffect(() => {
     let alive = true;
-    if (isAndroidApp()) {
-      androidRequest("scan")
-        .then((code) => { if (alive) callback.current(code); })
-        .catch((error) => { if (alive) setError(error.message); });
-      return () => { alive = false; };
-    }
     if (!window.isSecureContext || !navigator.mediaDevices) {
       setError("手机摄像头扫码需要 HTTPS，请通过 HTTPS 地址打开此页面。");
       return;
@@ -1956,6 +1949,14 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
   );
 }
 
+function downloadFile(text, filename, type = "text/plain") {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 async function exportOrders(orders, notify) {
   const cell = (s) =>
     '"' +

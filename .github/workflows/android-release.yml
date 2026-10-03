@@ -30,6 +30,9 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
       - name: Check release version
         id: version
         env:
@@ -58,6 +61,12 @@ jobs:
           npm test
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: Check React Native application
+        run: |
+          npm ci --prefix mobile
+          npm run typecheck --prefix mobile
+          npm test --prefix mobile
+          node scripts/check-native-source.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -67,7 +76,7 @@ jobs:
           packages: platform-tools
           log-accepted-android-sdk-licenses: false
       - name: Install Android SDK
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build signed ARM64 APK and AAB
         working-directory: android

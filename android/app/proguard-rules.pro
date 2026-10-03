@@ -1,1 +1,1 @@
-# AndroidX and ML Kit supply their own consumer rules. No reflection-based JS bridge is used.
+# React Native, AndroidX and ML Kit include their consumer ProGuard rules.
