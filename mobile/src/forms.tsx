@@ -109,7 +109,7 @@ export function ProductEditor({
           onChangeText={field("name")}
           maxLength={100}
           editable={!busy}
-          placeholder="例如：极简陶瓷马克杯"
+          placeholder="例如：马克杯"
         />
         <Field
           label="商品条码（选填）"

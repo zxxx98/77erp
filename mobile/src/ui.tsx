@@ -175,12 +175,15 @@ export function SearchField({
   onChangeText: (v: string) => void;
   placeholder?: string;
 }) {
+  const { width, fontScale } = useWindowDimensions();
+  // Older Android EditText can wrap hints despite a one-line limit.
+  const hint = width < 360 || fontScale > 1 ? "搜索" : placeholder;
   return (
     <View style={s.search}>
       <Search size={19} color={colors.muted} />
       <TextInput
         accessibilityLabel={placeholder}
-        placeholder={placeholder}
+        placeholder={hint}
         placeholderTextColor={colors.muted}
         numberOfLines={1}
         value={value}
