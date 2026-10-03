@@ -263,7 +263,7 @@ test("hardware back dismisses a focused editor before offering to discard change
   fireEvent(screen.UNSAFE_getByType(RN.Modal), "requestClose");
   expect(dismiss).toHaveBeenCalled();
   expect(alert).not.toHaveBeenCalled();
-  focus.mockReturnValue(null);
+  focus.mockRestore();
   fireEvent(screen.UNSAFE_getByType(RN.Modal), "requestClose");
   expect(alert).toHaveBeenCalledWith(
     "放弃修改？",
