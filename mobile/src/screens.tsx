@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   LogOut,
+  Plus,
   ScanLine,
   Server,
   Settings as SettingsIcon,
@@ -29,7 +30,9 @@ import {
   Button,
   Card,
   Chips,
+  Columns,
   colors,
+  DetailRow,
   Empty,
   ErrorNotice,
   Field,
@@ -39,6 +42,7 @@ import {
   SearchField,
   s,
   StockBadge,
+  useFormError,
   useSubmitLock,
 } from "./ui";
 
@@ -60,9 +64,11 @@ export function ServerScreen({
     <>
       <View style={styles.brand}>
         <View style={styles.brandMark}>
-          <Text style={styles.brandNumber}>77</Text>
+          <Text allowFontScaling={false} style={styles.brandNumber}>
+            77
+          </Text>
         </View>
-        <View>
+        <View style={s.grow}>
           <Text style={s.title}>77 ERP</Text>
           <Text style={s.caption}>轻量进销存</Text>
         </View>
@@ -163,7 +169,9 @@ export function AuthScreen({
     <>
       <View style={styles.brand}>
         <View style={styles.brandMark}>
-          <Text style={styles.brandNumber}>77</Text>
+          <Text allowFontScaling={false} style={styles.brandNumber}>
+            77
+          </Text>
         </View>
         <Text style={s.title}>ERP</Text>
       </View>
@@ -186,25 +194,24 @@ export function AuthScreen({
           autoComplete="username"
           editable={!busy}
         />
-        <View>
-          <Field
-            label="密码"
-            value={password}
-            onChangeText={setPassword}
-            maxLength={128}
-            secureTextEntry={!visible}
-            autoCapitalize="none"
-            autoComplete={setup ? "new-password" : "current-password"}
-            editable={!busy}
-          />
-          <View style={styles.passwordToggle}>
+        <Field
+          label="密码"
+          value={password}
+          onChangeText={setPassword}
+          maxLength={128}
+          secureTextEntry={!visible}
+          autoCapitalize="none"
+          autoComplete={setup ? "new-password" : "current-password"}
+          editable={!busy}
+          accessory={
             <IconButton
               icon={visible ? EyeOff : Eye}
               label={visible ? "隐藏密码" : "显示密码"}
               onPress={() => setVisible(!visible)}
+              disabled={busy}
             />
-          </View>
-        </View>
+          }
+        />
         {setup && (
           <Field
             label="确认密码"
@@ -295,44 +302,36 @@ export function Dashboard({
           {data.settings.business_name} · {data.settings.warehouse_name}
         </Text>
       </View>
-      <View style={styles.stats}>
+      <Columns minimum={145}>
         {stats.map((stat) => (
           <View key={stat.label} style={styles.stat}>
             <View style={s.between}>
               <Text style={s.caption}>{stat.label}</Text>
               <stat.icon size={18} color={colors.blue} />
             </View>
-            <Text
-              adjustsFontSizeToFit
-              numberOfLines={1}
-              style={styles.statValue}
-            >
+            <Text selectable style={styles.statValue}>
               {stat.value}
             </Text>
           </View>
         ))}
-      </View>
+      </Columns>
       <Card>
         <Text style={s.subtitle}>快速操作</Text>
         <Button title="扫描商品条码" icon={ScanLine} onPress={openScanner} />
-        <View style={s.row}>
-          <View style={s.grow}>
-            <Button
-              title="采购入库"
-              icon={ArrowDownToLine}
-              kind="secondary"
-              onPress={() => openOrder("in")}
-            />
-          </View>
-          <View style={s.grow}>
-            <Button
-              title="销售出库"
-              icon={ArrowUpFromLine}
-              kind="secondary"
-              onPress={() => openOrder("out")}
-            />
-          </View>
-        </View>
+        <Columns>
+          <Button
+            title="采购入库"
+            icon={ArrowDownToLine}
+            kind="secondary"
+            onPress={() => openOrder("in")}
+          />
+          <Button
+            title="销售出库"
+            icon={ArrowUpFromLine}
+            kind="secondary"
+            onPress={() => openOrder("out")}
+          />
+        </Columns>
       </Card>
       <Card>
         <View style={s.between}>
@@ -376,6 +375,7 @@ export function ProductsScreen({
   onRefresh,
   openProduct,
   addProduct,
+  notice,
 }: {
   products: Product[];
   inventory: boolean;
@@ -383,6 +383,7 @@ export function ProductsScreen({
   onRefresh: () => void;
   openProduct: (product: Product) => void;
   addProduct: () => void;
+  notice?: React.ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部分类");
@@ -407,18 +408,20 @@ export function ProductsScreen({
       refreshing={refreshing}
       onRefresh={onRefresh}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ paddingBottom: 24 }}
+      keyboardDismissMode="on-drag"
+      contentContainerStyle={[s.pageContent, { paddingBottom: 24 }]}
       ListHeaderComponent={
         <View style={s.content}>
+          {notice}
           <View style={s.between}>
-            <View>
+            <View style={s.grow}>
               <Text style={s.title}>{inventory ? "库存管理" : "商品管理"}</Text>
               <Text style={s.caption}>
                 共 {products.length} 种商品 · 筛选 {visible.length} 种
               </Text>
             </View>
             {!inventory && (
-              <IconButton label="新增商品" icon={Box} onPress={addProduct} />
+              <IconButton label="新增商品" icon={Plus} onPress={addProduct} />
             )}
           </View>
           <SearchField value={query} onChangeText={setQuery} />
@@ -467,22 +470,18 @@ export function ProductDetail({
       title="商品详情"
       onClose={onClose}
       footer={
-        <View style={s.row}>
-          <View style={s.grow}>
-            <Button
-              title="采购入库"
-              kind="secondary"
-              onPress={() => openOrder("in", product)}
-            />
-          </View>
-          <View style={s.grow}>
-            <Button
-              title="销售出库"
-              disabled={!product.stock}
-              onPress={() => openOrder("out", product)}
-            />
-          </View>
-        </View>
+        <Columns>
+          <Button
+            title="采购入库"
+            kind="secondary"
+            onPress={() => openOrder("in", product)}
+          />
+          <Button
+            title="销售出库"
+            disabled={!product.stock}
+            onPress={() => openOrder("out", product)}
+          />
+        </Columns>
       }
     >
       <Card>
@@ -499,32 +498,19 @@ export function ProductDetail({
         </View>
         <StockBadge product={product} />
         <View style={s.divider} />
-        <View style={s.between}>
-          <Text style={s.caption}>当前库存</Text>
-          <Text style={s.title}>
-            {product.stock} <Text style={s.body}>{product.unit}</Text>
-          </Text>
-        </View>
-        <View style={s.between}>
-          <Text style={s.caption}>安全库存</Text>
-          <Text style={s.body}>
-            {product.threshold} {product.unit}
-          </Text>
-        </View>
-        <View style={s.between}>
-          <Text style={s.caption}>分类</Text>
-          <Text style={s.body}>{product.category}</Text>
-        </View>
+        <DetailRow
+          label="当前库存"
+          value={`${product.stock} ${product.unit}`}
+        />
+        <DetailRow
+          label="安全库存"
+          value={`${product.threshold} ${product.unit}`}
+        />
+        <DetailRow label="分类" value={product.category} />
       </Card>
       <Card>
-        <View style={s.between}>
-          <Text style={s.caption}>采购价</Text>
-          <Text style={s.subtitle}>{money(product.cost)}</Text>
-        </View>
-        <View style={s.between}>
-          <Text style={s.caption}>销售价</Text>
-          <Text style={s.subtitle}>{money(product.price)}</Text>
-        </View>
+        <DetailRow label="采购价" value={money(product.cost)} />
+        <DetailRow label="销售价" value={money(product.price)} />
       </Card>
       <Button title="编辑商品" kind="secondary" onPress={edit} />
     </ScreenModal>
@@ -533,8 +519,8 @@ export function ProductDetail({
 
 function OrderSummary({ order }: { order: Order }) {
   return (
-    <View style={s.between}>
-      <View style={s.grow}>
+    <View style={{ gap: 10 }}>
+      <View>
         <Text style={s.rowTitle}>
           {order.type === "in" ? "采购入库" : "销售出库"} · {order.partner}
         </Text>
@@ -558,12 +544,14 @@ export function OrdersScreen({
   onRefresh,
   onDetail,
   openOrder,
+  notice,
 }: {
   orders: Order[];
   refreshing: boolean;
   onRefresh: () => void;
   onDetail: (order: Order) => void;
   openOrder: (type: "in" | "out") => void;
+  notice?: React.ReactNode;
 }) {
   const [type, setType] = useState("all");
   const [query, setQuery] = useState("");
@@ -584,28 +572,26 @@ export function OrdersScreen({
       keyExtractor={(order) => String(order.id)}
       refreshing={refreshing}
       onRefresh={onRefresh}
-      contentContainerStyle={s.content}
+      contentContainerStyle={[s.content, s.pageContent]}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       ListHeaderComponent={
         <View style={{ gap: 14 }}>
+          {notice}
           <Text style={s.title}>操作记录</Text>
-          <View style={s.row}>
-            <View style={s.grow}>
-              <Button
-                title="新建入库"
-                icon={ArrowDownToLine}
-                kind="secondary"
-                onPress={() => openOrder("in")}
-              />
-            </View>
-            <View style={s.grow}>
-              <Button
-                title="新建出库"
-                icon={ArrowUpFromLine}
-                onPress={() => openOrder("out")}
-              />
-            </View>
-          </View>
+          <Columns>
+            <Button
+              title="新建入库"
+              icon={ArrowDownToLine}
+              kind="secondary"
+              onPress={() => openOrder("in")}
+            />
+            <Button
+              title="新建出库"
+              icon={ArrowUpFromLine}
+              onPress={() => openOrder("out")}
+            />
+          </Columns>
           <SearchField
             value={query}
             onChangeText={setQuery}
@@ -707,7 +693,7 @@ export function ScannerScreen({
   const [barcode, setBarcode] = useState("");
   const [selected, setSelected] = useState<Product>();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { error, errorRevision, setError } = useFormError();
   const lookup = (code: string) => {
     const product = products.find((item) => item.barcode === code.trim());
     if (!product) {
@@ -733,7 +719,13 @@ export function ScannerScreen({
     }
   };
   return (
-    <ScreenModal title="扫码工作台" onClose={onClose} busy={busy}>
+    <ScreenModal
+      title="扫码工作台"
+      onClose={onClose}
+      busy={busy}
+      error={error}
+      errorRevision={errorRevision}
+    >
       <Chips
         value={mode}
         onChange={setMode}
@@ -755,8 +747,7 @@ export function ScannerScreen({
           onPress={scan}
           busy={busy}
         />
-        <ErrorNotice message={error} />
-        {!!error && (
+        {error.includes("权限") && (
           <Button
             title="打开系统权限设置"
             kind="secondary"
@@ -789,7 +780,7 @@ export function ScannerScreen({
         <Card>
           <View style={s.row}>
             <Check color={colors.green} size={20} />
-            <Text style={s.subtitle}>商品已识别</Text>
+            <Text style={[s.subtitle, s.grow]}>商品已识别</Text>
           </View>
           <Text style={s.rowTitle}>{selected.name}</Text>
           <Text style={s.caption}>{selected.barcode}</Text>
@@ -797,22 +788,18 @@ export function ScannerScreen({
           <Text style={s.body}>
             当前库存 {selected.stock} {selected.unit}
           </Text>
-          <View style={s.row}>
-            <View style={s.grow}>
-              <Button
-                title="采购入库"
-                kind="secondary"
-                onPress={() => openOrder("in", selected)}
-              />
-            </View>
-            <View style={s.grow}>
-              <Button
-                title="销售出库"
-                onPress={() => openOrder("out", selected)}
-                disabled={!selected.stock}
-              />
-            </View>
-          </View>
+          <Columns>
+            <Button
+              title="采购入库"
+              kind="secondary"
+              onPress={() => openOrder("in", selected)}
+            />
+            <Button
+              title="销售出库"
+              onPress={() => openOrder("out", selected)}
+              disabled={!selected.stock}
+            />
+          </Columns>
         </Card>
       )}
     </ScreenModal>
@@ -842,7 +829,7 @@ export function MoreScreen({
       <Card>
         <View style={s.row}>
           <ShieldCheck size={30} color={colors.blue} />
-          <View>
+          <View style={s.grow}>
             <Text style={s.subtitle}>{username || "管理员"}</Text>
             <Text style={s.caption}>管理员账号</Text>
           </View>
@@ -907,11 +894,8 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontStyle: "italic",
   },
-  passwordToggle: { position: "absolute", right: 4, bottom: 2 },
-  stats: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   stat: {
-    width: "48%",
-    flexGrow: 1,
+    flex: 1,
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,

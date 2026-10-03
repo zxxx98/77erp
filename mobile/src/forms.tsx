@@ -17,7 +17,8 @@ import {
 import {
   Button,
   Card,
-  ErrorNotice,
+  Columns,
+  useFormError,
   Field,
   IconButton,
   ProductRow,
@@ -46,7 +47,7 @@ export function ProductEditor({
     threshold: String(product?.threshold ?? 5),
   };
   const [form, setForm] = useState(initial);
-  const [error, setError] = useState("");
+  const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
   const lock = useSubmitLock();
@@ -87,6 +88,8 @@ export function ProductEditor({
     <ScreenModal
       title={product ? "编辑商品" : "新增商品"}
       onClose={onClose}
+      error={error}
+      errorRevision={errorRevision}
       dirty={JSON.stringify(form) !== JSON.stringify(initial)}
       busy={busy || scanning}
       footer={
@@ -99,7 +102,6 @@ export function ProductEditor({
         />
       }
     >
-      <ErrorNotice message={error} />
       <Card>
         <Field
           label="商品名称"
@@ -131,26 +133,22 @@ export function ProductEditor({
             ? "编辑时留空将保留原条码。"
             : "商品库存从 0 开始，通过采购入库增加库存。"}
         </Text>
-        <View style={s.row}>
-          <View style={s.grow}>
-            <Field
-              label="分类"
-              value={form.category}
-              onChangeText={field("category")}
-              maxLength={100}
-              editable={!busy}
-            />
-          </View>
-          <View style={s.grow}>
-            <Field
-              label="单位"
-              value={form.unit}
-              onChangeText={field("unit")}
-              maxLength={100}
-              editable={!busy}
-            />
-          </View>
-        </View>
+        <Columns>
+          <Field
+            label="分类"
+            value={form.category}
+            onChangeText={field("category")}
+            maxLength={100}
+            editable={!busy}
+          />
+          <Field
+            label="单位"
+            value={form.unit}
+            onChangeText={field("unit")}
+            maxLength={100}
+            editable={!busy}
+          />
+        </Columns>
       </Card>
       <Card>
         <Field
@@ -198,7 +196,7 @@ export function OrderEditor({
     initialProduct ? addLine([], initialProduct, type) : [],
   );
   const [query, setQuery] = useState("");
-  const [error, setError] = useState("");
+  const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
   const lock = useSubmitLock();
@@ -273,6 +271,8 @@ export function OrderEditor({
     <ScreenModal
       title={type === "in" ? "采购入库" : "销售出库"}
       onClose={onClose}
+      error={error}
+      errorRevision={errorRevision}
       dirty={
         !!lines.length || !!note || (partner !== "" && partner !== "零售客户")
       }
@@ -293,7 +293,6 @@ export function OrderEditor({
         </>
       }
     >
-      <ErrorNotice message={error} />
       <Field
         label={type === "in" ? "供应商" : "客户"}
         value={partner}
@@ -346,6 +345,7 @@ export function OrderEditor({
             </View>
             <IconButton
               icon={Trash2}
+              disabled={busy || scanning}
               label={`移除${line.product.name}`}
               onPress={() => {
                 if (!busy)
@@ -355,34 +355,31 @@ export function OrderEditor({
               }}
             />
           </View>
-          <View style={s.row}>
-            <View style={s.grow}>
-              <Field
-                label={`${line.product.name} 数量`}
-                value={line.quantity}
-                onChangeText={(value) =>
-                  update(line.product.id, "quantity", value)
-                }
-                keyboardType="number-pad"
-                editable={!busy}
-              />
-            </View>
-            <View style={s.grow}>
-              <Field
-                label={`${line.product.name} 单价`}
-                value={line.price}
-                onChangeText={(value) =>
-                  update(line.product.id, "price", value)
-                }
-                keyboardType="decimal-pad"
-                editable={!busy}
-              />
-            </View>
-          </View>
+          <Columns>
+            <Field
+              label="数量"
+              accessibilityLabel={`${line.product.name} 数量`}
+              value={line.quantity}
+              onChangeText={(value) =>
+                update(line.product.id, "quantity", value)
+              }
+              keyboardType="number-pad"
+              editable={!busy}
+            />
+            <Field
+              label="单价"
+              accessibilityLabel={`${line.product.name} 单价`}
+              value={line.price}
+              onChangeText={(value) => update(line.product.id, "price", value)}
+              keyboardType="decimal-pad"
+              editable={!busy}
+            />
+          </Columns>
           <View style={s.between}>
             <View style={s.row}>
               <IconButton
                 icon={Minus}
+                disabled={busy || scanning}
                 label={`减少${line.product.name}数量`}
                 onPress={() => {
                   if (!busy)
@@ -395,6 +392,7 @@ export function OrderEditor({
               />
               <IconButton
                 icon={Plus}
+                disabled={busy || scanning}
                 label={`增加${line.product.name}数量`}
                 onPress={() => {
                   if (!busy)
@@ -433,7 +431,7 @@ export function SettingsEditor({
 }) {
   const [business, setBusiness] = useState(settings.business_name);
   const [warehouse, setWarehouse] = useState(settings.warehouse_name);
-  const [error, setError] = useState("");
+  const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const lock = useSubmitLock();
   const save = async () => {
@@ -459,6 +457,8 @@ export function SettingsEditor({
     <ScreenModal
       title="工作空间设置"
       onClose={onClose}
+      error={error}
+      errorRevision={errorRevision}
       dirty={
         business !== settings.business_name ||
         warehouse !== settings.warehouse_name
@@ -466,7 +466,6 @@ export function SettingsEditor({
       busy={busy}
       footer={<Button title="保存设置" onPress={save} busy={busy} />}
     >
-      <ErrorNotice message={error} />
       <Card>
         <Field
           label="商户名称"

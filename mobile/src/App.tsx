@@ -4,7 +4,6 @@ import {
   Alert,
   AppState,
   BackHandler,
-  KeyboardAvoidingView,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,7 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import {
   Box,
   History,
@@ -36,7 +35,15 @@ import {
   ScannerScreen,
   ServerScreen,
 } from "./screens";
-import { Button, colors, ErrorNotice, IconButton, s } from "./ui";
+import {
+  Button,
+  colors,
+  ErrorNotice,
+  IconButton,
+  KeyboardSafeArea,
+  s,
+} from "./ui";
+import { useKeyboardVisible } from "./layout";
 
 type Tab = "home" | "products" | "inventory" | "orders" | "more";
 type ModalState =
@@ -59,27 +66,28 @@ function Page({
   refreshing = false,
 }: React.PropsWithChildren<{ refresh?: () => void; refreshing?: boolean }>) {
   return (
-    <KeyboardAvoidingView style={s.fill} behavior="height">
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={s.content}
-        refreshControl={
-          refresh ? (
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={refresh}
-              tintColor={colors.blue}
-            />
-          ) : undefined
-        }
-      >
-        {children}
-      </ScrollView>
-    </KeyboardAvoidingView>
+    <ScrollView
+      style={s.fill}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      contentContainerStyle={[s.content, s.pageContent]}
+      refreshControl={
+        refresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={colors.blue}
+          />
+        ) : undefined
+      }
+    >
+      {children}
+    </ScrollView>
   );
 }
 
 export function AppContent() {
+  const keyboardVisible = useKeyboardVisible();
   const [server, setServer] = useState("");
   const [showServer, setShowServer] = useState(false);
   const [booting, setBooting] = useState(true);
@@ -268,6 +276,19 @@ export function AppContent() {
     }
   };
 
+  // Sync failures belong in the page's scroll area, especially with large text.
+  const syncNotice = error ? (
+    <View style={{ gap: 12 }}>
+      <ErrorNotice message={error} />
+      <Button
+        title="重新同步"
+        kind="secondary"
+        busy={refreshing}
+        onPress={() => void refresh()}
+      />
+    </View>
+  ) : null;
+
   let body;
   if (showServer)
     body = (
@@ -291,10 +312,10 @@ export function AppContent() {
     );
   else if (booting || !auth)
     body = (
-      <View style={styles.loading}>
+      <ScrollView contentContainerStyle={styles.loading}>
         <ActivityIndicator size="large" color={colors.blue} />
         <Text style={s.caption}>正在连接工作空间…</Text>
-      </View>
+      </ScrollView>
     );
   else if (!auth.authenticated)
     body = (
@@ -319,7 +340,7 @@ export function AppContent() {
     );
   else if (!data)
     body = (
-      <View style={styles.loading}>
+      <ScrollView contentContainerStyle={styles.loading}>
         {refreshing ? (
           <>
             <ActivityIndicator size="large" color={colors.blue} />
@@ -332,13 +353,13 @@ export function AppContent() {
             <Button title="连接设置" kind="secondary" onPress={changeServer} />
           </>
         )}
-      </View>
+      </ScrollView>
     );
   else
     body = (
       <>
         <View style={s.header}>
-          <Text style={styles.wordmark}>
+          <Text allowFontScaling={false} style={styles.wordmark}>
             77 <Text style={{ color: colors.blue }}>ERP</Text>
           </Text>
           <Text numberOfLines={1} style={[s.caption, s.grow]}>
@@ -350,19 +371,9 @@ export function AppContent() {
             onPress={() => setModal({ kind: "scanner" })}
           />
         </View>
-        {!!error && (
-          <View style={{ padding: 12 }}>
-            <ErrorNotice message={error} />
-            <Button
-              title="重新同步"
-              kind="secondary"
-              busy={refreshing}
-              onPress={() => void refresh()}
-            />
-          </View>
-        )}
         {tab === "home" && (
           <Page refresh={() => void refresh()} refreshing={refreshing}>
+            {syncNotice}
             <Dashboard
               data={data}
               openOrder={openOrder}
@@ -381,6 +392,7 @@ export function AppContent() {
             onRefresh={() => void refresh()}
             openProduct={(product) => setModal({ kind: "product", product })}
             addProduct={() => setModal({ kind: "productEditor" })}
+            notice={syncNotice}
           />
         )}
         {tab === "orders" && (
@@ -390,10 +402,12 @@ export function AppContent() {
             onRefresh={() => void refresh()}
             onDetail={(order) => setModal({ kind: "order", order })}
             openOrder={openOrder}
+            notice={syncNotice}
           />
         )}
         {tab === "more" && (
           <Page>
+            {syncNotice}
             <MoreScreen
               username={auth.username}
               server={server}
@@ -419,32 +433,35 @@ export function AppContent() {
             <Text style={{ color: colors.white }}>{toast}</Text>
           </View>
         )}
-        <View style={styles.tabs}>
-          {tabs.map((item) => (
-            <Pressable
-              key={item.id}
-              accessibilityRole="tab"
-              accessibilityLabel={item.title}
-              accessibilityState={{ selected: tab === item.id }}
-              onPress={() => setTab(item.id)}
-              style={styles.tab}
-            >
-              <item.icon
-                size={23}
-                color={tab === item.id ? colors.blue : colors.muted}
-              />
-              <Text
-                style={{
-                  color: tab === item.id ? colors.blue : colors.muted,
-                  fontSize: 12,
-                  fontWeight: tab === item.id ? "600" : "400",
-                }}
+        {!keyboardVisible && (
+          <View style={styles.tabs}>
+            {tabs.map((item) => (
+              <Pressable
+                key={item.id}
+                accessibilityRole="tab"
+                accessibilityLabel={item.title}
+                accessibilityState={{ selected: tab === item.id }}
+                onPress={() => setTab(item.id)}
+                style={styles.tab}
               >
-                {item.title}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+                <item.icon
+                  size={23}
+                  color={tab === item.id ? colors.blue : colors.muted}
+                />
+                <Text
+                  style={{
+                    color: tab === item.id ? colors.blue : colors.muted,
+                    fontSize: 12,
+                    fontWeight: tab === item.id ? "600" : "400",
+                    textAlign: "center",
+                  }}
+                >
+                  {item.title}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         {modal?.kind === "product" && (
           <ProductDetail
             product={
@@ -495,10 +512,10 @@ export function AppContent() {
       </>
     );
   return (
-    <SafeAreaView style={s.fill}>
+    <KeyboardSafeArea>
       <StatusBar barStyle="dark-content" />
       {body}
-    </SafeAreaView>
+    </KeyboardSafeArea>
   );
 }
 export default function App() {
@@ -510,7 +527,7 @@ export default function App() {
 }
 const styles = StyleSheet.create({
   loading: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     gap: 18,
@@ -523,6 +540,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
   },
   tabs: {
+    flexShrink: 0,
     flexDirection: "row",
     backgroundColor: colors.white,
     borderTopWidth: 1,
@@ -531,16 +549,16 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    minWidth: 0,
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
     paddingVertical: 10,
+    paddingHorizontal: 4,
   },
   toast: {
-    position: "absolute",
-    bottom: 82,
-    left: 20,
-    right: 20,
+    marginHorizontal: 20,
+    marginVertical: 8,
     padding: 16,
     backgroundColor: colors.text,
     borderRadius: 10,

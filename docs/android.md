@@ -26,6 +26,14 @@
 
 安卓端省去 CSV 导出、SVG 标签下载、桌面表格 / 网格切换、键盘快捷键和趋势图，这些功能在 Web 端保留。原生界面沿用 Web 设计令牌：`#2563EB` 主色、`#F7F8FA` 背景、白色卡片、细边框和中文业务文案。
 
+### 手机 UI 适配（1.1.1）
+
+表单和操作按钮按可用宽度、系统字体大小自动换行，内容区在大屏上居中并限制为 760 dp。商品名称与库存 / 金额分开排列，详情显示完整数据；辅助文字使用同色系的 `#647084`，提高可读性。业务文字跟随系统字号，只有品牌标记保持固定大小。
+
+主页面和弹窗分别处理安全区，键盘按实际遮挡量补充空间。短屏、较大字号或键盘弹出时，保存 / 确认按钮进入表单滚动区域；普通竖屏保留底部操作。校验失败自动滚回错误提示，重复相同错误也会触发。搜索时隐藏底部导航，收起键盘后恢复原标签和搜索条件。扫码页使用 dp 间距、刘海安全区和可滚动控制区。
+
+详细问题、修复依据、自动检查与真机验收项见 [Android UI review](android-ui-review.md)。
+
 网络请求由原生 OkHttp 完成，会话 Cookie 由原生层使用 Android Keystore AES-GCM 加密保存，并绑定服务器地址；JavaScript 层拿不到会话令牌。HTTPS 证书错误不会被忽略，不自动跟随服务器重定向，不自动重试入出库提交。若提交时网络中断，请先查看操作记录，避免重复入出库。Web 端原有 Cookie 与跨站请求保护不变，公网服务建议使用 HTTPS。
 
 从 1.0.0 覆盖安装后沿用服务器地址，需要重新登录；应用包名与签名保持不变，服务器业务数据不受影响。
@@ -65,12 +73,12 @@ git push origin main
 git push origin --follow-tags
 ```
 
-也可用 `npm version minor`、`npm version major` 或 `npm version 1.2.3` 指定版本。npm 会同步版本文件、创建提交和 `v版本号` 标签。发布已写入文件的当前 `1.1.0` 时：
+也可用 `npm version minor`、`npm version major` 或 `npm version 1.2.3` 指定版本。npm 会同步版本文件、创建提交和 `v版本号` 标签。发布已写入文件的当前 `1.1.1` 时：
 
 ```bash
-git tag -a v1.1.0 -m '77 ERP React Native 1.1.0'
+git tag -a v1.1.1 -m '77 ERP React Native 1.1.1'
 git push origin main
-git push origin v1.1.0
+git push origin v1.1.1
 ```
 
 推送 `v*` 标签自动触发 Android 发布；普通代码推送不会构建 APK。标签必须与所指向提交的 `package.json` 版本完全一致。发布后的版本应递增，不要移动已发布标签。

@@ -7,6 +7,7 @@ import android.view.Gravity;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.activity.ComponentActivity;
@@ -40,7 +41,8 @@ public class ScannerActivity extends ComponentActivity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, insets) -> {
-            var bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            var bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                | WindowInsetsCompat.Type.displayCutout());
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
             return insets;
         });
@@ -48,23 +50,39 @@ public class ScannerActivity extends ComponentActivity {
         root.addView(previewView, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.VERTICAL);
-        controls.setPadding(24, 24, 24, 32);
+        controls.setPadding(dp(20), dp(12), dp(20), dp(16));
         controls.setBackgroundColor(0xBB17243C);
+        Button cancel = new Button(this);
+        cancel.setText("取消扫码");
+        cancel.setAllCaps(false);
+        cancel.setMinHeight(dp(48));
+        cancel.setOnClickListener(v -> finish());
+        controls.addView(cancel);
         TextView instruction = new TextView(this);
         instruction.setText("将商品条码置于取景框内\n识别后自动返回，确认单据后才会变更库存。");
         instruction.setTextColor(Color.WHITE);
         instruction.setTextSize(17);
         instruction.setGravity(Gravity.CENTER);
         controls.addView(instruction);
-        Button cancel = new Button(this);
-        cancel.setText("取消扫码");
-        cancel.setOnClickListener(v -> finish());
-        controls.addView(cancel);
-        root.addView(controls, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+        // Keep at least half the preview visible in landscape and at large font scales.
+        ScrollView controlScroll = new ScrollView(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int available = MeasureSpec.getSize(heightSpec);
+                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(
+                    available / 2, MeasureSpec.AT_MOST));
+            }
+        };
+        controlScroll.addView(controls);
+        root.addView(controlScroll, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
         setContentView(root);
+        ViewCompat.requestApplyInsets(root);
         WindowCompat.getInsetsController(getWindow(), root).setAppearanceLightStatusBars(false);
         WindowCompat.getInsetsController(getWindow(), root).setAppearanceLightNavigationBars(false);
         startCamera(previewView);
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     @androidx.annotation.OptIn(markerClass = androidx.camera.core.ExperimentalGetImage.class)
