@@ -3,6 +3,7 @@ import json
 import pathlib
 import re
 import subprocess
+import struct
 import sys
 import threading
 import time
@@ -82,6 +83,18 @@ def snapshot(name):
         raise RuntimeError(f"App exited while capturing {name}")
 
 
+def scroll_to(label):
+    for _ in range(12):
+        for node in tree().iter("node"):
+            if label == node.get("content-desc"):
+                x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
+                if y2 - y1 >= 144 and y2 <= 960:
+                    return node
+        # wm size override is 1800 x 960 after rotating the small viewport.
+        adb("shell", "input", "swipe", "1200", "760", "1200", "350", "350")
+    raise RuntimeError(f"Cannot scroll to native action: {label}")
+
+
 def restart():
     adb("shell", "am", "force-stop", package)
     adb("shell", "am", "start", "-W", "-n", f"{package}/.MainActivity")
@@ -99,6 +112,10 @@ try:
     tap("连接服务器")
     find(label="工作台")
     snapshot("02-dashboard")
+    tab_bottom = int(re.findall(r"\d+", find(label="更多").get("bounds"))[-1])
+    _, screen_height = struct.unpack(">II", (reports / "02-dashboard.png").read_bytes()[16:24])
+    if screen_height - tab_bottom > screen_height * 0.06:
+        raise RuntimeError("Keyboard left unused space below the bottom navigation")
     tap("商品")
     snapshot("03-products")
     tap(f"{product['name']}，库存 {product['stock']} {product['unit']}")
@@ -126,7 +143,11 @@ try:
     adb("shell", "settings", "put", "system", "accelerometer_rotation", "0")
     adb("shell", "settings", "put", "system", "user_rotation", "1")
     time.sleep(2)
+    if any(n.get("text") == "放弃修改？" for n in tree().iter("node")):
+        raise RuntimeError("Back to dismiss the keyboard also opened the discard dialog")
     snapshot("10-form-landscape-large-text")
+    scroll_to("保存商品")
+    snapshot("11-form-actions-landscape-large-text")
     print("Native navigation and layout scenarios completed.", flush=True)
 except Exception:
     snapshot("failure")

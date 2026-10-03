@@ -95,7 +95,9 @@ git push origin v1.1.1
 2. 安装 Node.js 22 的 Web 与原生依赖，运行 API、版本号、Web 浏览器、React Native 组件 / 业务流程测试和 TypeScript 检查。
 3. 检查原生源码未引入 WebView，运行 Android Release Lint，打包 Hermes 应用代码并编译签名 APK 与 AAB。
 4. 检查产物包含 React Native 应用 bundle、Hermes 和 React Native 运行库；全部 `.so` 路径必须为 `arm64-v8a`，ELF 必须是 64 位 ARM；校验 APK 最低系统版本为 API 31，以及包名、版本和签名。
-5. 上传 Actions 构建产物，自动创建 GitHub Release，附 APK、AAB 和 `SHA256SUMS`。
+5. 检查 DEX 保留 JNI 初始化所需类，防止 Release 裁剪导致启动闪退。
+6. 安装实际 ARM64 APK，在 Android 12 / 16 镜像（系统 ARM64 转译）中运行冷启动及原生页面检查，保存日志、截图和控件树。测试使用独立 API 测试数据，不连接业务服务器。
+7. 所有检查通过后自动创建 GitHub Release，附 APK、AAB 和 `SHA256SUMS`。运行检查失败时不会发布。
 
 Actions artifact 保留 30 天，Release 附件长期保留。失败时可查看上传的 Android Lint / 浏览器诊断报告，在同一版本的 Actions 页面点击 Re-run jobs 重试；如果修改了代码，使用新的版本号和标签。流水线不自动部署服务器；服务器前端更新仍按 README 的部署方式完成。
 
@@ -112,4 +114,4 @@ npm test --prefix mobile
 node scripts/check-native-source.mjs
 ```
 
-GitHub 负责 Android 编译、Lint、签名和产物检查。实际摄像头识别、Keystore 会话持久化、原生键盘布局、覆盖安装和具体机型兼容性仍需 ARM64 真机验证。
+GitHub 负责 Android 编译、Lint、签名、产物和模拟环境运行检查。实际摄像头识别、Keystore 会话持久化、厂商输入法、覆盖安装和具体机型兼容性仍需 ARM64 真机验证。可单独运行 `Android Runtime Check` workflow，指定 Release 标签或构建 run ID 重现启动及界面问题。

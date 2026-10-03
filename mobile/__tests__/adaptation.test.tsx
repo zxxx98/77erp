@@ -250,6 +250,28 @@ test("submitting a product disables both the back button and hardware dismissal"
   await act(async () => finish({ id: product.id }));
 });
 
+test("hardware back dismisses a focused editor before offering to discard changes", () => {
+  const alert = jest.spyOn(RN.Alert, "alert");
+  const dismiss = jest
+    .spyOn(RN.Keyboard, "dismiss")
+    .mockImplementation(() => {});
+  const focus = jest.spyOn(RN.TextInput.State, "currentlyFocusedInput");
+  render(<ProductEditor onClose={jest.fn()} onSaved={jest.fn()} />);
+  const input = screen.getByLabelText("商品名称");
+  fireEvent.changeText(input, "未保存的商品");
+  focus.mockReturnValue({} as RN.TextInput);
+  fireEvent(screen.UNSAFE_getByType(RN.Modal), "requestClose");
+  expect(dismiss).toHaveBeenCalled();
+  expect(alert).not.toHaveBeenCalled();
+  focus.mockReturnValue(null);
+  fireEvent(screen.UNSAFE_getByType(RN.Modal), "requestClose");
+  expect(alert).toHaveBeenCalledWith(
+    "放弃修改？",
+    expect.any(String),
+    expect.any(Array),
+  );
+});
+
 test("keyboard hides navigation and restores the selected tab with the current search", async () => {
   jest.mocked(device.getServer).mockResolvedValue("https://erp.example.com");
   request.mockImplementation(async (path) =>

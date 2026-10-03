@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Pressable,
@@ -34,7 +35,7 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { Product, money, stockLabel } from "./model";
-import { columnBasis, useFormLayout } from "./layout";
+import { columnBasis, useFormLayout, useKeyboardVisible } from "./layout";
 
 export const colors = {
   blue: "#2563EB",
@@ -209,6 +210,7 @@ export function Card({ children }: PropsWithChildren) {
 }
 export function KeyboardSafeArea({ children }: PropsWithChildren) {
   const frame = useSafeAreaFrame();
+  const keyboardVisible = useKeyboardVisible();
   // At the window root, padding uses only the remaining keyboard overlap.
   // This also handles edge-to-edge windows where adjustResize does not shrink the root.
   return (
@@ -216,6 +218,7 @@ export function KeyboardSafeArea({ children }: PropsWithChildren) {
       testID="keyboard-safe-root"
       style={s.fill}
       behavior="padding"
+      enabled={keyboardVisible}
       keyboardVerticalOffset={frame.y}
     >
       <SafeAreaView style={s.fill}>{children}</SafeAreaView>
@@ -363,8 +366,17 @@ export function ScreenModal({
       { text: "放弃修改", style: "destructive", onPress: onClose },
     ]);
   };
+  const hardwareBack = () => {
+    // Android may dispatch the dialog's back callback while hiding its IME.
+    // Blur the field first; a second back press can then close the form.
+    if (Keyboard.isVisible() || TextInput.State.currentlyFocusedInput()) {
+      Keyboard.dismiss();
+      return;
+    }
+    close();
+  };
   return (
-    <Modal visible animationType="slide" onRequestClose={close}>
+    <Modal visible animationType="slide" onRequestClose={hardwareBack}>
       <SafeAreaProvider>
         <ModalBody
           title={title}
