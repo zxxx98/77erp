@@ -111,6 +111,7 @@ public class MainActivity extends ComponentActivity {
             return insets;
         });
         setContentView(root);
+        WindowCompat.getInsetsController(getWindow(), root).setAppearanceLightNavigationBars(true);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 if (webView != null && webView.canGoBack()) webView.goBack();

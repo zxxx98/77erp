@@ -62,6 +62,8 @@ public class ScannerActivity extends ComponentActivity {
         controls.addView(cancel);
         root.addView(controls, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
         setContentView(root);
+        WindowCompat.getInsetsController(getWindow(), root).setAppearanceLightStatusBars(false);
+        WindowCompat.getInsetsController(getWindow(), root).setAppearanceLightNavigationBars(false);
         startCamera(previewView);
     }
 
