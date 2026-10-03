@@ -1,0 +1,19 @@
+[Unit]
+Description=77 ERP public preview on port 28888
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/code/personal/77ERP
+ExecStart=/usr/bin/node server/index.js
+Environment=NODE_ENV=production
+Environment=PORT=28888
+Environment=DB_PATH=data/preview.sqlite
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

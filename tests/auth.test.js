@@ -1,0 +1,124 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createApp } from "../server/app.js";
+
+const credentials = { username: "owner", password: "Strong-password-123" };
+async function fixture(t, path = ":memory:") {
+  const { app, db } = createApp(path);
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await new Promise((resolve) => server.close(resolve));
+    db.close();
+  };
+  t.after(close);
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (path, { method = "GET", body, cookie, headers = {} } = {}) => {
+    const res = await fetch(base + "/api" + path, {
+      method,
+      headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}), ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return { status: res.status, data: await res.json(), headers: res.headers,
+      cookie: res.headers.get("set-cookie")?.split(";")[0] };
+  };
+  return { db, request, close, base };
+}
+
+test("first run creates exactly one admin, hashes credentials and protects all business APIs", async (t) => {
+  const { db, request } = await fixture(t);
+  assert.deepEqual((await request("/auth/status")).data, { initialized: false, authenticated: false });
+  for (const [path, method, body] of [
+    ["/data", "GET"], ["/style", "GET"], ["/products/barcode/6901234567001", "GET"],
+    ["/products", "POST", {}], ["/products/1", "PUT", {}], ["/orders", "POST", {}], ["/settings", "PUT", {}],
+  ]) assert.equal((await request(path, { method, body })).status, 401);
+  const count = db.prepare("SELECT COUNT(*) AS n FROM products").get().n;
+  const setup = await request("/auth/setup", { method: "POST", body: credentials });
+  assert.equal(setup.status, 201);
+  assert.equal(setup.data.username, credentials.username);
+  assert.match(setup.headers.get("set-cookie"), /HttpOnly/);
+  assert.match(setup.headers.get("set-cookie"), /SameSite=Strict/);
+  const admin = db.prepare("SELECT * FROM administrator").get();
+  assert.notEqual(admin.password_hash, credentials.password);
+  assert.equal(admin.password_hash.length, 128);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM products").get().n, count);
+  assert.equal((await request("/data", { cookie: setup.cookie })).status, 200);
+  assert.equal((await request("/auth/setup", { method: "POST", body: { ...credentials, username: "other" } })).status, 409);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM administrator").get().n, 1);
+  assert.equal((await request("/auth/status")).data.username, undefined);
+});
+
+test("setup validates credentials and competing initializations cannot overwrite each other", async (t) => {
+  const { db, request } = await fixture(t);
+  for (const body of [{}, null, { username: "a", password: credentials.password },
+    { username: "invalid name", password: credentials.password }, { ...credentials, password: "short" },
+    { ...credentials, password: "x".repeat(129) }]) {
+    assert.equal((await request("/auth/setup", { method: "POST", body })).status, 400);
+  }
+  const results = await Promise.all(["first", "second"].map((username) =>
+    request("/auth/setup", { method: "POST", body: { ...credentials, username } })));
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM administrator").get().n, 1);
+  assert.equal((await request("/auth/login", { method: "POST", body: credentials })).status, 401);
+});
+
+test("login rejects invalid credentials, logout revokes the token and expired sessions fail", async (t) => {
+  const { db, request } = await fixture(t);
+  assert.equal((await request("/auth/login", { method: "POST", body: credentials })).status, 409);
+  const setup = await request("/auth/setup", { method: "POST", body: credentials });
+  for (const body of [{ ...credentials, password: "wrong-password" }, { ...credentials, username: "wrong" }, {}]) {
+    assert.equal((await request("/auth/login", { method: "POST", body })).status, 401);
+  }
+  assert.equal((await request("/auth/login", { method: "POST", body: null })).status, 400);
+  const logout = await request("/auth/logout", { method: "POST", cookie: setup.cookie });
+  assert.equal(logout.status, 200);
+  assert.match(logout.headers.get("set-cookie"), /Expires=Thu, 01 Jan 1970/);
+  assert.equal((await request("/data", { cookie: setup.cookie })).status, 401);
+  const login = await request("/auth/login", { method: "POST", body: credentials });
+  assert.equal(login.status, 200);
+  assert.notEqual(login.cookie, setup.cookie);
+  assert.equal((await request("/auth/status", { cookie: login.cookie })).data.authenticated, true);
+  assert.equal((await request("/data", { cookie: "77erp_session=" + "x".repeat(43) })).status, 401);
+  db.prepare("UPDATE auth_sessions SET expires_at=?").run(Date.now() - 1);
+  assert.equal((await request("/data", { cookie: login.cookie })).status, 401);
+  assert.equal((await request("/auth/status", { cookie: login.cookie })).data.authenticated, false);
+});
+
+test("cross-site mutations and non-JSON submissions are blocked and failed logins are limited", async (t) => {
+  const { request } = await fixture(t);
+  assert.equal((await request("/auth/setup", { method: "POST", body: credentials, headers: { Origin: "https://unrelated.example" } })).status, 403);
+  assert.equal((await request("/auth/setup", { method: "POST", body: credentials, headers: { "Content-Type": "text/plain" } })).status, 415);
+  const setup = await request("/auth/setup", { method: "POST", body: credentials });
+  assert.equal(setup.status, 201);
+  assert.equal((await request("/settings", { method: "PUT", body: {}, cookie: setup.cookie, headers: { Origin: "https://unrelated.example" } })).status, 403);
+  for (let n = 0; n < 10; n++) {
+    assert.equal((await request("/auth/login", { method: "POST", body: { ...credentials, password: "incorrect" } })).status, 401);
+  }
+  const limited = await request("/auth/login", { method: "POST", body: credentials });
+  assert.equal(limited.status, 429);
+  assert.ok(Number(limited.headers.get("retry-after")) > 0);
+});
+
+test("administrator and session survive restarting with the same database", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "77erp-auth-"));
+  try {
+    const path = join(directory, "app.sqlite");
+    const first = await fixture(t, path);
+    const setup = await first.request("/auth/setup", { method: "POST", body: credentials });
+    await first.close();
+    const second = await fixture(t, path);
+    assert.equal((await second.request("/auth/status")).data.initialized, true);
+    assert.equal((await second.request("/data", { cookie: setup.cookie })).status, 200);
+    assert.equal((await second.request("/auth/setup", { method: "POST", body: credentials })).status, 409);
+    assert.equal((await second.request("/auth/login", { method: "POST", body: credentials })).status, 200);
+    await second.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
