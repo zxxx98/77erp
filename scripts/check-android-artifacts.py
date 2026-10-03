@@ -7,8 +7,41 @@ import sys
 import zipfile
 
 
+def dex_classes(data):
+    """Read class definitions, not incidental strings, from a standard DEX file."""
+    if data[:4] != b'dex\n':
+        raise ValueError('Expected a standard DEX file')
+    strings_count, strings_offset = struct.unpack_from('<II', data, 56)
+    types_count, types_offset = struct.unpack_from('<II', data, 64)
+    classes_count, classes_offset = struct.unpack_from('<II', data, 96)
+    strings = []
+    for index in range(strings_count):
+        offset = struct.unpack_from('<I', data, strings_offset + 4 * index)[0]
+        # Skip the ULEB128 UTF-16 length. Descriptors themselves are ASCII.
+        while data[offset] & 0x80:
+            offset += 1
+        offset += 1
+        strings.append(data[offset:data.index(b'\0', offset)].decode('utf-8', errors='replace'))
+    types = [strings[struct.unpack_from('<I', data, types_offset + 4 * index)[0]]
+             for index in range(types_count)]
+    return {types[struct.unpack_from('<I', data, classes_offset + 32 * index)[0]]
+            for index in range(classes_count)}
+
+
+def check_jni_classes(archive):
+    classes = set()
+    for name in archive.namelist():
+        if name.endswith('.dex'):
+            classes.update(dex_classes(archive.read(name)))
+    prefix = 'Lcom/facebook/react/devsupport/CxxInspectorPackagerConnection'
+    for suffix in ['', '$DelegateImpl', '$WebSocketDelegate', '$IWebSocket']:
+        if prefix + suffix + ';' not in classes:
+            raise ValueError(f'R8 removed or renamed a JNI startup class: {prefix}{suffix};')
+
+
 def check_native_libraries(path):
     with zipfile.ZipFile(path) as archive:
+        check_jni_classes(archive)
         prefix = 'base/' if path.suffix == '.aab' else ''
         if prefix + 'assets/index.android.bundle' not in archive.namelist():
             raise ValueError(f"{path}: missing bundled React Native application")
