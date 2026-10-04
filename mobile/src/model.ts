@@ -130,8 +130,10 @@ export function orderPayload(
   note: string,
   lines: Line[],
 ) {
-  if (!partner.trim() || partner.length > 100)
-    throw new Error("请填写 1–100 字的往来单位。");
+  const partnerLabel = type === "in" ? "供应商" : "客户";
+  if (!partner.trim()) throw new Error(`请填写${partnerLabel}名称。`);
+  if (partner.length > 100)
+    throw new Error(`${partnerLabel}名称不能超过 100 字。`);
   if (note.length > 500) throw new Error("备注不能超过 500 字。");
   if (!lines.length || lines.length > 100)
     throw new Error("请添加 1–100 种商品。");

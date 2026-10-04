@@ -295,6 +295,7 @@ export function OrderEditor({
     >
       <Field
         label={type === "in" ? "供应商" : "客户"}
+        placeholder={type === "in" ? "必填：请输入供应商名称" : "必填：请输入客户名称"}
         value={partner}
         onChangeText={setPartner}
         maxLength={100}

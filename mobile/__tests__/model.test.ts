@@ -40,7 +40,7 @@ test("order payload matches the existing server contract and totals use cents", 
   expect(() => orderPayload("in", "供应商", "", [...lines, ...lines])).toThrow(
     "重复",
   );
-  expect(() => orderPayload("in", "", "", lines)).toThrow("往来单位");
+  expect(() => orderPayload("in", "", "", lines)).toThrow("请填写供应商名称。");
 });
 test("product creation keeps barcode optional and sends no direct stock mutation", () => {
   const payload = productPayload({
