@@ -46,6 +46,7 @@ import {
   s,
 } from "./ui";
 import { useKeyboardVisible } from "./layout";
+import { useAppUpdate } from "./updates";
 
 type Tab = "home" | "products" | "inventory" | "orders" | "more";
 type ModalState =
@@ -91,6 +92,7 @@ function Page({
 }
 
 export function AppContent() {
+  useAppUpdate();
   const keyboardVisible = useKeyboardVisible();
   const [server, setServer] = useState("");
   const [showServer, setShowServer] = useState(false);

@@ -64,6 +64,15 @@ public class ErpModule extends ReactContextBaseJavaModule {
     }
     @Override public String getName() { return "ErpNative"; }
 
+    @ReactMethod public void getVersionCode(Promise promise) {
+        try {
+            promise.resolve((double) getReactApplicationContext().getPackageManager()
+                .getPackageInfo(getReactApplicationContext().getPackageName(), 0).getLongVersionCode());
+        } catch (Exception e) {
+            promise.reject("VERSION", "无法读取当前应用版本。", e);
+        }
+    }
+
     private String server() {
         // Migrate the address from 1.0; the user signs in again with a new native session.
         String previous = getReactApplicationContext().getSharedPreferences("MainActivity", Context.MODE_PRIVATE).getString("server", "");
