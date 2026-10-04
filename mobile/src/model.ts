@@ -1,4 +1,7 @@
+export type Contact = { id?:number; role:"supplier"|"customer"; name:string; person:string; phone:string; address:string; note:string; active:number; version?:number };
+export type Draft = { id:number; type:"in"|"out"; partner:string; partner_id:number|null; note:string; version:number; updated_at:string; items:{product_id:number;quantity:string|number;price:string|number}[] };
 export type Product = {
+  inventory_value_cents?: number;
   id: number;
   name: string;
   barcode: string;
@@ -10,6 +13,8 @@ export type Product = {
   threshold: number;
 };
 export type OrderItem = {
+  returned_quantity?: number;
+  cost_cents?: number | null;
   product_id: number;
   name: string;
   barcode: string;
@@ -17,6 +22,14 @@ export type OrderItem = {
   price: number;
 };
 export type Order = {
+  partner_id?: number | null;
+  settlement_tracked?: number;
+  payment_status?: string;
+  kind?: "normal" | "return";
+  status?: "active" | "void";
+  stock_applied?: number;
+  source_order_id?: number | null;
+  void_reason?: string;
   id: number;
   number: string;
   type: "in" | "out";
@@ -27,7 +40,11 @@ export type Order = {
   items: OrderItem[];
 };
 export type Settings = { business_name: string; warehouse_name: string };
+export const businessType = (o: Order) => o.kind === "return" ? (o.type === "in" ? "out" : "in") : o.type;
+export const orderLabel = (o: Order) => `${o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : (o.type === "in" ? "采购入库" : "销售出库")}${o.status === "void" ? " · 已作废" : ""}`;
+export const reportOrders = (orders: Order[]): Order[] => orders.filter(o => o.status !== "void").map(o => o.kind === "return" ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total } : o);
 export type Workspace = {
+  contacts?: Contact[];
   products: Product[];
   orders: Order[];
   settings: Settings;

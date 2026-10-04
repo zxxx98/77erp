@@ -31,6 +31,7 @@ import {
   Settings,
   ShieldCheck,
   TriangleAlert,
+  Trash2,
   Warehouse,
   X,
   Camera,
@@ -42,6 +43,9 @@ import JsBarcode from "jsbarcode";
 import "./styles.css";
 import { api } from "./api.js";
 import { AuthGate } from "./Auth.jsx";
+import { version as appVersion } from "../package.json";
+import { BusinessTools, Drafts, Payments, useBusiness } from "./Commerce.jsx";
+import { DataTools, OrderActions, orderLabel, reportOrders, businessType } from "./Operations.jsx";
 
 const money = (v) =>
   new Intl.NumberFormat("zh-CN", {
@@ -464,7 +468,7 @@ function App({ admin, onLogout }) {
   });
   const [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
-  const [modal, setModal] = useState(null),
+  const [modal, setModal] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? { kind: "settings" } : null),
     [toast, setToast] = useState(null),
     [search, setSearch] = useState("");
   const [notification, setNotification] = useState(false),
@@ -798,7 +802,7 @@ function App({ admin, onLogout }) {
                   <span className="footer-brand">77 ERP</span> 进销存管理系统
                 </span>
                 <span>
-                  <ShieldCheck size={13} /> 本地数据存储 <i /> v1.0.0
+                  <ShieldCheck size={13} /> 本地数据存储 <i /> v{appVersion}
                 </span>
               </footer>
             </>
@@ -816,13 +820,15 @@ function App({ admin, onLogout }) {
         <OrderForm
           type={modal.type}
           initialProduct={modal.product}
+          initialDraft={modal.draft}
+          key={modal.draft?.id || "new-order"}
           data={data}
           onClose={() => setModal(null)}
           onSaved={saved}
         />
       )}
       {modal?.kind === "detail" && (
-        <OrderDetail order={modal.order} onClose={() => setModal(null)} />
+        <OrderDetail order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
       {modal?.kind === "barcode" && (
         <Modal
@@ -861,6 +867,9 @@ function App({ admin, onLogout }) {
       {modal?.kind === "settings" && (
         <SettingsForm
           settings={data.settings}
+          products={data.products}
+          onResume={draft => setModal({kind:"order",type:draft.type,draft})}
+          onRefresh={reload}
           onClose={() => setModal(null)}
           onSaved={saved}
         />
@@ -967,6 +976,7 @@ function TrendChart({ orders, days }) {
   });
   const max = Math.max(...series.flatMap((d) => [d.in, d.out]), 1000);
   const cap = Math.ceil(max / 1000) * 1000;
+  const floor = Math.floor(Math.min(0, ...series.flatMap(d => [d.in, d.out])) / 1000) * 1000;
   const W = chartWidth,
     H = chartWidth < 450 ? 160 : 178,
     L = 40,
@@ -974,7 +984,7 @@ function TrendChart({ orders, days }) {
     T = 12,
     B = 29;
   const x = (i) => L + (i * (W - L - R)) / (days - 1),
-    y = (v) => T + (1 - v / cap) * (H - T - B);
+    y = (v) => T + (1 - (v - floor) / (cap - floor)) * (H - T - B);
   const smooth = (points) => {
     let path = `M${points[0][0]},${points[0][1]}`;
     for (let i = 1; i < points.length; i++) {
@@ -1013,21 +1023,21 @@ function TrendChart({ orders, days }) {
             <line
               x1={L}
               x2={W - R}
-              y1={y((cap * n) / 4)}
-              y2={y((cap * n) / 4)}
+              y1={y(floor + ((cap - floor) * n) / 4)}
+              y2={y(floor + ((cap - floor) * n) / 4)}
               stroke="#edf0f5"
               strokeDasharray={n === 0 ? "0" : "3 4"}
             />
             <text
               x={L - 12}
-              y={y((cap * n) / 4) + 4}
+              y={y(floor + ((cap - floor) * n) / 4) + 4}
               textAnchor="end"
               fill="#929aaa"
               fontSize="10"
             >
-              {(cap * n) / 4 >= 1000
-                ? `${((cap * n) / 4 / 1000).toFixed(1)}k`
-                : (cap * n) / 4}
+              {floor + ((cap - floor) * n) / 4 >= 1000
+                ? `${(floor + ((cap - floor) * n) / 4 / 1000).toFixed(1)}k`
+                : floor + ((cap - floor) * n) / 4}
             </text>
           </g>
         ))}
@@ -1125,21 +1135,22 @@ function TrendChart({ orders, days }) {
 function Dashboard({ data, low, navigate, openOrder, showDetail }) {
   const [days, setDays] = useState(7),
     [orderTab, setOrderTab] = useState("all");
-  const todayOrders = data.orders.filter((o) =>
+  const reporting = reportOrders(data.orders);
+  const todayOrders = reporting.filter((o) =>
     sameDay(o.created_at, new Date()),
   );
   const incoming = todayOrders.filter((o) => o.type === "in"),
     outgoing = todayOrders.filter((o) => o.type === "out");
   const totalStock = data.products.reduce((s, p) => s + p.stock, 0),
-    value = data.products.reduce((s, p) => s + p.stock * p.cost, 0);
+    value = data.products.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0);
   const periodStart = new Date();
   periodStart.setDate(periodStart.getDate() - days + 1);
   periodStart.setHours(0, 0, 0, 0);
-  const salesSum = data.orders
+  const salesSum = reporting
     .filter((o) => o.type === "out" && new Date(o.created_at) >= periodStart)
     .reduce((s, o) => s + o.total, 0);
   const filteredOrders = data.orders
-    .filter((o) => orderTab === "all" || o.type === orderTab)
+    .filter((o) => orderTab === "all" || businessType(o) === orderTab)
     .slice(0, 5);
   const metrics = [
     {
@@ -1280,7 +1291,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               </span>
             </div>
           </div>
-          <TrendChart orders={data.orders} days={days} />
+          <TrendChart orders={reporting} days={days} />
         </Panel>
         <section className="quick-panel">
           <div className="quick-panel-heading">
@@ -1388,7 +1399,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                         <div>
                           <strong className="order-number">{o.number}</strong>
                           <small>
-                            {o.type === "in" ? "采购入库" : "销售出库"}
+                            {orderLabel(o)}
                             <span>·</span>
                             {dateTime(o.created_at)}
                           </small>
@@ -1798,7 +1809,7 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
             <small>库存成本金额</small>
             <strong>
               <em>¥ </em>
-              {money(data.products.reduce((s, p) => s + p.stock * p.cost, 0))}
+              {money(data.products.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0))}
             </strong>
           </span>
         </div>
@@ -1918,7 +1929,7 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
                       {stockStatus(p)}
                     </Badge>
                   </td>
-                  <td className="number-cell">¥ {money(p.cost * p.stock)}</td>
+                  <td className="number-cell">¥ {money((p.inventory_value_cents ?? Math.round(p.cost * p.stock * 100)) / 100)}</td>
                   <td className="number-cell">
                     <button
                       className="text-button"
@@ -1979,7 +1990,7 @@ async function exportOrders(orders, notify) {
     ...orders.flatMap((o) =>
       o.items.map((i) => [
         o.number,
-        o.type === "in" ? "采购入库" : "销售出库",
+        orderLabel(o),
         o.partner,
         o.total,
         o.created_at,
@@ -2013,8 +2024,8 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
   useEffect(() => setPageNum(1), [query, days, tab]);
   const filtered = data.orders.filter(
     (o) =>
-      (!type || o.type === type) &&
-      (tab === "all" || o.type === tab) &&
+      (!type || businessType(o) === type) &&
+      (tab === "all" || businessType(o) === tab) &&
       (days === "all" ||
         new Date(o.created_at) >
           new Date(Date.now() - Number(days) * 86400000)) &&
@@ -2057,18 +2068,17 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
       <div className="order-summary">
         <div>
           <span>
-            筛选范围内{type === "in" ? "采购" : "销售"}
-            {type ? "金额" : "总金额"}
+            筛选内净额（不含作废，扣除退货）
           </span>
           <strong>
             <small>¥ </small>
-            {money(filtered.reduce((s, o) => s + o.total, 0))}
+            {money(reportOrders(filtered).reduce((s, o) => s + o.total, 0))}
           </strong>
         </div>
         <div>
-          <span>已完成单据</span>
+          <span>有效单据</span>
           <strong>
-            {filtered.length}
+            {filtered.filter(o => o.status !== "void").length}
             <small> 笔</small>
           </strong>
         </div>
@@ -2076,7 +2086,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           <span>商品流转数量</span>
           <strong>
             {count(
-              filtered.reduce(
+              filtered.filter(o => o.status !== "void").reduce(
                 (s, o) => s + o.items.reduce((n, i) => n + i.quantity, 0),
                 0,
               ),
@@ -2113,7 +2123,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                 <span>
                   {type
                     ? filtered.length
-                    : data.orders.filter((o) => id === "all" || o.type === id)
+                    : data.orders.filter((o) => id === "all" || businessType(o) === id)
                         .length}
                 </span>
               </button>
@@ -2175,7 +2185,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                       <div>
                         <strong className="order-number">{o.number}</strong>
                         <small>
-                          {o.type === "in" ? "采购入库" : "销售出库"}
+                          {orderLabel(o)}
                         </small>
                       </div>
                     </div>
@@ -2429,9 +2439,13 @@ function ProductForm({ product, onClose, onSaved }) {
   );
 }
 
-function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
+function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved }) {
+  const [draft, setDraft] = useState(initialDraft || null);
+  const [partnerId, setPartnerId] = useState(initialDraft?.partner_id ?? null);
+  const draftAction = useBusiness();
+  const submitLock = useRef(false);
   const [items, setItems] = useState(
-    initialProduct
+    initialDraft ? initialDraft.items : initialProduct
       ? [
           {
             product_id: initialProduct.id,
@@ -2441,8 +2455,8 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
         ]
       : [],
   );
-  const [partner, setPartner] = useState(type === "out" ? "零售客户" : ""),
-    [note, setNote] = useState(""),
+  const [partner, setPartner] = useState(initialDraft?.partner ?? (type === "out" ? "零售客户" : "")),
+    [note, setNote] = useState(initialDraft?.note || ""),
     [barcode, setBarcode] = useState(""),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
@@ -2496,6 +2510,8 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
       setError("请至少添加一件商品。");
       return;
     }
+    if (submitLock.current || draftAction.busy) return;
+    submitLock.current = true;
     setBusy(true);
     setError("");
     try {
@@ -2503,6 +2519,8 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
         method: "POST",
         body: {
           type,
+          ...(partnerId ? { partner_id: partnerId } : {}),
+          ...(draft ? { draft_id: draft.id, draft_version: draft.version } : {}),
           partner,
           note,
           items: items.map((i) => ({
@@ -2517,11 +2535,12 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
       setError(e.message);
     } finally {
       setBusy(false);
+      submitLock.current = false;
     }
   };
   const partners = [
     ...new Set(
-      data.orders.filter((o) => o.type === type).map((o) => o.partner),
+      [...(data.contacts || []).filter(c => c.active && c.role === (type === "in" ? "supplier" : "customer")).map(c => c.name), ...data.orders.filter((o) => o.type === type).map((o) => o.partner)],
     ),
   ];
   const matches = data.products
@@ -2535,11 +2554,18 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
     <Modal
       title={type === "in" ? "新建采购入库" : "新建销售出库"}
       subtitle={`确认后将${type === "in" ? "增加" : "扣减"}库存，并生成可追溯的${type === "in" ? "入库" : "出库"}单据`}
-      onClose={busy ? () => {} : onClose}
+      onClose={busy || draftAction.busy ? () => {} : onClose}
       wide
     >
       <form onSubmit={submit}>
         <div className="form-body order-form-body">
+          <details><summary>打开已有草稿</summary><Drafts type={type} onResume={d => { if ((items.length || note) && !window.confirm("打开草稿将替换当前编辑内容，是否继续？")) return; setDraft(d);setPartner(d.partner);setPartnerId(d.partner_id);setNote(d.note);setItems(d.items); }} /></details>
+          {draft && <p>正在编辑草稿 #{draft.id} · 版本 {draft.version}</p>}
+          <Button type="button" disabled={busy || draftAction.busy} onClick={() => draftAction.run(async () => {
+            const result = await draftAction.send("/drafts", { ...(draft ? {id:draft.id,version:draft.version} : {}), type,partner,partner_id:partnerId,note,items });
+            setDraft(result); await onSaved("草稿已保存，库存未变化");
+          })}>保存草稿并关闭</Button>
+          {draftAction.error && <p role="alert" className="form-error">{draftAction.error}</p>}
           <div className="form-grid">
             <label>
               {type === "in" ? "供应商" : "客户 / 往来单位"} <span>*</span>
@@ -2551,7 +2577,7 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
                   type === "in" ? "选择或输入供应商" : "选择或输入客户"
                 }
                 value={partner}
-                onChange={(e) => setPartner(e.target.value)}
+                onChange={(e) => { setPartner(e.target.value); setPartnerId((data.contacts || []).find(c => c.active && c.name === e.target.value && c.role === (type === "in" ? "supplier" : "customer"))?.id ?? null); }}
               />
               <datalist id="partners-list">
                 {partners.map((p) => (
@@ -2769,7 +2795,7 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
               type="submit"
               kind="primary"
               icon={busy ? LoaderCircle : Check}
-              disabled={busy || !items.length}
+              disabled={busy || draftAction.busy || !items.length}
             >
               {busy ? "正在提交…" : `确认${type === "in" ? "入库" : "出库"}`}
             </Button>
@@ -2779,17 +2805,17 @@ function OrderForm({ type, initialProduct, data, onClose, onSaved }) {
     </Modal>
   );
 }
-function OrderDetail({ order, onClose }) {
+function OrderDetail({ order, onClose, onSaved }) {
   return (
     <Modal
-      title={order.type === "in" ? "采购入库单详情" : "销售出库单详情"}
+      title={`${orderLabel(order)}单详情`}
       subtitle={order.number}
       onClose={onClose}
       wide
     >
       <div className="form-body">
         <div className="detail-status">
-          <Badge>已完成</Badge>
+          <Badge>{order.status === "void" ? "已作废" : "已完成"}</Badge>
           <span>
             <CheckCheck size={15} />
             库存已同步更新
@@ -2839,6 +2865,8 @@ function OrderDetail({ order, onClose }) {
           <small>备注</small>
           <p>{order.note || "无备注"}</p>
         </div>
+        <Payments order={order} />
+        <OrderActions order={order} onSaved={onSaved} />
       </div>
       <div className="modal-footer order-form-footer">
         <div>
@@ -3098,12 +3126,15 @@ function Scanner({ data, openOrder, notify }) {
     </>
   );
 }
-function SettingsForm({ settings, onClose, onSaved }) {
+function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefresh }) {
+  const lock = useRef(false);
   const [form, setForm] = useState(settings),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
+    if (lock.current) return;
+    lock.current = true;
     setBusy(true);
     try {
       await api("/settings", { method: "PUT", body: form });
@@ -3111,6 +3142,22 @@ function SettingsForm({ settings, onClose, onSaved }) {
     } catch (e) {
       setError(e.message);
     } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  };
+  const reset = async () => {
+    if (lock.current || !window.confirm("确定重置业务数据？所有商品、库存、入出库单据、往来单位、草稿及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器配置及已保存的商户和仓库名称会保留。")) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/settings/reset", { method: "POST", body: { confirmation: "RESET_BUSINESS_DATA" } });
+      await onSaved("业务数据已清空，账户和配置已保留");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      lock.current = false;
       setBusy(false);
     }
   };
@@ -3152,10 +3199,19 @@ function SettingsForm({ settings, onClose, onSaved }) {
             </span>
             <div>
               <strong>77 ERP</strong>
-              <p>v1.0.0 · 单仓库核心版</p>
+              <p>v{appVersion} · 单仓库版</p>
             </div>
             <Badge tone="blue">本地版本</Badge>
           </div>
+          <BusinessTools onResume={onResume} onRefresh={onRefresh} />
+          <DataTools products={products} onSaved={onSaved} />
+          <div className="info-box">
+            <Trash2 size={17} />
+            <p>重置将永久清空所有商品、库存、单据、往来单位、草稿及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器配置及已保存的商户和仓库名称。</p>
+          </div>
+          <Button type="button" icon={Trash2} onClick={reset} disabled={busy}>
+            重置业务数据
+          </Button>
           <div className="info-box">
             <ShieldCheck size={17} />
             <p>

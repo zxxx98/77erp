@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   Warehouse,
 } from "lucide-react-native";
+import { PaymentEditor } from "./commerce";
+import { OrderCorrection } from "./operations";
 import { api, ApiError, scanBarcode } from "./native";
 import {
   AuthState,
@@ -23,6 +25,9 @@ import {
   matchesProduct,
   money,
   Order,
+  orderLabel,
+  businessType,
+  reportOrders,
   Product,
   Workspace,
 } from "./model";
@@ -256,7 +261,7 @@ export function Dashboard({
   openProduct: (product: Product) => void;
   openHistory: () => void;
 }) {
-  const today = data.orders.filter(
+  const today = reportOrders(data.orders).filter(
     (order) =>
       new Date(order.created_at).toDateString() === new Date().toDateString(),
   );
@@ -269,7 +274,7 @@ export function Dashboard({
       label: "库存成本",
       value: money(
         data.products.reduce(
-          (total, product) => total + product.stock * product.cost,
+          (total, product) => total + (product.inventory_value_cents ?? Math.round(product.stock * product.cost * 100)) / 100,
           0,
         ),
       ),
@@ -522,7 +527,7 @@ function OrderSummary({ order }: { order: Order }) {
     <View style={{ gap: 10 }}>
       <View>
         <Text style={s.rowTitle}>
-          {order.type === "in" ? "采购入库" : "销售出库"} · {order.partner}
+          {orderLabel(order)} · {order.partner}
         </Text>
         <Text style={s.caption}>{order.number}</Text>
         <Text style={s.caption}>{dateTime(order.created_at)}</Text>
@@ -558,7 +563,7 @@ export function OrdersScreen({
   const [period, setPeriod] = useState("all");
   const visible = orders.filter(
     (order) =>
-      (type === "all" || order.type === type) &&
+      (type === "all" || businessType(order) === type) &&
       (period === "all" ||
         Date.now() - new Date(order.created_at).getTime() <=
           Number(period) * 86400000) &&
@@ -638,15 +643,17 @@ export function OrdersScreen({
 export function OrderDetail({
   order,
   onClose,
+  onSaved,
 }: {
   order: Order;
   onClose: () => void;
+  onSaved: (message: string) => void;
 }) {
   return (
     <ScreenModal title="单据详情" onClose={onClose}>
       <Card>
         <Text style={s.subtitle}>
-          {order.type === "in" ? "采购入库" : "销售出库"}
+          {orderLabel(order)}
         </Text>
         <Text selectable style={s.body}>
           {order.number}
@@ -670,6 +677,8 @@ export function OrderDetail({
           </View>
         </Card>
       ))}
+      <PaymentEditor order={order} />
+      <OrderCorrection order={order} onSaved={onSaved} />
       {!!order.note && (
         <Card>
           <Text style={s.label}>备注</Text>
@@ -812,6 +821,8 @@ export function MoreScreen({
   data,
   busy,
   settings,
+  stocktake,
+  commerce,
   changeServer,
   logout,
 }: {
@@ -820,6 +831,8 @@ export function MoreScreen({
   data: Workspace;
   busy: boolean;
   settings: () => void;
+  stocktake: () => void;
+  commerce: () => void;
   changeServer: () => void;
   logout: () => void;
 }) {
@@ -845,6 +858,8 @@ export function MoreScreen({
           onPress={settings}
         />
       </Card>
+      <Button title="往来、草稿与财务" kind="secondary" onPress={commerce} />
+      <Button title="库存盘点" kind="secondary" onPress={stocktake} />
       <Card>
         <Text style={s.label}>服务器地址</Text>
         <Text selectable style={s.caption}>

@@ -3,7 +3,9 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { migrateCommerce, resolveContact, moveInventory, settlement } from "./commerce.js";
 import { installAuth } from "./auth.js";
+import { migrateOperations, installOperations } from "./operations.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const tokens = {
@@ -36,6 +38,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
     CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id), product_id INTEGER NOT NULL REFERENCES products(id), name TEXT NOT NULL, barcode TEXT NOT NULL, quantity INTEGER NOT NULL, price REAL NOT NULL);
     CREATE TABLE IF NOT EXISTS design_styles (id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, source TEXT NOT NULL, tokens TEXT NOT NULL, specification TEXT NOT NULL, saved_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), business_name TEXT NOT NULL, warehouse_name TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   db.prepare(
     `INSERT INTO design_styles VALUES (?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, version=excluded.version, source=excluded.source, tokens=excluded.tokens, specification=excluded.specification`,
@@ -52,7 +55,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
     "INSERT OR IGNORE INTO settings VALUES (1, '七七商贸', '主仓库')",
   ).run();
 
-  if (!db.prepare("SELECT id FROM products LIMIT 1").get()) {
+  if (!db.prepare("SELECT 1 FROM app_metadata WHERE key='demo_initialized'").get() &&
+      !db.prepare("SELECT id FROM products LIMIT 1").get()) {
     const products = [
       [
         "极简陶瓷马克杯",
@@ -228,7 +232,13 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
     }
   }
 
+  db.prepare("INSERT OR IGNORE INTO app_metadata (key,value) VALUES ('demo_initialized','1')").run();
+
   const app = express();
+  migrateOperations(db);
+  migrateCommerce(db);
+  app.use("/api/backup", express.json({ limit: "20mb" }));
+  app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
   installAuth(app, db);
   app.get("/api/data", (_, res) => {
@@ -238,12 +248,14 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
       .all()
       .map((o) => ({
         ...o,
+        ...settlement(db, o),
         items: db
           .prepare("SELECT * FROM order_items WHERE order_id=?")
-          .all(o.id),
+          .all(o.id).map(item => ({ ...item, returned_quantity: db.prepare(`SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders r ON r.id=i.order_id WHERE r.source_order_id=? AND r.status='active' AND i.product_id=?`).get(o.id, item.product_id).quantity })),
       }));
     res.json({
       products,
+      contacts: db.prepare("SELECT * FROM contacts ORDER BY active DESC,name,id").all(),
       orders,
       settings: db.prepare("SELECT * FROM settings WHERE id=1").get(),
     });
@@ -381,6 +393,17 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
       const seen = new Set();
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
+      let draft;
+      if (req.body.draft_id != null) {
+        draft = db.prepare("SELECT * FROM drafts WHERE id=?").get(req.body.draft_id);
+        if (!draft) throw new Error("草稿不存在。");
+        if (draft.status === "submitted") {
+          const previous = db.prepare("SELECT id,number FROM orders WHERE id=?").get(draft.order_id);
+          db.exec("COMMIT"); inTransaction = false;
+          return res.json(previous);
+        }
+        if (draft.version !== req.body.draft_version) throw new Error("草稿已变化，请重新打开。");
+      }
       let total = 0;
       const normalized = items.map((item) => {
         if (
@@ -401,6 +424,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
         if (!p) throw new Error("商品不存在。");
         if (type === "out" && p.stock < item.quantity)
           throw new Error(`${p.name} 库存不足（当前 ${p.stock} ${p.unit}）。`);
+        if (type === "in" && !validInteger(p.stock + item.quantity))
+          throw new Error(`${p.name} 入库后库存超出上限。`);
         total += Math.round(item.quantity * item.price * 100);
         return { ...item, product: p };
       });
@@ -414,14 +439,16 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
         )
         .get(prefix.length + 1, `${prefix}%`);
       const number = prefix + String((last.sequence || 0) + 1).padStart(6, "0");
+      const contact = resolveContact(db, type, partner, req.body.partner_id);
       const result = db
         .prepare(
-          "INSERT INTO orders (number,type,partner,note,total,created_at) VALUES (?,?,?,?,?,?)",
+          "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,settlement_tracked) VALUES (?,?,?,?,?,?,?,1)",
         )
-        .run(number, type, partner.trim(), note, total / 100, at);
+        .run(number, type, contact.name, note, total / 100, at, contact.id);
       normalized.forEach((i) => {
+        const cost = moveInventory(db, i.product_id, type === "in" ? i.quantity : -i.quantity, type === "in" ? Math.round(i.quantity * i.price * 100) : undefined);
         db.prepare(
-          "INSERT INTO order_items (order_id,product_id,name,barcode,quantity,price) VALUES (?,?,?,?,?,?)",
+          "INSERT INTO order_items (order_id,product_id,name,barcode,quantity,price,cost_cents) VALUES (?,?,?,?,?,?,?)",
         ).run(
           result.lastInsertRowid,
           i.product_id,
@@ -429,18 +456,29 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
           i.product.barcode,
           i.quantity,
           i.price,
-        );
-        db.prepare("UPDATE products SET stock=stock+? WHERE id=?").run(
-          type === "in" ? i.quantity : -i.quantity,
-          i.product_id,
+          cost,
         );
       });
+      if (draft) db.prepare("UPDATE drafts SET status='submitted',order_id=?,version=version+1 WHERE id=?").run(result.lastInsertRowid,draft.id);
       db.exec("COMMIT");
       inTransaction = false;
       res.status(201).json({ id: Number(result.lastInsertRowid), number });
     } catch (e) {
       if (inTransaction) db.exec("ROLLBACK");
       res.status(400).json({ error: e.message });
+    }
+  });
+  app.post("/api/settings/reset", (req, res) => {
+    if (req.body?.confirmation !== "RESET_BUSINESS_DATA")
+      return res.status(400).json({ error: "请先确认清空全部业务数据。" });
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM contacts;");
+      db.exec("COMMIT");
+      res.json({ ok: true });
+    } catch (e) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      res.status(500).json({ error: "重置失败，数据未清空，请重试。" });
     }
   });
   app.put("/api/settings", (req, res) => {
@@ -458,7 +496,13 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
     ).run(business_name.trim(), warehouse_name.trim());
     res.json({ ok: true });
   });
+  installOperations(app, db, { productValues, generateBarcode });
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));
+  app.use((error, req, res, next) => {
+    if (error.type === "entity.too.large") return res.status(413).json({ error: "提交内容过大，请减少行数或选择更小的文件。" });
+    if (error.type === "entity.parse.failed") return res.status(400).json({ error: "提交内容不是有效的 JSON。" });
+    next(error);
+  });
   app.use(express.static(resolve(root, "dist")));
   app.get("/{*path}", (_, res) =>
     res.sendFile(resolve(root, "dist/index.html")),

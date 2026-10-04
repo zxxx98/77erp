@@ -63,3 +63,15 @@ test("product creation keeps barcode optional and sends no direct stock mutation
   });
   expect(payload).not.toHaveProperty("stock");
 });
+
+test("reports exclude voided orders and subtract returns from the original business direction", () => {
+  const { reportOrders, orderLabel } = require("../src/model");
+  const orders = [
+    { type: "in", total: 100, kind: "normal", status: "active" },
+    { type: "out", total: 20, kind: "return", status: "active" },
+    { type: "out", total: 50, kind: "normal", status: "void" },
+  ];
+  expect(reportOrders(orders).map((o: { type: string; total: number }) => [o.type, o.total])).toEqual([["in", 100], ["in", -20]]);
+  expect(orderLabel(orders[1])).toBe("采购退货");
+  expect(orderLabel(orders[2])).toBe("销售出库 · 已作废");
+});

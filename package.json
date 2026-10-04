@@ -1,6 +1,6 @@
 {
   "name": "77erp",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,7 +17,8 @@
     "jsbarcode": "^3.12.1",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "read-excel-file": "^9.3.10"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",

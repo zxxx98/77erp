@@ -122,3 +122,38 @@ test("administrator and session survive restarting with the same database", asyn
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("business reset requires login and confirmation, preserves account/settings, and stays empty after restart", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "77erp-reset-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, "erp.sqlite");
+  const first = await fixture(t, path);
+  const reset = { method: "POST", body: { confirmation: "RESET_BUSINESS_DATA" } };
+  assert.equal((await first.request("/settings/reset", reset)).status, 401);
+  const { cookie } = await first.request("/auth/setup", { method: "POST", body: credentials });
+  await first.request("/settings", { method: "PUT", cookie, body: { business_name: "保留商户", warehouse_name: "保留仓库" } });
+  const admin = first.db.prepare("SELECT * FROM administrator").get();
+  const count = first.db.prepare("SELECT COUNT(*) AS n FROM products").get().n;
+  assert.equal((await first.request("/settings/reset", { method: "POST", cookie, body: {} })).status, 400);
+  assert.equal(first.db.prepare("SELECT COUNT(*) AS n FROM products").get().n, count);
+  // Force the last delete to fail; earlier deletions must roll back too.
+  first.db.exec("CREATE TRIGGER prevent_reset BEFORE DELETE ON products BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+  assert.equal((await first.request("/settings/reset", { ...reset, cookie })).status, 500);
+  assert.equal(first.db.prepare("SELECT COUNT(*) AS n FROM orders").get().n, 64);
+  assert.equal(first.db.prepare("SELECT COUNT(*) AS n FROM order_items").get().n, 64);
+  first.db.exec("DROP TRIGGER prevent_reset");
+  assert.equal((await first.request("/settings/reset", { ...reset, cookie })).status, 200);
+  assert.deepEqual(first.db.prepare("SELECT * FROM administrator").get(), admin);
+  assert.equal(first.db.prepare("SELECT COUNT(*) AS n FROM order_items").get().n, 0);
+  await first.close();
+  const second = await fixture(t, path);
+  const result = await second.request("/data", { cookie });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.data.products, []);
+  assert.deepEqual(result.data.orders, []);
+  assert.equal(result.data.settings.business_name, "保留商户");
+  assert.equal(result.data.settings.warehouse_name, "保留仓库");
+  assert.equal((await second.request("/auth/login", { method: "POST", body: credentials })).status, 200);
+  assert.equal((await second.request("/products", { method: "POST", cookie, body: { name: "正式商品", category: "日用", unit: "件", cost: 1, price: 2, threshold: 0 } })).status, 201);
+  await second.close();
+});

@@ -1,9 +1,11 @@
-import React, { useState } from "react";
-import { Alert, Text, View } from "react-native";
+import React, { useRef, useState } from "react";
+import { Alert, Linking, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { api, scanBarcode } from "./native";
 import {
   addLine,
+  Contact,
+  Draft,
   Line,
   matchesProduct,
   money,
@@ -181,19 +183,26 @@ export function OrderEditor({
   type,
   products,
   initialProduct,
+  initialDraft,
+  contacts = [],
   onClose,
   onSaved,
 }: {
   type: "in" | "out";
   products: Product[];
   initialProduct?: Product;
+  initialDraft?: Draft;
+  contacts?: Contact[];
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
-  const [partner, setPartner] = useState(type === "out" ? "零售客户" : "");
-  const [note, setNote] = useState("");
+  const [partner, setPartner] = useState(initialDraft?.partner ?? (type === "out" ? "零售客户" : ""));
+  const [partnerId, setPartnerId] = useState<number|null>(initialDraft?.partner_id ?? null);
+  const [note, setNote] = useState(initialDraft?.note || "");
+  const draftRequest = useRef({key:"",id:""});
+  const missingDraftProduct = initialDraft?.items.some(i => !products.some(p => p.id === i.product_id));
   const [lines, setLines] = useState<Line[]>(() =>
-    initialProduct ? addLine([], initialProduct, type) : [],
+    initialDraft ? initialDraft.items.flatMap(i => { const product=products.find(p=>p.id===i.product_id);return product ? [{product,quantity:String(i.quantity),price:String(i.price)}] : []; }) : initialProduct ? addLine([], initialProduct, type) : [],
   );
   const [query, setQuery] = useState("");
   const { error, errorRevision, setError } = useFormError();
@@ -237,7 +246,8 @@ export function OrderEditor({
     setBusy(true);
     setError("");
     try {
-      const payload = orderPayload(type, partner, note, lines);
+      if (missingDraftProduct) throw new Error("草稿商品已变化，请刷新后重新打开。");
+      const payload = {...orderPayload(type, partner, note, lines), ...(partnerId ? {partner_id:partnerId} : {}), ...(initialDraft ? {draft_id:initialDraft.id,draft_version:initialDraft.version} : {})};
       const result = await api<{ number: string }>("/orders", "POST", payload);
       // Close immediately after the mutation succeeds; a refresh error must not allow resubmission.
       onSaved(`单据 ${result.number} 已保存`);
@@ -248,8 +258,19 @@ export function OrderEditor({
       lock.leave();
     }
   };
+  const saveDraft = async () => {
+    if (!lock.enter()) return;
+    setBusy(true);setError("");
+    try {
+      if (missingDraftProduct) throw new Error("草稿商品已变化，请刷新后重新打开。");
+      const body={...(initialDraft ? {id:initialDraft.id,version:initialDraft.version}:{}),type,partner,partner_id:partnerId,note,items:lines.map(i=>({product_id:i.product.id,quantity:i.quantity,price:i.price}))};
+      const key=JSON.stringify(body);if(draftRequest.current.key!==key)draftRequest.current={key,id:`${Date.now()}-${Math.random().toString(36).slice(2)}`};
+      await api("/drafts","POST",{...body,request_id:draftRequest.current.id});onSaved("草稿已保存，库存未变化");
+    } catch(e) { setError((e as Error).message); } finally { setBusy(false);lock.leave(); }
+  };
   const confirm = () => {
     try {
+      if (missingDraftProduct) throw new Error("草稿商品已变化，请刷新后重新打开。");
       orderPayload(type, partner, note, lines);
     } catch (e) {
       setError((e as Error).message);
@@ -293,14 +314,17 @@ export function OrderEditor({
         </>
       }
     >
+      {initialDraft && <Text style={s.caption}>正在编辑草稿 #{initialDraft.id} · 版本 {initialDraft.version}</Text>}
+      <Button title="保存草稿并关闭" kind="secondary" disabled={busy || scanning} onPress={() => void saveDraft()} />
       <Field
         label={type === "in" ? "供应商" : "客户"}
         placeholder={type === "in" ? "必填：请输入供应商名称" : "必填：请输入客户名称"}
         value={partner}
-        onChangeText={setPartner}
+        onChangeText={value => {setPartner(value);setPartnerId(null);}}
         maxLength={100}
         editable={!busy}
       />
+      {contacts.filter(c=>c.active&&c.role===(type==="in"?"supplier":"customer")&&(partner === "零售客户" || c.name.includes(partner))).slice(0,10).map(c=><Button key={c.id} title={`选择 ${c.name}`} kind="secondary" disabled={busy} onPress={()=>{setPartner(c.name);setPartnerId(c.id ?? null);}}/>)}
       <Button
         title="扫码添加商品"
         icon={Camera}
@@ -423,10 +447,12 @@ export function OrderEditor({
 
 export function SettingsEditor({
   settings,
+  server,
   onClose,
   onSaved,
 }: {
   settings: Settings;
+  server?: string;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -435,6 +461,28 @@ export function SettingsEditor({
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const lock = useSubmitLock();
+  const reset = async () => {
+    if (!lock.enter()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api("/settings/reset", "POST", { confirmation: "RESET_BUSINESS_DATA" });
+      onSaved("业务数据已清空，账户和配置已保留");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      lock.leave();
+    }
+  };
+  const confirmReset = () => Alert.alert(
+    "确定重置业务数据？",
+    "所有商品、库存、入出库单据、往来单位、草稿及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器地址及已保存的商户和仓库名称会保留。",
+    [
+      { text: "取消", style: "cancel" },
+      { text: "确认清空", style: "destructive", onPress: reset },
+    ],
+  );
   const save = async () => {
     if (!lock.enter()) return;
     setBusy(true);
@@ -482,6 +530,15 @@ export function SettingsEditor({
           maxLength={60}
           editable={!busy}
         />
+      </Card>
+      <Card>
+        {server && <>
+          <Text style={s.caption}>Excel / CSV 导入和备份恢复在网页设置中操作，浏览器需单独登录。</Text>
+          <Button title="打开网页数据管理" kind="secondary" disabled={busy} onPress={() => void Linking.openURL(`${server}/?manage=data`).catch(() => setError("无法打开浏览器，请手动访问服务器网页。"))} />
+        </>}
+        <Text style={s.subtitle}>重置业务数据</Text>
+        <Text style={s.caption}>永久清空所有商品、库存、单据、往来单位、草稿及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器地址及已保存的商户和仓库名称。</Text>
+        <Button title="重置业务数据" kind="danger" icon={Trash2} onPress={confirmReset} disabled={busy} />
       </Card>
     </ScreenModal>
   );

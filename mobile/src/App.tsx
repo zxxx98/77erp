@@ -22,7 +22,9 @@ import {
   Warehouse,
 } from "lucide-react-native";
 import { api, device, onUnauthorized } from "./native";
-import { AuthState, Order, Product, Workspace } from "./model";
+import { AuthState, Draft, Order, Product, Workspace } from "./model";
+import { CommerceScreen } from "./commerce";
+import { StocktakeEditor } from "./operations";
 import { OrderEditor, ProductEditor, SettingsEditor } from "./forms";
 import {
   AuthScreen,
@@ -49,9 +51,11 @@ type Tab = "home" | "products" | "inventory" | "orders" | "more";
 type ModalState =
   | { kind: "product"; product: Product }
   | { kind: "productEditor"; product?: Product }
-  | { kind: "orderEditor"; type: "in" | "out"; product?: Product }
+  | { kind: "orderEditor"; type: "in" | "out"; product?: Product; draft?: Draft }
   | { kind: "order"; order: Order }
   | { kind: "scanner" }
+  | { kind: "commerce" }
+  | { kind: "stocktake" }
   | { kind: "settings" };
 const tabs = [
   { id: "home" as const, title: "工作台", icon: LayoutDashboard },
@@ -414,6 +418,8 @@ export function AppContent() {
               data={data}
               busy={loggingOut}
               settings={() => setModal({ kind: "settings" })}
+              stocktake={() => setModal({ kind: "stocktake" })}
+              commerce={() => setModal({ kind: "commerce" })}
               changeServer={changeServer}
               logout={() =>
                 Alert.alert("退出登录？", "下次打开需要重新登录。", [
@@ -487,13 +493,15 @@ export function AppContent() {
           <OrderEditor
             type={modal.type}
             initialProduct={modal.product}
+            initialDraft={modal.draft}
+            contacts={data.contacts || []}
             products={data.products}
             onClose={() => setModal(null)}
             onSaved={saved}
           />
         )}
         {modal?.kind === "order" && (
-          <OrderDetail order={modal.order} onClose={() => setModal(null)} />
+          <OrderDetail order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
         )}
         {modal?.kind === "scanner" && (
           <ScannerScreen
@@ -502,9 +510,12 @@ export function AppContent() {
             openOrder={openOrder}
           />
         )}
+        {modal?.kind === "commerce" && <CommerceScreen onClose={() => setModal(null)} onRefresh={() => void refresh()} onResume={draft => setModal({kind:"orderEditor",type:draft.type,draft})} />}
+        {modal?.kind === "stocktake" && <StocktakeEditor products={data.products} onClose={() => setModal(null)} onSaved={saved} />}
         {modal?.kind === "settings" && (
           <SettingsEditor
             settings={data.settings}
+            server={server}
             onClose={() => setModal(null)}
             onSaved={saved}
           />
