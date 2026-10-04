@@ -199,7 +199,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
           day === 0
             ? new Date(Date.now() - (6 - n) * 20 * 60000).toISOString()
             : dateAt(day, 9 + n);
-        const number = `${type === "in" ? "RK" : "CK"}${at.slice(0, 10).replaceAll("-", "")}${String(n + 1).padStart(6, "0")}`;
+        // Today's recent orders can fall on yesterday before 02:00.
+        // Keep seed sequences unique across days as well as within each day.
+        const number = `${type === "in" ? "RK" : "CK"}${at.slice(0, 10).replaceAll("-", "")}${String((day + 29) * 6 + n + 1).padStart(6, "0")}`;
         const partner =
           type === "in"
             ? ["优品生活供应链", "创意文具有限公司", "深圳星辰电子"][

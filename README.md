@@ -32,6 +32,27 @@ npm start
 
 打开 http://localhost:3001 。可使用 `PORT` 修改服务端端口，`DB_PATH` 修改数据库路径。开发时如修改 API 端口，请同时调整 `vite.config.js` 中的代理。
 
+## Docker 部署
+
+[Docker Image 工作流](https://github.com/zxxx98/77erp/actions/workflows/docker.yml) 在推送 `main`、推送 `v*` 版本标签或手动运行时，构建并发布 `linux/amd64` 和 `linux/arm64` 镜像到 `ghcr.io/zxxx98/77erp`。PR 只验证测试和镜像构建，不发布。使用仓库自带的 `GITHUB_TOKEN`，无需配置 Docker Hub 密钥。
+
+主分支生成 `main`、`latest` 和提交 SHA 标签；正式版本（例如 `v1.1.1`）生成 `1.1.1`、`1.1`、`latest` 和提交 SHA 标签。预发布版本不更新 `latest`。首次发布后，如需匿名拉取，请在 GitHub Packages 中把该镜像的可见性设为 Public；私有镜像需先登录 GHCR。
+
+```bash
+docker run -d --name 77erp --restart unless-stopped \
+  -p 3001:3001 \
+  -v 77erp-data:/app/data \
+  ghcr.io/zxxx98/77erp:latest
+```
+
+打开 http://localhost:3001，安卓端也可连接此服务器。数据库保存在 `77erp-data` 数据卷，替换容器时保留该卷即可保留数据。首次启动仍会初始化演示数据并要求设置管理员。镜像以非 root 用户运行；如改用宿主机目录挂载，请确保目录可由 UID/GID `1000:1000` 写入。
+
+本地构建：
+
+```bash
+docker build -t 77erp:local .
+```
+
 ## 公网测试页面
 
 测试地址：http://158.178.243.20:28888 。前端页面和 API 由同一个服务提供，使用独立数据库 `data/preview.sqlite`。
