@@ -7,7 +7,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Image,
   Alert,
   Keyboard,
   KeyboardAvoidingView,
@@ -35,6 +34,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react-native";
+import { ProductImage } from "./ProductImage";
 import { Product, money, stockLabel } from "./model";
 import { columnBasis, useFormLayout, useKeyboardVisible } from "./layout";
 
@@ -310,38 +310,34 @@ export function ProductRow({
   onPress: () => void;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${product.name}，库存 ${product.stock} ${product.unit}`}
-      onPress={onPress}
-      style={s.productRow}
-    >
-      <View style={s.row}>
-        <View style={s.productIcon}>
-          {product.image ? <Image source={{ uri: product.image }} style={{ width: 40, height: 40, borderRadius: 8 }} accessibilityLabel={product.name} /> : <Box color={colors.blue} size={24} />}
+    <View style={[s.productRow, s.row, { alignItems: "flex-start" }]}>
+      <View style={s.productIcon}>
+        {product.image ? <ProductImage uri={product.image} label={product.name} style={{ width: 40, height: 40, borderRadius: 8 }} /> : <Box color={colors.blue} size={24} />}
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${product.name}，库存 ${product.stock} ${product.unit}`}
+        onPress={onPress}
+        style={[s.grow, { gap: 12 }]}
+      >
+        <View style={s.row}>
+          <View style={s.grow}>
+            <Text numberOfLines={2} style={s.rowTitle}>{product.name}</Text>
+            <Text numberOfLines={1} style={s.caption}>{product.barcode}</Text>
+            {!!product.specification && <Text numberOfLines={2} style={s.caption}>{product.specification}</Text>}
+          </View>
+          <ChevronRight color={colors.muted} size={16} />
         </View>
-        <View style={s.grow}>
-          <Text numberOfLines={2} style={s.rowTitle}>
-            {product.name}
-          </Text>
-          <Text numberOfLines={1} style={s.caption}>
-            {product.barcode}
-          </Text>
-          {!!product.specification && <Text numberOfLines={2} style={s.caption}>{product.specification}</Text>}
+        <View style={s.inline}>
+          <Text style={[s.caption, { flexShrink: 1 }]}>{product.category}</Text>
+          <StockBadge product={product} />
         </View>
-        <ChevronRight color={colors.muted} size={16} />
-      </View>
-      <View style={s.inline}>
-        <Text style={[s.caption, { flexShrink: 1 }]}>{product.category}</Text>
-        <StockBadge product={product} />
-      </View>
-      <View style={s.productFacts}>
-        <Text style={s.fact}>
-          库存 {product.stock} {product.unit}
-        </Text>
-        <Text style={s.fact}>售价 {money(product.price)}</Text>
-      </View>
-    </Pressable>
+        <View style={s.productFacts}>
+          <Text style={s.fact}>库存 {product.stock} {product.unit}</Text>
+          <Text style={s.fact}>售价 {money(product.price)}</Text>
+        </View>
+      </Pressable>
+    </View>
   );
 }
 export function ScreenModal({

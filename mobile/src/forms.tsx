@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
-import { Alert, Image, Linking, Text, View } from "react-native";
+import { Alert, Linking, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
+import { ProductImage } from "./ProductImage";
 import { api, device, scanBarcode } from "./native";
 import {
   Category,
@@ -165,7 +166,7 @@ export function ProductEditor({
       </Card>
       <Card>
         <Text style={s.label}>商品图片</Text>
-        {!!form.image && <Image source={{ uri: form.image }} accessibilityLabel="商品图片预览" style={{ width: '100%', height: 180, borderRadius: 8 }} resizeMode="contain" />}
+        {!!form.image && <ProductImage uri={form.image} label="商品图片预览" style={{ width: '100%', height: 180, borderRadius: 8 }} />}
         <Button title="选择商品图片" kind="secondary" busy={pickingImage} disabled={busy || scanning} onPress={async () => {
           setPickingImage(true); setError('');
           try { const image = await device.pickImage(); if (image) field('image')(image); }

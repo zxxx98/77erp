@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FlatList, Image, Linking, StyleSheet, Text, View } from "react-native";
+import { FlatList, Linking, StyleSheet, Text, View } from "react-native";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Warehouse,
 } from "lucide-react-native";
+import { ProductImage } from "./ProductImage";
 import { PaymentEditor } from "./commerce";
 import { OrderCorrection } from "./operations";
 import { api, ApiError, scanBarcode } from "./native";
@@ -501,7 +502,7 @@ export function ProductDetail({
       <Card>
         <View style={s.row}>
           <View style={s.productIcon}>
-            {product.image ? <Image source={{ uri: product.image }} style={{ width: 48, height: 48, borderRadius: 8 }} accessibilityLabel={product.name} /> : <Box color={colors.blue} size={27} />}
+            {product.image ? <ProductImage uri={product.image} label={product.name} style={{ width: 48, height: 48, borderRadius: 8 }} /> : <Box color={colors.blue} size={27} />}
           </View>
           <View style={s.grow}>
             <Text style={s.subtitle}>{product.name}</Text>
@@ -510,7 +511,7 @@ export function ProductDetail({
             </Text>
           </View>
         </View>
-        {!!product.image && <Image source={{ uri: product.image }} resizeMode="contain" style={{ width: "100%", height: 200 }} accessibilityLabel="商品图片" />}
+        {!!product.image && <ProductImage uri={product.image} label="商品图片" style={{ width: "100%", height: 200 }} />}
         <StockBadge product={product} />
         <View style={s.divider} />
         <DetailRow

@@ -43,6 +43,7 @@ import JsBarcode from "jsbarcode";
 import "./styles.css";
 import { api } from "./api.js";
 import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
+import { ProductImage } from "./ProductImage.jsx";
 import { AuthGate } from "./Auth.jsx";
 import { version as appVersion } from "../package.json";
 import { BusinessTools, Drafts, Payments, useBusiness } from "./Commerce.jsx";
@@ -100,8 +101,8 @@ function Badge({ children, tone = "green", dot = true }) {
     </span>
   );
 }
-function ProductArt({ product, size = "normal" }) {
-  if (product.image) return <span className={`product-art art-${size}`}><img src={product.image} alt={product.name} /></span>;
+function ProductArt({ product, size = "normal", preview = true }) {
+  if (product.image) return <ProductImage src={product.image} alt={product.name} preview={preview} className={`product-art art-${size}`} />;
   const n = product.name;
   const type = /杯/.test(n)
     ? /保温/.test(n)
@@ -2477,7 +2478,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
                 }} />
               <small>{readingImage ? '正在读取图片…' : '支持 JPEG、PNG、WebP，上传后自动压缩。'}</small>
             </label>
-            {form.image && <div className="product-image-preview"><img src={form.image} alt="商品图片预览" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
+            {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="商品图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
           </div>
           <label>商品规格
             <input maxLength={500} placeholder="例如：白色 / 350ml / 12个装" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
@@ -2738,7 +2739,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
                 {matches.length ? (
                   matches.map((p) => (
                     <button key={p.id} type="button" onClick={() => add(p)}>
-                      <ProductArt product={p} size="small" />
+                      <ProductArt product={p} size="small" preview={false} />
                       <span>
                         <strong>{p.name}</strong>
                         <small>
@@ -3195,7 +3196,7 @@ function Scanner({ data, openOrder, notify }) {
               <div className="recent-scans">
                 {recent.map((p) => (
                   <button key={p.id} onClick={() => scan(p.barcode)}>
-                    <ProductArt product={p} size="small" />
+                    <ProductArt product={p} size="small" preview={false} />
                     <span>
                       <strong>{p.name}</strong>
                       <small>{p.barcode}</small>
