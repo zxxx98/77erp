@@ -1,8 +1,10 @@
 import React, { useRef, useState } from "react";
-import { Alert, Linking, Text, View } from "react-native";
+import { Alert, Image, Linking, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
-import { api, scanBarcode } from "./native";
+import { api, device, scanBarcode } from "./native";
 import {
+  Category,
+  flattenCategories,
   addLine,
   Contact,
   Draft,
@@ -18,6 +20,7 @@ import {
 } from "./model";
 import {
   Button,
+  Chips,
   Card,
   Columns,
   useFormError,
@@ -32,17 +35,25 @@ import {
 
 export function ProductEditor({
   product,
+  categories = [],
   onClose,
   onSaved,
 }: {
   product?: Product;
+  categories?: Category[];
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
+  const options = flattenCategories(categories);
+  const selected = options.find(c => c.id === product?.category_id) || options[0];
   const initial: ProductForm = {
     name: product?.name ?? "",
     barcode: product?.barcode ?? "",
-    category: product?.category ?? "日用百货",
+    category: product?.category ?? selected?.path ?? "",
+    category_id: String(product?.category_id ?? selected?.id ?? ""),
+    image: product?.image ?? "",
+    specification: product?.specification ?? "",
+    note: product?.note ?? "",
     unit: product?.unit ?? "件",
     cost: String(product?.cost ?? 0),
     price: String(product?.price ?? 0),
@@ -52,6 +63,7 @@ export function ProductEditor({
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [pickingImage, setPickingImage] = useState(false);
   const lock = useSubmitLock();
   const field = (key: keyof ProductForm) => (value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -93,13 +105,13 @@ export function ProductEditor({
       error={error}
       errorRevision={errorRevision}
       dirty={JSON.stringify(form) !== JSON.stringify(initial)}
-      busy={busy || scanning}
+      busy={busy || scanning || pickingImage}
       footer={
         <Button
           title="保存商品"
           icon={Check}
           busy={busy}
-          disabled={scanning}
+          disabled={scanning || pickingImage}
           onPress={save}
         />
       }
@@ -128,21 +140,20 @@ export function ProductEditor({
           kind="secondary"
           onPress={scan}
           busy={scanning}
-          disabled={busy}
+          disabled={busy || pickingImage}
         />
         <Text style={s.caption}>
           {product
             ? "编辑时留空将保留原条码。"
             : "商品库存从 0 开始，通过采购入库增加库存。"}
         </Text>
+        <Text style={s.label}>商品分类</Text>
+        <Chips value={form.category_id || ''} options={options.map(c => ({ id: String(c.id), label: c.path }))} onChange={value => {
+          const c = options.find(c => String(c.id) === value);
+          setForm(current => ({ ...current, category_id: value, category: c?.path || '' }));
+        }} />
+        {!options.length && <Text style={s.caption}>请先在商品页面的「管理分类」中添加分类。</Text>}
         <Columns>
-          <Field
-            label="分类"
-            value={form.category}
-            onChangeText={field("category")}
-            maxLength={100}
-            editable={!busy}
-          />
           <Field
             label="单位"
             value={form.unit}
@@ -151,6 +162,19 @@ export function ProductEditor({
             editable={!busy}
           />
         </Columns>
+      </Card>
+      <Card>
+        <Text style={s.label}>商品图片</Text>
+        {!!form.image && <Image source={{ uri: form.image }} accessibilityLabel="商品图片预览" style={{ width: '100%', height: 180, borderRadius: 8 }} resizeMode="contain" />}
+        <Button title="选择商品图片" kind="secondary" busy={pickingImage} disabled={busy || scanning} onPress={async () => {
+          setPickingImage(true); setError('');
+          try { const image = await device.pickImage(); if (image) field('image')(image); }
+          catch (e) { setError((e as Error).message); }
+          finally { setPickingImage(false); }
+        }} />
+        {!!form.image && <Button title="移除图片" kind="secondary" disabled={busy || pickingImage} onPress={() => field('image')('')} />}
+        <Field label="商品规格" value={form.specification} onChangeText={field('specification')} maxLength={500} editable={!busy} placeholder="例如：白色 / 350ml / 12个装" />
+        <Field label="商品备注" value={form.note} onChangeText={field('note')} maxLength={2000} multiline numberOfLines={3} editable={!busy} placeholder="填写商品补充说明" />
       </Card>
       <Card>
         <Field

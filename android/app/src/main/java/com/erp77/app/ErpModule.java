@@ -5,6 +5,9 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.ImageDecoder;
+import android.net.Uri;
 import android.content.pm.PackageManager;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
@@ -19,6 +22,9 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.WritableMap;
 import org.json.JSONObject;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.security.KeyStore;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -35,9 +41,10 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-/** Native networking and camera only. No HTML renderer or JS-visible session token. */
+/** Native networking, camera and system image picker. No JS-visible session token. */
 public class ErpModule extends ReactContextBaseJavaModule {
     private static final int SCAN_REQUEST = 7701;
+    private static final int IMAGE_REQUEST = 7702;
     private static final String KEY_ALIAS = "77erp.native.session";
     private final SharedPreferences preferences;
     // Serialize requests with workspace changes, login and logout.
@@ -47,12 +54,23 @@ public class ErpModule extends ReactContextBaseJavaModule {
         .callTimeout(30, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).build();
     private Promise scanPromise;
+    private Promise imagePromise;
 
     public ErpModule(ReactApplicationContext context) {
         super(context);
         preferences = context.getSharedPreferences("native_client", Context.MODE_PRIVATE);
         context.addActivityEventListener(new BaseActivityEventListener() {
             @Override public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
+                if (requestCode == IMAGE_REQUEST && imagePromise != null) {
+                    Promise promise = imagePromise;
+                    imagePromise = null;
+                    if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) promise.resolve(null);
+                    else {
+                        Uri uri = data.getData();
+                        requests.execute(() -> readImage(uri, promise));
+                    }
+                    return;
+                }
                 if (requestCode != SCAN_REQUEST || scanPromise == null) return;
                 Promise promise = scanPromise;
                 scanPromise = null;
@@ -183,6 +201,60 @@ public class ErpModule extends ReactContextBaseJavaModule {
             try { activity.startActivityForResult(new Intent(activity, ScannerActivity.class), SCAN_REQUEST); }
             catch (Exception e) { scanPromise = null; promise.reject("CAMERA", "无法打开摄像头，请重试。"); }
         });
+    }
+    @ReactMethod public void pickImage(Promise promise) {
+        Activity activity = getCurrentActivity();
+        if (activity == null) { promise.reject("IMAGE", "请返回 App 后重试。"); return; }
+        activity.runOnUiThread(() -> {
+            if (imagePromise != null) { promise.reject("IMAGE", "图片选择器已打开。"); return; }
+            imagePromise = promise;
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("image/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/jpeg", "image/png", "image/webp"});
+                activity.startActivityForResult(intent, IMAGE_REQUEST);
+            } catch (Exception e) {
+                imagePromise = null;
+                promise.reject("IMAGE", "无法打开图片选择器，请重试。");
+            }
+        });
+    }
+    private void readImage(Uri uri, Promise promise) {
+        Bitmap bitmap = null;
+        try (InputStream input = getReactApplicationContext().getContentResolver().openInputStream(uri)) {
+            if (input == null) throw new java.io.IOException();
+            ByteArrayOutputStream source = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (source.size() + count > 10 * 1024 * 1024) {
+                    promise.reject("IMAGE", "上传图片不能超过 10 MB。"); return;
+                }
+                source.write(buffer, 0, count);
+            }
+            bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(source.toByteArray())), (decoder, info, ignored) -> {
+                int width = info.getSize().getWidth(), height = info.getSize().getHeight();
+                float scale = Math.min(1f, 1280f / Math.max(width, height));
+                decoder.setTargetSize(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
+                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+            });
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            // White background preserves transparent PNG readability when storing JPEG.
+            Bitmap opaque = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+            try {
+                android.graphics.Canvas canvas = new android.graphics.Canvas(opaque);
+                canvas.drawColor(android.graphics.Color.WHITE);
+                canvas.drawBitmap(bitmap, 0, 0, null);
+                if (!opaque.compress(Bitmap.CompressFormat.JPEG, 82, output)) throw new java.io.IOException();
+            } finally { opaque.recycle(); }
+            if (output.size() > 1024 * 1024) {
+                promise.reject("IMAGE", "图片压缩后仍超过 1 MB，请选择较小的图片。"); return;
+            }
+            promise.resolve("data:image/jpeg;base64," + Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP));
+        } catch (Exception e) {
+            promise.reject("IMAGE", "图片无法读取，请选择有效的 JPEG、PNG 或 WebP 图片。");
+        } finally { if (bitmap != null) bitmap.recycle(); }
     }
     @Override public void invalidate() {
         requests.shutdown();

@@ -513,8 +513,8 @@ function Backup({ onSaved }) {
             setPreview(null);
             if (!file) return;
             void run(async () => {
-              if (file.size > 18 * 1024 * 1024)
-                throw new Error("备份不能超过 18 MB。");
+              if (file.size > 95 * 1024 * 1024)
+                throw new Error("备份不能超过 95 MB。");
               const value = JSON.parse(await file.text());
               const result = await api("/backup/preview", {
                 method: "POST",

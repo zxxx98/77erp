@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { FlatList, Linking, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { FlatList, Image, Linking, StyleSheet, Text, View } from "react-native";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -20,6 +20,9 @@ import { PaymentEditor } from "./commerce";
 import { OrderCorrection } from "./operations";
 import { api, ApiError, scanBarcode } from "./native";
 import {
+  Category,
+  flattenCategories,
+  categoryBranch,
   AuthState,
   dateTime,
   matchesProduct,
@@ -375,6 +378,8 @@ export function Dashboard({
 
 export function ProductsScreen({
   products,
+  categories = [],
+  manageCategories,
   inventory,
   refreshing,
   onRefresh,
@@ -383,6 +388,8 @@ export function ProductsScreen({
   notice,
 }: {
   products: Product[];
+  categories?: Category[];
+  manageCategories?: () => void;
   inventory: boolean;
   refreshing: boolean;
   onRefresh: () => void;
@@ -393,11 +400,15 @@ export function ProductsScreen({
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部分类");
   const [stock, setStock] = useState("all");
-  const categories = [...new Set(products.map((product) => product.category))];
+  const options = flattenCategories(categories);
+  const branch = categoryBranch(categories, Number(category));
+  useEffect(() => {
+    if (category !== "全部分类" && !categories.some(c => String(c.id) === category)) setCategory("全部分类");
+  }, [categories, category]);
   const visible = products.filter(
     (product) =>
       matchesProduct(product, query) &&
-      (category === "全部分类" || product.category === category) &&
+      (category === "全部分类" || branch.has(product.category_id || 0)) &&
       (stock === "all" ||
         (stock === "empty"
           ? product.stock === 0
@@ -429,6 +440,7 @@ export function ProductsScreen({
               <IconButton label="新增商品" icon={Plus} onPress={addProduct} />
             )}
           </View>
+          {!inventory && manageCategories && <Button title="管理分类" kind="secondary" onPress={manageCategories} />}
           <SearchField value={query} onChangeText={setQuery} />
           {inventory ? (
             <Chips
@@ -444,10 +456,7 @@ export function ProductsScreen({
             <Chips
               value={category}
               onChange={setCategory}
-              options={["全部分类", ...categories].map((value) => ({
-                id: value,
-                label: value,
-              }))}
+              options={[{id: "全部分类", label: "全部分类"}, ...options.map(c => ({id: String(c.id), label: c.path}))]}
             />
           )}
         </View>
@@ -492,7 +501,7 @@ export function ProductDetail({
       <Card>
         <View style={s.row}>
           <View style={s.productIcon}>
-            <Box color={colors.blue} size={27} />
+            {product.image ? <Image source={{ uri: product.image }} style={{ width: 48, height: 48, borderRadius: 8 }} accessibilityLabel={product.name} /> : <Box color={colors.blue} size={27} />}
           </View>
           <View style={s.grow}>
             <Text style={s.subtitle}>{product.name}</Text>
@@ -501,6 +510,7 @@ export function ProductDetail({
             </Text>
           </View>
         </View>
+        {!!product.image && <Image source={{ uri: product.image }} resizeMode="contain" style={{ width: "100%", height: 200 }} accessibilityLabel="商品图片" />}
         <StockBadge product={product} />
         <View style={s.divider} />
         <DetailRow
@@ -512,6 +522,8 @@ export function ProductDetail({
           value={`${product.threshold} ${product.unit}`}
         />
         <DetailRow label="分类" value={product.category} />
+        <DetailRow label="规格" value={product.specification || "未填写"} />
+        <DetailRow label="备注" value={product.note || "未填写"} />
       </Card>
       <Card>
         <DetailRow label="采购价" value={money(product.cost)} />

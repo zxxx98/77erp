@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Image,
   Alert,
   Keyboard,
   KeyboardAvoidingView,
@@ -317,7 +318,7 @@ export function ProductRow({
     >
       <View style={s.row}>
         <View style={s.productIcon}>
-          <Box color={colors.blue} size={24} />
+          {product.image ? <Image source={{ uri: product.image }} style={{ width: 40, height: 40, borderRadius: 8 }} accessibilityLabel={product.name} /> : <Box color={colors.blue} size={24} />}
         </View>
         <View style={s.grow}>
           <Text numberOfLines={2} style={s.rowTitle}>
@@ -326,6 +327,7 @@ export function ProductRow({
           <Text numberOfLines={1} style={s.caption}>
             {product.barcode}
           </Text>
+          {!!product.specification && <Text numberOfLines={2} style={s.caption}>{product.specification}</Text>}
         </View>
         <ChevronRight color={colors.muted} size={16} />
       </View>

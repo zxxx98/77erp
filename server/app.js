@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { migrateCommerce, resolveContact, moveInventory, settlement } from "./commerce.js";
 import { installAuth } from "./auth.js";
 import { migrateOperations, installOperations } from "./operations.js";
+import { migrateCatalog, installCatalog } from "./catalog.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const tokens = {
@@ -237,10 +238,13 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
   const app = express();
   migrateOperations(db);
   migrateCommerce(db);
-  app.use("/api/backup", express.json({ limit: "20mb" }));
+  migrateCatalog(db);
+  app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
+  app.use("/api/products", express.json({ limit: "2mb" }));
   app.use(express.json({ limit: "100kb" }));
   installAuth(app, db);
+  const { catalogValues } = installCatalog(app, db);
   app.get("/api/data", (_, res) => {
     const products = db.prepare("SELECT * FROM products ORDER BY id").all();
     const orders = db
@@ -255,6 +259,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
       }));
     res.json({
       products,
+      categories: db.prepare("SELECT * FROM categories ORDER BY name,id").all(),
       contacts: db.prepare("SELECT * FROM contacts ORDER BY active DESC,name,id").all(),
       orders,
       settings: db.prepare("SELECT * FROM settings WHERE id=1").get(),
@@ -282,12 +287,14 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
   const validMoney = (n) =>
     validNumber(n) && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
   function productValues(body) {
-    const { name, barcode, category, unit, cost, price, threshold } = body;
+    const { name, barcode, unit, cost, price, threshold } = body;
+    const category = body.category ?? (Number.isSafeInteger(body.category_id) ? db.prepare("SELECT name FROM categories WHERE id=?").get(body.category_id)?.name : undefined);
     const normalizedBarcode = typeof barcode === "string" ? barcode.trim() : "";
     if (
-      ![name, category, unit].every(
+      ![name, unit].every(
         (x) => typeof x === "string" && x.trim() && x.length <= 100,
       ) ||
+      !(typeof category === "string" && category.trim() && category.length <= 1100) ||
       (barcode != null && typeof barcode !== "string") ||
       (normalizedBarcode && !/^[\w.-]{3,64}$/.test(normalizedBarcode)) ||
       !validMoney(cost) ||
@@ -324,12 +331,14 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
       const v = productValues(req.body);
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
+      const catalog = catalogValues(req.body);
+      v[2] = catalog.path;
       if (!v[1]) v[1] = generateBarcode();
       const result = db
         .prepare(
-          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,created_at) VALUES (?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         )
-        .run(...v, new Date().toISOString());
+        .run(...v, ...catalog.values, new Date().toISOString());
       db.exec("COMMIT");
       inTransaction = false;
       res
@@ -351,17 +360,19 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
       const existing = db
-        .prepare("SELECT barcode FROM products WHERE id=?")
+        .prepare("SELECT * FROM products WHERE id=?")
         .get(req.params.id);
       if (!existing) {
         db.exec("ROLLBACK");
         inTransaction = false;
         return res.status(404).json({ error: "商品不存在。" });
       }
+      const catalog = catalogValues(req.body, existing);
+      v[2] = catalog.path;
       if (!v[1]) v[1] = existing.barcode;
       db.prepare(
-        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=? WHERE id=?",
-      ).run(...v, req.params.id);
+        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=? WHERE id=?",
+      ).run(...v, ...catalog.values, req.params.id);
       db.exec("COMMIT");
       inTransaction = false;
       res.json({ ok: true, barcode: v[1] });
@@ -473,7 +484,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
       return res.status(400).json({ error: "请先确认清空全部业务数据。" });
     try {
       db.exec("BEGIN IMMEDIATE");
-      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM contacts;");
+      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts;");
       db.exec("COMMIT");
       res.json({ ok: true });
     } catch (e) {
@@ -496,7 +507,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
     ).run(business_name.trim(), warehouse_name.trim());
     res.json({ ok: true });
   });
-  installOperations(app, db, { productValues, generateBarcode });
+  installOperations(app, db, { productValues, generateBarcode, catalogValues });
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));
   app.use((error, req, res, next) => {
     if (error.type === "entity.too.large") return res.status(413).json({ error: "提交内容过大，请减少行数或选择更小的文件。" });

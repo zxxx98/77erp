@@ -11,6 +11,7 @@ export interface Device {
   ): Promise<{ status: number; body: string }>;
   clearSession(): Promise<void>;
   scan(): Promise<string | null>;
+  pickImage(): Promise<string | null>;
 }
 export const device = NativeModules.ErpNative as Device;
 let unauthorized: (() => void) | undefined;

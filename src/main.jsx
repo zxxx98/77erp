@@ -42,6 +42,7 @@ import {
 import JsBarcode from "jsbarcode";
 import "./styles.css";
 import { api } from "./api.js";
+import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
 import { AuthGate } from "./Auth.jsx";
 import { version as appVersion } from "../package.json";
 import { BusinessTools, Drafts, Payments, useBusiness } from "./Commerce.jsx";
@@ -100,6 +101,7 @@ function Badge({ children, tone = "green", dot = true }) {
   );
 }
 function ProductArt({ product, size = "normal" }) {
+  if (product.image) return <span className={`product-art art-${size}`}><img src={product.image} alt={product.name} /></span>;
   const n = product.name;
   const type = /杯/.test(n)
     ? /保温/.test(n)
@@ -463,6 +465,7 @@ function App({ admin, onLogout }) {
   );
   const [data, setData] = useState({
     products: [],
+    categories: [],
     orders: [],
     settings: { business_name: "七七商贸", warehouse_name: "主仓库" },
   });
@@ -768,6 +771,7 @@ function App({ admin, onLogout }) {
               {page === "products" && (
                 <Products
                   data={data}
+                  onCategoriesChanged={reload}
                   search={search}
                   setSearch={setSearch}
                   edit={(product) => setModal({ kind: "product", product })}
@@ -812,6 +816,7 @@ function App({ admin, onLogout }) {
       {modal?.kind === "product" && (
         <ProductForm
           product={modal.product}
+          categories={data.categories || []}
           onClose={() => setModal(null)}
           onSaved={saved}
         />
@@ -1494,19 +1499,77 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
   );
 }
 
-function Products({ data, search, setSearch, edit, barcode }) {
-  const [category, setCategory] = useState("全部商品"),
+function CategoryTree({ categories, products, selected, onSelect }) {
+  const [collapsed, setCollapsed] = useState(new Set());
+  const render = (parent = null, depth = 0) => categories.filter(c => c.parent_id === parent).map(c => {
+    const children = categories.some(child => child.parent_id === c.id);
+    const branch = categoryBranch(categories, c.id);
+    const total = products.filter(p => branch.has(p.category_id)).length;
+    return <li key={c.id}>
+      <div className="category-tree-row" style={{ paddingLeft: depth * 14 }}>
+        {children ? <button className="category-expand" aria-label={`${collapsed.has(c.id) ? '展开' : '折叠'} ${c.name}`} aria-expanded={!collapsed.has(c.id)} onClick={() => setCollapsed(current => { const next = new Set(current); next.has(c.id) ? next.delete(c.id) : next.add(c.id); return next; })}>{collapsed.has(c.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button> : <span className="category-expand" />}
+        <button className={`category-select ${selected === c.id ? 'active' : ''}`} aria-pressed={selected === c.id} onClick={() => onSelect(c.id)}><span>{c.name}</span><small>{total}</small></button>
+      </div>
+      {children && !collapsed.has(c.id) && <ul>{render(c.id, depth + 1)}</ul>}
+    </li>;
+  });
+  return <nav aria-label="商品分类树" className="category-tree">
+    <button className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部商品</span><small>{products.length}</small></button>
+    <ul>{render()}</ul>
+    {!categories.length && <p className="muted">暂无分类，请添加分类。</p>}
+  </nav>;
+}
+
+function CategoryManager({ categories, onClose, onChanged }) {
+  const [id, setId] = useState('');
+  const [name, setName] = useState('');
+  const [parent, setParent] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const options = flattenCategories(categories);
+  const excluded = categoryBranch(categories, Number(id));
+  const choose = value => {
+    const c = categories.find(c => c.id === Number(value));
+    setId(value); setName(c?.name || ''); setParent(c?.parent_id || ''); setError('');
+  };
+  const run = async action => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await action(); await onChanged(); choose(''); }
+    catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
+  return <Modal title="管理商品分类" subtitle="建立多级分类；选择上级分类即可添加子分类。" onClose={busy ? () => {} : onClose}>
+    <form onSubmit={e => { e.preventDefault(); void run(() => api(id ? `/categories/${id}` : '/categories', { method: id ? 'PUT' : 'POST', body: { name, parent_id: parent ? Number(parent) : null } })); }}>
+      <fieldset className="form-body category-form" disabled={busy}>
+        <label>编辑分类<select value={id} onChange={e => choose(e.target.value)}><option value="">新增分类</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
+        <label>分类名称 <span>*</span><input required maxLength={100} value={name} placeholder="例如：杯具" onChange={e => setName(e.target.value)} /></label>
+        <label>上级分类<select value={parent} onChange={e => setParent(e.target.value)}><option value="">无（一级分类）</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
+        <small className="muted">选中父分类会包含下级商品。删除前需移走该分类的下级分类及商品。</small>
+        {error && <div className="form-error" role="alert">{error}</div>}
+      </fieldset>
+      <div className="modal-footer">
+        {id && <Button type="button" disabled={busy} onClick={() => { if (window.confirm(`确定删除分类「${name}」？`)) void run(() => api(`/categories/${id}/delete`, { method: 'POST', body: {} })); }}>删除分类</Button>}
+        <Button type="button" disabled={busy} onClick={onClose}>完成</Button>
+        <Button type="submit" kind="primary" disabled={busy}>{busy ? '正在保存…' : '保存分类'}</Button>
+      </div>
+    </form>
+  </Modal>;
+}
+
+function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged }) {
+  const [category, setCategory] = useState(null),
     [view, setView] = useState("list"),
     [pageNum, setPageNum] = useState(1);
-  const categories = [
-    "全部商品",
-    ...new Set(data.products.map((p) => p.category)),
-  ];
+  const [managing, setManaging] = useState(false);
+  const categories = data.categories || [];
+  const branch = categoryBranch(categories, category);
+  useEffect(() => { if (category && !categories.some(c => c.id === category)) setCategory(null); }, [categories, category]);
   const filtered = data.products.filter(
     (p) =>
-      (category === "全部商品" || p.category === category) &&
+      (category === null || branch.has(p.category_id)) &&
       (!search ||
-        [p.name, p.barcode, p.category].some((s) =>
+        [p.name, p.barcode, p.category, p.specification || "", p.note || ""].some((s) =>
           s.toLowerCase().includes(search.toLowerCase()),
         )),
   );
@@ -1517,32 +1580,26 @@ function Products({ data, search, setSearch, edit, barcode }) {
       <PageHeading
         eyebrow="PRODUCTS"
         title="商品管理"
-        description="维护商品档案、采购价、销售价及商品条码。"
+        description="按分类维护商品图片、规格、价格及备注。"
       >
         <Button kind="primary" icon={Plus} onClick={() => edit(null)}>
           新增商品
         </Button>
       </PageHeading>
+      <div className="catalog-layout">
+        <aside className="panel category-sidebar">
+          <h3>商品分类</h3>
+          <CategoryTree categories={categories} products={data.products} selected={category} onSelect={setCategory} />
+        </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
-          <div className="filter-tabs">
-            {categories.map((c) => (
-              <button
-                key={c}
-                className={c === category ? "active" : ""}
-                onClick={() => setCategory(c)}
-              >
-                {c}
-                {c === "全部商品" && <span>{data.products.length}</span>}
-              </button>
-            ))}
-          </div>
+          <Button onClick={() => setManaging(true)}>管理分类</Button>
           <div className="toolbar-right">
             <div className="table-search">
               <Search size={16} />
               <input
                 aria-label="筛选商品"
-                placeholder="搜索名称或条码"
+                placeholder="搜索名称、条码或规格"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -1593,6 +1650,8 @@ function Products({ data, search, setSearch, edit, barcode }) {
                           <div>
                             <strong>{p.name}</strong>
                             <small>{p.barcode}</small>
+                            {p.specification && <small className="product-spec">{p.specification}</small>}
+                            {p.note && <small className="product-note" title={p.note}>{p.note}</small>}
                           </div>
                         </div>
                       </td>
@@ -1666,6 +1725,9 @@ function Products({ data, search, setSearch, edit, barcode }) {
                   </div>
                   <h3>{p.name}</h3>
                   <p>{p.barcode}</p>
+                  <p>{p.category}</p>
+                  {p.specification && <p className="product-spec">{p.specification}</p>}
+                  {p.note && <p className="product-note" title={p.note}>{p.note}</p>}
                   <div className="product-grid-stats">
                     <strong>¥ {money(p.price)}</strong>
                     <span>
@@ -1703,6 +1765,8 @@ function Products({ data, search, setSearch, edit, barcode }) {
           setPage={setPageNum}
         />
       </section>
+      </div>
+      {managing && <CategoryManager categories={categories} onClose={() => setManaging(false)} onChanged={onCategoriesChanged} />}
       <div className="page-hint">
         <ScanLine size={16} />
         <span>商品条码可自动生成，支持扫码识别及标签下载。</span>
@@ -2247,12 +2311,17 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
   );
 }
 
-function ProductForm({ product, onClose, onSaved }) {
+function ProductForm({ product, categories, onClose, onSaved }) {
+  const options = flattenCategories(categories);
   const [form, setForm] = useState(
     product || {
       name: "",
       barcode: "",
-      category: "生活日用",
+      category: options[0]?.path || "",
+      category_id: options[0]?.id || "",
+      image: "",
+      specification: "",
+      note: "",
       unit: "个",
       cost: "",
       price: "",
@@ -2261,9 +2330,11 @@ function ProductForm({ product, onClose, onSaved }) {
   );
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const change = (key, value) => setForm({ ...form, [key]: value });
+  const change = (key, value) => setForm(current => ({ ...current, [key]: value }));
+  const [readingImage, setReadingImage] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
+    if (busy || readingImage) return;
     setBusy(true);
     setError("");
     try {
@@ -2292,7 +2363,7 @@ function ProductForm({ product, onClose, onSaved }) {
     <Modal
       title={product ? "编辑商品" : "新增商品"}
       subtitle="填写商品信息；条码选填，新增时留空自动生成"
-      onClose={busy ? () => {} : onClose}
+      onClose={busy || readingImage ? () => {} : onClose}
     >
       <form onSubmit={submit}>
         <div className="form-body">
@@ -2329,21 +2400,17 @@ function ProductForm({ product, onClose, onSaved }) {
             <label>
               商品分类 <span>*</span>
               <select
-                value={form.category}
-                onChange={(e) => change("category", e.target.value)}
+                required
+                value={form.category_id || ''}
+                onChange={(e) => {
+                  const c = options.find(c => c.id === Number(e.target.value));
+                  setForm(current => ({ ...current, category_id: c?.id || '', category: c?.path || '' }));
+                }}
               >
-                {[
-                  ...new Set([
-                    "生活日用",
-                    "数码配件",
-                    "办公文具",
-                    "其他",
-                    form.category,
-                  ]),
-                ].map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
+                <option value="" disabled>请选择分类</option>
+                {options.map(c => <option key={c.id} value={c.id}>{'　'.repeat(c.depth)}{c.path}</option>)}
               </select>
+              {!options.length && <small>请先在商品管理的「管理分类」中添加分类。</small>}
             </label>
             <label>
               计量单位 <span>*</span>
@@ -2395,6 +2462,29 @@ function ProductForm({ product, onClose, onSaved }) {
               />
             </label>
           </div>
+          <div className="product-image-editor">
+            <label>
+              商品图片
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传商品图片"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  setReadingImage(true); setError('');
+                  try { change('image', await readProductImage(file)); }
+                  catch (e) { setError(e.message); }
+                  finally { setReadingImage(false); }
+                }} />
+              <small>{readingImage ? '正在读取图片…' : '支持 JPEG、PNG、WebP，上传后自动压缩。'}</small>
+            </label>
+            {form.image && <div className="product-image-preview"><img src={form.image} alt="商品图片预览" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
+          </div>
+          <label>商品规格
+            <input maxLength={500} placeholder="例如：白色 / 350ml / 12个装" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
+          </label>
+          <label>商品备注
+            <textarea maxLength={2000} rows={3} placeholder="填写商品补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
+          </label>
           <label>
             安全库存 <span>*</span>
             <input
@@ -2422,14 +2512,14 @@ function ProductForm({ product, onClose, onSaved }) {
           )}
         </div>
         <div className="modal-footer">
-          <Button type="button" onClick={onClose} disabled={busy}>
+          <Button type="button" onClick={onClose} disabled={busy || readingImage}>
             取消
           </Button>
           <Button
             type="submit"
             kind="primary"
             icon={busy ? LoaderCircle : Check}
-            disabled={busy}
+            disabled={busy || readingImage}
           >
             {busy ? "正在保存…" : "保存商品"}
           </Button>

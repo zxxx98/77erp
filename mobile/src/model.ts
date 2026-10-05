@@ -1,6 +1,11 @@
 export type Contact = { id?:number; role:"supplier"|"customer"; name:string; person:string; phone:string; address:string; note:string; active:number; version?:number };
 export type Draft = { id:number; type:"in"|"out"; partner:string; partner_id:number|null; note:string; version:number; updated_at:string; items:{product_id:number;quantity:string|number;price:string|number}[] };
+export type Category = { id: number; name: string; parent_id: number | null };
 export type Product = {
+  category_id?: number;
+  image?: string;
+  specification?: string;
+  note?: string;
   inventory_value_cents?: number;
   id: number;
   name: string;
@@ -44,6 +49,7 @@ export const businessType = (o: Order) => o.kind === "return" ? (o.type === "in"
 export const orderLabel = (o: Order) => `${o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : (o.type === "in" ? "采购入库" : "销售出库")}${o.status === "void" ? " · 已作废" : ""}`;
 export const reportOrders = (orders: Order[]): Order[] => orders.filter(o => o.status !== "void").map(o => o.kind === "return" ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total } : o);
 export type Workspace = {
+  categories?: Category[];
   contacts?: Contact[];
   products: Product[];
   orders: Order[];
@@ -55,6 +61,10 @@ export type AuthState = {
   username?: string;
 };
 export type ProductForm = {
+  category_id?: string;
+  image?: string;
+  specification?: string;
+  note?: string;
   name: string;
   barcode: string;
   category: string;
@@ -81,7 +91,7 @@ export const stockLabel = (product: Product) =>
       ? "库存偏低"
       : "库存充足";
 export const matchesProduct = (product: Product, query: string) =>
-  [product.name, product.barcode, product.category].some((value) =>
+  [product.name, product.barcode, product.category, product.specification || "", product.note || ""].some((value) =>
     value.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
@@ -101,15 +111,20 @@ function numberInput(value: string, label: string, integer = false) {
 export function productPayload(form: ProductForm) {
   for (const [value, label] of [
     [form.name, "商品名称"],
-    [form.category, "分类"],
     [form.unit, "单位"],
   ]) {
     if (!value?.trim() || value.length > 100)
       throw new Error(`请填写 1–100 字的${label}。`);
   }
+  if (!form.category?.trim() || form.category.length > 1100) throw new Error("请选择商品分类。");
+  if ((form.specification?.length || 0) > 500 || (form.note?.length || 0) > 2000) throw new Error("规格最多 500 字，备注最多 2000 字。");
   if (form.barcode.trim() && !/^[\w.-]{3,64}$/.test(form.barcode.trim()))
     throw new Error("条码需为 3–64 位字母、数字或 ._-，也可留空自动生成。");
   return {
+    ...(form.category_id ? { category_id: Number(form.category_id) } : {}),
+    ...(form.image !== undefined ? { image: form.image } : {}),
+    ...(form.specification !== undefined ? { specification: form.specification.trim() } : {}),
+    ...(form.note !== undefined ? { note: form.note.trim() } : {}),
     name: form.name.trim(),
     barcode: form.barcode.trim(),
     category: form.category.trim(),
@@ -188,4 +203,20 @@ export function orderTotal(lines: Line[]) {
       0,
     ) / 100
   );
+}
+
+export function flattenCategories(categories: Category[], parent: number | null = null, depth = 0, prefix = ''): (Category & { depth: number; path: string })[] {
+  return categories.filter(c => c.parent_id === parent).flatMap(c => {
+    const path = prefix ? `${prefix} / ${c.name}` : c.name;
+    return [{ ...c, depth, path }, ...flattenCategories(categories, c.id, depth + 1, path)];
+  });
+}
+export function categoryBranch(categories: Category[], id: number): Set<number> {
+  const ids = new Set([id]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const c of categories) if (c.parent_id !== null && ids.has(c.parent_id) && !ids.has(c.id)) { ids.add(c.id); changed = true; }
+  }
+  return ids;
 }

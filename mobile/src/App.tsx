@@ -23,6 +23,7 @@ import {
 } from "lucide-react-native";
 import { api, device, onUnauthorized } from "./native";
 import { AuthState, Draft, Order, Product, Workspace } from "./model";
+import { CategoryEditor } from "./catalog";
 import { CommerceScreen } from "./commerce";
 import { StocktakeEditor } from "./operations";
 import { OrderEditor, ProductEditor, SettingsEditor } from "./forms";
@@ -51,6 +52,7 @@ import { useAppUpdate } from "./updates";
 type Tab = "home" | "products" | "inventory" | "orders" | "more";
 type ModalState =
   | { kind: "product"; product: Product }
+  | { kind: "categories" }
   | { kind: "productEditor"; product?: Product }
   | { kind: "orderEditor"; type: "in" | "out"; product?: Product; draft?: Draft }
   | { kind: "order"; order: Order }
@@ -393,6 +395,8 @@ export function AppContent() {
           <ProductsScreen
             key={tab}
             products={data.products}
+            categories={data.categories || []}
+            manageCategories={() => setModal({ kind: "categories" })}
             inventory={tab === "inventory"}
             refreshing={refreshing}
             onRefresh={() => void refresh()}
@@ -484,9 +488,11 @@ export function AppContent() {
             openOrder={openOrder}
           />
         )}
+        {modal?.kind === "categories" && <CategoryEditor categories={data.categories || []} onClose={() => setModal(null)} onChanged={() => refresh()} />}
         {modal?.kind === "productEditor" && (
           <ProductEditor
             product={modal.product}
+            categories={data.categories || []}
             onClose={() => setModal(null)}
             onSaved={saved}
           />

@@ -16,7 +16,7 @@ import { AppContent } from "../src/App";
 import { ProductEditor, OrderEditor } from "../src/forms";
 import { AuthScreen, ProductDetail, ScannerScreen } from "../src/screens";
 import { api, device, scanBarcode } from "../src/native";
-import { product, workspace } from "./fixtures";
+import { categories, product, workspace } from "./fixtures";
 import { KeyboardSafeArea } from "../src/ui";
 
 // These are component/event regressions, not device layout or screenshot tests.
@@ -135,18 +135,18 @@ test.each([
 
 test("safe area space is deducted before deciding whether to pin form actions", () => {
   viewport(360, 550, 1, 48);
-  render(<ProductEditor onClose={jest.fn()} onSaved={jest.fn()} />);
+  render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={jest.fn()} />);
   expect(screen.getByTestId("inline-form-actions")).toBeOnTheScreen();
 });
 
 test("keyboard and rotation move actions without losing edited fields or changing submission", async () => {
   request.mockResolvedValue({ id: 2 });
   const saved = jest.fn();
-  const editor = <ProductEditor onClose={jest.fn()} onSaved={saved} />;
+  const editor = <ProductEditor categories={categories} onClose={jest.fn()} onSaved={saved} />;
   const result = render(editor);
   expect(screen.getByTestId("fixed-form-actions")).toBeOnTheScreen();
   fireEvent.changeText(screen.getByLabelText("商品名称"), "横屏编辑的商品");
-  fireEvent.changeText(screen.getByLabelText("分类"), "较长的商品分类");
+  fireEvent.press(screen.getByRole("button", { name: "日用百货 / 杯具" }));
   keyboard(true);
   expect(screen.getByTestId("inline-form-actions")).toBeOnTheScreen();
   expect(screen.queryByTestId("fixed-form-actions")).toBeNull();
@@ -157,7 +157,7 @@ test("keyboard and rotation move actions without losing edited fields or changin
     "value",
     "横屏编辑的商品",
   );
-  expect(screen.getByLabelText("分类")).toHaveProp("value", "较长的商品分类");
+  expect(screen.getByRole("button", { name: "日用百货 / 杯具" })).toHaveProp("accessibilityState", { selected: true });
   fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
   await waitFor(() => expect(saved).toHaveBeenCalled());
   expect(request).toHaveBeenCalledWith(
@@ -165,7 +165,8 @@ test("keyboard and rotation move actions without losing edited fields or changin
     "POST",
     expect.objectContaining({
       name: "横屏编辑的商品",
-      category: "较长的商品分类",
+      category: "日用百货 / 杯具",
+      category_id: 2,
     }),
   );
 });
@@ -240,7 +241,7 @@ test("submitting a product disables both the back button and hardware dismissal"
   );
   const close = jest.fn();
   render(
-    <ProductEditor product={product} onClose={close} onSaved={jest.fn()} />,
+    <ProductEditor categories={categories} product={product} onClose={close} onSaved={jest.fn()} />,
   );
   fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
   expect(screen.getByRole("button", { name: "返回" })).toBeDisabled();
@@ -256,7 +257,7 @@ test("hardware back dismisses a focused editor before offering to discard change
     .spyOn(RN.Keyboard, "dismiss")
     .mockImplementation(() => {});
   const focus = jest.spyOn(RN.TextInput.State, "currentlyFocusedInput");
-  render(<ProductEditor onClose={jest.fn()} onSaved={jest.fn()} />);
+  render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={jest.fn()} />);
   const input = screen.getByLabelText("商品名称");
   fireEvent.changeText(input, "未保存的商品");
   focus.mockReturnValue({} as RN.TextInput);

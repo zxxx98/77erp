@@ -7,17 +7,19 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react-native";
-import { AuthScreen, ScannerScreen } from "../src/screens";
+import { AuthScreen, ProductDetail, ProductsScreen, ScannerScreen } from "../src/screens";
+import { CategoryEditor } from "../src/catalog";
 import { OrderEditor, ProductEditor, SettingsEditor } from "../src/forms";
 import { AppContent } from "../src/App";
 import { api, device, scanBarcode } from "../src/native";
-import { product, workspace } from "./fixtures";
+import { categories, product, workspace } from "./fixtures";
 
 jest.mock("../src/native", () => ({
   api: jest.fn(),
   scanBarcode: jest.fn(),
   onUnauthorized: jest.fn(() => () => {}),
   device: {
+    pickImage: jest.fn(),
     getServer: jest.fn(),
     setServer: jest.fn(),
     clearSession: jest.fn(),
@@ -75,7 +77,7 @@ test("native setup validates password confirmation before creating the administr
 test("native product editor creates a product with an automatically generated barcode", async () => {
   request.mockResolvedValue({ id: 2, barcode: "SKU-000002" });
   const saved = jest.fn();
-  render(<ProductEditor onClose={jest.fn()} onSaved={saved} />);
+  render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={saved} />);
   fireEvent.changeText(screen.getByLabelText("商品名称"), "原生测试商品");
   fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
   await waitFor(() => expect(saved).toHaveBeenCalled());
@@ -277,4 +279,51 @@ test("native payment registration requires confirmation and refreshes the remain
   expect(request).toHaveBeenCalledWith("/orders/99/payments", "POST", expect.objectContaining({ amount: 40, method: "银行转账", request_id: expect.any(String) }));
   await screen.findByText(/部分收付.*60.00/);
   alert.mockRestore();
+});
+
+test("native product editor selects a descendant category and persists picked image, specification and notes", async () => {
+  const image = 'data:image/jpeg;base64,/9j/';
+  jest.mocked(device.pickImage).mockResolvedValue(image);
+  request.mockResolvedValue({ id: 2, barcode: 'SKU-000002' });
+  const saved = jest.fn();
+  render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={saved} />);
+  fireEvent.changeText(screen.getByLabelText('商品名称'), '带图片的杯子');
+  fireEvent.press(screen.getByRole('button', { name: '日用百货 / 杯具' }));
+  fireEvent.changeText(screen.getByLabelText('商品规格'), '350ml');
+  fireEvent.changeText(screen.getByLabelText('商品备注'), '小心轻放');
+  fireEvent.press(screen.getByRole('button', { name: '选择商品图片' }));
+  await waitFor(() => expect(screen.getByLabelText('商品图片预览')).toBeOnTheScreen());
+  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
+  await waitFor(() => expect(saved).toHaveBeenCalled());
+  expect(request).toHaveBeenCalledWith('/products', 'POST', expect.objectContaining({ category_id: 2, category: '日用百货 / 杯具', image, specification: '350ml', note: '小心轻放' }));
+});
+
+test("native product details display its image, specification and notes", () => {
+  const image = 'data:image/jpeg;base64,/9j/';
+  render(<ProductDetail product={{ ...product, image, specification: '350ml', note: '小心轻放' }} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
+  expect(screen.getByLabelText('商品图片')).toBeOnTheScreen();
+  expect(screen.getByText('350ml')).toBeOnTheScreen();
+  expect(screen.getByText('小心轻放')).toBeOnTheScreen();
+});
+
+test("native parent category filtering includes descendant products", () => {
+  render(<ProductsScreen categories={categories} products={[
+    { ...product, category_id: 2, category: '日用百货 / 杯具' },
+    { ...product, id: 2, name: '无关商品', category_id: 3, category: '其他' },
+  ]} inventory={false} refreshing={false} onRefresh={jest.fn()} openProduct={jest.fn()} addProduct={jest.fn()} />);
+  expect(screen.getByText('无关商品')).toBeOnTheScreen();
+  fireEvent.press(screen.getByRole('button', { name: '日用百货' }));
+  expect(screen.getByText('陶瓷杯')).toBeOnTheScreen();
+  expect(screen.queryByText('无关商品')).toBeNull();
+});
+
+test("native category editor creates a child with the selected parent", async () => {
+  const changed = jest.fn().mockResolvedValue(undefined);
+  request.mockResolvedValue({ id: 3 });
+  render(<CategoryEditor categories={categories} onClose={jest.fn()} onChanged={changed} />);
+  fireEvent.changeText(screen.getByLabelText('分类名称'), '保温杯');
+  fireEvent.press(screen.getAllByRole('button', { name: '日用百货 / 杯具' })[1]!);
+  fireEvent.press(screen.getByRole('button', { name: '保存分类' }));
+  await waitFor(() => expect(changed).toHaveBeenCalled());
+  expect(request).toHaveBeenCalledWith('/categories', 'POST', { name: '保温杯', parent_id: 2 });
 });
