@@ -44,6 +44,7 @@ test("contact selection, saved draft resume, payment bookkeeping and margin repo
   page.on("pageerror", (e) => errors.push(e.message));
   try {
     await page.goto(f.base + "/?manage=data");
+    await page.getByRole("button", { name: "往来与财务", exact: false }).click();
     await page.getByLabel("单位名称", { exact: true }).fill("常用供应商");
     await page.getByLabel("联系人", { exact: true }).fill("王先生");
     await page.getByLabel("联系电话", { exact: true }).fill("13812345678");
@@ -71,6 +72,7 @@ test("contact selection, saved draft resume, payment bookkeeping and margin repo
     ).toBe(0);
     const draft = f.db.prepare("SELECT * FROM drafts").get();
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
+  await page.getByRole("button", { name: "往来与财务", exact: false }).click();
     await page.getByRole("button", { name: "单据草稿", exact: true }).click();
     await page
       .getByRole("button", { name: `继续草稿 #${draft.id}`, exact: true })
@@ -119,6 +121,7 @@ test("contact selection, saved draft resume, payment bookkeeping and margin repo
       },
     });
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
+  await page.getByRole("button", { name: "往来与财务", exact: false }).click();
     await page.getByRole("button", { name: "成本与毛利", exact: true }).click();
     await expect(page.getByText(/已知毛利 ¥ 40.00/)).toBeVisible();
     await page

@@ -234,7 +234,7 @@ function Stocktake({ products, onSaved }) {
               .includes(query.toLowerCase()),
           )
           .map((p) => (
-            <div className="operation-row" key={p.id}>
+            <div className="operation-row stocktake-row" key={p.id}>
               <label>
                 <input
                   type="checkbox"
@@ -253,10 +253,10 @@ function Stocktake({ products, onSaved }) {
                     setSelected(next);
                   }}
                 />
-                {p.name} · 账面 {p.stock} {p.unit}
+                <div className="stocktake-product"><strong>{p.name}</strong><small>{p.barcode} · 账面 {p.stock} {p.unit}</small></div>
               </label>
               {selected[p.id] && (
-                <label>
+                <label className="stocktake-count">
                   实盘
                   <input
                     aria-label={`${p.name} 实盘数量`}

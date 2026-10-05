@@ -14,6 +14,7 @@ test("settings reset supports cancellation and clears data while keeping the ses
     });
     await page.goto(base);
     await page.getByRole("button", { name: "系统设置", exact: true }).click();
+  await page.getByRole("button", { name: "库存与数据", exact: false }).click();
     page.once("dialog", dialog => dialog.dismiss());
     await page.getByRole("button", { name: "重置业务数据", exact: true }).click();
     expect(db.prepare("SELECT COUNT(*) AS n FROM products").get().n).toBe(12);

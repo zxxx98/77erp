@@ -23,6 +23,7 @@ async function fixture(page) {
 }
 const settings = async (page) => {
   await page.getByRole("button", { name: "系统设置", exact: true }).click();
+  await page.getByRole("button", { name: "库存与数据", exact: false }).click();
 };
 const accept = (page) => page.once("dialog", (dialog) => dialog.accept());
 

@@ -51,3 +51,35 @@
   cursor: pointer;
   padding: 14px 0;
 }
+
+/* Checkbox dimensions must not inherit the full-width text input rules. */
+.form-body .operation-panel input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  margin: 0;
+  accent-color: #2563eb;
+}
+.form-body .operation-panel label:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.stocktake-row { display: flex; align-items: center; gap: 20px; padding: 12px 0; }
+.stocktake-row > label:first-child { flex: 1; min-width: 0; }
+.stocktake-product { min-width: 0; overflow-wrap: anywhere; }
+.stocktake-product strong { display: block; font-size: 13px; color: #334155; font-weight: 500; }
+.stocktake-product small { display: block; margin-top: 5px; font-size: 12px; color: #647084; }
+.stocktake-count { width: 110px; flex-shrink: 0; }
+@media (max-width: 480px) {
+  .stocktake-row { gap: 12px; }
+  .stocktake-count { width: 80px; }
+}
+.settings-content .stocktake-row > label { margin: 0; }
+.settings-content .stocktake-count { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; width: 155px; }
+.settings-content .stocktake-count input { margin-top: 0; }
+@media (max-width: 480px) {
+  .settings-content .stocktake-count { grid-template-columns: 1fr; gap: 4px; width: 80px; }
+}

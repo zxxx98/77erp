@@ -266,7 +266,7 @@ function Barcode({ value, height = 45 }) {
   }, [value, height]);
   return <svg ref={ref} className="barcode" aria-label={`条码 ${value}`} />;
 }
-function Modal({ title, subtitle, children, onClose, wide = false }) {
+function Modal({ title, subtitle, children, onClose, wide = false, className = "" }) {
   const ref = useRef();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -276,7 +276,7 @@ function Modal({ title, subtitle, children, onClose, wide = false }) {
     document.body.style.overflow = "hidden";
     const first =
       ref.current.querySelector("[data-autofocus]") ||
-      ref.current.querySelector("input:not(:disabled)") ||
+      [...ref.current.querySelectorAll("input:not(:disabled)")].find((el) => el.offsetParent !== null) ||
       ref.current.querySelector("button:not(:disabled)");
     first?.focus();
     const key = (e) => {
@@ -314,7 +314,7 @@ function Modal({ title, subtitle, children, onClose, wide = false }) {
     >
       <section
         ref={ref}
-        className={`modal ${wide ? "modal-wide" : ""}`}
+        className={`modal ${wide ? "modal-wide" : ""} ${className}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
@@ -3128,6 +3128,8 @@ function Scanner({ data, openOrder, notify }) {
 }
 function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefresh }) {
   const lock = useRef(false);
+  const contentRef = useRef(null);
+  const [section, setSection] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? "data" : "general");
   const [form, setForm] = useState(settings),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -3164,11 +3166,23 @@ function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefres
   return (
     <Modal
       title="工作空间设置"
-      subtitle="设置商户名称和仓库名称"
+      subtitle="管理工作空间、库存数据与业务往来"
+      className="settings-modal"
       onClose={busy ? () => {} : onClose}
     >
-      <form onSubmit={submit}>
-        <div className="form-body">
+      <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
+        <div className="settings-layout">
+          <nav className="settings-nav" aria-label="设置分类">
+            {[["general", "基础设置", Settings, "商户与仓库信息"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"]].map(([id, title, Icon, caption]) => (
+              <button key={id} type="button" aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
+                <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
+              </button>
+            ))}
+          </nav>
+          <div className="form-body settings-content" ref={contentRef}>
+          <div hidden={section !== "general"} className="settings-section">
+          <div className="settings-section-heading"><h3>基础设置</h3><p>设置业务中显示的商户和仓库名称。</p></div>
+          <div className="form-grid">
           <label>
             商户名称 <span>*</span>
             <input
@@ -3191,6 +3205,7 @@ function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefres
               }
             />
           </label>
+          </div>
           <div className="settings-version">
             <span className="brand-mark">
               <svg viewBox="0 0 40 40">
@@ -3203,8 +3218,15 @@ function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefres
             </div>
             <Badge tone="blue">本地版本</Badge>
           </div>
-          <BusinessTools onResume={onResume} onRefresh={onRefresh} />
+          <div className="info-box"><ShieldCheck size={17} /><p>商品和单据保存在服务端数据库中，适用于单商户、单仓库使用。</p></div>
+          </div>
+          <div hidden={section !== "business"} className="settings-section">
+            <BusinessTools onResume={onResume} onRefresh={onRefresh} />
+          </div>
+          <div hidden={section !== "data"} className="settings-section">
           <DataTools products={products} onSaved={onSaved} />
+          <section className="settings-danger">
+          <h3>重置业务数据</h3>
           <div className="info-box">
             <Trash2 size={17} />
             <p>重置将永久清空所有商品、库存、单据、往来单位、草稿及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器配置及已保存的商户和仓库名称。</p>
@@ -3212,12 +3234,7 @@ function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefres
           <Button type="button" icon={Trash2} onClick={reset} disabled={busy}>
             重置业务数据
           </Button>
-          <div className="info-box">
-            <ShieldCheck size={17} />
-            <p>
-              商品和单据保存在服务端 SQLite
-              数据库中。当前版本适用于本地单商户使用。
-            </p>
+          </section>
           </div>
           {error && (
             <div className="form-error" role="alert">
@@ -3225,13 +3242,15 @@ function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefres
             </div>
           )}
         </div>
+        </div>
         <div className="modal-footer">
+          <span className="settings-footer-note">{section === "general" ? "修改名称后，点击保存设置。" : "各项业务操作在对应区域单独确认。"}</span>
           <Button type="button" onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button kind="primary" type="submit" icon={Check} disabled={busy}>
+          {section === "general" && <Button kind="primary" type="submit" icon={Check} disabled={busy}>
             {busy ? "保存中…" : "保存设置"}
-          </Button>
+          </Button>}
         </div>
       </form>
     </Modal>

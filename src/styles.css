@@ -4580,3 +4580,70 @@ table {
     min-height: 38px;
   }
 }
+
+/* Settings is a workspace, with one scrolling content area and stable actions. */
+.settings-modal {
+  width: 1100px;
+  height: min(820px, 92dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settings-modal > .modal-header { flex-shrink: 0; }
+.settings-modal > form { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.settings-layout { display: flex; flex: 1; min-height: 0; }
+.settings-nav {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 20px 12px;
+  background: #f7f8fa;
+  border-right: 1px solid #e9ecf1;
+  overflow: auto;
+}
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 12px;
+  margin-bottom: 6px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  background: transparent;
+  color: #647084;
+}
+.settings-nav button:hover { background: #edf1f7; }
+.settings-nav button[aria-pressed="true"] { color: #2563eb; background: #e8efff; }
+.settings-nav strong { display: block; font-size: 14px; font-weight: 600; }
+.settings-nav small { display: block; margin-top: 5px; font-size: 11px; color: #647084; }
+.settings-content { flex: 1; min-width: 0; overflow: auto; padding: 28px; }
+.settings-section { display: grid; gap: 24px; }
+.settings-section[hidden] { display: none; }
+.settings-section h3 { font-size: 17px; color: #253858; }
+.settings-section-heading p { margin-top: 8px; color: #647084; font-size: 13px; }
+.settings-content .operation-panel { padding: 0; border: 0; gap: 18px; }
+.settings-content .operation-tabs { border-bottom: 1px solid #e9ecf1; padding-bottom: 14px; }
+.settings-content .operation-panel button { margin: 0; }
+.settings-content .operation-panel label { margin: 14px 0; }
+.settings-content .operation-scroll { max-height: none; overflow: visible; }
+.settings-content .info-box p { font-size: 12px; color: #647084; }
+.settings-content .info-box > svg { flex-shrink: 0; }
+.settings-danger { padding: 20px; border: 1px solid #f0d9da; background: #fffbfb; border-radius: 10px; }
+.settings-danger h3 { font-size: 14px; color: #b14343; }
+.settings-danger .info-box { background: transparent; border: 0; padding: 12px 0; }
+.settings-danger > .btn { color: #b14343; border-color: #efcdcd; background: white; }
+.settings-modal .modal-footer { flex-shrink: 0; }
+.settings-footer-note { margin-right: auto; font-size: 12px; color: #647084; }
+@media (max-width: 700px) {
+  .settings-modal { height: 95dvh; }
+  .settings-layout { flex-direction: column; }
+  .settings-nav { width: 100%; display: flex; padding: 8px; border-right: 0; border-bottom: 1px solid #e9ecf1; }
+  .settings-nav button { flex: 1; justify-content: center; padding: 12px 6px; margin: 0; gap: 6px; }
+  .settings-nav strong { font-size: 12px; }
+  .settings-nav small { display: none; }
+  .settings-nav svg { width: 16px; flex-shrink: 0; }
+  .settings-content { padding: 18px; }
+  .settings-content .form-grid { grid-template-columns: 1fr; }
+  .settings-footer-note { display: none; }
+}
