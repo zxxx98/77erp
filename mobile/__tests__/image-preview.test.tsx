@@ -8,23 +8,19 @@ import { categories, product } from './fixtures';
 const image = 'data:image/jpeg;base64,/9j/';
 jest.mock('../src/native', () => ({ api: jest.fn(), device: { pickImage: jest.fn() }, scanBarcode: jest.fn() }));
 
-test('an image opens full screen, supports zoom controls and closes without changing its source', () => {
+test('an image opens in a fitted overlay and closes without changing its source', () => {
   render(<ProductImage uri={image} label="商品图片" style={{ width: 180, height: 180 }} />);
   const stopped = jest.fn();
   fireEvent.press(screen.getByRole('button', { name: '放大查看 商品图片' }), { stopPropagation: stopped });
   expect(stopped).toHaveBeenCalled();
   expect(screen.getByLabelText('商品图片 大图')).toHaveProp('source', { uri: image });
-  expect(screen.getByRole('button', { name: '缩小图片' })).toBeDisabled();
-  fireEvent.press(screen.getByRole('button', { name: '放大图片' }));
-  expect(screen.getByLabelText('图片缩放比例')).toHaveTextContent('150%');
-  for (let i = 0; i < 5; i++) fireEvent.press(screen.getByRole('button', { name: '放大图片' }));
-  expect(screen.getByLabelText('图片缩放比例')).toHaveTextContent('400%');
-  expect(screen.getByRole('button', { name: '放大图片' })).toBeDisabled();
-  fireEvent.press(screen.getByRole('button', { name: '重置图片' }));
-  expect(screen.getByLabelText('图片缩放比例')).toHaveTextContent('100%');
+  expect(screen.getByLabelText('商品图片 大图')).toHaveProp('resizeMode', 'contain');
   fireEvent.press(screen.getByRole('button', { name: '关闭图片预览' }));
   expect(screen.queryByLabelText('商品图片 大图')).toBeNull();
   expect(screen.getByLabelText('商品图片')).toHaveProp('source', { uri: image });
+  fireEvent.press(screen.getByRole('button', { name: '放大查看 商品图片' }), { stopPropagation: stopped });
+  fireEvent.press(screen.getByTestId('image-viewer-backdrop'));
+  expect(screen.queryByLabelText('商品图片 大图')).toBeNull();
 });
 
 test('previewing an unsaved image does not close the product editor or discard its changes', () => {

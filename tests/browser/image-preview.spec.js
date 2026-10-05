@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   expect((await page.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
 });
 
-test('product images open large, zoom and pan; preview shortcuts preserve the editor and restore focus', async ({ page }) => {
+test('product images fit a simple overlay; closing preserves the editor and restores focus', async ({ page }) => {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('/#products');
@@ -25,20 +25,17 @@ test('product images open large, zoom and pan; preview shortcuts preserve the ed
   await thumbnail.click();
   const viewer = page.getByRole('dialog', { name: '图片预览：大图测试商品' });
   await expect(viewer.getByRole('img', { name: '大图测试商品 大图' })).toBeVisible();
-  await viewer.getByRole('button', { name: '放大图片' }).click();
-  await expect(viewer.getByLabel('图片缩放比例')).toHaveText('150%');
-  const stage = viewer.getByLabel('图片查看区域');
-  const box = await stage.boundingBox();
-  const before = await stage.evaluate(el => el.scrollLeft);
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 - 100, box.y + box.height / 2 - 50, { steps: 4 });
-  await page.mouse.up();
-  expect(await stage.evaluate(el => el.scrollLeft)).toBeGreaterThan(before);
-  await viewer.getByRole('button', { name: '重置图片' }).click();
-  await expect(viewer.getByLabel('图片缩放比例')).toHaveText('100%');
-  await stage.dblclick();
-  await expect(viewer.getByLabel('图片缩放比例')).toHaveText('200%');
+  const previewImage = viewer.getByRole('img', { name: '大图测试商品 大图' });
+  const imageFits = () => previewImage.evaluate(el => {
+    const image = el.getBoundingClientRect();
+    return image.width <= 640 && image.height <= 480 && image.x >= 0 && image.y >= 0 && image.right <= window.innerWidth && image.bottom <= window.innerHeight && getComputedStyle(el).objectFit === 'contain';
+  });
+  expect(await imageFits()).toBe(true);
+  expect((await previewImage.boundingBox()).width).toBe(640);
+  expect((await previewImage.boundingBox()).height).toBe(480);
+  await expect(viewer.getByRole('button')).toHaveCount(1);
+  await previewImage.click();
+  await expect(viewer).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(viewer).toHaveCount(0);
   await expect(thumbnail).toBeFocused();
@@ -52,8 +49,6 @@ test('product images open large, zoom and pan; preview shortcuts preserve the ed
     await page.keyboard.press('Tab');
     expect(await editorViewer.evaluate(el => el.contains(document.activeElement))).toBe(true);
   }
-  await page.keyboard.press('+');
-  await expect(editorViewer.getByLabel('图片缩放比例')).toHaveText('150%');
   await page.keyboard.press('Escape');
   await expect(editorViewer).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(1);
@@ -66,7 +61,14 @@ test('product images open large, zoom and pan; preview shortcuts preserve the ed
   await page.setViewportSize({ width: 390, height: 844 });
   await thumbnail.click();
   await expect(viewer.getByRole('button', { name: '关闭图片预览' })).toBeVisible();
+  expect((await viewer.boundingBox()).width).toBe(390);
+  expect(await imageFits()).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await viewer.getByRole('button', { name: '关闭图片预览' }).click();
+  await page.setViewportSize({ width: 390, height: 320 });
+  expect((await viewer.boundingBox()).height).toBe(320);
+  expect(await imageFits()).toBe(true);
+  await expect(viewer.getByRole('button', { name: '关闭图片预览' })).toBeVisible();
+  await viewer.click({ position: { x: 8, y: 8 } });
   await expect(viewer).toHaveCount(0);
+  await expect(thumbnail).toBeFocused();
 });

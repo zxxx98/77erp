@@ -4674,19 +4674,8 @@ table {
 .product-image-button { padding: 0; background: transparent; cursor: zoom-in; }
 .product-image-button:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
 .product-image-thumbnail { border: 0; border-radius: 8px; flex-shrink: 0; }
-.image-viewer { position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column; background: #111827; color: #fff; }
-.image-viewer-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: max(16px, env(safe-area-inset-top)) 24px 16px; }
-.image-viewer-header strong { min-width: 0; overflow-wrap: anywhere; font-size: 16px; }
-.image-viewer button { min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; padding: 8px; border: 1px solid #475569; border-radius: 8px; background: #1f2937; color: #fff; cursor: pointer; flex-shrink: 0; }
-.image-viewer button:hover { background: #374151; }
-.image-viewer button:disabled { opacity: 0.4; cursor: default; }
-.image-viewer button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
-.image-viewer-stage { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.image-viewer-stage.is-zoomed { cursor: grab; touch-action: none; }
-.image-viewer-stage.is-zoomed:active { cursor: grabbing; }
-.image-viewer-canvas { display: grid; place-items: center; }
-.image-viewer-canvas img { width: 100%; height: 100%; object-fit: contain; user-select: none; }
-.image-viewer-controls { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 16px 24px max(16px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
-.image-viewer-controls output { min-width: 48px; text-align: center; font-size: 14px; }
-.image-viewer-controls small { color: #cbd5e1; }
-@media (max-width: 700px) { .image-viewer-header { padding-inline: 16px; } .image-viewer-controls { gap: 8px; padding-inline: 16px; } .image-viewer-controls small { width: 100%; text-align: center; } }
+.image-viewer { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 24px; background: #000a; color: #fff; }
+.image-viewer-image { width: min(640px, 100%); height: min(480px, 70vh); height: min(480px, 70dvh); object-fit: contain; user-select: none; }
+.image-viewer-close { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #0006; color: #fff; cursor: pointer; }
+.image-viewer-close:hover { background: #0009; }
+.image-viewer-close:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
