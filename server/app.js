@@ -30,7 +30,7 @@ const dateAt = (offset, hour = 10) => {
   return d.toISOString();
 };
 
-export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
+export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options = {}) {
   if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
@@ -236,6 +236,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
   db.prepare("INSERT OR IGNORE INTO app_metadata (key,value) VALUES ('demo_initialized','1')").run();
 
   const app = express();
+  app.set("trust proxy", true);
   migrateOperations(db);
   migrateCommerce(db);
   migrateCatalog(db);
@@ -243,7 +244,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite")) {
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use("/api/products", express.json({ limit: "2mb" }));
   app.use(express.json({ limit: "100kb" }));
-  installAuth(app, db);
+  installAuth(app, db, options);
   const { catalogValues } = installCatalog(app, db);
   app.get("/api/data", (_, res) => {
     const products = db.prepare("SELECT * FROM products ORDER BY id").all();

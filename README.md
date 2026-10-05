@@ -53,6 +53,27 @@ docker run -d --name 77erp --restart unless-stopped \
 docker build -t 77erp:local .
 ```
 
+## 域名与反向代理
+
+服务端校验写操作请求的来源：浏览器提交的 `Origin` 必须与请求的 `Host` 一致，且 `Sec-Fetch-Site` 不能是 `cross-site`；不满足时返回 403「请从当前站点提交请求。」。因此通过 HTTPS 域名访问时，反向代理需要保留原始域名并传递协议：
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:3001;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+`Host` 与 `Origin` 按主机名比较，HTTPS 证书在代理侧终止也不会被误判；`X-Forwarded-Proto: https` 会让会话 Cookie 带上 `Secure`。如果代理改写了 `Host`（未设置 `proxy_set_header Host $host;` 时 Nginx 会替换成上游地址），用 `PUBLIC_ORIGIN` 声明对外域名，多个用逗号分隔：
+
+```bash
+PUBLIC_ORIGIN=https://erp.example.com docker run -d --name 77erp --restart unless-stopped \
+  -p 3001:3001 -v 77erp-data:/app/data ghcr.io/zxxx98/77erp:latest
+```
+
+未在列表中的域名仍会被拒绝，安卓端和脚本不发送 `Origin`，不受影响。
+
 ## 公网测试页面
 
 测试地址：http://158.178.243.20:28888 。前端页面和 API 由同一个服务提供，使用独立数据库 `data/preview.sqlite`。

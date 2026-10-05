@@ -6,7 +6,7 @@ const cookieName = "77erp_session";
 const sessionLifetime = 12 * 60 * 60 * 1000;
 const digest = (token) => createHash("sha256").update(token).digest("hex");
 
-export function installAuth(app, db) {
+export function installAuth(app, db, { publicOrigins = [] } = {}) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS administrator (
       id INTEGER PRIMARY KEY CHECK(id=1), username TEXT NOT NULL UNIQUE,
@@ -18,9 +18,21 @@ export function installAuth(app, db) {
     );
   `);
   const administrator = () => db.prepare("SELECT * FROM administrator WHERE id=1").get();
+  // A TLS-terminating proxy hides the real scheme, so compare origins by host.
+  const forwardedProto = (req) => {
+    const value = (req.get("x-forwarded-proto") || "").split(",")[0].trim().toLowerCase();
+    return value === "http" || value === "https" ? value : null;
+  };
   const cookieOptions = (req) => ({
-    httpOnly: true, sameSite: "strict", secure: req.secure, path: "/",
+    httpOnly: true, sameSite: "strict", secure: req.secure || forwardedProto(req) === "https", path: "/",
   });
+  const sameOrigin = (req) => {
+    const origin = req.get("origin");
+    if (!origin) return true;
+    if (req.get("sec-fetch-site") === "cross-site") return false;
+    const host = req.get("host");
+    return !!host && [...publicOrigins, `http://${host}`, `https://${host}`].includes(origin);
+  };
   const sessionToken = (req) => {
     const token = (req.headers.cookie || "").split(";")
       .map((part) => part.trim()).find((part) => part.startsWith(`${cookieName}=`))
@@ -46,8 +58,7 @@ export function installAuth(app, db) {
   app.use("/api", (req, res, next) => {
     res.set("Cache-Control", "no-store");
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
-      const origin = req.get("origin");
-      if ((origin && origin !== `${req.protocol}://${req.get("host")}`) || req.get("sec-fetch-site") === "cross-site") {
+      if (!sameOrigin(req)) {
         return res.status(403).json({ error: "请从当前站点提交请求。" });
       }
       if (!req.is("application/json")) {
