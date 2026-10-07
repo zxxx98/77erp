@@ -4679,3 +4679,24 @@ table {
 .image-viewer-close { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #0006; color: #fff; cursor: pointer; }
 .image-viewer-close:hover { background: #0009; }
 .image-viewer-close:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+
+.warehouse-select { max-width: 160px; min-width: 90px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: white; color: inherit; }
+.warehouse-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 8px 0; }
+.warehouse-row input { min-width: 0; flex: 1; }
+.product-sync { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 0; }
+.product-sync legend { font-weight: 600; }
+.product-sync p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 10px; }
+.product-sync label { display: flex; flex-direction: row; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.product-sync input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex-shrink: 0; }
+@media (max-width: 600px) { .warehouse-select { max-width: 110px; } .warehouse-row { flex-wrap: wrap; } }
+
+.warehouse-switch-loading { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; gap: 12px; background: rgba(247,248,250,.8); color: #17243c; }
+@media (max-width: 700px) {
+  .topbar .breadcrumb { display: none; }
+  .topbar-right { width: 100%; min-width: 0; }
+  .topbar .warehouse-select { width: 100px; max-width: 100px; min-width: 72px; }
+  .topbar .global-search, .topbar .global-search:focus-within { flex: 1; width: auto; min-width: 0; }
+  .topbar .global-search input { width: 100%; min-width: 0; }
+}
+
+.warehouse-row strong { min-width: 0; overflow-wrap: anywhere; }

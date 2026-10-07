@@ -1,7 +1,7 @@
 import { NativeModules, PermissionsAndroid } from "react-native";
 
 NativeModules.ErpNative = { request: jest.fn(), scan: jest.fn() };
-const { api, onUnauthorized, scanBarcode } =
+const { api, onUnauthorized, scanBarcode, setWarehouseId } =
   require("../src/native") as typeof import("../src/native");
 const transport = NativeModules.ErpNative;
 beforeEach(() => jest.clearAllMocks());
@@ -54,4 +54,20 @@ test("camera permission denied does not launch scanner; cancellation is a normal
   expect(transport.scan).not.toHaveBeenCalled();
   transport.scan.mockResolvedValue(null);
   await expect(scanBarcode()).resolves.toBeNull();
+});
+
+
+test("selected warehouse is carried on reads, writes and existing queries without changing authentication", async () => {
+  transport.request.mockResolvedValue({ status: 200, body: '{}' });
+  setWarehouseId(2);
+  try {
+    await api("/data");
+    expect(transport.request).toHaveBeenLastCalledWith("/api/data?warehouse_id=2", "GET", "{}");
+    await api("/orders", "POST", { type: "in" });
+    expect(transport.request).toHaveBeenLastCalledWith("/api/orders?warehouse_id=2", "POST", '{"type":"in"}');
+    await api("/reports/profit?from=2026-01-01");
+    expect(transport.request).toHaveBeenLastCalledWith("/api/reports/profit?from=2026-01-01&warehouse_id=2", "GET", "{}");
+    await api("/auth/status");
+    expect(transport.request).toHaveBeenLastCalledWith("/api/auth/status", "GET", "{}");
+  } finally { setWarehouseId(1); }
 });

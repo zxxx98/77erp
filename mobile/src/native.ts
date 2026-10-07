@@ -14,6 +14,9 @@ export interface Device {
   pickImage(): Promise<string | null>;
 }
 export const device = NativeModules.ErpNative as Device;
+let warehouseId = 1;
+export const getWarehouseId = () => warehouseId;
+export const setWarehouseId = (id: number) => { warehouseId = id; };
 let unauthorized: (() => void) | undefined;
 export function onUnauthorized(callback: () => void) {
   unauthorized = callback;
@@ -33,11 +36,12 @@ export async function api<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  selectedWarehouse = warehouseId,
 ): Promise<T> {
   let response;
   try {
     response = await device.request(
-      `/api${path}`,
+      `/api${path}${selectedWarehouse !== 1 && !path.startsWith("/auth/") ? `${path.includes("?") ? "&" : "?"}warehouse_id=${selectedWarehouse}` : ""}`,
       method,
       JSON.stringify(body ?? {}),
     );

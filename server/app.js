@@ -1,4 +1,6 @@
 import express from "express";
+import { randomUUID } from "node:crypto";
+import { migrateWarehouses, installWarehouses, syncProduct } from "./warehouses.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -240,17 +242,19 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateOperations(db);
   migrateCommerce(db);
   migrateCatalog(db);
+  migrateWarehouses(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use("/api/products", express.json({ limit: "2mb" }));
   app.use(express.json({ limit: "100kb" }));
   installAuth(app, db, options);
+  const { warehouses } = installWarehouses(app, db);
   const { catalogValues } = installCatalog(app, db);
-  app.get("/api/data", (_, res) => {
-    const products = db.prepare("SELECT * FROM products ORDER BY id").all();
+  app.get("/api/data", (req, res) => {
+    const products = db.prepare("SELECT * FROM products WHERE warehouse_id=? ORDER BY id").all(req.warehouse.id);
     const orders = db
-      .prepare("SELECT * FROM orders ORDER BY created_at DESC,id DESC")
-      .all()
+      .prepare("SELECT * FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC")
+      .all(req.warehouse.id)
       .map((o) => ({
         ...o,
         ...settlement(db, o),
@@ -263,7 +267,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       categories: db.prepare("SELECT * FROM categories ORDER BY name,id").all(),
       contacts: db.prepare("SELECT * FROM contacts ORDER BY active DESC,name,id").all(),
       orders,
-      settings: db.prepare("SELECT * FROM settings WHERE id=1").get(),
+      warehouses: warehouses(),
+      warehouse_id: req.warehouse.id,
+      settings: { ...db.prepare("SELECT * FROM settings WHERE id=1").get(), warehouse_name: req.warehouse.name },
     });
   });
   app.get("/api/style", (_, res) => {
@@ -274,8 +280,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   });
   app.get("/api/products/barcode/:barcode", (req, res) => {
     const product = db
-      .prepare("SELECT * FROM products WHERE barcode=?")
-      .get(req.params.barcode);
+      .prepare("SELECT * FROM products WHERE barcode=? AND warehouse_id=?")
+      .get(req.params.barcode, req.warehouse.id);
     if (!product)
       return res
         .status(404)
@@ -315,15 +321,15 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       threshold,
     ];
   }
-  function generateBarcode() {
+  function generateBarcode(warehouseId = 1) {
     let sequence = db
       .prepare("SELECT COALESCE(MAX(id), 0) + 1 AS next FROM products")
       .get().next;
-    const exists = db.prepare("SELECT id FROM products WHERE barcode=?");
+    const exists = db.prepare("SELECT id FROM products WHERE barcode=? AND warehouse_id=?");
     let barcode;
     do {
       barcode = `SKU-${String(sequence++).padStart(6, "0")}`;
-    } while (exists.get(barcode));
+    } while (exists.get(barcode, warehouseId));
     return barcode;
   }
   app.post("/api/products", (req, res) => {
@@ -334,12 +340,13 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       inTransaction = true;
       const catalog = catalogValues(req.body);
       v[2] = catalog.path;
-      if (!v[1]) v[1] = generateBarcode();
+      if (!v[1]) v[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
-        .run(...v, ...catalog.values, new Date().toISOString());
+        .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
+      syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids);
       db.exec("COMMIT");
       inTransaction = false;
       res
@@ -374,6 +381,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       db.prepare(
         "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=? WHERE id=?",
       ).run(...v, ...catalog.values, req.params.id);
+      syncProduct(db, existing.id, req.body.sync_warehouse_ids);
       db.exec("COMMIT");
       inTransaction = false;
       res.json({ ok: true, barcode: v[1] });
@@ -454,9 +462,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       const contact = resolveContact(db, type, partner, req.body.partner_id);
       const result = db
         .prepare(
-          "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,settlement_tracked) VALUES (?,?,?,?,?,?,?,1)",
+          "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,settlement_tracked,warehouse_id) VALUES (?,?,?,?,?,?,?,1,?)",
         )
-        .run(number, type, contact.name, note, total / 100, at, contact.id);
+        .run(number, type, contact.name, note, total / 100, at, contact.id, req.warehouse.id);
       normalized.forEach((i) => {
         const cost = moveInventory(db, i.product_id, type === "in" ? i.quantity : -i.quantity, type === "in" ? Math.round(i.quantity * i.price * 100) : undefined);
         db.prepare(
@@ -503,10 +511,17 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return res
         .status(400)
         .json({ error: "请输入 1–60 字的商户和仓库名称。" });
-    db.prepare(
-      "UPDATE settings SET business_name=?,warehouse_name=? WHERE id=1",
-    ).run(business_name.trim(), warehouse_name.trim());
-    res.json({ ok: true });
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      db.prepare("UPDATE warehouses SET name=? WHERE id=?").run(warehouse_name.trim(), req.warehouse.id);
+      db.prepare("UPDATE settings SET business_name=? WHERE id=1").run(business_name.trim());
+      if (req.warehouse.id === 1) db.prepare("UPDATE settings SET warehouse_name=? WHERE id=1").run(warehouse_name.trim());
+      db.exec("COMMIT");
+      res.json({ ok: true });
+    } catch (error) {
+      if (db.isTransaction) db.exec("ROLLBACK");
+      res.status(400).json({ error: "仓库名称已存在。" });
+    }
   });
   installOperations(app, db, { productValues, generateBarcode, catalogValues });
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));

@@ -21,7 +21,7 @@ import {
   Settings,
   Warehouse,
 } from "lucide-react-native";
-import { api, device, onUnauthorized } from "./native";
+import { api, device, getWarehouseId, setWarehouseId, onUnauthorized } from "./native";
 import { AuthState, Draft, Order, Product, Workspace } from "./model";
 import { CategoryEditor } from "./catalog";
 import { CommerceScreen } from "./commerce";
@@ -45,6 +45,7 @@ import {
   IconButton,
   KeyboardSafeArea,
   s,
+  ScreenModal,
 } from "./ui";
 import { useKeyboardVisible } from "./layout";
 import { useAppUpdate } from "./updates";
@@ -59,7 +60,8 @@ type ModalState =
   | { kind: "scanner" }
   | { kind: "commerce" }
   | { kind: "stocktake" }
-  | { kind: "settings" };
+  | { kind: "settings" }
+  | { kind: "warehouses" };
 const tabs = [
   { id: "home" as const, title: "工作台", icon: LayoutDashboard },
   { id: "products" as const, title: "商品", icon: Box },
@@ -169,14 +171,19 @@ export function AppContent() {
     setRefreshing(true);
     setError("");
     try {
-      const workspace = await api<Workspace>("/data");
+      let workspace: Workspace;
+      try { workspace = await api<Workspace>("/data"); }
+      catch (e) {
+        if ((e as {status?:number}).status !== 400 || !(e as Error).message.startsWith("仓库不存在")) throw e;
+        workspace = await api<Workspace>("/data", "GET", undefined, 1);
+      }
       if (
         !Array.isArray(workspace.products) ||
         !Array.isArray(workspace.orders) ||
         !workspace.settings
       )
         throw new Error("服务器数据格式不正确。");
-      if (current === generation.current) setData(workspace);
+      if (current === generation.current) { setWarehouseId(workspace.warehouse_id || 1); setData(workspace); }
     } catch (e) {
       if (current === generation.current) setError((e as Error).message);
     } finally {
@@ -218,6 +225,18 @@ export function AppContent() {
     }
   }, [toast]);
 
+  const switchWarehouse = async (id: number) => {
+    if (refreshing || id === getWarehouseId()) return;
+    const current = ++generation.current;
+    setRefreshing(true); setError("");
+    try {
+      const workspace = await api<Workspace>("/data", "GET", undefined, id);
+      if (current === generation.current) {
+        setWarehouseId(id); setData(workspace); setModal(null); setTab("home");
+      }
+    } catch (e) { if (current === generation.current) setError((e as Error).message); }
+    finally { if (current === generation.current) setRefreshing(false); }
+  };
   const connect = async (address: string) => {
     if (connectLock.current) return;
     connectLock.current = true;
@@ -226,6 +245,7 @@ export function AppContent() {
     try {
       const normalized = await device.setServer(address);
       generation.current++;
+      setWarehouseId(1);
       setServer(normalized);
       setAuth(null);
       setData(null);
@@ -370,9 +390,9 @@ export function AppContent() {
           <Text allowFontScaling={false} style={styles.wordmark}>
             77 <Text style={{ color: colors.blue }}>ERP</Text>
           </Text>
-          <Text numberOfLines={1} style={[s.caption, s.grow]}>
-            {data.settings.warehouse_name}
-          </Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="切换仓库" disabled={!!modal || refreshing} style={s.grow} onPress={() => setModal({ kind: "warehouses" })}>
+            <Text numberOfLines={1} style={s.caption}>{data.settings.warehouse_name} ▾</Text>
+          </Pressable>
           <IconButton
             icon={ScanLine}
             label="打开扫码工作台"
@@ -493,6 +513,8 @@ export function AppContent() {
           <ProductEditor
             product={modal.product}
             categories={data.categories || []}
+            warehouses={data.warehouses || []}
+            warehouseId={data.warehouse_id || 1}
             onClose={() => setModal(null)}
             onSaved={saved}
           />
@@ -520,9 +542,14 @@ export function AppContent() {
         )}
         {modal?.kind === "commerce" && <CommerceScreen onClose={() => setModal(null)} onRefresh={() => void refresh()} onResume={draft => setModal({kind:"orderEditor",type:draft.type,draft})} />}
         {modal?.kind === "stocktake" && <StocktakeEditor products={data.products} onClose={() => setModal(null)} onSaved={saved} />}
+        {modal?.kind === "warehouses" && <ScreenModal title="选择仓库" onClose={() => setModal(null)} busy={refreshing} error={error}>
+          {(data.warehouses || []).map(w => <Button key={w.id} title={`${w.name}${w.id === (data.warehouse_id || 1) ? " · 当前仓库" : ""}`} kind="secondary" disabled={refreshing} onPress={() => w.id === getWarehouseId() ? setModal(null) : void switchWarehouse(w.id)} />)}
+        </ScreenModal>}
         {modal?.kind === "settings" && (
           <SettingsEditor
             settings={data.settings}
+            warehouses={data.warehouses || []}
+            onRefresh={refresh}
             server={server}
             onClose={() => setModal(null)}
             onSaved={saved}

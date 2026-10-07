@@ -41,7 +41,8 @@ import {
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import "./styles.css";
-import { api } from "./api.js";
+import { api, getWarehouseId, setWarehouseId } from "./api.js";
+import { WarehouseManager, ProductSync } from "./Warehouses.jsx";
 import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
 import { ProductImage } from "./ProductImage.jsx";
 import { AuthGate } from "./Auth.jsx";
@@ -467,6 +468,7 @@ function App({ admin, onLogout }) {
   const [data, setData] = useState({
     products: [],
     categories: [],
+    warehouses: [],
     orders: [],
     settings: { business_name: "七七商贸", warehouse_name: "主仓库" },
   });
@@ -488,15 +490,25 @@ function App({ admin, onLogout }) {
     }
   };
   const searchRef = useRef();
+  const loadGeneration = useRef(0);
+  const [switching, setSwitching] = useState(false);
   const reload = async () => {
+    const generation = ++loadGeneration.current;
     try {
-      const d = await api("/data");
+      let d;
+      try { d = await api("/data"); }
+      catch (e) {
+        if (e.status !== 400 || !e.message.startsWith('仓库不存在')) throw e;
+        d = await api('/data', { warehouseId: 1 });
+      }
+      if (generation !== loadGeneration.current) return;
+      setWarehouseId(d.warehouse_id);
       setData(d);
       setLoadError("");
     } catch (e) {
-      setLoadError(e.message);
+      if (generation === loadGeneration.current) setLoadError(e.message);
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   };
   useEffect(() => {
@@ -536,13 +548,27 @@ function App({ admin, onLogout }) {
     setModal(null);
     notify(message);
   };
+  const switchWarehouse = async (id) => {
+    if (switching || modal || id === getWarehouseId()) return;
+    const generation = ++loadGeneration.current;
+    setSwitching(true);
+    try {
+      const workspace = await api('/data', { warehouseId: id });
+      if (generation !== loadGeneration.current) return;
+      setWarehouseId(id);
+      setData(workspace);
+      setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
+    } catch (e) { notify(e.message, 'error'); }
+    finally { setSwitching(false); }
+  };
   const low = data.products.filter((p) => p.stock <= p.threshold);
   const openOrder = (type, product) =>
     setModal({ kind: "order", type, product });
   const currentNav = navItems.find((n) => n.id === page);
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {switching && <div className="warehouse-switch-loading" role="status"><LoaderCircle className="spin" size={24} />正在切换仓库…</div>}
+      <aside className="sidebar" inert={switching}>
         <a
           className="brand"
           href="#overview"
@@ -645,13 +671,16 @@ function App({ admin, onLogout }) {
         </div>
       </aside>
       <div className="main-shell">
-        <header className="topbar">
+        <header className="topbar" inert={switching}>
           <div className="breadcrumb">
             <span>工作空间</span>
             <ChevronRight size={13} />
             <strong>{currentNav?.name}</strong>
           </div>
           <div className="topbar-right">
+            <select className="warehouse-select" aria-label="当前仓库" value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e.target.value))}>
+              {(data.warehouses || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
             <div className="sync-state">
               <i />
               数据已同步
@@ -743,7 +772,7 @@ function App({ admin, onLogout }) {
             </button>
           </div>
         </header>
-        <main className="main-content">
+        <main key={data.warehouse_id || 1} className="main-content" inert={switching}>
           {loading ? (
             <div className="loading-page">
               <LoaderCircle className="spin" />
@@ -818,6 +847,8 @@ function App({ admin, onLogout }) {
         <ProductForm
           product={modal.product}
           categories={data.categories || []}
+          warehouses={data.warehouses || []}
+          warehouseId={data.warehouse_id}
           onClose={() => setModal(null)}
           onSaved={saved}
         />
@@ -873,6 +904,7 @@ function App({ admin, onLogout }) {
       {modal?.kind === "settings" && (
         <SettingsForm
           settings={data.settings}
+          warehouses={data.warehouses || []}
           products={data.products}
           onResume={draft => setModal({kind:"order",type:draft.type,draft})}
           onRefresh={reload}
@@ -2312,7 +2344,8 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
   );
 }
 
-function ProductForm({ product, categories, onClose, onSaved }) {
+function ProductForm({ product, categories, warehouses, warehouseId, onClose, onSaved }) {
+  const [syncTargets, setSyncTargets] = useState([]);
   const options = flattenCategories(categories);
   const [form, setForm] = useState(
     product || {
@@ -2348,6 +2381,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
             cost: Number(form.cost),
             price: Number(form.price),
             threshold: Number(form.threshold),
+            sync_warehouse_ids: syncTargets,
           },
         },
       );
@@ -2499,6 +2533,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
             />
             <small>库存小于或等于此数量时，自动提醒补货。</small>
           </label>
+          <ProductSync warehouses={warehouses} warehouseId={warehouseId} targets={syncTargets} setTargets={setSyncTargets} disabled={busy || readingImage} />
           {!product && (
             <div className="info-box">
               <Package size={17} />
@@ -3217,13 +3252,14 @@ function Scanner({ data, openOrder, notify }) {
     </>
   );
 }
-function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefresh }) {
+function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResume, onRefresh }) {
   const lock = useRef(false);
   const contentRef = useRef(null);
   const [section, setSection] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? "data" : "general");
   const [form, setForm] = useState(settings),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  useEffect(() => setForm(current => ({ ...current, warehouse_name: settings.warehouse_name })), [settings.warehouse_name]);
   const submit = async (e) => {
     e.preventDefault();
     if (lock.current) return;
@@ -3297,6 +3333,7 @@ function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefres
             />
           </label>
           </div>
+          <WarehouseManager warehouses={warehouses} onRefresh={onRefresh} />
           <div className="settings-version">
             <span className="brand-mark">
               <svg viewBox="0 0 40 40">
@@ -3305,11 +3342,11 @@ function SettingsForm({ settings, products, onClose, onSaved, onResume, onRefres
             </span>
             <div>
               <strong>77 ERP</strong>
-              <p>v{appVersion} · 单仓库版</p>
+              <p>v{appVersion} · 多仓库版</p>
             </div>
             <Badge tone="blue">本地版本</Badge>
           </div>
-          <div className="info-box"><ShieldCheck size={17} /><p>商品和单据保存在服务端数据库中，适用于单商户、单仓库使用。</p></div>
+          <div className="info-box"><ShieldCheck size={17} /><p>商品和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
           <div hidden={section !== "business"} className="settings-section">
             <BusinessTools onResume={onResume} onRefresh={onRefresh} />

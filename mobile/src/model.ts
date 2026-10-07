@@ -1,5 +1,6 @@
 export type Contact = { id?:number; role:"supplier"|"customer"; name:string; person:string; phone:string; address:string; note:string; active:number; version?:number };
 export type Draft = { id:number; type:"in"|"out"; partner:string; partner_id:number|null; note:string; version:number; updated_at:string; items:{product_id:number;quantity:string|number;price:string|number}[] };
+export type Warehouse = { id: number; name: string; created_at: string };
 export type Category = { id: number; name: string; parent_id: number | null };
 export type Product = {
   category_id?: number;
@@ -49,6 +50,8 @@ export const businessType = (o: Order) => o.kind === "return" ? (o.type === "in"
 export const orderLabel = (o: Order) => `${o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : (o.type === "in" ? "采购入库" : "销售出库")}${o.status === "void" ? " · 已作废" : ""}`;
 export const reportOrders = (orders: Order[]): Order[] => orders.filter(o => o.status !== "void").map(o => o.kind === "return" ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total } : o);
 export type Workspace = {
+  warehouses?: Warehouse[];
+  warehouse_id?: number;
   categories?: Category[];
   contacts?: Contact[];
   products: Product[];

@@ -22,6 +22,8 @@ import { KeyboardSafeArea } from "../src/ui";
 // These are component/event regressions, not device layout or screenshot tests.
 jest.mock("../src/native", () => ({
   api: jest.fn(),
+  getWarehouseId: jest.fn(() => 1),
+  setWarehouseId: jest.fn(),
   scanBarcode: jest.fn(),
   onUnauthorized: jest.fn(() => () => {}),
   device: {

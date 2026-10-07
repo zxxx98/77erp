@@ -237,12 +237,12 @@ export function installCommerce(app, db, { route, mutation }) {
   );
   app.get(
     "/api/drafts",
-    route(() =>
+    route((req) =>
       db
         .prepare(
-          "SELECT * FROM drafts WHERE status='active' ORDER BY updated_at DESC,id DESC",
+          "SELECT * FROM drafts WHERE status='active' AND warehouse_id=? ORDER BY updated_at DESC,id DESC",
         )
-        .all()
+        .all(req.warehouse.id)
         .map((d) => ({ ...d, items: JSON.parse(d.items) })),
     ),
   );
@@ -272,9 +272,9 @@ export function installCommerce(app, db, { route, mutation }) {
           id = Number(
             db
               .prepare(
-                "INSERT INTO drafts(type,partner,partner_id,note,items,updated_at) VALUES (?,?,?,?,?,?)",
+                "INSERT INTO drafts(type,partner,partner_id,note,items,updated_at,warehouse_id) VALUES (?,?,?,?,?,?,?)",
               )
-              .run(...fields).lastInsertRowid,
+              .run(...fields, req.warehouse.id).lastInsertRowid,
           );
         const d = db.prepare("SELECT * FROM drafts WHERE id=?").get(id);
         return { ...d, items: JSON.parse(d.items) };
@@ -389,12 +389,12 @@ export function installCommerce(app, db, { route, mutation }) {
   );
   app.get(
     "/api/finance",
-    route(() => {
+    route((req) => {
       const orders = db
         .prepare(
-          "SELECT * FROM orders WHERE status='active' ORDER BY created_at DESC,id DESC",
+          "SELECT * FROM orders WHERE status='active' AND warehouse_id=? ORDER BY created_at DESC,id DESC",
         )
-        .all()
+        .all(req.warehouse.id)
         .map((o) => ({ ...o, ...settlement(db, o) }));
       const balances = new Map();
       for (const o of orders) {
@@ -434,9 +434,9 @@ export function installCommerce(app, db, { route, mutation }) {
       if (!date(from) || !date(to) || from > to) fail("请选择有效的起止日期。");
       const lines = db
         .prepare(
-          `SELECT i.*,o.kind,o.created_at FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.status='active' AND ((o.kind='normal' AND o.type='out') OR (o.kind='return' AND o.type='in')) AND substr(o.created_at,1,10) BETWEEN ? AND ? ORDER BY o.created_at,i.id`,
+          `SELECT i.*,o.kind,o.created_at FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.warehouse_id=? AND o.status='active' AND ((o.kind='normal' AND o.type='out') OR (o.kind='return' AND o.type='in')) AND substr(o.created_at,1,10) BETWEEN ? AND ? ORDER BY o.created_at,i.id`,
         )
-        .all(from, to);
+        .all(req.warehouse.id, from, to);
       const groups = new Map();
       for (const i of lines) {
         const sign = i.kind === "return" ? -1 : 1;
@@ -500,9 +500,9 @@ export function installCommerce(app, db, { route, mutation }) {
         totals,
         inventory_value_cents: db
           .prepare(
-            "SELECT COALESCE(SUM(inventory_value_cents),0) AS n FROM products",
+            "SELECT COALESCE(SUM(inventory_value_cents),0) AS n FROM products WHERE warehouse_id=?",
           )
-          .get().n,
+          .get(req.warehouse.id).n,
       };
     }),
   );

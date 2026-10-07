@@ -68,7 +68,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     transaction(() => {
       const id = req.body.request_id;
       if (!text(id, 100)) fail("缺少操作标识，请重新打开页面。");
-      const fingerprint = hash([req.path, req.body]);
+      const fingerprint = hash([req.warehouse.id, req.path, req.body]);
       const previous = db
         .prepare("SELECT * FROM operation_requests WHERE id=?")
         .get(id);
@@ -183,7 +183,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         if (!Number.isSafeInteger(total)) fail("退货金额过大。");
         const result = db
           .prepare(
-            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked) VALUES (?,?,?,?,?,?,'return',?,?,1)",
+            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked,warehouse_id) VALUES (?,?,?,?,?,?,'return',?,?,1,?)",
           )
           .run(
             number,
@@ -194,6 +194,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             at,
             source.id,
             source.partner_id,
+            source.warehouse_id,
           );
         for (const i of items) {
           const movedCost = changeStock(i.product_id, (type === "in" ? 1 : -1) * i.quantity, i.return_cost);
@@ -231,10 +232,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       );
   app.get(
     "/api/stocktakes",
-    route(() =>
+    route((req) =>
       db
-        .prepare("SELECT * FROM stock_adjustments ORDER BY id DESC LIMIT 1000")
-        .all(),
+        .prepare("SELECT a.* FROM stock_adjustments a JOIN products p ON p.id=a.product_id WHERE p.warehouse_id=? ORDER BY a.id DESC LIMIT 1000")
+        .all(req.warehouse.id),
     ),
   );
   app.post(
@@ -267,7 +268,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  function validateRows(rows) {
+  function validateRows(rows, warehouseId) {
     if (!Array.isArray(rows) || !rows.length || rows.length > 1000)
       fail("每次导入 1–1000 行商品。");
     const seen = new Set(),
@@ -280,7 +281,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         if (
           values[1] &&
           (seen.has(values[1]) ||
-            db.prepare("SELECT 1 FROM products WHERE barcode=?").get(values[1]))
+            db.prepare("SELECT 1 FROM products WHERE barcode=? AND warehouse_id=?").get(values[1], warehouseId))
         )
           fail("条码重复或已存在，不会覆盖已有商品。");
         if (values[1]) seen.add(values[1]);
@@ -296,7 +297,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   app.post(
     "/api/products/import/preview",
     route((req) => {
-      const result = validateRows(req.body.rows);
+      const result = validateRows(req.body.rows, req.warehouse.id);
       return {
         count: req.body.rows.length,
         errors: result.errors,
@@ -310,7 +311,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       mutation(req, () => {
         if (req.body.token !== hash(req.body.rows))
           fail("导入内容已变化，请重新预览。");
-        const { normalized, errors } = validateRows(req.body.rows);
+        const { normalized, errors } = validateRows(req.body.rows, req.warehouse.id);
         if (errors.length) fail(`第 ${errors[0].row} 行：${errors[0].error}`);
         const batch = randomUUID();
         // Reserve explicit barcodes before generating codes for blank cells.
@@ -321,12 +322,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           const values = [...row.values];
           const catalog = catalogValues(req.body.rows[row.index]);
           values[2] = catalog.path;
-          if (!values[1]) values[1] = generateBarcode();
+          if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
           const result = db
             .prepare(
-              "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             )
-            .run(...values, ...catalog.values, new Date().toISOString());
+            .run(...values, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
           const p = product(Number(result.lastInsertRowid));
           adjustment(batch, p, row.stock, "批量导入期初库存", "opening");
           changeStock(p.id, row.stock, Math.round(p.cost * row.stock * 100));
@@ -336,7 +337,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  const tables = ["categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "drafts", "payments"];
+  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "drafts", "payments"];
   const columns = Object.fromEntries(
     tables.map((table) => [
       table,
@@ -355,14 +356,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 3,
+    version: 4,
     created_at: new Date().toISOString(),
     data: snapshot(),
   });
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3].includes(value.version) ||
+      ![1,2,3,4].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
@@ -386,6 +387,11 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         p.image = ''; p.specification = ''; p.note = '';
       }
     }
+    if (value.version < 4) {
+      data.warehouses = db.prepare('SELECT * FROM warehouses ORDER BY id').all();
+      for (const p of data.products || []) { p.warehouse_id ??= 1; p.sync_key ??= `legacy-${p.id}`; }
+      for (const table of ['orders', 'drafts']) for (const row of data[table] || []) row.warehouse_id ??= 1;
+    }
     for (const table of tables) {
       if (!Array.isArray(data[table]) || data[table].length > 100000)
         fail(`备份中的 ${table} 格式或数量无效。`);
@@ -403,6 +409,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         ids.add(row.id);
       }
     }
+    const warehouseIds = new Set(data.warehouses.map(w => w.id));
+    if (!warehouseIds.has(1) || new Set(data.warehouses.map(w => w.name)).size !== data.warehouses.length || data.warehouses.some(w => !text(w.name,60) || w.name !== w.name.trim() || !text(w.created_at,100))) fail('备份仓库信息无效。');
+    for (const table of ['products', 'orders', 'drafts']) if (data[table].some(row => !warehouseIds.has(row.warehouse_id))) fail('备份仓库关联无效。');
+    const syncKeys = new Set();
+    for (const p of data.products) {
+      const key = JSON.stringify([p.warehouse_id,p.sync_key]);
+      if (!text(p.sync_key,100) || syncKeys.has(key)) fail('备份商品同步关联无效。');
+      syncKeys.add(key);
+    }
     const categoryMap = categoryPaths(data.categories);
     const contacts = new Map(data.contacts.map(c => [c.id,c]));
     for (const c of data.contacts) if (!['supplier','customer'].includes(c.role) || !text(c.name,100) || ![0,1].includes(c.active) || !Number.isSafeInteger(c.version) || c.version < 1 || ['person','phone','address','note'].some(k => typeof c[k] !== 'string' || c[k].length > ({person:100,phone:50,address:300,note:500})[k])) fail('备份往来单位无效。');
@@ -417,14 +432,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category) fail("备份商品分类关联无效。");
       if (
         !p.barcode ||
-        barcodes.has(p.barcode) ||
+        barcodes.has(JSON.stringify([p.warehouse_id,p.barcode])) ||
         !integer(p.stock) ||
         !Number.isSafeInteger(p.inventory_value_cents) || p.inventory_value_cents < 0 || (!p.stock && p.inventory_value_cents !== 0) ||
         !text(p.color, 30) ||
         !text(p.created_at, 100)
       )
         fail("备份商品库存或条码无效。");
-      barcodes.add(p.barcode);
+      barcodes.add(JSON.stringify([p.warehouse_id,p.barcode]));
     }
     const numbers = new Set();
     for (const o of data.orders) {
@@ -453,6 +468,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         const source = orders.get(o.source_order_id);
         if (
           !source ||
+          source.warehouse_id !== o.warehouse_id ||
           source.kind !== "normal" ||
           source.type === o.type ||
           (o.status === "active" && source.status === "void")
@@ -469,6 +485,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         (i.cost_cents !== null && (!Number.isSafeInteger(i.cost_cents) || i.cost_cents < 0)) ||
         !orders.has(i.order_id) ||
         !products.has(i.product_id) ||
+        products.get(i.product_id)?.warehouse_id !== orders.get(i.order_id)?.warehouse_id ||
         keys.has(key) ||
         !text(i.name, 100) ||
         !text(i.barcode, 64) ||
@@ -523,9 +540,9 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (p.reversed_at === null) { paid.set(o.id,(paid.get(o.id)||0)+p.amount_cents); if (o.status === 'void' || paid.get(o.id) > Math.round(o.total*100)) fail('备份收付款超过单据金额。'); }
     }
     for (const d of data.drafts) {
-      if (!['in','out'].includes(d.type) || !['active','submitted'].includes(d.status) || !Number.isSafeInteger(d.version) || d.version < 1 || typeof d.partner !== 'string' || d.partner.length > 100 || typeof d.note !== 'string' || d.note.length > 500 || (d.partner_id !== null && !contacts.has(d.partner_id)) || (d.status === 'submitted' ? !orders.has(d.order_id) : d.order_id !== null) || !text(d.updated_at,100)) fail('备份草稿无效。');
+      if (!['in','out'].includes(d.type) || !['active','submitted'].includes(d.status) || !Number.isSafeInteger(d.version) || d.version < 1 || typeof d.partner !== 'string' || d.partner.length > 100 || typeof d.note !== 'string' || d.note.length > 500 || (d.partner_id !== null && !contacts.has(d.partner_id)) || (d.status === 'submitted' ? (!orders.has(d.order_id) || orders.get(d.order_id)?.warehouse_id !== d.warehouse_id) : d.order_id !== null) || !text(d.updated_at,100)) fail('备份草稿无效。');
       const items = JSON.parse(d.items);
-      if (!Array.isArray(items) || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || !['string','number'].includes(typeof i.quantity) || !['string','number'].includes(typeof i.price) || String(i.quantity).length > 30 || String(i.price).length > 30)) fail('备份草稿明细无效。');
+      if (!Array.isArray(items) || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !['string','number'].includes(typeof i.quantity) || !['string','number'].includes(typeof i.price) || String(i.quantity).length > 30 || String(i.price).length > 30)) fail('备份草稿明细无效。');
     }
     return data;
   }
@@ -540,6 +557,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       return {
         token: hash(req.body.backup),
         current_token: hash(snapshot()),
+        warehouses: data.warehouses.length,
         products: data.products.length,
         orders: data.orders.length,
         adjustments: data.stock_adjustments.length,
@@ -561,7 +579,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         const data = validateBackup(req.body.backup);
         // Deferred references allow return records to refer to original orders regardless of array order.
         db.exec(
-          "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts;",
+          "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
         );
         for (const table of tables) {
           const fields = columns[table];
@@ -571,6 +589,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           for (const row of data[table])
             insert.run(...fields.map((c) => row[c]));
         }
+        db.prepare('UPDATE settings SET warehouse_name=? WHERE id=1').run(data.warehouses.find(w => w.id === 1).name);
         db.prepare(
           "INSERT OR REPLACE INTO app_metadata VALUES ('demo_initialized','1')",
         ).run();

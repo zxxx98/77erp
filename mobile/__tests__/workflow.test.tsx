@@ -11,11 +11,13 @@ import { AuthScreen, ProductDetail, ProductsScreen, ScannerScreen } from "../src
 import { CategoryEditor } from "../src/catalog";
 import { OrderEditor, ProductEditor, SettingsEditor } from "../src/forms";
 import { AppContent } from "../src/App";
-import { api, device, scanBarcode } from "../src/native";
+import { api, device, scanBarcode, getWarehouseId, setWarehouseId } from "../src/native";
 import { categories, product, workspace } from "./fixtures";
 
 jest.mock("../src/native", () => ({
   api: jest.fn(),
+  getWarehouseId: jest.fn(() => 1),
+  setWarehouseId: jest.fn(),
   scanBarcode: jest.fn(),
   onUnauthorized: jest.fn(() => () => {}),
   device: {
@@ -326,4 +328,41 @@ test("native category editor creates a child with the selected parent", async ()
   fireEvent.press(screen.getByRole('button', { name: '保存分类' }));
   await waitFor(() => expect(changed).toHaveBeenCalled());
   expect(request).toHaveBeenCalledWith('/categories', 'POST', { name: '保温杯', parent_id: 2 });
+});
+
+
+test("native product sync defaults to disabled and sends only chosen warehouses", async () => {
+  request.mockResolvedValue({ id: product.id });
+  const warehouses = [{ id: 1, name: "主仓库", created_at: "2026-01-01" }, { id: 2, name: "分仓", created_at: "2026-01-01" }];
+  render(<ProductEditor product={product} categories={categories} warehouses={warehouses} warehouseId={1} onClose={jest.fn()} onSaved={jest.fn()} />);
+  const toggle = screen.getByLabelText("同步到分仓");
+  expect(toggle.props.value).toBe(false);
+  fireEvent(toggle, "valueChange", true);
+  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith(`/products/${product.id}`, "PUT", expect.objectContaining({ sync_warehouse_ids: [2] })));
+});
+
+test("native warehouse selection commits only a successful load and scopes the new workspace", async () => {
+  jest.mocked(device.getServer).mockResolvedValue("https://erp.example.com");
+  jest.mocked(getWarehouseId).mockReturnValue(1);
+  const warehouses = [{ id: 1, name: "主仓库", created_at: "2026-01-01" }, { id: 2, name: "分仓", created_at: "2026-01-01" }];
+  const remote = { ...workspace, warehouses, warehouse_id: 2, products: [], orders: [], settings: { ...workspace.settings, warehouse_name: "分仓" } };
+  request.mockImplementation(async (path, _method, _body, id) => {
+    if (path === "/auth/status") return { initialized: true, authenticated: true, username: "admin" };
+    return id === 2 ? remote : { ...workspace, warehouses, warehouse_id: 1 };
+  });
+  render(<AppContent />);
+  await screen.findByText("测试商户 · 主仓库");
+  fireEvent.press(screen.getByLabelText("切换仓库"));
+  await screen.findByText("选择仓库");
+  request.mockRejectedValueOnce(new Error("切换仓库网络失败"));
+  fireEvent.press(screen.getByRole("button", { name: "分仓" }));
+  await screen.findAllByText("切换仓库网络失败");
+  expect(setWarehouseId).not.toHaveBeenCalledWith(2);
+  expect(screen.getByText("选择仓库")).toBeTruthy();
+  request.mockResolvedValueOnce(remote);
+  fireEvent.press(screen.getByRole("button", { name: "分仓" }));
+  await screen.findByText("测试商户 · 分仓");
+  expect(request).toHaveBeenCalledWith("/data", "GET", undefined, 2);
+  expect(setWarehouseId).toHaveBeenLastCalledWith(2);
 });

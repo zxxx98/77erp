@@ -484,7 +484,7 @@ function Backup({ onSaved }) {
   return (
     <div>
       <p>
-        备份包含商品、库存成本、单据、盘点、往来单位、草稿及收付款记录。恢复会替换全部业务数据，保留当前账户、登录信息、服务器及商户设置。请先下载当前备份。
+        备份包含全部仓库、商品、库存成本、单据、盘点、往来单位、草稿及收付款记录。恢复会替换全部业务数据，保留当前账户、登录信息、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
       </p>
       <button
         type="button"
@@ -529,7 +529,7 @@ function Backup({ onSaved }) {
       {preview && (
         <>
           <p>
-            备份时间：{backup.created_at}；商品 {preview.products} 件，单据{" "}
+            备份时间：{backup.created_at}；仓库 {preview.warehouses ?? 1} 个，商品 {preview.products} 件，单据{" "}
             {preview.orders} 张，库存调整 {preview.adjustments} 条。往来单位 {preview.contacts ?? 0} 个，草稿 {preview.drafts ?? 0} 张，收付款 {preview.payments ?? 0} 条。
           </p>
           <button

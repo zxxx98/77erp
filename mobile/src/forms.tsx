@@ -1,8 +1,8 @@
-import React, { useRef, useState } from "react";
-import { Alert, Linking, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
-import { api, device, scanBarcode } from "./native";
+import { api, device, getWarehouseId, scanBarcode } from "./native";
 import {
   Category,
   flattenCategories,
@@ -18,6 +18,7 @@ import {
   ProductForm,
   productPayload,
   Settings,
+  Warehouse,
 } from "./model";
 import {
   Button,
@@ -37,11 +38,15 @@ import {
 export function ProductEditor({
   product,
   categories = [],
+  warehouses = [],
+  warehouseId = 1,
   onClose,
   onSaved,
 }: {
   product?: Product;
   categories?: Category[];
+  warehouses?: Warehouse[];
+  warehouseId?: number;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -61,6 +66,7 @@ export function ProductEditor({
     threshold: String(product?.threshold ?? 5),
   };
   const [form, setForm] = useState(initial);
+  const [syncTargets, setSyncTargets] = useState<number[]>([]);
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -77,7 +83,7 @@ export function ProductEditor({
       await api(
         product ? `/products/${product.id}` : "/products",
         product ? "PUT" : "POST",
-        payload,
+        { ...payload, sync_warehouse_ids: syncTargets },
       );
       onSaved(product ? "商品已更新" : "商品已创建，初始库存为 0");
     } catch (e) {
@@ -105,7 +111,7 @@ export function ProductEditor({
       onClose={onClose}
       error={error}
       errorRevision={errorRevision}
-      dirty={JSON.stringify(form) !== JSON.stringify(initial)}
+      dirty={JSON.stringify(form) !== JSON.stringify(initial) || syncTargets.length > 0}
       busy={busy || scanning || pickingImage}
       footer={
         <Button
@@ -199,6 +205,15 @@ export function ProductEditor({
           keyboardType="number-pad"
           editable={!busy}
         />
+      </Card>
+      <Card>
+        <Text style={s.subtitle}>同步到其他仓库（选填）</Text>
+        <Text style={s.caption}>本次保存同步商品档案和参考价格，已有库存和成本保留，新商品库存为 0。未选择的仓库保留原档案。</Text>
+        {warehouses.filter(w => w.id !== warehouseId).map(w => <View key={w.id} style={s.row}>
+          <Text style={[s.label, s.grow]}>{w.name}</Text>
+          <Switch accessibilityLabel={`同步到${w.name}`} value={syncTargets.includes(w.id)} disabled={busy || scanning || pickingImage} onValueChange={checked => setSyncTargets(current => checked ? [...current, w.id] : current.filter(id => id !== w.id))} />
+        </View>)}
+        {warehouses.length < 2 && <Text style={s.caption}>请先在商户与仓库设置中新增仓库。</Text>}
       </Card>
     </ScreenModal>
   );
@@ -473,16 +488,33 @@ export function OrderEditor({
 export function SettingsEditor({
   settings,
   server,
+  warehouses = [],
+  onRefresh,
   onClose,
   onSaved,
 }: {
   settings: Settings;
+  warehouses?: Warehouse[];
+  onRefresh?: () => Promise<void>;
   server?: string;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
+  const [newWarehouse, setNewWarehouse] = useState("");
+  const [editingWarehouse, setEditingWarehouse] = useState<{id:number;name:string}|null>(null);
+  const saveWarehouse = async (id: number | null, name: string) => {
+    if (!lock.enter()) return;
+    setBusy(true); setError("");
+    try {
+      await api(id ? `/warehouses/${id}` : "/warehouses", id ? "PUT" : "POST", { name });
+      setNewWarehouse(""); setEditingWarehouse(null);
+      await onRefresh?.();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); lock.leave(); }
+  };
   const [business, setBusiness] = useState(settings.business_name);
   const [warehouse, setWarehouse] = useState(settings.warehouse_name);
+  useEffect(() => setWarehouse(settings.warehouse_name), [settings.warehouse_name]);
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const lock = useSubmitLock();
@@ -557,9 +589,21 @@ export function SettingsEditor({
         />
       </Card>
       <Card>
+        <Text style={s.subtitle}>仓库管理</Text>
+        <Text style={s.caption}>在顶部点击仓库名称切换。各仓库库存、单据和草稿独立。</Text>
+        <Field label="新仓库名称" value={newWarehouse} onChangeText={setNewWarehouse} maxLength={60} editable={!busy} />
+        <Button title="新增仓库" kind="secondary" disabled={busy || !newWarehouse.trim()} onPress={() => void saveWarehouse(null, newWarehouse)} />
+        {warehouses.map(w => <View key={w.id}>
+          {editingWarehouse?.id === w.id ? <>
+            <Field label={`修改${w.name}名称`} value={editingWarehouse.name} maxLength={60} editable={!busy} onChangeText={name => setEditingWarehouse({ id: w.id, name })} />
+            <Button title="保存仓库名称" disabled={busy} onPress={() => void saveWarehouse(w.id, editingWarehouse.name)} />
+          </> : <View style={s.row}><Text style={[s.label, s.grow]}>{w.name}</Text><Button title="改名" kind="secondary" disabled={busy} onPress={() => setEditingWarehouse({ id: w.id, name: w.name })} /></View>}
+        </View>)}
+      </Card>
+      <Card>
         {server && <>
           <Text style={s.caption}>Excel / CSV 导入和备份恢复在网页设置中操作，浏览器需单独登录。</Text>
-          <Button title="打开网页数据管理" kind="secondary" disabled={busy} onPress={() => void Linking.openURL(`${server}/?manage=data`).catch(() => setError("无法打开浏览器，请手动访问服务器网页。"))} />
+          <Button title="打开网页数据管理" kind="secondary" disabled={busy} onPress={() => void Linking.openURL(`${server}/?manage=data&warehouse_id=${getWarehouseId()}`).catch(() => setError("无法打开浏览器，请手动访问服务器网页。"))} />
         </>}
         <Text style={s.subtitle}>重置业务数据</Text>
         <Text style={s.caption}>永久清空所有商品、库存、单据、往来单位、草稿及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器地址及已保存的商户和仓库名称。</Text>
