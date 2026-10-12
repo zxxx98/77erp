@@ -55,12 +55,15 @@ public class ErpModule extends ReactContextBaseJavaModule {
         .retryOnConnectionFailure(false).build();
     private Promise scanPromise;
     private Promise imagePromise;
+    private final AppUpdater updater;
 
     public ErpModule(ReactApplicationContext context) {
         super(context);
+        updater = new AppUpdater(context);
         preferences = context.getSharedPreferences("native_client", Context.MODE_PRIVATE);
         context.addActivityEventListener(new BaseActivityEventListener() {
             @Override public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
+                if (updater.onActivityResult(requestCode)) return;
                 if (requestCode == IMAGE_REQUEST && imagePromise != null) {
                     Promise promise = imagePromise;
                     imagePromise = null;
@@ -81,6 +84,10 @@ public class ErpModule extends ReactContextBaseJavaModule {
         });
     }
     @Override public String getName() { return "ErpNative"; }
+
+    @ReactMethod public void installUpdate(String url, Promise promise) {
+        updater.install(url, getCurrentActivity(), promise);
+    }
 
     @ReactMethod public void getVersionCode(Promise promise) {
         try {
@@ -257,6 +264,7 @@ public class ErpModule extends ReactContextBaseJavaModule {
         } finally { if (bitmap != null) bitmap.recycle(); }
     }
     @Override public void invalidate() {
+        updater.close();
         requests.shutdown();
         http.dispatcher().cancelAll();
         super.invalidate();

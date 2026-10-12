@@ -8,6 +8,8 @@
 
 安卓端沿用 Web 的蓝色、灰白背景和卡片样式，使用原生底部导航、列表、表单与弹窗。CSV / SVG 下载、桌面表格和键盘快捷操作保留在 Web 端。原生页面代码随 APK 发布，不受服务器前端更新影响。
 
+安卓「更多」及「商户与仓库设置」支持「检查更新」；发现新版本后点击「立即更新」，直接从 GitHub 下载最新正式版 ARM64 APK 并打开系统安装界面。首次需要允许 77 ERP 安装应用，再按系统提示确认覆盖安装。
+
 推送与 `package.json` 版本一致的 `v1.0.0` 类标签后，由 GitHub Actions 编译并发布签名 APK / AAB，本地无需安卓编译环境。配置签名、版本号规则和发布步骤见 [安卓发布文档](docs/android.md)。[下载 APK](https://github.com/zxxx98/77erp/releases) · [查看流水线](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml)。
 
 ## 启动

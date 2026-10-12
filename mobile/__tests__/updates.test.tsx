@@ -1,9 +1,11 @@
-import { act, renderHook, waitFor } from "@testing-library/react-native";
-import { Alert, AppState, AppStateStatus, Linking } from "react-native";
+import React from "react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react-native";
+import { Alert, AppState, AppStateStatus } from "react-native";
 import { availableUpdate, useAppUpdate } from "../src/updates";
+import { UpdateCard } from "../src/UpdateCard";
 import { device } from "../src/native";
 
-jest.mock("../src/native", () => ({ device: { getVersionCode: jest.fn() } }));
+jest.mock("../src/native", () => ({ device: { getVersionCode: jest.fn(), installUpdate: jest.fn() } }));
 const release = (version = "1.3.0") => ({
   tag_name: `v${version}`, draft: false, prerelease: false,
   assets: [{ name: `77ERP-${version}-arm64.apk`, size: 100, state: "uploaded",
@@ -19,7 +21,7 @@ beforeEach(() => {
   });
   AppState.currentState = "active";
   jest.spyOn(Alert, "alert").mockImplementation(() => {});
-  jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+  jest.mocked(device.installUpdate).mockReset().mockResolvedValue(undefined);
   jest.mocked(device.getVersionCode).mockResolvedValue(1002000);
   globalThis.fetch = fetchMock.mockResolvedValue({ ok: true, json: async () => release() });
 });
@@ -35,7 +37,7 @@ test("compares numeric Android versions and only offers a published matching APK
   }
 });
 
-test("checks on launch and reopening, suppresses duplicate prompts and opens the APK", async () => {
+test("checks on launch and reopening, suppresses duplicate prompts and installs the APK", async () => {
   renderHook(useAppUpdate);
   await waitFor(() => expect(Alert.alert).toHaveBeenCalledTimes(1));
   act(() => { change("background"); change("active"); });
@@ -44,7 +46,7 @@ test("checks on launch and reopening, suppresses duplicate prompts and opens the
   await act(async () => { change("background"); change("active"); });
   await waitFor(() => expect(Alert.alert).toHaveBeenCalledTimes(2));
   await act(async () => { jest.mocked(Alert.alert).mock.calls[1]?.[2]?.[1]?.onPress?.(); });
-  expect(Linking.openURL).toHaveBeenCalledWith(release().assets[0]?.browser_download_url);
+  expect(device.installUpdate).toHaveBeenCalledWith(release().assets[0]?.browser_download_url);
 });
 
 test("network failure stays silent and a later reopen retries", async () => {
@@ -64,4 +66,68 @@ test("a response received after unmount never shows an update dialog", async () 
   view.unmount();
   await act(async () => { resolve({ ok: true, json: async () => release() }); });
   expect(Alert.alert).not.toHaveBeenCalled();
+});
+
+test("settings shows the installed version, checks manually and downloads before launching installation", async () => {
+  let finish!: () => void;
+  jest.mocked(device.installUpdate).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  render(<UpdateCard />);
+  await screen.findByText("当前版本 1.2.0");
+  expect(fetchMock).not.toHaveBeenCalled();
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("发现新版本 1.3.0");
+  fireEvent.press(screen.getByText("立即更新"));
+  expect(device.installUpdate).toHaveBeenCalledWith(release().assets[0]?.browser_download_url);
+  fireEvent.press(screen.getByText("立即更新"));
+  expect(device.installUpdate).toHaveBeenCalledTimes(1);
+  await act(async () => { finish(); });
+  expect(screen.getByText(/已打开系统安装界面/)).toBeTruthy();
+});
+
+test("manual checks report no update, network failures and allow retries", async () => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => release("1.2.0") });
+  render(<UpdateCard />);
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("当前已是最新版本");
+  expect(screen.queryByText("立即更新")).toBeNull();
+  fetchMock.mockResolvedValueOnce({ ok: false, status: 403 });
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("GitHub 请求次数受限，请稍后重试。");
+  fetchMock.mockRejectedValueOnce(new Error("Network request failed"));
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("无法检查更新，请检查网络后重试。");
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("发现新版本 1.3.0");
+});
+
+test("manual checks time out and can be retried", async () => {
+  jest.useFakeTimers();
+  try {
+    fetchMock.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(new Error("aborted")));
+    }));
+    render(<UpdateCard />);
+    await act(async () => {});
+    fireEvent.press(screen.getByText("检查更新"));
+    await act(async () => {});
+    await act(async () => { jest.advanceTimersByTime(10000); });
+    expect(screen.getByText("检查更新超时，请稍后重试。")).toBeTruthy();
+    fireEvent.press(screen.getByText("检查更新"));
+    await act(async () => {});
+    expect(screen.getByText("发现新版本 1.3.0")).toBeTruthy();
+  } finally { jest.useRealTimers(); }
+});
+
+test("missing APK is reported and installation failures can be retried", async () => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ ...release(), assets: [] }) });
+  render(<UpdateCard />);
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("最新正式版本尚未提供可用的 ARM64 安装包，请稍后重试。");
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("立即更新");
+  jest.mocked(device.installUpdate).mockRejectedValueOnce(new Error("未允许安装应用"));
+  fireEvent.press(screen.getByText("立即更新"));
+  await screen.findByText("未允许安装应用");
+  fireEvent.press(screen.getByText("立即更新"));
+  await screen.findByText(/已打开系统安装界面/);
 });

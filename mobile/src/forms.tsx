@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
+import { UpdateCard } from "./UpdateCard";
 import { api, device, getWarehouseId, scanBarcode } from "./native";
 import { parseProductCode, resolveProductCode } from "./product-scan";
 import {
@@ -590,6 +591,7 @@ export function SettingsEditor({
       busy={busy}
       footer={<Button title="保存设置" onPress={save} busy={busy} />}
     >
+      <UpdateCard />
       <Card>
         <Field
           label="商户名称"

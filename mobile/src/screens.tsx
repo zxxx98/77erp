@@ -17,6 +17,7 @@ import {
   Warehouse,
 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
+import { UpdateCard } from "./UpdateCard";
 import { PaymentEditor } from "./commerce";
 import { OrderCorrection } from "./operations";
 import { api, ApiError, scanBarcode } from "./native";
@@ -945,6 +946,7 @@ export function MoreScreen({
         onPress={logout}
         busy={busy}
       />
+      <UpdateCard />
       <Text style={[s.caption, { textAlign: "center" }]}>
         77 ERP · 数据保存在服务器
       </Text>

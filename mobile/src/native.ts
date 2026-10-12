@@ -2,6 +2,7 @@ import { NativeModules, PermissionsAndroid } from "react-native";
 
 export interface Device {
   getVersionCode(): Promise<number>;
+  installUpdate(url: string): Promise<void>;
   getServer(): Promise<string>;
   setServer(address: string): Promise<string>;
   request(
