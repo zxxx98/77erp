@@ -9,17 +9,20 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from android_ui_helpers import bounds, scroll_to_action
 
 reports = pathlib.Path(sys.argv[1])
 package = "com.erp77.app"
 product = {
     "id": 1, "name": "超长商品名称用于原生界面适配检查陶瓷马克杯礼盒装",
     "barcode": "SKU-000001-123456789012345678901234567890",
-    "category": "办公用品及日常生活用品礼品组合分类", "unit": "整箱礼盒包装",
+    "category": "办公用品及日常生活用品礼品组合分类", "category_id": 1, "unit": "整箱礼盒包装",
     "stock": 99999, "threshold": 100000, "price": 999999.99, "cost": 888888.88,
 }
 workspace = {
     "products": [product], "orders": [],
+    "categories": [{"id": 1, "name": product["category"], "parent_id": None}],
+    "warehouses": [{"id": 1, "name": "用于测试长名称的主仓库"}], "warehouse_id": 1,
     "settings": {"business_name": "原生适配测试商户", "warehouse_name": "用于测试长名称的主仓库"},
 }
 
@@ -29,7 +32,7 @@ class FixtureAPI(BaseHTTPRequestHandler):
 
     def do_GET(self):
         print(f"Fixture GET {self.path}", flush=True)
-        data = ({"initialized": True, "authenticated": True, "username": "layout-test"}
+        data = ({"initialized": True, "authenticated": True, "id": 1, "role": "admin", "username": "layout-test"}
                 if self.path == "/api/auth/status" else workspace)
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(200)
@@ -63,7 +66,7 @@ def find(label=None, class_name=None):
 
 
 def tap_node(node):
-    x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
+    x1, y1, x2, y2 = bounds(node)
     if x2 <= x1 or y2 <= y1:
         raise RuntimeError("Cannot tap an empty native control")
     adb("shell", "input", "tap", str((x1+x2)//2), str((y1+y2)//2))
@@ -84,15 +87,24 @@ def snapshot(name):
 
 
 def scroll_to(label):
-    for _ in range(12):
-        for node in tree().iter("node"):
-            if label == node.get("content-desc"):
-                x1, y1, x2, y2 = map(int, re.findall(r"\d+", node.get("bounds")))
-                if y2 - y1 >= 144 and y2 <= 960:
-                    return node
-        # wm size override is 1800 x 960 after rotating the small viewport.
-        adb("shell", "input", "swipe", "1200", "760", "1200", "350", "350")
-    raise RuntimeError(f"Cannot scroll to native action: {label}")
+    image = subprocess.check_output(["adb", "exec-out", "screencap", "-p"], timeout=30)
+    screen_size = struct.unpack(">II", image[16:24])
+    densities = re.findall(r"(?:Physical|Override) density: (\d+)", adb("shell", "wm", "density"))
+    if not densities:
+        raise RuntimeError("Cannot determine the emulator screen density")
+
+    swipes = 0
+
+    def swipe(x1, y1, x2, y2):
+        nonlocal swipes
+        swipes += 1
+        adb("shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), "350")
+        time.sleep(0.3)
+
+    node = scroll_to_action(label, tree, swipe, screen_size, int(densities[-1]))
+    print(f"Native action {label!r} visible after {swipes} swipes at {bounds(node)}; "
+          f"screen={screen_size}, density={densities[-1]}", flush=True)
+    return node
 
 
 def restart():
