@@ -4634,7 +4634,7 @@ table {
 .settings-nav strong { display: block; font-size: 14px; font-weight: 600; }
 .settings-nav small { display: block; margin-top: 5px; font-size: 11px; color: #647084; }
 .settings-content { flex: 1; min-width: 0; overflow: auto; padding: 28px; }
-.settings-section { display: grid; gap: 24px; }
+.settings-section { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
 .settings-section[hidden] { display: none; }
 .settings-section h3 { font-size: 17px; color: #253858; }
 .settings-section-heading p { margin-top: 8px; color: #647084; font-size: 13px; }

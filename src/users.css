@@ -1,6 +1,9 @@
 .account-fields { display: grid; gap: 12px; max-width: 420px; margin: 16px 0; }
-.account-fields label, .user-row label { display: grid; gap: 6px; }
-.user-list { display: grid; gap: 12px; margin: 20px 0; }
-.user-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
-.user-row > div { flex: 1; min-width: 100px; }
-.user-row small { display: block; color: var(--muted); margin-top: 4px; }
+.account-fields label { display: grid; gap: 6px; }
+.user-list { margin: 20px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.user-table { width: 100%; border-collapse: collapse; }
+.user-table td { vertical-align: middle; }
+.user-table td strong { color: var(--text-strong, #1c2433); font-size: 12px; }
+.user-table select { border: 1px solid #e3eaf3; border-radius: 6px; min-width: 96px; min-height: 37px; padding: 8px 12px; background: white; font-size: 11px; color: #6982a5; line-height: 1.5; }
+.user-actions { display: flex; gap: 8px; }
+@media (max-width: 640px) { .user-table { min-width: 520px; } }

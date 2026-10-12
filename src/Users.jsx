@@ -67,18 +67,26 @@ export function UserManager() {
     </div>
     {error && <p role="alert" className="form-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
-    <div className="user-list">
-      {users.map(user => <div className="user-row" key={user.id}>
-        <div><strong>{user.username}</strong><small>{user.active ? '正常' : '已停用'}</small></div>
-        <label>角色<select aria-label={`${user.username}的角色`} value={user.role} disabled={busy} onChange={e => {
-          const nextRole = e.target.value;
-          if (window.confirm(`修改 ${user.username} 的角色？该账号需要重新登录。`)) void update(user, { role: nextRole });
-        }}><option value="employee">员工</option><option value="admin">管理员</option></select></label>
-        <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => {
-          if (window.confirm(`${user.active ? '停用' : '启用'}账号 ${user.username}？`)) void update(user, { active: user.active ? 0 : 1 });
-        }}>{user.active ? '停用' : '启用'}</button>
-        <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(user); setResetPassword(''); }}>重置密码</button>
-      </div>)}
+    <div className="table-scroll user-list">
+      <table className="data-table user-table">
+        <thead><tr><th>账号</th><th>状态</th><th>角色</th><th>操作</th></tr></thead>
+        <tbody>
+          {users.map(user => <tr className="user-row" key={user.id}>
+            <td><strong>{user.username}</strong></td>
+            <td>{user.active ? '正常' : '已停用'}</td>
+            <td><select aria-label={`${user.username}的角色`} value={user.role} disabled={busy} onChange={e => {
+              const nextRole = e.target.value;
+              if (window.confirm(`修改 ${user.username} 的角色？该账号需要重新登录。`)) void update(user, { role: nextRole });
+            }}><option value="employee">员工</option><option value="admin">管理员</option></select></td>
+            <td><div className="user-actions">
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => {
+                if (window.confirm(`${user.active ? '停用' : '启用'}账号 ${user.username}？`)) void update(user, { active: user.active ? 0 : 1 });
+              }}>{user.active ? '停用' : '启用'}</button>
+              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(user); setResetPassword(''); }}>重置密码</button>
+            </div></td>
+          </tr>)}
+        </tbody>
+      </table>
     </div>
     {resetUser && <div className="account-fields">
       <h4>重置 {resetUser.username} 的密码</h4>
