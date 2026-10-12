@@ -15,14 +15,22 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   );`);
   // Run once, preserving the original password and invalidating legacy sessions.
   if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='administrator'").get()) {
-    db.exec(`BEGIN IMMEDIATE;
-      INSERT INTO users(id,username,password_salt,password_hash,role,active,created_at)
-        SELECT id,username,password_salt,password_hash,'admin',1,created_at FROM administrator;
-      DROP TABLE IF EXISTS auth_sessions; DROP TABLE administrator; COMMIT;`);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(`INSERT INTO users(id,username,password_salt,password_hash,role,active,created_at)
+        SELECT id,username,password_salt,password_hash,'admin',1,created_at FROM administrator`).run();
+      db.exec("DROP TABLE IF EXISTS auth_sessions; DROP TABLE administrator;");
+      db.exec("COMMIT");
+    } catch (error) {
+      // A failed upgrade must leave the legacy administrator table and its password untouched.
+      db.exec("ROLLBACK");
+      throw new Error(`管理员账号迁移失败，数据库未改动：${error.message}`);
+    }
   }
   db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
     token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL
   );`);
+  // installAuth runs after the business migrations, so orders and drafts already exist here.
   for (const table of ['orders', 'drafts']) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
     for (const [name, definition] of Object.entries({ created_by: 'INTEGER REFERENCES users(id)', created_by_name: "TEXT NOT NULL DEFAULT ''" })) {
@@ -166,6 +174,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     res.clearCookie(cookieName, cookieOptions(req));
     res.json({ ok: true });
   });
+  // Resolves req.user for every later /api middleware and route; installWarehouses and the
+  // business modules read it, so this must stay registered before them.
   app.use("/api", (req, res, next) => {
     req.user = sessionUser(req);
     if (!req.user) return res.status(401).json({ error: "请登录后继续操作。" });
@@ -193,7 +203,14 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     attempts.delete(req.ip);
     res.json({ ok: true });
   });
-  // Employee access is explicit; new management endpoints remain administrator-only.
+  // Employee access is explicit and deny-by-default: a route added later stays administrator-only
+  // until it is listed here. Paths are lowercased and stripped of trailing slashes, the same way
+  // Express matches them.
+  //   GET  /data /style /warehouses /categories /contacts /drafts, /products/barcode/:code
+  //   POST /products /orders /drafts, /drafts/:id/discard
+  //   PUT  /products/:id
+  // /products/barcode/:code is kept for clients released before 1.4.0; current web and Android
+  // builds resolve barcodes from the /data snapshot.
   app.use('/api', (req, res, next) => {
     if (req.user.role === 'admin') return next();
     const path = req.path.toLowerCase().replace(/\/+$/, '');
@@ -226,6 +243,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const { role, active } = req.body || {};
     if (!['admin','employee'].includes(role) || ![0,1].includes(active))
       return res.status(400).json({ error: '请选择有效角色和账号状态。' });
+    // Same recheck as the other account endpoints: a concurrent demotion must not slip through.
+    if (sessionUser(req)?.role !== 'admin') return res.status(401).json({ error: '登录或权限已变化，请重新登录。' });
     db.exec('BEGIN IMMEDIATE');
     try {
       const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);

@@ -221,3 +221,90 @@ test('business backups preserve actor names and same-server draft owners, but ne
   assert.equal((await destination.request(destination.admin, '/drafts')).data[0].created_by, null);
   assert.equal((await destination.request(destination.admin, '/drafts')).data[0].created_by_name, '');
 });
+
+// Every /api route must declare who may call it, so a new endpoint cannot quietly gain or lose
+// employee access. The probes send empty bodies and only assert the 403 boundary.
+const routeRoles = new Map(Object.entries({
+  'get /api/auth/status': 'public', 'post /api/auth/setup': 'public', 'post /api/auth/login': 'public', 'post /api/auth/logout': 'public',
+  'post /api/auth/password': 'employee',
+  'get /api/users': 'admin', 'post /api/users': 'admin', 'put /api/users/:id': 'admin', 'post /api/users/:id/password': 'admin',
+  'get /api/warehouses': 'employee', 'post /api/warehouses': 'admin', 'put /api/warehouses/:id': 'admin',
+  'get /api/categories': 'employee', 'post /api/categories': 'admin', 'put /api/categories/:id': 'admin', 'post /api/categories/:id/delete': 'admin',
+  'get /api/data': 'employee', 'get /api/style': 'employee', 'get /api/products/barcode/:barcode': 'employee',
+  'post /api/products': 'employee', 'put /api/products/:id': 'employee', 'post /api/orders': 'employee',
+  'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
+  'get /api/contacts': 'employee', 'post /api/contacts': 'admin',
+  'get /api/drafts': 'employee', 'post /api/drafts': 'employee', 'post /api/drafts/:id/discard': 'employee',
+  'get /api/orders/:id/payments': 'admin', 'post /api/orders/:id/payments': 'admin', 'post /api/orders/:id/settlement': 'admin',
+  'post /api/payments/:id/reverse': 'admin', 'get /api/finance': 'admin', 'get /api/reports/profit': 'admin',
+  'post /api/orders/:id/void': 'admin', 'post /api/orders/:id/returns': 'admin',
+  'get /api/stocktakes': 'admin', 'post /api/stocktakes': 'admin',
+  'post /api/products/import/preview': 'admin', 'post /api/products/import': 'admin',
+  'get /api/backup': 'admin', 'post /api/backup/preview': 'admin', 'post /api/backup/restore': 'admin',
+}));
+
+test('every API route declares its role, and employee access matches that declaration', async t => {
+  const probe = createApp(':memory:');
+  const routes = (probe.app.router ?? probe.app._router).stack
+    .filter(layer => layer.route)
+    .map(layer => `${Object.keys(layer.route.methods)[0]} ${layer.route.path}`)
+    .filter(key => key.includes(' /api/'));
+  probe.db.close();
+  assert.deepEqual(routes.filter(key => !routeRoles.has(key)), [], '路由未在测试中声明角色');
+  assert.deepEqual([...routeRoles.keys()].filter(key => !routes.includes(key)), [], '测试声明了不存在的路由');
+  const f = await fixture(t), employee = await f.user('staff');
+  const counts = () => f.db.prepare('SELECT (SELECT COUNT(*) FROM products) AS p,(SELECT COUNT(*) FROM orders) AS o,(SELECT COUNT(*) FROM drafts) AS d').get();
+  const before = counts();
+  for (const [key, role] of routeRoles) {
+    // Logout ends the session under test, so it is asserted separately below.
+    if (key === 'post /api/auth/logout') continue;
+    const [method, path] = key.split(' ');
+    const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':barcode', 'TEAM-001');
+    const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
+    assert.equal(response.status === 403, role === 'admin', `${key} 返回 ${response.status}`);
+  }
+  assert.deepEqual(counts(), before, '权限探测不应改动业务数据');
+  assert.equal((await f.request(employee.cookie, '/auth/logout', {}, 'POST')).status, 200);
+});
+
+test('order settlement state is administrator-only in the workspace payload', async t => {
+  const f = await fixture(t), employee = await f.user('staff');
+  const created = await f.command(f.admin, '/orders', draftBody);
+  const mine = (data) => data.orders.find(o => o.id === created.data.id);
+  const admin = mine((await f.request(f.admin, '/data')).data);
+  const staff = mine((await f.request(employee.cookie, '/data')).data);
+  assert.equal(admin.payment_status, 'unpaid');
+  assert.equal(admin.due_cents, admin.total * 100);
+  assert.equal(staff.total, admin.total);
+  for (const field of ['payment_status', 'paid_cents', 'due_cents', 'direction'])
+    assert.equal(field in staff, false, field);
+});
+
+test('a conflicting account upgrade fails loudly and leaves the legacy administrator intact', async t => {
+  const dir = mkdtempSync(join(tmpdir(), '77erp-users-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'erp.sqlite');
+  const original = { db: new DatabaseSync(path) };
+  original.db.exec(`CREATE TABLE products (id INTEGER PRIMARY KEY,name TEXT NOT NULL,barcode TEXT NOT NULL UNIQUE,category TEXT NOT NULL,unit TEXT NOT NULL DEFAULT '件',cost REAL NOT NULL,price REAL NOT NULL,stock INTEGER NOT NULL DEFAULT 0 CHECK(stock>=0),threshold INTEGER NOT NULL DEFAULT 20,color TEXT NOT NULL DEFAULT 'blue',created_at TEXT NOT NULL);
+    INSERT INTO products VALUES (1,'旧商品','LEGACY-001','日用','件',10,20,7,2,'blue','2026-01-01T00:00:00Z');
+    CREATE TABLE users (id INTEGER PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_salt TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('admin','employee')),active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),created_at TEXT NOT NULL);
+    INSERT INTO users VALUES (1,'other','salt','hash','admin',1,'2026-01-01T00:00:00Z');
+    CREATE TABLE administrator (id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL UNIQUE,password_salt TEXT NOT NULL,password_hash TEXT NOT NULL,created_at TEXT NOT NULL);
+    INSERT INTO administrator VALUES (1,'owner','legacy-salt','legacy-hash','2026-01-01T00:00:00Z');`);
+  original.db.close();
+  // The id collision must abort the upgrade instead of half-applying it.
+  assert.throws(() => createApp(path), /迁移失败/);
+  const check = new DatabaseSync(path);
+  assert.equal(check.prepare('SELECT password_hash FROM administrator WHERE id=1').get().password_hash, 'legacy-hash');
+  assert.deepEqual(check.prepare('SELECT id,username FROM users').all().map(row => ({ ...row })), [{ id: 1, username: 'other' }]);
+  assert.equal(check.prepare('SELECT stock FROM products WHERE id=1').get().stock, 7);
+  check.close();
+  // The database still upgrades once the conflict is resolved.
+  const resolved = new DatabaseSync(path);
+  resolved.prepare('DELETE FROM users').run();
+  resolved.close();
+  const restarted = createApp(path);
+  assert.equal(restarted.db.prepare('SELECT password_hash FROM users WHERE id=1').get().password_hash, 'legacy-hash');
+  assert.equal(restarted.db.prepare("SELECT 1 FROM sqlite_master WHERE name='administrator'").get(), undefined);
+  restarted.db.close();
+});

@@ -260,7 +260,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       .all(req.warehouse.id)
       .map((o) => ({
         ...o,
-        ...settlement(db, o),
+        // Payment state is financial data: employees receive the order without it.
+        ...(req.user.role === "admin" ? settlement(db, o) : {}),
         items: db
           .prepare("SELECT * FROM order_items WHERE order_id=?")
           .all(o.id).map(item => ({ ...item, returned_quantity: db.prepare(`SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders r ON r.id=i.order_id WHERE r.source_order_id=? AND r.status='active' AND i.product_id=?`).get(o.id, item.product_id).quantity })),
