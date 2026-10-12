@@ -164,7 +164,7 @@ public class ErpModule extends ReactContextBaseJavaModule {
                 HttpUrl url = base.resolve(path);
                 if (!path.startsWith("/api/") || url == null || !url.scheme().equals(base.scheme())
                     || !url.host().equals(base.host()) || url.port() != base.port() || !url.encodedPath().startsWith("/api/")
-                    || !(method.equals("GET") || method.equals("POST") || method.equals("PUT"))) {
+                    || !(method.equals("GET") || method.equals("POST") || method.equals("PUT") || method.equals("DELETE"))) {
                     promise.reject("REQUEST", "无效的服务器请求。"); return;
                 }
                 Request.Builder builder = new Request.Builder().url(url).header("Accept", "application/json");

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { FlatList, Linking, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Alert, FlatList, Linking, StyleSheet, Text, View } from "react-native";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -402,6 +402,7 @@ export function ProductsScreen({
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部分类");
   const [stock, setStock] = useState("all");
+  const [status, setStatus] = useState("all");
   const options = flattenCategories(categories);
   const branch = categoryBranch(categories, Number(category));
   useEffect(() => {
@@ -409,6 +410,7 @@ export function ProductsScreen({
   }, [categories, category]);
   const visible = products.filter(
     (product) =>
+      (inventory || status === "all" || (status === "active" ? product.active !== 0 : product.active === 0)) &&
       matchesProduct(product, query) &&
       (category === "全部分类" || branch.has(product.category_id || 0)) &&
       (stock === "all" ||
@@ -444,6 +446,7 @@ export function ProductsScreen({
           </View>
           {!inventory && manageCategories && <Button title="管理分类" kind="secondary" onPress={manageCategories} />}
           <SearchField value={query} onChangeText={setQuery} />
+          {!inventory && <Chips value={status} onChange={setStatus} options={[{id: "all", label: "全部状态"}, {id: "active", label: "已上架"}, {id: "inactive", label: "已下架"}]} />}
           {inventory ? (
             <Chips
               value={stock}
@@ -475,14 +478,38 @@ export function ProductDetail({
   onClose,
   edit,
   openOrder,
+  onSaved,
+  isAdmin = false,
 }: {
+  onSaved: (message: string) => void;
+  isAdmin?: boolean;
   product: Product;
   onClose: () => void;
   edit: () => void;
   openOrder: (type: "in" | "out", product: Product) => void;
 }) {
+  const [busy, setBusy] = useState(false);
+  const {error, errorRevision, setError} = useFormError();
+  const lock = useRef(false);
+  const change = (remove = false) => {
+    if (lock.current) return;
+    const active = product.active === 0 ? 1 : 0;
+    Alert.alert(remove ? "删除商品" : active ? "上架商品" : "下架商品",
+      remove ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和草稿关联的商品。仅影响当前仓库。`
+        : `确定${active ? "上架" : "下架"}「${product.name}」？${active ? "恢复普通开单选品。" : "保留库存和历史记录，普通开单选品默认隐藏，可从库存页面开单清库存。"}仅影响当前仓库。`,
+      [{text: "取消", style: "cancel"}, {text: "确认", style: remove ? "destructive" : "default", onPress: async () => {
+        if (lock.current) return;
+        lock.current = true; setBusy(true); setError("");
+        try {
+          await api(`/products/${product.id}${remove ? "" : "/status"}`, remove ? "DELETE" : "POST", remove ? undefined : {active});
+          onSaved(remove ? "商品已删除" : active ? "商品已上架" : "商品已下架");
+        } catch (e) { setError((e as Error).message); }
+        finally {lock.current = false; setBusy(false);}
+      }}]);
+  };
   return (
     <ScreenModal
+      busy={busy} error={error} errorRevision={errorRevision}
       title="商品详情"
       onClose={onClose}
       footer={
@@ -490,11 +517,12 @@ export function ProductDetail({
           <Button
             title="采购入库"
             kind="secondary"
+            disabled={busy}
             onPress={() => openOrder("in", product)}
           />
           <Button
             title="销售出库"
-            disabled={!product.stock}
+            disabled={busy || !product.stock}
             onPress={() => openOrder("out", product)}
           />
         </Columns>
@@ -513,6 +541,7 @@ export function ProductDetail({
           </View>
         </View>
         {!!product.image && <ProductImage uri={product.image} label="商品图片" style={{ width: "100%", height: 200 }} />}
+        <DetailRow label="上架状态" value={product.active === 0 ? "已下架" : "已上架"} />
         <StockBadge product={product} />
         <View style={s.divider} />
         <DetailRow
@@ -531,7 +560,11 @@ export function ProductDetail({
         <DetailRow label="采购价" value={money(product.cost)} />
         <DetailRow label="销售价" value={money(product.price)} />
       </Card>
-      <Button title="编辑商品" kind="secondary" onPress={edit} />
+      <Button title="编辑商品" kind="secondary" disabled={busy} onPress={edit} />
+      {isAdmin && <>
+        <Button title={product.active === 0 ? "上架商品" : "下架商品"} kind="secondary" disabled={busy} onPress={() => change()} />
+        <Button title="删除商品" kind="danger" disabled={busy} onPress={() => change(true)} />
+      </>}
     </ScreenModal>
   );
 }

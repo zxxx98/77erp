@@ -1,0 +1,42 @@
+import { test, expect } from '@playwright/test';
+
+test('delist, filter, explicitly choose for clearance, relist, and delete an unused product', async ({ page }) => {
+  await page.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
+  expect((await page.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
+  const created = await page.request.post('/api/products', { data: { name: '生命周期测试商品', barcode: 'BROWSER-LIFE-001', category: '日用百货', unit: '件', cost: 10, price: 20, threshold: 0 } });
+  expect(created.status()).toBe(201);
+  const {id} = await created.json();
+  await page.goto('/#products');
+  await page.getByRole('textbox', {name: '筛选商品'}).fill('生命周期测试商品');
+  // Cancelling the confirmation leaves the product listed.
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', {name: '下架 生命周期测试商品', exact: true}).click();
+  await expect(page.locator('.product-table').getByText('已下架', {exact: true})).toHaveCount(0);
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', {name: '下架 生命周期测试商品', exact: true}).click();
+  await expect(page.getByRole('button', {name: '上架 生命周期测试商品', exact: true})).toBeVisible();
+  await page.getByRole('combobox', {name: '商品上架状态'}).selectOption('active');
+  await expect(page.getByText('没有找到商品', {exact: true})).toBeVisible();
+  await page.getByRole('combobox', {name: '商品上架状态'}).selectOption('inactive');
+  await expect(page.getByRole('button', {name: '上架 生命周期测试商品', exact: true})).toBeVisible();
+  await page.goto('/#sales');
+  await page.getByRole('button', {name: '新建出库', exact: true}).click();
+  await page.getByRole('textbox', {name: '查找并添加商品'}).fill('生命周期测试商品');
+  await expect(page.locator('.picker-results button')).toHaveCount(0);
+  await page.getByRole('checkbox', {name: '包含下架商品（用于清库存等操作）'}).check();
+  await expect(page.getByRole('button', {name: /生命周期测试商品（已下架）/})).toBeVisible();
+  await page.getByRole('button', {name: /生命周期测试商品（已下架）/}).click();
+  await expect(page.locator('.form-table').getByText('生命周期测试商品（已下架）', {exact: true})).toBeVisible();
+  await page.getByRole('button', {name: '取消', exact: true}).click();
+  await page.goto('/#products');
+  await page.getByRole('textbox', {name: '筛选商品'}).fill('生命周期测试商品');
+  await page.getByRole('button', {name: '网格视图'}).click();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', {name: '上架 生命周期测试商品', exact: true}).click();
+  await expect(page.getByRole('button', {name: '下架 生命周期测试商品', exact: true})).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', {name: '删除 生命周期测试商品', exact: true}).click();
+  await expect(page.getByText('没有找到商品', {exact: true})).toBeVisible();
+  expect((await page.request.get(`/api/products/barcode/BROWSER-LIFE-001`)).status()).toBe(404);
+  expect((await page.request.post(`/api/products/${id}/status`, {data: {active: 1}})).status()).toBe(404);
+});

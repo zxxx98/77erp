@@ -399,6 +399,41 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       });
     }
   });
+  // Lifecycle actions affect only the current warehouse, never synchronized copies.
+  app.post("/api/products/:id/status", (req, res) => {
+    if (![0, 1].includes(req.body?.active))
+      return res.status(400).json({ error: "请选择有效的上架或下架状态。" });
+    const result = db.prepare("UPDATE products SET active=? WHERE id=?").run(req.body.active, req.params.id);
+    if (!result.changes) return res.status(404).json({ error: "商品不存在。" });
+    res.json({ ok: true });
+  });
+  app.delete("/api/products/:id", (req, res) => {
+    let inTransaction = false;
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      inTransaction = true;
+      const product = db.prepare("SELECT * FROM products WHERE id=?").get(req.params.id);
+      if (!product) {
+        db.exec("ROLLBACK");
+        inTransaction = false;
+        return res.status(404).json({ error: "商品不存在。" });
+      }
+      if (product.stock !== 0 || product.inventory_value_cents !== 0)
+        throw new Error("商品仍有库存或库存价值，不能删除，请使用下架。清库存可从库存页面开单。");
+      if (db.prepare("SELECT 1 FROM order_items WHERE product_id=? LIMIT 1").get(product.id) ||
+          db.prepare("SELECT 1 FROM stock_adjustments WHERE product_id=? LIMIT 1").get(product.id))
+        throw new Error("商品已有单据或盘点记录，不能删除，请使用下架。");
+      if (db.prepare("SELECT 1 FROM drafts d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
+        throw new Error("商品被草稿引用，不能删除，请先移除草稿中的商品或使用下架。");
+      db.prepare("DELETE FROM products WHERE id=?").run(product.id);
+      db.exec("COMMIT");
+      inTransaction = false;
+      res.json({ ok: true });
+    } catch (e) {
+      if (inTransaction) db.exec("ROLLBACK");
+      res.status(400).json({ error: e.message.trim() });
+    }
+  });
   app.post("/api/orders", (req, res) => {
     let inTransaction = false;
     try {

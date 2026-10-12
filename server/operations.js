@@ -407,6 +407,8 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           typeof row.created_by_name !== 'string' || row.created_by_name.length > 32)
         fail('备份操作人信息无效。');
     }
+    // Backups made before product lifecycle support default to listed products.
+    for (const p of data.products || []) if (p && !('active' in p)) p.active = 1;
     for (const table of tables) {
       if (!Array.isArray(data[table]) || data[table].length > 100000)
         fail(`备份中的 ${table} 格式或数量无效。`);
@@ -444,6 +446,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const p of data.products) {
       productValues(p);
       productDetails(p);
+      if (![0,1].includes(p.active)) fail("备份商品上架状态无效。");
       if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category) fail("备份商品分类关联无效。");
       if (
         !p.barcode ||

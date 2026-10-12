@@ -53,7 +53,7 @@ export function migrateCatalog(db) {
     id INTEGER PRIMARY KEY, name TEXT NOT NULL, parent_id INTEGER REFERENCES categories(id));
     CREATE UNIQUE INDEX IF NOT EXISTS categories_sibling_name ON categories(COALESCE(parent_id,0),name);`);
   const columns = new Set(db.prepare('PRAGMA table_info(products)').all().map(c => c.name));
-  for (const [key, definition] of Object.entries({category_id: 'INTEGER REFERENCES categories(id)', image: "TEXT NOT NULL DEFAULT ''", specification: "TEXT NOT NULL DEFAULT ''", note: "TEXT NOT NULL DEFAULT ''"}))
+  for (const [key, definition] of Object.entries({active: 'INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1))', category_id: 'INTEGER REFERENCES categories(id)', image: "TEXT NOT NULL DEFAULT ''", specification: "TEXT NOT NULL DEFAULT ''", note: "TEXT NOT NULL DEFAULT ''"}))
     if (!columns.has(key)) db.exec(`ALTER TABLE products ADD COLUMN ${key} ${definition}`);
   for (const p of db.prepare('SELECT id,category FROM products WHERE category_id IS NULL').all()) {
     let c = db.prepare('SELECT id FROM categories WHERE parent_id IS NULL AND name=?').get(p.category);

@@ -232,6 +232,7 @@ const routeRoles = new Map(Object.entries({
   'get /api/categories': 'employee', 'post /api/categories': 'admin', 'put /api/categories/:id': 'admin', 'post /api/categories/:id/delete': 'admin',
   'get /api/data': 'employee', 'get /api/style': 'employee', 'get /api/products/barcode/:barcode': 'employee',
   'post /api/products': 'employee', 'put /api/products/:id': 'employee', 'post /api/orders': 'employee',
+  'post /api/products/:id/status': 'admin', 'delete /api/products/:id': 'admin',
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/contacts': 'employee', 'post /api/contacts': 'admin',
   'get /api/drafts': 'employee', 'post /api/drafts': 'employee', 'post /api/drafts/:id/discard': 'employee',

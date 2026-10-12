@@ -122,6 +122,7 @@ test.each([
     viewport(width, height, scale);
     render(
       <ProductDetail
+        onSaved={jest.fn()}
         product={product}
         onClose={jest.fn()}
         edit={jest.fn()}
@@ -311,6 +312,7 @@ test("long product details remain complete and order field labels stay distinct"
   };
   const result = render(
     <ProductDetail
+        onSaved={jest.fn()}
       product={longProduct}
       onClose={jest.fn()}
       edit={jest.fn()}

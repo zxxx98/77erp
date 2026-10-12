@@ -256,6 +256,7 @@ export function OrderEditor({
     initialDraft ? initialDraft.items.flatMap(i => { const product=products.find(p=>p.id===i.product_id);return product ? [{product,quantity:String(i.quantity),price:String(i.price)}] : []; }) : initialProduct ? addLine([], initialProduct, type) : [],
   );
   const [query, setQuery] = useState("");
+  const [includeInactive, setIncludeInactive] = useState(false);
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -339,7 +340,7 @@ export function OrderEditor({
     );
   };
   const matches = query.trim()
-    ? products.filter((product) => matchesProduct(product, query)).slice(0, 20)
+    ? products.filter((product) => (includeInactive || product.active !== 0) && matchesProduct(product, query)).slice(0, 20)
     : [];
   return (
     <ScreenModal
@@ -407,6 +408,7 @@ export function OrderEditor({
           )}
         </Card>
       )}
+      <Button title={includeInactive ? "隐藏下架商品" : "包含下架商品（清库存等）"} kind="secondary" disabled={busy} onPress={() => setIncludeInactive(!includeInactive)} />
       {!lines.length && (
         <Card>
           <Text style={s.caption}>扫码或搜索，添加第一件商品。</Text>
@@ -416,7 +418,7 @@ export function OrderEditor({
         <Card key={line.product.id}>
           <View style={s.between}>
             <View style={s.grow}>
-              <Text style={s.rowTitle}>{line.product.name}</Text>
+              <Text style={s.rowTitle}>{line.product.name}{line.product.active === 0 ? "（已下架）" : ""}</Text>
               <Text style={s.caption}>
                 可用库存 {line.product.stock} {line.product.unit}
               </Text>

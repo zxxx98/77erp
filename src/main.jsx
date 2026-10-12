@@ -869,6 +869,7 @@ function App({ admin, onLogout }) {
                   data={data}
                   isAdmin={isAdmin}
                   onCategoriesChanged={reload}
+                  onSaved={saved}
                   search={search}
                   setSearch={setSearch}
                   edit={(product) => setModal({ kind: "product", product })}
@@ -1636,7 +1637,30 @@ function CategoryManager({ categories, onClose, onChanged }) {
   </Modal>;
 }
 
-function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged, isAdmin }) {
+function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged, onSaved, isAdmin }) {
+  const [status, setStatus] = useState("all");
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const actionLock = useRef(false);
+  const changeProduct = async (product, remove = false) => {
+    if (actionLock.current) return;
+    const active = product.active === 0 ? 1 : 0;
+    const message = remove
+      ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和草稿关联的商品。仅影响当前仓库。`
+      : `确定${active ? "上架" : "下架"}「${product.name}」？${active ? "上架后恢复普通开单选品。" : "下架后普通开单选品默认隐藏，库存和历史记录保留，可从库存页面开单清库存。"}仅影响当前仓库。`;
+    if (!window.confirm(message)) return;
+    actionLock.current = true;
+    setBusy(true); setActionError("");
+    try {
+      await api(`/products/${product.id}${remove ? "" : "/status"}`, { method: remove ? "DELETE" : "POST", body: remove ? {} : { active } });
+      await onSaved(remove ? "商品已删除" : active ? "商品已上架" : "商品已下架");
+    } catch (e) { setActionError(e.message); }
+    finally { actionLock.current = false; setBusy(false); }
+  };
+  const lifecycleActions = (p) => isAdmin && <>
+    <button className="text-button" disabled={busy} aria-label={`${p.active === 0 ? "上架" : "下架"} ${p.name}`} onClick={() => changeProduct(p)}>{p.active === 0 ? "上架" : "下架"}</button>
+    <button className="text-button product-delete" disabled={busy} aria-label={`删除 ${p.name}`} onClick={() => changeProduct(p, true)}>删除</button>
+  </>;
   const [category, setCategory] = useState(null),
     [view, setView] = useState("list"),
     [pageNum, setPageNum] = useState(1);
@@ -1646,13 +1670,15 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
   useEffect(() => { if (category && !categories.some(c => c.id === category)) setCategory(null); }, [categories, category]);
   const filtered = data.products.filter(
     (p) =>
+      (status === "all" || (status === "active" ? p.active !== 0 : p.active === 0)) &&
       (category === null || branch.has(p.category_id)) &&
       (!search ||
         [p.name, p.barcode, p.category, p.specification || "", p.note || ""].some((s) =>
           s.toLowerCase().includes(search.toLowerCase()),
         )),
   );
-  useEffect(() => setPageNum(1), [category, search]);
+  useEffect(() => setPageNum(1), [category, search, status]);
+  useEffect(() => setPageNum(p => Math.min(p, Math.max(1, Math.ceil(filtered.length / 8)))), [filtered.length]);
   const visible = filtered.slice((pageNum - 1) * 8, pageNum * 8);
   return (
     <>
@@ -1665,6 +1691,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
           新增商品
         </Button>
       </PageHeading>
+      {actionError && <div className="info-box" role="alert">{actionError}</div>}
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
           <h3>商品分类</h3>
@@ -1674,6 +1701,9 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
         <div className="table-toolbar">
           {isAdmin && <Button onClick={() => setManaging(true)}>管理分类</Button>}
           <div className="toolbar-right">
+            <select aria-label="商品上架状态" value={status} onChange={e => setStatus(e.target.value)}>
+              <option value="all">全部状态</option><option value="active">已上架</option><option value="inactive">已下架</option>
+            </select>
             <div className="table-search">
               <Search size={16} />
               <input
@@ -1728,6 +1758,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                           <ProductArt product={p} />
                           <div>
                             <strong>{p.name}</strong>
+                            {p.active === 0 && <Badge tone="orange">已下架</Badge>}
                             <small>{p.barcode}</small>
                             {p.specification && <small className="product-spec">{p.specification}</small>}
                             {p.note && <small className="product-note" title={p.note}>{p.note}</small>}
@@ -1777,6 +1808,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                           >
                             编辑
                           </button>
+                          {lifecycleActions(p)}
                         </div>
                       </td>
                     </tr>
@@ -1802,7 +1834,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                       {stockStatus(p)}
                     </Badge>
                   </div>
-                  <h3>{p.name}</h3>
+                  <h3>{p.name} {p.active === 0 && <Badge tone="orange">已下架</Badge>}</h3>
                   <p>{p.barcode}</p>
                   <p>{p.category}</p>
                   {p.specification && <p className="product-spec">{p.specification}</p>}
@@ -1822,6 +1854,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                       编辑
                       <ChevronRight size={13} />
                     </button>
+                    {lifecycleActions(p)}
                   </div>
                 </article>
               ))}
@@ -2625,6 +2658,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
     [busy, setBusy] = useState(false),
     [camera, setCamera] = useState(false),
     [scanMessage, setScanMessage] = useState("");
+  const [includeInactive, setIncludeInactive] = useState(false);
   const add = (p) => {
     setItems((prev) => {
       const found = prev.find((i) => i.product_id === p.id);
@@ -2644,7 +2678,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
           ];
     });
     setQuery("");
-    setScanMessage(`已添加 ${p.name}`);
+    setScanMessage(`已添加 ${p.name}${p.active === 0 ? "（已下架）" : ""}`);
     setError("");
   };
   const scan = (code) => {
@@ -2702,6 +2736,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
     ),
   ];
   const matches = data.products
+    .filter(p => includeInactive || p.active !== 0)
     .filter((p) =>
       [p.name, p.barcode].some((s) =>
         s.toLowerCase().includes(query.toLowerCase()),
@@ -2717,6 +2752,8 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
     >
       <form onSubmit={submit}>
         <div className="form-body order-form-body">
+          <label className="inactive-product-option"><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />包含下架商品（用于清库存等操作）</label>
+
           <details><summary>打开已有草稿</summary><Drafts type={type} onResume={d => { if ((items.length || note) && !window.confirm("打开草稿将替换当前编辑内容，是否继续？")) return; setDraft(d);setPartner(d.partner);setPartnerId(d.partner_id);setNote(d.note);setItems(d.items); }} /></details>
           {draft && <p>正在编辑草稿 #{draft.id} · 版本 {draft.version}</p>}
           <Button type="button" disabled={busy || draftAction.busy} onClick={() => draftAction.run(async () => {
@@ -2808,7 +2845,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
                     <button key={p.id} type="button" onClick={() => add(p)}>
                       <ProductArt product={p} size="small" preview={false} />
                       <span>
-                        <strong>{p.name}</strong>
+                        <strong>{p.name}{p.active === 0 ? "（已下架）" : ""}</strong>
                         <small>
                           {p.barcode} · 库存 {p.stock} {p.unit}
                         </small>
@@ -2854,7 +2891,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
                         <div className="product-info">
                           <ProductArt product={p} size="small" />
                           <div>
-                            <strong>{p.name}</strong>
+                            <strong>{p.name}{p.active === 0 ? "（已下架）" : ""}</strong>
                             <small>
                               库存 {p.stock} {p.unit}
                             </small>

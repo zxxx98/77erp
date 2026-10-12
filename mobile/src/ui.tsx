@@ -322,7 +322,7 @@ export function ProductRow({
       >
         <View style={s.row}>
           <View style={s.grow}>
-            <Text numberOfLines={2} style={s.rowTitle}>{product.name}</Text>
+            <Text numberOfLines={2} style={s.rowTitle}>{product.name}{product.active === 0 ? "（已下架）" : ""}</Text>
             <Text numberOfLines={1} style={s.caption}>{product.barcode}</Text>
             {!!product.specification && <Text numberOfLines={2} style={s.caption}>{product.specification}</Text>}
           </View>

@@ -501,6 +501,8 @@ export function AppContent() {
         )}
         {modal?.kind === "product" && (
           <ProductDetail
+            isAdmin={isAdmin}
+            onSaved={saved}
             product={
               data.products.find(
                 (product) => product.id === modal.product.id,

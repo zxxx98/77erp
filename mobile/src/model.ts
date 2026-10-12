@@ -3,6 +3,7 @@ export type Draft = { created_by?:number|null; created_by_name?:string; id:numbe
 export type Warehouse = { id: number; name: string; created_at: string };
 export type Category = { id: number; name: string; parent_id: number | null };
 export type Product = {
+  active?: number;
   category_id?: number;
   image?: string;
   specification?: string;

@@ -4722,3 +4722,8 @@ table {
 }
 
 .warehouse-row strong { min-width: 0; overflow-wrap: anywhere; }
+
+.product-delete { color: #dc2626; }
+.product-grid-actions { flex-wrap: wrap; }
+.inactive-product-option { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.inactive-product-option input { width: auto; }

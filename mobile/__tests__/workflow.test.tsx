@@ -332,7 +332,7 @@ test("native product editor selects a descendant category and persists picked im
 
 test("native product details display its image, specification and notes", () => {
   const image = 'data:image/jpeg;base64,/9j/';
-  render(<ProductDetail product={{ ...product, image, specification: '350ml', note: '小心轻放' }} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
+  render(<ProductDetail onSaved={jest.fn()} product={{ ...product, image, specification: '350ml', note: '小心轻放' }} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
   expect(screen.getByLabelText('商品图片')).toBeOnTheScreen();
   expect(screen.getByText('350ml')).toBeOnTheScreen();
   expect(screen.getByText('小心轻放')).toBeOnTheScreen();
@@ -411,4 +411,37 @@ test("native scanner recognizes the product QR label and explains labels from an
   fireEvent.press(screen.getByRole("button", { name: "打开摄像头扫码" }));
   await screen.findByText("商品已识别");
   expect(screen.getByText("陶瓷杯")).toBeOnTheScreen();
+});
+
+test("native lifecycle controls require admin and show server deletion errors", async () => {
+  const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  const saved = jest.fn();
+  const detail = render(<ProductDetail product={{...product, active: 0}} isAdmin onSaved={saved} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
+  expect(screen.getByText('已下架')).toBeOnTheScreen();
+  request.mockResolvedValueOnce({ok: true});
+  fireEvent.press(screen.getByRole('button', {name: '上架商品'}));
+  const confirm = alert.mock.calls.at(-1)?.[2]?.find(b => b.text === '确认')?.onPress;
+  await act(async () => { await confirm?.(); });
+  expect(request).toHaveBeenCalledWith(`/products/${product.id}/status`, 'POST', {active: 1});
+  expect(saved).toHaveBeenCalledWith('商品已上架');
+  saved.mockClear();
+  request.mockRejectedValueOnce(new Error('商品已有单据或盘点记录，不能删除，请使用下架。'));
+  fireEvent.press(screen.getByRole('button', {name: '删除商品'}));
+  const remove = alert.mock.calls.at(-1)?.[2]?.find(b => b.text === '确认')?.onPress;
+  await act(async () => { await remove?.(); });
+  expect(request).toHaveBeenCalledWith(`/products/${product.id}`, 'DELETE', undefined);
+  expect(screen.getByText('商品已有单据或盘点记录，不能删除，请使用下架。')).toBeOnTheScreen();
+  expect(saved).not.toHaveBeenCalled();
+  detail.rerender(<ProductDetail product={product} onSaved={saved} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
+  expect(screen.queryByRole('button', {name: '删除商品'})).toBeNull();
+  expect(screen.queryByRole('button', {name: '下架商品'})).toBeNull();
+  alert.mockRestore();
+});
+
+test("native order search hides delisted products until explicitly included", () => {
+  render(<OrderEditor type="out" products={[{...product, active: 0}]} contacts={[]} onClose={jest.fn()} onSaved={jest.fn()} />);
+  fireEvent.changeText(screen.getByLabelText('搜索要添加的商品或条码'), product.name);
+  expect(screen.queryByText(`${product.name}（已下架）`)).toBeNull();
+  fireEvent.press(screen.getByRole('button', {name: '包含下架商品（清库存等）'}));
+  expect(screen.getByText(`${product.name}（已下架）`)).toBeOnTheScreen();
 });
