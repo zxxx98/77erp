@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BinaryBitmap, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from '@zxing/library';
+import { BinaryBitmap, DecodeHintType, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from '@zxing/library';
 import { productQrPayload, qrSymbol } from '../src/product-code.js';
 import { createApp } from '../server/app.js';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -18,8 +18,17 @@ function decodeSymbol(symbol) {
     for (let row = y * scale; row < (y + 1) * scale; row++)
       pixels.fill(0, row * width + x * scale, row * width + (x + length) * scale);
   }
-  return new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(pixels, width, width)))).getText();
+  const hints = new Map([[DecodeHintType.PURE_BARCODE, true]]);
+  return new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(pixels, width, width))), hints).getText();
 }
+
+test('QR label from the failed 1.4.2 release decodes without camera-style detection', () => {
+  const payload = productQrPayload(
+    { id: 15, barcode: '6901234567001', name: '二维码分仓商品', unit: '套' },
+    2, '833b407e-76e9-4d7f-855e-d6c699ec7e8f',
+  );
+  assert.equal(decodeSymbol(qrSymbol(payload)), payload);
+});
 
 test('QR label paths decode to versioned UTF-8 product identity, including maximum-length metadata', () => {
   for (const product of [

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { BinaryBitmap, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from '@zxing/library';
+import { BinaryBitmap, DecodeHintType, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from '@zxing/library';
 
 test.beforeAll(async ({ request }) => {
   const response = await request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
@@ -25,7 +25,10 @@ async function decodeSvg(page, svg) {
     } finally { URL.revokeObjectURL(source); }
   }, svg);
   const pixels = new Uint8ClampedArray(image.pixels);
-  return JSON.parse(new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(pixels, image.size, image.size)))).getText());
+  // Exported SVGs are upright symbols with a quiet zone; skip camera-style detection,
+  // which can mistake payload patterns for alignment markers in valid QR labels.
+  const hints = new Map([[DecodeHintType.PURE_BARCODE, true]]);
+  return JSON.parse(new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(pixels, image.size, image.size))), hints).getText());
 }
 
 test('toggle and download a decodable QR label, retain barcode export and never mutate business data', async ({ page }) => {
