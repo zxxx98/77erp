@@ -3,6 +3,7 @@ import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
 import { api, device, getWarehouseId, scanBarcode } from "./native";
+import { parseProductCode, resolveProductCode } from "./product-scan";
 import {
   Category,
   flattenCategories,
@@ -100,7 +101,8 @@ export function ProductEditor({
     setError("");
     try {
       const code = await scanBarcode();
-      if (code) field("barcode")(code);
+      // A product label fills in its barcode; the rest of the label is not product data.
+      if (code) field("barcode")(parseProductCode(code).barcode);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -229,6 +231,8 @@ export function OrderEditor({
   initialProduct,
   initialDraft,
   contacts = [],
+  warehouseId,
+  sourceId,
   onClose,
   onSaved,
 }: {
@@ -237,6 +241,8 @@ export function OrderEditor({
   initialProduct?: Product;
   initialDraft?: Draft;
   contacts?: Contact[];
+  warehouseId?: number;
+  sourceId?: string;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -275,9 +281,9 @@ export function OrderEditor({
     try {
       const code = await scanBarcode();
       if (code) {
-        const product = products.find((item) => item.barcode === code.trim());
+        const product = resolveProductCode(code, { products, warehouseId, sourceId });
         if (!product)
-          throw new Error(`未找到条码「${code}」，请先建立商品档案。`);
+          throw new Error(`未找到条码「${code.trim()}」，请先建立商品档案。`);
         add(product);
       }
     } catch (e) {

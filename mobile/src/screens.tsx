@@ -20,6 +20,7 @@ import { ProductImage } from "./ProductImage";
 import { PaymentEditor } from "./commerce";
 import { OrderCorrection } from "./operations";
 import { api, ApiError, scanBarcode } from "./native";
+import { resolveProductCode } from "./product-scan";
 import {
   Category,
   flattenCategories,
@@ -708,10 +709,14 @@ export function ScannerScreen({
   products,
   onClose,
   openOrder,
+  warehouseId,
+  sourceId,
 }: {
   products: Product[];
   onClose: () => void;
   openOrder: (type: "in" | "out", product: Product) => void;
+  warehouseId?: number;
+  sourceId?: string;
 }) {
   const [mode, setMode] = useState<"query" | "in" | "out">("query");
   const [barcode, setBarcode] = useState("");
@@ -719,10 +724,17 @@ export function ScannerScreen({
   const [busy, setBusy] = useState(false);
   const { error, errorRevision, setError } = useFormError();
   const lookup = (code: string) => {
-    const product = products.find((item) => item.barcode === code.trim());
+    let product: Product | null = null;
+    try {
+      product = resolveProductCode(code, { products, warehouseId, sourceId });
+    } catch (e) {
+      setSelected(undefined);
+      setError((e as Error).message);
+      return;
+    }
     if (!product) {
       setSelected(undefined);
-      setError(`未找到条码「${code}」，请先建立商品档案。`);
+      setError(`未找到条码「${code.trim()}」，请先建立商品档案。`);
       return;
     }
     setError("");

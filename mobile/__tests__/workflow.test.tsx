@@ -396,3 +396,19 @@ test("native warehouse selection commits only a successful load and scopes the n
   expect(request).toHaveBeenCalledWith("/data", "GET", undefined, 2);
   expect(setWarehouseId).toHaveBeenLastCalledWith(2);
 });
+
+test("native scanner recognizes the product QR label and explains labels from another server", async () => {
+  const sourceId = "708528e6-7d1e-4d1b-8ba3-f4f769931c49";
+  const label = (source: string) => JSON.stringify({ format: "77erp", version: 1, type: "product", source_id: source, warehouse_id: 1,
+    product: { id: product.id, barcode: product.barcode, name: product.name, unit: product.unit } });
+  jest.mocked(scanBarcode)
+    .mockResolvedValueOnce(label("5ed3098f-d9f4-4992-b6ab-6355966dbb43"))
+    .mockResolvedValueOnce(label(sourceId));
+  render(<ScannerScreen products={[product]} warehouseId={1} sourceId={sourceId} onClose={jest.fn()} openOrder={jest.fn()} />);
+  fireEvent.press(screen.getByRole("button", { name: "打开摄像头扫码" }));
+  await screen.findByText(/其他服务器/);
+  expect(screen.queryByText("商品已识别")).toBeNull();
+  fireEvent.press(screen.getByRole("button", { name: "打开摄像头扫码" }));
+  await screen.findByText("商品已识别");
+  expect(screen.getByText("陶瓷杯")).toBeOnTheScreen();
+});

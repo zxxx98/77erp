@@ -46,6 +46,7 @@ import { WarehouseManager, ProductSync } from "./Warehouses.jsx";
 import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
 import { ProductImage } from "./ProductImage.jsx";
 import { AuthGate } from "./Auth.jsx";
+import { resolveProductCode } from "./product-scan.js";
 import { ChangePassword, UserManager } from "./Users.jsx";
 import { version as appVersion } from "../package.json";
 import { BusinessTools, Drafts, Payments, useBusiness } from "./Commerce.jsx";
@@ -467,7 +468,7 @@ function CameraScanner({ onResult }) {
               正在开启摄像头…
             </div>
           )}
-          <span className="camera-instruction">将商品条码置于取景框内</span>
+          <span className="camera-instruction">将商品条码或二维码置于取景框内</span>
         </>
       )}
     </div>
@@ -2647,14 +2648,18 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
     setError("");
   };
   const scan = (code) => {
-    const p = data.products.find((p) => p.barcode === code.trim());
-    if (p) {
+    setCamera(false);
+    try {
+      const p = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id || 1, sourceId: data.instance_id });
+      if (!p) {
+        setError(`未找到条码「${code.trim()}」，请先在商品管理中建档。`);
+        return;
+      }
       add(p);
       setBarcode("");
-    } else {
-      setError(`未找到条码「${code}」，请先在商品管理中建档。`);
+    } catch (e) {
+      setError(e.message);
     }
-    setCamera(false);
   };
   const update = (id, key, value) =>
     setItems((prev) =>
@@ -3049,10 +3054,17 @@ function Scanner({ data, openOrder, notify }) {
     if (manual) input.current?.focus();
   }, [manual]);
   const scan = (code) => {
-    const p = data.products.find((p) => p.barcode === code.trim());
     setCamera(false);
+    let p = null;
+    try {
+      p = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id || 1, sourceId: data.instance_id });
+    } catch (e) {
+      setError(e.message);
+      setSelected(null);
+      return;
+    }
     if (!p) {
-      setError(`未找到「${code}」对应的商品，请先在商品管理中建档。`);
+      setError(`未找到「${code.trim()}」对应的商品，请先在商品管理中建档。`);
       setSelected(null);
       return;
     }
@@ -3068,7 +3080,7 @@ function Scanner({ data, openOrder, notify }) {
       <PageHeading
         eyebrow="SCAN WORKSPACE"
         title="扫码工作台"
-        description="使用手机摄像头识别商品条码，进行商品查询、入库或出库。"
+        description="使用手机摄像头识别商品条码或二维码标签，进行商品查询、入库或出库。"
       >
         <span className="scanner-ready">
           <i />
@@ -3108,7 +3120,7 @@ function Scanner({ data, openOrder, notify }) {
                   ? "扫描入库商品"
                   : "扫描出库商品"}
             </h2>
-            <p>打开手机摄像头，将商品条码放入取景框</p>
+            <p>打开手机摄像头，将商品条码或二维码放入取景框</p>
             <Button
               kind="primary"
               icon={Camera}

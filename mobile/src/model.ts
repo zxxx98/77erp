@@ -54,6 +54,7 @@ export const reportOrders = (orders: Order[]): Order[] => orders.filter(o => o.s
 export type Workspace = {
   warehouses?: Warehouse[];
   warehouse_id?: number;
+  instance_id?: string;
   categories?: Category[];
   contacts?: Contact[];
   products: Product[];

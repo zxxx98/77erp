@@ -532,6 +532,8 @@ export function AppContent() {
             initialDraft={modal.draft}
             contacts={data.contacts || []}
             products={data.products}
+            warehouseId={data.warehouse_id || 1}
+            sourceId={data.instance_id}
             onClose={() => setModal(null)}
             onSaved={saved}
           />
@@ -542,6 +544,8 @@ export function AppContent() {
         {modal?.kind === "scanner" && (
           <ScannerScreen
             products={data.products}
+            warehouseId={data.warehouse_id || 1}
+            sourceId={data.instance_id}
             onClose={() => setModal(null)}
             openOrder={openOrder}
           />

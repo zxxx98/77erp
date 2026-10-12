@@ -199,3 +199,22 @@ test("camera failure has a useful fallback, mobile pages have no document overfl
   );
   expect(errors).toEqual([]);
 });
+
+test("product QR labels resolve in the scan workspace and foreign labels are explained", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  const data = await (await page.request.get("/api/data")).json();
+  const product = data.products.find((p) => p.name === "极简陶瓷马克杯");
+  const label = (source) => JSON.stringify({ format: "77erp", version: 1, type: "product", source_id: source,
+    warehouse_id: data.warehouse_id, product: { id: product.id, barcode: product.barcode, name: "旧名称", unit: product.unit } });
+  await page.getByRole("link", { name: "扫码工作台", exact: true }).click();
+  await page.getByRole("button", { name: "手动输入条码", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "商品条码", exact: true });
+  await input.fill(label("5ed3098f-d9f4-4992-b6ab-6355966dbb43"));
+  await input.press("Enter");
+  await expect(page.locator(".scanner-main .form-error")).toContainText("其他服务器");
+  await expect(page.locator(".scan-result")).toHaveCount(0);
+  await input.fill(label(data.instance_id));
+  await input.press("Enter");
+  await expect(page.locator(".scan-result-product h3")).toHaveText("极简陶瓷马克杯");
+});
