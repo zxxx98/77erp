@@ -38,6 +38,7 @@ import {
 export function ProductEditor({
   product,
   categories = [],
+  units = ["件"],
   warehouses = [],
   warehouseId = 1,
   onClose,
@@ -45,6 +46,7 @@ export function ProductEditor({
 }: {
   product?: Product;
   categories?: Category[];
+  units?: string[];
   warehouses?: Warehouse[];
   warehouseId?: number;
   onClose: () => void;
@@ -60,7 +62,7 @@ export function ProductEditor({
     image: product?.image ?? "",
     specification: product?.specification ?? "",
     note: product?.note ?? "",
-    unit: product?.unit ?? "件",
+    unit: product?.unit ?? units[0] ?? "件",
     cost: String(product?.cost ?? 0),
     price: String(product?.price ?? 0),
     threshold: String(product?.threshold ?? 5),
@@ -169,6 +171,8 @@ export function ProductEditor({
             editable={!busy}
           />
         </Columns>
+        <Chips value={form.unit} options={[...new Set([...units, ...(product ? [product.unit] : [])])].map(unit => ({ id: unit, label: unit }))} onChange={unit => { if (!busy) field("unit")(unit); }} />
+        <Text style={s.caption}>可选择已配置的单位，也可输入。常用单位在「设置 → 计量单位」中管理。</Text>
       </Card>
       <Card>
         <Text style={s.label}>商品图片</Text>
@@ -514,6 +518,7 @@ export function SettingsEditor({
   };
   const [business, setBusiness] = useState(settings.business_name);
   const [warehouse, setWarehouse] = useState(settings.warehouse_name);
+  const [units, setUnits] = useState(settings.units || ["件"]);
   useEffect(() => setWarehouse(settings.warehouse_name), [settings.warehouse_name]);
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
@@ -550,6 +555,7 @@ export function SettingsEditor({
       await api("/settings", "PUT", {
         business_name: business.trim(),
         warehouse_name: warehouse.trim(),
+        units,
       });
       onSaved("工作空间设置已保存");
     } catch (e) {
@@ -567,7 +573,8 @@ export function SettingsEditor({
       errorRevision={errorRevision}
       dirty={
         business !== settings.business_name ||
-        warehouse !== settings.warehouse_name
+        warehouse !== settings.warehouse_name ||
+        JSON.stringify(units) !== JSON.stringify(settings.units || ["件"])
       }
       busy={busy}
       footer={<Button title="保存设置" onPress={save} busy={busy} />}
@@ -587,6 +594,19 @@ export function SettingsEditor({
           maxLength={60}
           editable={!busy}
         />
+      </Card>
+      <Card>
+        <Text style={s.subtitle}>计量单位</Text>
+        <Text style={s.caption}>各仓库共用，第一项作为新增商品的默认单位。修改列表不会改变已有商品的单位，点击「保存设置」后生效。</Text>
+        {units.map((unit, index) => (
+          <View key={index} style={s.row}>
+            <View style={s.grow}>
+              <Field label={`单位 ${index + 1}${index === 0 ? "（默认）" : ""}`} value={unit} maxLength={100} editable={!busy} onChangeText={value => setUnits(current => current.map((item, i) => i === index ? value : item))} />
+            </View>
+            <IconButton icon={Trash2} label={`删除单位 ${index + 1}`} disabled={busy || units.length === 1} onPress={() => setUnits(current => current.filter((_, i) => i !== index))} />
+          </View>
+        ))}
+        <Button title="新增单位" icon={Plus} kind="secondary" disabled={busy || units.length >= 100} onPress={() => setUnits(current => [...current, ""])} />
       </Card>
       <Card>
         <Text style={s.subtitle}>仓库管理</Text>

@@ -270,7 +270,7 @@ function Barcode({ value, height = 45 }) {
   }, [value, height]);
   return <svg ref={ref} className="barcode" aria-label={`条码 ${value}`} />;
 }
-function Modal({ title, subtitle, children, onClose, wide = false, className = "" }) {
+function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions }) {
   const ref = useRef();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -324,10 +324,12 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
         aria-labelledby="modal-title"
       >
         <div className="modal-header">
-          <div>
+          <div className="modal-header-title">
             <h2 id="modal-title">{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
+          <div className="modal-header-actions">
+          {headerActions}
           <button
             className="icon-button"
             onClick={onClose}
@@ -335,10 +337,71 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
           >
             <X size={20} />
           </button>
+          </div>
         </div>
         {children}
       </section>
     </div>
+  );
+}
+function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify }) {
+  const [format, setFormat] = useState("barcode");
+  const [qr, setQr] = useState(null);
+  const codeRef = useRef(null);
+  useEffect(() => {
+    setQr(null);
+    if (format !== "qr") return;
+    let alive = true;
+    import("./product-code.js").then(({ productQrPayload, qrSymbol }) => {
+      if (alive) setQr(qrSymbol(productQrPayload(product, product.warehouse_id ?? warehouseId, sourceId)));
+    }).catch(error => {
+      if (alive) setQr({ error: error.message || "二维码生成失败，请刷新后重试。" });
+    });
+    return () => { alive = false; };
+  }, [format, product, warehouseId, sourceId]);
+  const download = async () => {
+    try {
+      const svg = codeRef.current?.querySelector("svg");
+      if (!svg) throw new Error("标签尚未生成，请重试。");
+      await downloadFile(
+        new XMLSerializer().serializeToString(svg),
+        `${product.barcode}${format === "qr" ? "-qr" : ""}.svg`,
+        "image/svg+xml",
+      );
+      notify(format === "qr" ? "二维码标签已下载" : "条码标签已下载");
+    } catch (error) { notify(error.message); }
+  };
+  return (
+    <Modal title="商品条码" subtitle="打印或下载商品标签" onClose={onClose} className="product-code-modal" headerActions={
+      <div className="code-format-switch" role="group" aria-label="标签类型">
+        <button type="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>条形码</button>
+        <button type="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>二维码</button>
+      </div>
+    }>
+      <div className="barcode-detail">
+        <ProductArt product={product} size="large" />
+        <h3>{product.name}</h3>
+        <div ref={codeRef} className="product-code-symbol">
+          {format === "barcode" ? <Barcode value={product.barcode} height={70} /> : !qr ? (
+            <div className="product-qr-loading" role="status"><LoaderCircle size={22} className="spin" />正在生成二维码…</div>
+          ) : qr.error ? (
+            <div className="form-error" role="alert">{qr.error}</div>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" className="product-qr" width="256" height="256" viewBox={`0 0 ${qr.size} ${qr.size}`} role="img" aria-label={`二维码 ${product.barcode}`} shapeRendering="crispEdges">
+              <title>{product.name} · {product.barcode}</title>
+              <rect width={qr.size} height={qr.size} fill="#fff" />
+              <path d={qr.path} fill="#000" />
+            </svg>
+          )}
+        </div>
+        {format === "qr" && <p className="product-code-number">{product.barcode}</p>}
+        <p>{format === "qr" ? "包含商品编码、名称、单位和仓库信息" : `CODE 128 · ${product.category}`}</p>
+      </div>
+      <div className="modal-footer">
+        <Button onClick={onClose}>关闭</Button>
+        <Button kind="primary" icon={Download} disabled={format === "qr" && (!qr || !!qr.error)} onClick={download}>下载标签</Button>
+      </div>
+    </Modal>
   );
 }
 function CameraScanner({ onResult }) {
@@ -847,6 +910,7 @@ function App({ admin, onLogout }) {
         <ProductForm
           product={modal.product}
           categories={data.categories || []}
+          units={data.settings.units}
           warehouses={data.warehouses || []}
           warehouseId={data.warehouse_id}
           onClose={() => setModal(null)}
@@ -868,38 +932,13 @@ function App({ admin, onLogout }) {
         <OrderDetail order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
       {modal?.kind === "barcode" && (
-        <Modal
-          title="商品条码"
-          subtitle="可打印标签，用于入库、出库或快速查找"
+        <ProductCodeModal
+          product={modal.product}
+          warehouseId={data.warehouse_id || 1}
+          sourceId={data.instance_id}
           onClose={() => setModal(null)}
-        >
-          <div className="barcode-detail">
-            <ProductArt product={modal.product} size="large" />
-            <h3>{modal.product.name}</h3>
-            <Barcode value={modal.product.barcode} height={70} />
-            <p>CODE 128 · {modal.product.category}</p>
-          </div>
-          <div className="modal-footer">
-            <Button onClick={() => setModal(null)}>关闭</Button>
-            <Button
-              kind="primary"
-              icon={Download}
-              onClick={async () => {
-                const svg = document.querySelector(".barcode-detail .barcode");
-                try {
-                  await downloadFile(
-                    new XMLSerializer().serializeToString(svg),
-                    `${modal.product.barcode}.svg`,
-                    "image/svg+xml",
-                  );
-                  notify("条码标签已下载");
-                } catch (error) { notify(error.message); }
-              }}
-            >
-              下载标签
-            </Button>
-          </div>
-        </Modal>
+          notify={notify}
+        />
       )}
       {modal?.kind === "settings" && (
         <SettingsForm
@@ -2344,7 +2383,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
   );
 }
 
-function ProductForm({ product, categories, warehouses, warehouseId, onClose, onSaved }) {
+function ProductForm({ product, categories, units = ["个"], warehouses, warehouseId, onClose, onSaved }) {
   const [syncTargets, setSyncTargets] = useState([]);
   const options = flattenCategories(categories);
   const [form, setForm] = useState(
@@ -2356,7 +2395,7 @@ function ProductForm({ product, categories, warehouses, warehouseId, onClose, on
       image: "",
       specification: "",
       note: "",
-      unit: "个",
+      unit: units[0],
       cost: "",
       price: "",
       threshold: 20,
@@ -2450,25 +2489,15 @@ function ProductForm({ product, categories, warehouses, warehouseId, onClose, on
             <label>
               计量单位 <span>*</span>
               <select
+                required
                 value={form.unit}
                 onChange={(e) => change("unit", e.target.value)}
               >
-                {[
-                  ...new Set([
-                    "个",
-                    "件",
-                    "台",
-                    "本",
-                    "条",
-                    "支",
-                    "箱",
-                    "包",
-                    form.unit,
-                  ]),
-                ].map((c) => (
+                {[...new Set([...units, form.unit])].map((c) => (
                   <option key={c}>{c}</option>
                 ))}
               </select>
+              <small>可在「设置 → 基础设置 → 计量单位」中配置。</small>
             </label>
             <label>
               采购价（元） <span>*</span>
@@ -3256,7 +3285,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
   const lock = useRef(false);
   const contentRef = useRef(null);
   const [section, setSection] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? "data" : "general");
-  const [form, setForm] = useState(settings),
+  const [form, setForm] = useState(() => ({ ...settings, units: settings.units || ["个"] })),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => setForm(current => ({ ...current, warehouse_name: settings.warehouse_name })), [settings.warehouse_name]);
@@ -3265,6 +3294,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
+    setError("");
     try {
       await api("/settings", { method: "PUT", body: form });
       await onSaved("工作空间设置已保存");
@@ -3300,7 +3330,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
       <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "商户与仓库信息"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"]].map(([id, title, Icon, caption]) => (
               <button key={id} type="button" aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </button>
@@ -3333,6 +3363,21 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
             />
           </label>
           </div>
+          <section className="unit-manager" aria-label="计量单位管理">
+            <div className="settings-section-heading"><h3>计量单位</h3><p>各仓库共用，第一项作为新增商品的默认单位。修改列表不会改变已有商品的单位。</p></div>
+            <div className="unit-list">
+              {form.units.map((unit, index) => (
+                <div className="unit-row" key={index}>
+                  <label>
+                    单位 {index + 1}{index === 0 ? "（默认）" : ""}
+                    <input required maxLength={100} value={unit} disabled={busy} onChange={e => setForm(current => ({ ...current, units: current.units.map((value, i) => i === index ? e.target.value : value) }))} />
+                  </label>
+                  <Button type="button" icon={Trash2} aria-label={`删除单位 ${index + 1}`} disabled={busy || form.units.length === 1} onClick={() => setForm(current => ({ ...current, units: current.units.filter((_, i) => i !== index) }))} />
+                </div>
+              ))}
+            </div>
+            <Button type="button" icon={Plus} disabled={busy || form.units.length >= 100} onClick={() => setForm(current => ({ ...current, units: [...current.units, ""] }))}>新增单位</Button>
+          </section>
           <WarehouseManager warehouses={warehouses} onRefresh={onRefresh} />
           <div className="settings-version">
             <span className="brand-mark">
@@ -3372,7 +3417,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
         </div>
         </div>
         <div className="modal-footer">
-          <span className="settings-footer-note">{section === "general" ? "修改名称后，点击保存设置。" : "各项业务操作在对应区域单独确认。"}</span>
+          <span className="settings-footer-note">{section === "general" ? "修改名称或计量单位后，点击保存设置。" : "各项业务操作在对应区域单独确认。"}</span>
           <Button type="button" onClick={onClose} disabled={busy}>
             取消
           </Button>

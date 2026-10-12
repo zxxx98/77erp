@@ -45,7 +45,7 @@ export type Order = {
   created_at: string;
   items: OrderItem[];
 };
-export type Settings = { business_name: string; warehouse_name: string };
+export type Settings = { business_name: string; warehouse_name: string; units?: string[] };
 export const businessType = (o: Order) => o.kind === "return" ? (o.type === "in" ? "out" : "in") : o.type;
 export const orderLabel = (o: Order) => `${o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : (o.type === "in" ? "采购入库" : "销售出库")}${o.status === "void" ? " · 已作废" : ""}`;
 export const reportOrders = (orders: Order[]): Order[] => orders.filter(o => o.status !== "void").map(o => o.kind === "return" ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total } : o);

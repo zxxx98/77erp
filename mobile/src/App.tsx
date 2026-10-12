@@ -513,6 +513,7 @@ export function AppContent() {
           <ProductEditor
             product={modal.product}
             categories={data.categories || []}
+            units={data.settings.units}
             warehouses={data.warehouses || []}
             warehouseId={data.warehouse_id || 1}
             onClose={() => setModal(null)}

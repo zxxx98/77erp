@@ -89,6 +89,35 @@ test("native product editor creates a product with an automatically generated ba
     expect.objectContaining({ name: "原生测试商品", barcode: "" }),
   );
 });
+test("native unit settings can add, rename and remove choices used by new products", async () => {
+  request.mockResolvedValue({ ok: true });
+  const saved = jest.fn();
+  const settings = { ...workspace.settings, units: ["个", "件"] };
+  const editor = render(<SettingsEditor settings={settings} onClose={jest.fn()} onSaved={saved} />);
+  fireEvent.changeText(screen.getByLabelText("单位 1（默认）"), "套");
+  fireEvent.press(screen.getByRole("button", { name: "删除单位 2" }));
+  expect(screen.getByRole("button", { name: "删除单位 1" })).toBeDisabled();
+  fireEvent.press(screen.getByRole("button", { name: "新增单位" }));
+  fireEvent.changeText(screen.getByLabelText("单位 2"), "瓶");
+  fireEvent.press(screen.getByRole("button", { name: "保存设置" }));
+  await waitFor(() => expect(saved).toHaveBeenCalledWith("工作空间设置已保存"));
+  expect(request).toHaveBeenCalledWith("/settings", "PUT", { ...workspace.settings, units: ["套", "瓶"] });
+  editor.unmount();
+  render(<ProductEditor categories={categories} units={["套", "瓶"]} onClose={jest.fn()} onSaved={jest.fn()} />);
+  expect(screen.getByLabelText("单位")).toHaveProp("value", "套");
+  fireEvent.press(screen.getByRole("button", { name: "瓶" }));
+  fireEvent.changeText(screen.getByLabelText("商品名称"), "自定义单位商品");
+  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith("/products", "POST", expect.objectContaining({ unit: "瓶" })));
+});
+test("native product edits retain a unit removed from the configured choices", async () => {
+  request.mockResolvedValue({ ok: true });
+  render(<ProductEditor product={product} categories={categories} units={["套", "瓶"]} onClose={jest.fn()} onSaved={jest.fn()} />);
+  expect(screen.getByLabelText("单位")).toHaveProp("value", "个");
+  expect(screen.getByRole("button", { name: "个" })).toBeOnTheScreen();
+  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  await waitFor(() => expect(request).toHaveBeenCalledWith(`/products/${product.id}`, "PUT", expect.objectContaining({ unit: "个" })));
+});
 test("outbound blocks insufficient stock then requires confirmation and suppresses repeat submissions", async () => {
   const alert = jest.spyOn(Alert, "alert");
   let finish: (value: unknown) => void = () => {};

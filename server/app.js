@@ -9,6 +9,7 @@ import { migrateCommerce, resolveContact, moveInventory, settlement } from "./co
 import { installAuth } from "./auth.js";
 import { migrateOperations, installOperations } from "./operations.js";
 import { migrateCatalog, installCatalog } from "./catalog.js";
+import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const tokens = {
@@ -236,6 +237,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   }
 
   db.prepare("INSERT OR IGNORE INTO app_metadata (key,value) VALUES ('demo_initialized','1')").run();
+  db.prepare("INSERT OR IGNORE INTO app_metadata (key,value) VALUES ('instance_id',?)").run(randomUUID());
 
   const app = express();
   app.set("trust proxy", true);
@@ -243,6 +245,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateCommerce(db);
   migrateCatalog(db);
   migrateWarehouses(db);
+  migrateUnits(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use("/api/products", express.json({ limit: "2mb" }));
@@ -269,7 +272,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       orders,
       warehouses: warehouses(),
       warehouse_id: req.warehouse.id,
-      settings: { ...db.prepare("SELECT * FROM settings WHERE id=1").get(), warehouse_name: req.warehouse.name },
+      instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
+      settings: { ...db.prepare("SELECT * FROM settings WHERE id=1").get(), warehouse_name: req.warehouse.name, units: getUnits(db) },
     });
   });
   app.get("/api/style", (_, res) => {
@@ -511,11 +515,18 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return res
         .status(400)
         .json({ error: "请输入 1–60 字的商户和仓库名称。" });
+    let units;
+    try {
+      if (req.body.units !== undefined) units = validateUnits(req.body.units);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
     try {
       db.exec("BEGIN IMMEDIATE");
       db.prepare("UPDATE warehouses SET name=? WHERE id=?").run(warehouse_name.trim(), req.warehouse.id);
       db.prepare("UPDATE settings SET business_name=? WHERE id=1").run(business_name.trim());
       if (req.warehouse.id === 1) db.prepare("UPDATE settings SET warehouse_name=? WHERE id=1").run(warehouse_name.trim());
+      if (units) saveUnits(db, units);
       db.exec("COMMIT");
       res.json({ ok: true });
     } catch (error) {
