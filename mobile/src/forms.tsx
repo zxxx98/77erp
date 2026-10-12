@@ -244,6 +244,7 @@ export function OrderEditor({
   const [partnerId, setPartnerId] = useState<number|null>(initialDraft?.partner_id ?? null);
   const [note, setNote] = useState(initialDraft?.note || "");
   const draftRequest = useRef({key:"",id:""});
+  const orderRequest = useRef({key:"",id:""});
   const missingDraftProduct = initialDraft?.items.some(i => !products.some(p => p.id === i.product_id));
   const [lines, setLines] = useState<Line[]>(() =>
     initialDraft ? initialDraft.items.flatMap(i => { const product=products.find(p=>p.id===i.product_id);return product ? [{product,quantity:String(i.quantity),price:String(i.price)}] : []; }) : initialProduct ? addLine([], initialProduct, type) : [],
@@ -292,7 +293,9 @@ export function OrderEditor({
     try {
       if (missingDraftProduct) throw new Error("草稿商品已变化，请刷新后重新打开。");
       const payload = {...orderPayload(type, partner, note, lines), ...(partnerId ? {partner_id:partnerId} : {}), ...(initialDraft ? {draft_id:initialDraft.id,draft_version:initialDraft.version} : {})};
-      const result = await api<{ number: string }>("/orders", "POST", payload);
+      const key = JSON.stringify(payload);
+      if (orderRequest.current.key !== key) orderRequest.current = { key, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
+      const result = await api<{ number: string }>("/orders", "POST", { ...payload, request_id: orderRequest.current.id });
       // Close immediately after the mutation succeeds; a refresh error must not allow resubmission.
       onSaved(`单据 ${result.number} 已保存`);
     } catch (e) {

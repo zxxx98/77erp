@@ -46,6 +46,7 @@ import { WarehouseManager, ProductSync } from "./Warehouses.jsx";
 import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
 import { ProductImage } from "./ProductImage.jsx";
 import { AuthGate } from "./Auth.jsx";
+import { ChangePassword, UserManager } from "./Users.jsx";
 import { version as appVersion } from "../package.json";
 import { BusinessTools, Drafts, Payments, useBusiness } from "./Commerce.jsx";
 import { DataTools, OrderActions, orderLabel, reportOrders, businessType } from "./Operations.jsx";
@@ -524,6 +525,7 @@ function Panel({
   );
 }
 function App({ admin, onLogout }) {
+  const isAdmin = admin.role === "admin";
   const initial = location.hash.slice(1).split("?")[0];
   const [page, setPage] = useState(
     navItems.some((n) => n.id === initial) ? initial : "overview",
@@ -537,7 +539,7 @@ function App({ admin, onLogout }) {
   });
   const [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
-  const [modal, setModal] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? { kind: "settings" } : null),
+  const [modal, setModal] = useState(() => isAdmin && new URLSearchParams(location.search).get("manage") === "data" ? { kind: "settings" } : null),
     [toast, setToast] = useState(null),
     [search, setSearch] = useState("");
   const [notification, setNotification] = useState(false),
@@ -711,7 +713,7 @@ function App({ admin, onLogout }) {
               打开扫码工作台 <ArrowRight size={13} />
             </button>
           </div>
-          <button
+          {isAdmin ? <button
             className="nav-item"
             aria-label="系统设置"
             title="系统设置"
@@ -719,15 +721,15 @@ function App({ admin, onLogout }) {
           >
             <Settings size={18} />
             <span>系统设置</span>
-          </button>
+          </button> : <button className="nav-item" onClick={() => setModal({ kind: 'drafts' })}><History size={18} /><span>单据草稿</span></button>}
           <button
             className="user-profile"
-            onClick={() => setModal({ kind: "settings" })}
+            onClick={() => setModal({ kind: "account" })}
           >
             <span className="avatar">{admin.username.slice(0, 1).toUpperCase()}</span>
             <span>
               <strong>{admin.username}</strong>
-              <small>管理员</small>
+              <small>{isAdmin ? "管理员" : "员工"}</small>
             </span>
             <Ellipsis size={18} />
           </button>
@@ -819,8 +821,8 @@ function App({ admin, onLogout }) {
             <span className="topbar-divider" />
             <button
               className="avatar avatar-small"
-              aria-label="商户设置"
-              onClick={() => setModal({ kind: "settings" })}
+              aria-label={isAdmin ? "商户设置" : "账户设置"}
+              onClick={() => setModal({ kind: isAdmin ? "settings" : "account" })}
             >
               {admin.username.slice(0, 1).toUpperCase()}
             </button>
@@ -864,6 +866,7 @@ function App({ admin, onLogout }) {
               {page === "products" && (
                 <Products
                   data={data}
+                  isAdmin={isAdmin}
                   onCategoriesChanged={reload}
                   search={search}
                   setSearch={setSearch}
@@ -929,7 +932,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {modal?.kind === "detail" && (
-        <OrderDetail order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
+        <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
@@ -940,8 +943,11 @@ function App({ admin, onLogout }) {
           notify={notify}
         />
       )}
-      {modal?.kind === "settings" && (
+      {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
+      {modal?.kind === "drafts" && <Modal title="单据草稿" onClose={() => setModal(null)}><div className="form-body"><Drafts onResume={draft => setModal({ kind: 'order', type: draft.type, draft })} /></div></Modal>}
+      {isAdmin && modal?.kind === "settings" && (
         <SettingsForm
+          onPasswordChanged={onLogout}
           settings={data.settings}
           warehouses={data.warehouses || []}
           products={data.products}
@@ -1629,7 +1635,7 @@ function CategoryManager({ categories, onClose, onChanged }) {
   </Modal>;
 }
 
-function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged }) {
+function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged, isAdmin }) {
   const [category, setCategory] = useState(null),
     [view, setView] = useState("list"),
     [pageNum, setPageNum] = useState(1);
@@ -1665,7 +1671,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged 
         </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
-          <Button onClick={() => setManaging(true)}>管理分类</Button>
+          {isAdmin && <Button onClick={() => setManaging(true)}>管理分类</Button>}
           <div className="toolbar-right">
             <div className="table-search">
               <Search size={16} />
@@ -2670,20 +2676,12 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
     setBusy(true);
     setError("");
     try {
-      const r = await api("/orders", {
-        method: "POST",
-        body: {
-          type,
-          ...(partnerId ? { partner_id: partnerId } : {}),
-          ...(draft ? { draft_id: draft.id, draft_version: draft.version } : {}),
-          partner,
-          note,
-          items: items.map((i) => ({
-            ...i,
-            quantity: Number(i.quantity),
-            price: Number(i.price),
-          })),
-        },
+      const r = await draftAction.send('/orders', {
+        type,
+        ...(partnerId ? { partner_id: partnerId } : {}),
+        ...(draft ? { draft_id: draft.id, draft_version: draft.version } : {}),
+        partner, note,
+        items: items.map(i => ({ ...i, quantity: Number(i.quantity), price: Number(i.price) })),
       });
       await onSaved(`${type === "in" ? "入库" : "出库"}成功 · ${r.number}`);
     } catch (e) {
@@ -2960,7 +2958,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
     </Modal>
   );
 }
-function OrderDetail({ order, onClose, onSaved }) {
+function OrderDetail({ order, onClose, onSaved, isAdmin }) {
   return (
     <Modal
       title={`${orderLabel(order)}单详情`}
@@ -3020,8 +3018,8 @@ function OrderDetail({ order, onClose, onSaved }) {
           <small>备注</small>
           <p>{order.note || "无备注"}</p>
         </div>
-        <Payments order={order} />
-        <OrderActions order={order} onSaved={onSaved} />
+        <p className="muted">开单人：{order.created_by_name || '历史记录，操作人未知'}</p>
+        {isAdmin && <><Payments order={order} /><OrderActions order={order} onSaved={onSaved} /></>}
       </div>
       <div className="modal-footer order-form-footer">
         <div>
@@ -3281,7 +3279,7 @@ function Scanner({ data, openOrder, notify }) {
     </>
   );
 }
-function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResume, onRefresh }) {
+function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResume, onRefresh, onPasswordChanged }) {
   const lock = useRef(false);
   const contentRef = useRef(null);
   const [section, setSection] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? "data" : "general");
@@ -3330,7 +3328,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
       <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
               <button key={id} type="button" aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </button>
@@ -3393,6 +3391,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
           </div>
           <div className="info-box"><ShieldCheck size={17} /><p>商品和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
+          {section === "users" && <div className="settings-section"><UserManager /><ChangePassword onChanged={onPasswordChanged} /></div>}
           <div hidden={section !== "business"} className="settings-section">
             <BusinessTools onResume={onResume} onRefresh={onRefresh} />
           </div>

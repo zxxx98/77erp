@@ -23,6 +23,7 @@ import {
 } from "lucide-react-native";
 import { api, device, getWarehouseId, setWarehouseId, onUnauthorized } from "./native";
 import { AuthState, Draft, Order, Product, Workspace } from "./model";
+import { PasswordEditor } from "./account";
 import { CategoryEditor } from "./catalog";
 import { CommerceScreen } from "./commerce";
 import { StocktakeEditor } from "./operations";
@@ -61,6 +62,7 @@ type ModalState =
   | { kind: "commerce" }
   | { kind: "stocktake" }
   | { kind: "settings" }
+  | { kind: "password" }
   | { kind: "warehouses" };
 const tabs = [
   { id: "home" as const, title: "工作台", icon: LayoutDashboard },
@@ -103,6 +105,7 @@ export function AppContent() {
   const [booting, setBooting] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [auth, setAuth] = useState<AuthState | null>(null);
+  const isAdmin = auth?.role !== "employee";
   const [data, setData] = useState<Workspace | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -416,7 +419,7 @@ export function AppContent() {
             key={tab}
             products={data.products}
             categories={data.categories || []}
-            manageCategories={() => setModal({ kind: "categories" })}
+            manageCategories={isAdmin ? () => setModal({ kind: "categories" }) : undefined}
             inventory={tab === "inventory"}
             refreshing={refreshing}
             onRefresh={() => void refresh()}
@@ -440,6 +443,8 @@ export function AppContent() {
             {syncNotice}
             <MoreScreen
               username={auth.username}
+              isAdmin={isAdmin}
+              changePassword={() => setModal({ kind: "password" })}
               server={server}
               data={data}
               busy={loggingOut}
@@ -508,7 +513,7 @@ export function AppContent() {
             openOrder={openOrder}
           />
         )}
-        {modal?.kind === "categories" && <CategoryEditor categories={data.categories || []} onClose={() => setModal(null)} onChanged={() => refresh()} />}
+        {isAdmin && modal?.kind === "categories" && <CategoryEditor categories={data.categories || []} onClose={() => setModal(null)} onChanged={() => refresh()} />}
         {modal?.kind === "productEditor" && (
           <ProductEditor
             product={modal.product}
@@ -532,7 +537,7 @@ export function AppContent() {
           />
         )}
         {modal?.kind === "order" && (
-          <OrderDetail order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
+          <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
         )}
         {modal?.kind === "scanner" && (
           <ScannerScreen
@@ -541,12 +546,13 @@ export function AppContent() {
             openOrder={openOrder}
           />
         )}
-        {modal?.kind === "commerce" && <CommerceScreen onClose={() => setModal(null)} onRefresh={() => void refresh()} onResume={draft => setModal({kind:"orderEditor",type:draft.type,draft})} />}
-        {modal?.kind === "stocktake" && <StocktakeEditor products={data.products} onClose={() => setModal(null)} onSaved={saved} />}
+        {modal?.kind === "commerce" && <CommerceScreen isAdmin={isAdmin} onClose={() => setModal(null)} onRefresh={() => void refresh()} onResume={draft => setModal({kind:"orderEditor",type:draft.type,draft})} />}
+        {isAdmin && modal?.kind === "stocktake" && <StocktakeEditor products={data.products} onClose={() => setModal(null)} onSaved={saved} />}
+        {modal?.kind === "password" && <PasswordEditor onClose={() => setModal(null)} onChanged={logout} />}
         {modal?.kind === "warehouses" && <ScreenModal title="选择仓库" onClose={() => setModal(null)} busy={refreshing} error={error}>
           {(data.warehouses || []).map(w => <Button key={w.id} title={`${w.name}${w.id === (data.warehouse_id || 1) ? " · 当前仓库" : ""}`} kind="secondary" disabled={refreshing} onPress={() => w.id === getWarehouseId() ? setModal(null) : void switchWarehouse(w.id)} />)}
         </ScreenModal>}
-        {modal?.kind === "settings" && (
+        {isAdmin && modal?.kind === "settings" && (
           <SettingsEditor
             settings={data.settings}
             warehouses={data.warehouses || []}

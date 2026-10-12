@@ -216,7 +216,7 @@ test("password visibility preserves text and the controls lock while login is pe
       onServer={jest.fn()}
     />,
   );
-  fireEvent.changeText(screen.getByLabelText("管理员账号"), "admin");
+  fireEvent.changeText(screen.getByLabelText("账号"), "admin");
   fireEvent.changeText(
     screen.getByLabelText("密码"),
     "long-password-123456789",

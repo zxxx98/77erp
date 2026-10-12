@@ -158,6 +158,7 @@ test("outbound blocks insufficient stock then requires confirmation and suppress
     partner: "零售客户",
     note: "",
     items: [{ product_id: 1, quantity: 3, price: 20 }],
+    request_id: expect.any(String),
   });
   await act(async () => {
     finish({ number: "CK1" });

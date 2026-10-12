@@ -151,7 +151,7 @@ export function AuthScreen({
     setError("");
     try {
       if (!username.trim() || !password)
-        throw new Error("请填写管理员账号和密码。");
+        throw new Error("请填写账号和密码。");
       if (setup && !/^[A-Za-z0-9_.-]{3,32}$/.test(username.trim()))
         throw new Error("账号需为 3–32 位字母、数字或 ._-。");
       if (setup && password.length < 8)
@@ -185,16 +185,16 @@ export function AuthScreen({
         <Text style={s.title}>ERP</Text>
       </View>
       <View style={{ gap: 8 }}>
-        <Text style={s.title}>{setup ? "设置管理员" : "管理员登录"}</Text>
+        <Text style={s.title}>{setup ? "设置管理员" : "账号登录"}</Text>
         <Text style={s.caption}>
           {setup
-            ? "首次使用，请创建唯一的管理员账号。"
+            ? "首次使用，请创建管理员账号。"
             : "登录后管理商品、库存与单据。"}
         </Text>
       </View>
       <Card>
         <Field
-          label="管理员账号"
+          label={setup ? "管理员账号" : "账号"}
           value={username}
           onChangeText={setUsername}
           maxLength={32}
@@ -654,11 +654,13 @@ export function OrdersScreen({
   );
 }
 export function OrderDetail({
+  isAdmin = true,
   order,
   onClose,
   onSaved,
 }: {
   order: Order;
+  isAdmin?: boolean;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -690,8 +692,8 @@ export function OrderDetail({
           </View>
         </Card>
       ))}
-      <PaymentEditor order={order} />
-      <OrderCorrection order={order} onSaved={onSaved} />
+      <Text style={s.caption}>开单人：{order.created_by_name || '历史记录，操作人未知'}</Text>
+      {isAdmin && <><PaymentEditor order={order} /><OrderCorrection order={order} onSaved={onSaved} /></>}
       {!!order.note && (
         <Card>
           <Text style={s.label}>备注</Text>
@@ -829,6 +831,8 @@ export function ScannerScreen({
 }
 
 export function MoreScreen({
+  isAdmin = true,
+  changePassword,
   username,
   server,
   data,
@@ -840,6 +844,8 @@ export function MoreScreen({
   logout,
 }: {
   username?: string;
+  isAdmin?: boolean;
+  changePassword?: () => void;
   server: string;
   data: Workspace;
   busy: boolean;
@@ -857,22 +863,23 @@ export function MoreScreen({
           <ShieldCheck size={30} color={colors.blue} />
           <View style={s.grow}>
             <Text style={s.subtitle}>{username || "管理员"}</Text>
-            <Text style={s.caption}>管理员账号</Text>
+            <Text style={s.caption}>{isAdmin ? "管理员账号" : "员工账号"}</Text>
           </View>
         </View>
       </Card>
       <Card>
         <Text style={s.subtitle}>{data.settings.business_name}</Text>
         <Text style={s.caption}>{data.settings.warehouse_name}</Text>
-        <Button
+        {isAdmin && <Button
           title="商户与仓库设置"
           kind="secondary"
           icon={SettingsIcon}
           onPress={settings}
-        />
+        />}
       </Card>
-      <Button title="往来、草稿与财务" kind="secondary" onPress={commerce} />
-      <Button title="库存盘点" kind="secondary" onPress={stocktake} />
+      {changePassword && <Button title="修改密码" kind="secondary" onPress={changePassword} />}
+      <Button title={isAdmin ? "往来、草稿与财务" : "单据草稿"} kind="secondary" onPress={commerce} />
+      {isAdmin && <Button title="库存盘点" kind="secondary" onPress={stocktake} />}
       <Card>
         <Text style={s.label}>服务器地址</Text>
         <Text selectable style={s.caption}>

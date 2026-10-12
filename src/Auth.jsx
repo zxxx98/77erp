@@ -100,7 +100,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
               <ArrowRight size={18} />
               <span><PackageCheck size={25} /><small>销售出库</small></span>
             </div>
-            <div className="auth-workflow-footer"><ShieldCheck size={15} />管理员登录后访问</div>
+            <div className="auth-workflow-footer"><ShieldCheck size={15} />账号登录后访问</div>
           </div>
         </div>
         <span className="auth-intro-footer">77 ERP · 轻量进销存系统</span>
@@ -110,14 +110,14 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
           <span className="auth-form-icon">{setup ? <ShieldCheck size={24} /> : <LockKeyhole size={24} />}</span>
           <div className="auth-form-heading">
             <span className="auth-eyebrow">{setup ? "首次初始化" : "账号登录"}</span>
-            <h1>{setup ? "设置管理员" : "管理员登录"}</h1>
-            <p>{setup ? "首次使用，请创建管理员账号。" : "使用初始化时设置的管理员账号登录。"}</p>
+            <h1>{setup ? "设置管理员" : "账号登录"}</h1>
+            <p>{setup ? "首次使用，请创建管理员账号。" : "使用管理员分配的账号登录。"}</p>
           </div>
           <form className="auth-form" onSubmit={submit}>
-            <label htmlFor="auth-username">管理员账号</label>
+            <label htmlFor="auth-username">{setup ? "管理员账号" : "账号"}</label>
             <div className="auth-input">
               <UserRound size={17} />
-              <input id="auth-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required minLength={setup ? 3 : undefined} maxLength={32} pattern={setup ? "[A-Za-z0-9_.\\-]{3,32}" : undefined} placeholder={setup ? "设置管理员账号" : "请输入管理员账号"} value={username} onChange={(e) => setUsername(e.target.value)} disabled={busy} />
+              <input id="auth-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required minLength={setup ? 3 : undefined} maxLength={32} pattern={setup ? "[A-Za-z0-9_.\\-]{3,32}" : undefined} placeholder={setup ? "设置管理员账号" : "请输入账号"} value={username} onChange={(e) => setUsername(e.target.value)} disabled={busy} />
             </div>
             {setup && <p className="auth-field-hint">3–32 位字母、数字或 ._-</p>}
             <label htmlFor="auth-password">{setup ? "设置密码" : "密码"}</label>
@@ -135,7 +135,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
               {busy ? <><LoaderCircle size={17} className="spin" />{setup ? "正在创建…" : "正在登录…"}</> : <>{setup ? "创建管理员并进入" : "登录"}<ArrowRight size={17} /></>}
             </button>
           </form>
-          <p className="auth-form-note"><ShieldCheck size={15} />{setup ? "当前系统仅使用一个管理员账号，请妥善保存密码。" : "仅管理员可访问此工作空间。"}</p>
+          <p className="auth-form-note"><ShieldCheck size={15} />{setup ? "管理员可以在设置中添加员工账号。" : "登录后访问此工作空间。"}</p>
         </div>
         <span className="auth-form-footer">商品管理 · 扫码入出库 · 库存管理</span>
       </section>

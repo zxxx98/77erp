@@ -51,7 +51,9 @@ export function installWarehouses(app, db) {
       if (!Number.isSafeInteger(itemId)) return res.status(400).json({ error: '商品或单据编号无效。' });
       const row = table === 'payments'
         ? db.prepare('SELECT o.warehouse_id FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=?').get(itemId)
-        : db.prepare(`SELECT warehouse_id FROM ${table} WHERE id=?`).get(itemId);
+        : db.prepare(`SELECT warehouse_id${table === 'drafts' ? ',created_by' : ''} FROM ${table} WHERE id=?`).get(itemId);
+      if (table === 'drafts' && row && req.user.role !== 'admin' && row.created_by !== req.user.id)
+        return res.status(404).json({ error: '草稿不存在或无权访问。' });
       if (row && row.warehouse_id !== id) return res.status(400).json({ error: '该商品、单据或草稿不属于当前仓库。' });
     }
     next();

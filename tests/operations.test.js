@@ -279,7 +279,7 @@ test("backup round trip restores business data without replacing credentials or 
     (await f.request("/backup/preview", { backup: corrupt })).status,
     400,
   );
-  const admin = f.db.prepare("SELECT * FROM administrator").get();
+  const admin = f.db.prepare("SELECT * FROM users").get();
   f.db.prepare("UPDATE settings SET business_name='保留设置'").run();
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
   const preview = (await f.request("/backup/preview", { backup })).data;
@@ -292,7 +292,7 @@ test("backup round trip restores business data without replacing credentials or 
   assert.equal((await f.request("/backup/restore", body)).status, 200);
   assert.equal((await f.request("/backup/restore", body)).status, 200);
   assert.equal(f.stock(id), 9);
-  assert.deepEqual(f.db.prepare("SELECT * FROM administrator").get(), admin);
+  assert.deepEqual(f.db.prepare("SELECT * FROM users").get(), admin);
   assert.equal(
     (await f.request("/data")).data.settings.business_name,
     "保留设置",

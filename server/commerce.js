@@ -240,9 +240,9 @@ export function installCommerce(app, db, { route, mutation }) {
     route((req) =>
       db
         .prepare(
-          "SELECT * FROM drafts WHERE status='active' AND warehouse_id=? ORDER BY updated_at DESC,id DESC",
+          "SELECT * FROM drafts WHERE status='active' AND warehouse_id=? AND (?='admin' OR created_by=?) ORDER BY updated_at DESC,id DESC",
         )
-        .all(req.warehouse.id)
+        .all(req.warehouse.id, req.user.role, req.user.id)
         .map((d) => ({ ...d, items: JSON.parse(d.items) })),
     ),
   );
@@ -272,9 +272,9 @@ export function installCommerce(app, db, { route, mutation }) {
           id = Number(
             db
               .prepare(
-                "INSERT INTO drafts(type,partner,partner_id,note,items,updated_at,warehouse_id) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO drafts(type,partner,partner_id,note,items,updated_at,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?,?)",
               )
-              .run(...fields, req.warehouse.id).lastInsertRowid,
+              .run(...fields, req.warehouse.id, req.user.id, req.user.username).lastInsertRowid,
           );
         const d = db.prepare("SELECT * FROM drafts WHERE id=?").get(id);
         return { ...d, items: JSON.parse(d.items) };

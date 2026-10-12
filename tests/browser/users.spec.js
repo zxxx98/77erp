@@ -1,0 +1,110 @@
+import { test, expect } from '@playwright/test';
+import { createApp } from '../../server/app.js';
+
+async function fixture(page) {
+  const { app, db } = createApp(':memory:');
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(r => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const setup = await page.request.post(base + '/api/auth/setup', { data: { username: 'owner', password: 'Strong-password-123' } });
+  const cookie = setup.headers()['set-cookie'].split(';')[0];
+  const adminRequest = async (path, body, method = body === undefined ? 'GET' : 'POST') => {
+    const r = await fetch(base + '/api' + path, { method, headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    return r.json();
+  };
+  return { base, db, adminRequest, close: async () => { server.closeAllConnections(); await new Promise(r => server.close(r)); db.close(); } };
+}
+
+async function login(page, username, password) {
+  await expect(page.getByRole('heading', { name: '账号登录', exact: true })).toBeVisible();
+  await page.getByLabel('账号', { exact: true }).fill(username);
+  await page.getByLabel('密码', { exact: true }).fill(password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible();
+}
+
+test('administrator creates accounts, protects the last administrator, resets passwords and disables employees in the UI', async ({ page }) => {
+  const f = await fixture(page);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  try {
+    await page.goto(f.base);
+    await page.getByRole('button', { name: '系统设置', exact: true }).click();
+    await page.getByRole('button', { name: /用户管理/ }).click();
+    const owner = page.locator('.user-row').filter({ hasText: 'owner' });
+    page.once('dialog', d => d.accept());
+    await owner.getByRole('button', { name: '停用', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('最后一个管理员');
+    await page.getByLabel('新账号', { exact: true }).fill('staff');
+    await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
+    await page.getByRole('button', { name: '新增账号', exact: true }).click();
+    const employee = page.locator('.user-row').filter({ hasText: 'staff' });
+    await expect(employee).toBeVisible();
+    await employee.getByRole('button', { name: '重置密码', exact: true }).click();
+    await page.getByLabel('重置后的密码', { exact: true }).fill('Reset-password-456');
+    page.once('dialog', d => d.accept());
+    await page.getByRole('button', { name: '确认重置密码', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('密码已重置');
+    page.once('dialog', d => d.accept());
+    await employee.getByRole('button', { name: '停用', exact: true }).click();
+    await expect(employee).toContainText('已停用');
+    page.once('dialog', d => d.accept());
+    await employee.getByRole('button', { name: '启用', exact: true }).click();
+    await expect(employee).toContainText('正常');
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await page.getByRole('button', { name: '退出登录', exact: true }).click();
+    await login(page, 'staff', 'Reset-password-456');
+    await expect(page.getByRole('button', { name: '系统设置', exact: true })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); }
+});
+
+test('employee sees shared business data and own drafts, opens orders with an actor, and changes password', async ({ page }) => {
+  const f = await fixture(page);
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  try {
+    await f.adminRequest('/users', { username: 'staff', password: 'Employee-password-123' });
+    await f.adminRequest('/drafts', { request_id: 'admin-draft', type: 'in', partner: '管理员草稿', note: '', items: [] });
+    await page.goto(f.base);
+    await page.getByRole('button', { name: '退出登录', exact: true }).click();
+    await login(page, 'staff', 'Employee-password-123');
+    await expect(page.locator('.user-profile')).toContainText('员工');
+    await page.getByRole('link', { name: '商品管理', exact: true }).click();
+    await expect(page.getByRole('button', { name: '新增商品', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '管理分类', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: '单据草稿', exact: true }).click();
+    await expect(page.getByText('管理员草稿')).toHaveCount(0);
+    await expect(page.getByText('暂无草稿')).toBeVisible();
+    await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+    await page.getByRole('link', { name: '采购入库', exact: true }).click();
+    await page.getByRole('button', { name: '新建入库', exact: true }).click();
+    await page.getByPlaceholder('选择或输入供应商').fill('员工供应商');
+    await page.getByRole('textbox', { name: '查找并添加商品' }).fill('马克杯');
+    await page.locator('.picker-results button').first().click();
+    await page.getByRole('button', { name: '保存草稿并关闭', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const draft = f.db.prepare("SELECT * FROM drafts WHERE created_by_name='staff'").get();
+    await page.getByRole('button', { name: '单据草稿', exact: true }).click();
+    await page.getByRole('button', { name: `继续草稿 #${draft.id}`, exact: true }).click();
+    await page.getByRole('button', { name: '确认入库', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const order = f.db.prepare("SELECT * FROM orders WHERE created_by_name='staff'").get();
+    await page.getByText(order.number, { exact: true }).click();
+    await expect(page.getByText('开单人：staff', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '登记收付款', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '作废单据', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: '关闭详情', exact: true }).click();
+    await page.getByRole('button', { name: '账户设置', exact: true }).click();
+    await page.getByLabel('当前密码', { exact: true }).fill('Employee-password-123');
+    await page.getByLabel('新密码', { exact: true }).fill('Changed-password-789');
+    await page.getByLabel('确认新密码', { exact: true }).fill('different');
+    await page.getByRole('button', { name: '确认修改密码', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('两次输入的密码不一致');
+    await page.getByLabel('确认新密码', { exact: true }).fill('Changed-password-789');
+    await page.getByRole('button', { name: '确认修改密码', exact: true }).click();
+    await login(page, 'staff', 'Changed-password-789');
+    expect(errors).toEqual([]);
+  } finally { await f.close(); }
+});

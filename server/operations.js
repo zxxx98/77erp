@@ -16,6 +16,22 @@ const reasonOf = (body) =>
     ? body.reason.trim()
     : fail("请填写操作原因（最多 500 字）。");
 
+// Both regular orders and corrections use user-scoped request identifiers.
+export function operationRequest(db, req, optional = false) {
+  const raw = req.body.request_id;
+  if (raw === undefined && optional) return null; // Older clients remain compatible.
+  if (!text(raw, 100)) fail("缺少操作标识，请重新打开页面。");
+  const id = hash([req.user.id, raw]);
+  const fingerprint = hash([req.user.id, req.warehouse.id, req.method, req.path, req.body]);
+  const previous = db.prepare('SELECT * FROM operation_requests WHERE id=?').get(id);
+  if (previous && previous.fingerprint !== fingerprint) fail('操作标识重复，请刷新后重试。');
+  return { id, fingerprint, previous: previous ? JSON.parse(previous.response) : null };
+}
+export function saveOperationRequest(db, request, result) {
+  if (request) db.prepare('INSERT INTO operation_requests VALUES (?,?,?)')
+    .run(request.id, request.fingerprint, JSON.stringify(result));
+}
+
 export function migrateOperations(db) {
   const columns = new Set(
     db
@@ -66,23 +82,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   };
   const mutation = (req, fn) =>
     transaction(() => {
-      const id = req.body.request_id;
-      if (!text(id, 100)) fail("缺少操作标识，请重新打开页面。");
-      const fingerprint = hash([req.warehouse.id, req.path, req.body]);
-      const previous = db
-        .prepare("SELECT * FROM operation_requests WHERE id=?")
-        .get(id);
-      if (previous) {
-        if (previous.fingerprint !== fingerprint)
-          fail("操作标识重复，请刷新后重试。");
-        return JSON.parse(previous.response);
-      }
+      const request = operationRequest(db, req);
+      if (request.previous) return request.previous;
       const result = fn();
-      db.prepare("INSERT INTO operation_requests VALUES (?,?,?)").run(
-        id,
-        fingerprint,
-        JSON.stringify(result),
-      );
+      saveOperationRequest(db, request, result);
       return result;
     });
   const product = (id) =>
@@ -183,7 +186,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         if (!Number.isSafeInteger(total)) fail("退货金额过大。");
         const result = db
           .prepare(
-            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked,warehouse_id) VALUES (?,?,?,?,?,?,'return',?,?,1,?)",
+            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,'return',?,?,1,?,?,?)",
           )
           .run(
             number,
@@ -195,6 +198,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             source.id,
             source.partner_id,
             source.warehouse_id,
+            req.user.id, req.user.username,
           );
         for (const i of items) {
           const movedCost = changeStock(i.product_id, (type === "in" ? 1 : -1) * i.quantity, i.return_cost);
@@ -356,14 +360,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 4,
+    version: 5,
+    source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
   });
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4].includes(value.version) ||
+      ![1,2,3,4,5].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
@@ -391,6 +396,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       data.warehouses = db.prepare('SELECT * FROM warehouses ORDER BY id').all();
       for (const p of data.products || []) { p.warehouse_id ??= 1; p.sync_key ??= `legacy-${p.id}`; }
       for (const table of ['orders', 'drafts']) for (const row of data[table] || []) row.warehouse_id ??= 1;
+    }
+    if (value.version < 5) {
+      for (const table of ['orders','drafts']) for (const row of data[table] || []) {
+        row.created_by = null; row.created_by_name = '';
+      }
+    }
+    for (const table of ['orders','drafts']) for (const row of data[table] || []) {
+      if (!(row.created_by === null || (Number.isSafeInteger(row.created_by) && row.created_by > 0)) ||
+          typeof row.created_by_name !== 'string' || row.created_by_name.length > 32)
+        fail('备份操作人信息无效。');
     }
     for (const table of tables) {
       if (!Array.isArray(data[table]) || data[table].length > 100000)
@@ -586,8 +601,13 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           const insert = db.prepare(
             `INSERT INTO ${table} (${fields.join(",")}) VALUES (${fields.map(() => "?").join(",")})`,
           );
-          for (const row of data[table])
+          for (const row of data[table]) {
+            // Cross-server user IDs must never become local owners of restored drafts.
+            if (['orders','drafts'].includes(table) && row.created_by !== null &&
+                (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
+                 !db.prepare('SELECT 1 FROM users WHERE id=?').get(row.created_by))) row.created_by = null;
             insert.run(...fields.map((c) => row[c]));
+          }
         }
         db.prepare('UPDATE settings SET warehouse_name=? WHERE id=1').run(data.warehouses.find(w => w.id === 1).name);
         db.prepare(

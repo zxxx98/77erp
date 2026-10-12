@@ -210,7 +210,7 @@ export function Drafts({ onResume, type }) {
             <p>
               {d.type === "in" ? "采购" : "销售"} ·{" "}
               {d.partner || "未填往来单位"} · {d.items.length} 种商品 ·{" "}
-              {new Date(d.updated_at).toLocaleString()}
+              {new Date(d.updated_at).toLocaleString()} · {d.created_by_name || "操作人未知"}
             </p>
             <button
               type="button"

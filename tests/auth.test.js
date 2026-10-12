@@ -62,13 +62,13 @@ test("first run creates exactly one admin, hashes credentials and protects all b
   assert.equal(setup.data.username, credentials.username);
   assert.match(setup.headers.get("set-cookie"), /HttpOnly/);
   assert.match(setup.headers.get("set-cookie"), /SameSite=Strict/);
-  const admin = db.prepare("SELECT * FROM administrator").get();
+  const admin = db.prepare("SELECT * FROM users").get();
   assert.notEqual(admin.password_hash, credentials.password);
   assert.equal(admin.password_hash.length, 128);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM products").get().n, count);
   assert.equal((await request("/data", { cookie: setup.cookie })).status, 200);
   assert.equal((await request("/auth/setup", { method: "POST", body: { ...credentials, username: "other" } })).status, 409);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM administrator").get().n, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users").get().n, 1);
   assert.equal((await request("/auth/status")).data.username, undefined);
 });
 
@@ -82,7 +82,7 @@ test("setup validates credentials and competing initializations cannot overwrite
   const results = await Promise.all(["first", "second"].map((username) =>
     request("/auth/setup", { method: "POST", body: { ...credentials, username } })));
   assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM administrator").get().n, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users").get().n, 1);
   assert.equal((await request("/auth/login", { method: "POST", body: credentials })).status, 401);
 });
 
@@ -186,7 +186,7 @@ test("business reset requires login and confirmation, preserves account/settings
   assert.equal((await first.request("/settings/reset", reset)).status, 401);
   const { cookie } = await first.request("/auth/setup", { method: "POST", body: credentials });
   await first.request("/settings", { method: "PUT", cookie, body: { business_name: "保留商户", warehouse_name: "保留仓库" } });
-  const admin = first.db.prepare("SELECT * FROM administrator").get();
+  const admin = first.db.prepare("SELECT * FROM users").get();
   const count = first.db.prepare("SELECT COUNT(*) AS n FROM products").get().n;
   assert.equal((await first.request("/settings/reset", { method: "POST", cookie, body: {} })).status, 400);
   assert.equal(first.db.prepare("SELECT COUNT(*) AS n FROM products").get().n, count);
@@ -197,7 +197,7 @@ test("business reset requires login and confirmation, preserves account/settings
   assert.equal(first.db.prepare("SELECT COUNT(*) AS n FROM order_items").get().n, 64);
   first.db.exec("DROP TRIGGER prevent_reset");
   assert.equal((await first.request("/settings/reset", { ...reset, cookie })).status, 200);
-  assert.deepEqual(first.db.prepare("SELECT * FROM administrator").get(), admin);
+  assert.deepEqual(first.db.prepare("SELECT * FROM users").get(), admin);
   assert.equal(first.db.prepare("SELECT COUNT(*) AS n FROM order_items").get().n, 0);
   await first.close();
   const second = await fixture(t, path);

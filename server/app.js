@@ -7,7 +7,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrateCommerce, resolveContact, moveInventory, settlement } from "./commerce.js";
 import { installAuth } from "./auth.js";
-import { migrateOperations, installOperations } from "./operations.js";
+import { migrateOperations, installOperations, operationRequest, saveOperationRequest } from "./operations.js";
 import { migrateCatalog, installCatalog } from "./catalog.js";
 import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
 
@@ -417,12 +417,18 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       const seen = new Set();
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
+      const request = operationRequest(db, req, true);
+      if (request?.previous) {
+        db.exec('COMMIT'); inTransaction = false;
+        return res.json(request.previous);
+      }
       let draft;
       if (req.body.draft_id != null) {
         draft = db.prepare("SELECT * FROM drafts WHERE id=?").get(req.body.draft_id);
         if (!draft) throw new Error("草稿不存在。");
         if (draft.status === "submitted") {
           const previous = db.prepare("SELECT id,number FROM orders WHERE id=?").get(draft.order_id);
+          saveOperationRequest(db, request, previous);
           db.exec("COMMIT"); inTransaction = false;
           return res.json(previous);
         }
@@ -466,9 +472,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       const contact = resolveContact(db, type, partner, req.body.partner_id);
       const result = db
         .prepare(
-          "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,settlement_tracked,warehouse_id) VALUES (?,?,?,?,?,?,?,1,?)",
+          "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)",
         )
-        .run(number, type, contact.name, note, total / 100, at, contact.id, req.warehouse.id);
+        .run(number, type, contact.name, note, total / 100, at, contact.id, req.warehouse.id, req.user.id, req.user.username);
       normalized.forEach((i) => {
         const cost = moveInventory(db, i.product_id, type === "in" ? i.quantity : -i.quantity, type === "in" ? Math.round(i.quantity * i.price * 100) : undefined);
         db.prepare(
@@ -484,9 +490,11 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         );
       });
       if (draft) db.prepare("UPDATE drafts SET status='submitted',order_id=?,version=version+1 WHERE id=?").run(result.lastInsertRowid,draft.id);
+      const response = { id: Number(result.lastInsertRowid), number };
+      saveOperationRequest(db, request, response);
       db.exec("COMMIT");
       inTransaction = false;
-      res.status(201).json({ id: Number(result.lastInsertRowid), number });
+      res.status(201).json(response);
     } catch (e) {
       if (inTransaction) db.exec("ROLLBACK");
       res.status(400).json({ error: e.message });
@@ -497,7 +505,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return res.status(400).json({ error: "请先确认清空全部业务数据。" });
     try {
       db.exec("BEGIN IMMEDIATE");
-      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts;");
+      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
       db.exec("COMMIT");
       res.json({ ok: true });
     } catch (e) {

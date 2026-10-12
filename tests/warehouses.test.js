@@ -155,14 +155,14 @@ test('imports, stocktakes, draft submissions, and resets respect warehouse inven
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.orders.length, 0);
 });
 
-test('v4 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
+test('v5 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓');
   await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] });
   const remote = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
   await f.order(remote.id, 'in', 3, w);
   await f.command('/drafts', { type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: '', price: '' }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 4);
+  assert.equal(backup.version, 5);
   for (const corrupt of ['warehouse', 'item', 'draft', 'sync', 'barcode']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;

@@ -53,15 +53,18 @@ function useBusiness() {
   return { busy, error, setError, run, send };
 }
 export function CommerceScreen({
+  isAdmin = true,
   onClose,
   onResume,
   onRefresh,
 }: {
+  isAdmin?: boolean;
   onClose: () => void;
   onResume: (draft: Draft) => void;
   onRefresh: () => void;
 }) {
   const [tab, setTab] = useState("contacts");
+  if (!isAdmin) return <ScreenModal title="单据草稿" onClose={onClose}><DraftList onResume={onResume} /></ScreenModal>;
   return (
     <ScreenModal title="往来与财务" onClose={onClose}>
       <Chips
@@ -198,7 +201,7 @@ export function DraftList({ onResume }: { onResume: (draft: Draft) => void }) {
             {d.type === "in" ? "采购" : "销售"} · {d.partner || "未填往来单位"}
           </Text>
           <Text style={s.caption}>
-            {d.items.length} 种商品 · {d.updated_at}
+            {d.items.length} 种商品 · {d.updated_at} · {d.created_by_name || "操作人未知"}
           </Text>
           <Button
             title={`继续草稿 #${d.id}`}
