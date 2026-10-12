@@ -36,6 +36,8 @@ jobs:
         api: [31, 36]
     steps:
       - uses: actions/checkout@v4
+      - name: Check native smoke navigation helpers
+        run: python3 -m unittest discover -s tests -p android_ui_helpers_test.py
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
