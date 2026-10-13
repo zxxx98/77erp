@@ -10,24 +10,26 @@
   gap: 7px;
   font-weight: 500;
 }
-.stock-qr-manager input,
-.stock-qr-manager select,
-.stock-qr-manager textarea,
-.stock-qr-actions select,
-.stock-qr-actions input {
-  padding: 9px;
+.stock-qr-manager label > input,
+.stock-qr-manager label > select,
+.stock-qr-manager label > textarea,
+.stock-qr-actions > input,
+.stock-qr-actions > select {
+  min-height: 42px;
+  padding: 10px 12px;
   border: 1px solid #e9ecf1;
-  border-radius: 7px;
+  border-radius: 8px;
   min-width: 0;
   max-width: 100%;
   font: inherit;
+  font-size: 13px;
 }
 .stock-qr-manager .stock-qr-check {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.stock-qr-check input {
+.stock-qr-check > input {
   width: auto;
 }
 .stock-qr-edit-line,

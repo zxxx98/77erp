@@ -2105,15 +2105,15 @@ table {
 .form-body label > select,
 .form-body textarea {
   border: 1px solid #e3eaf3;
-  border-radius: 6px;
-  min-height: 37px;
+  border-radius: 8px;
+  min-height: 42px;
   width: 100%;
   padding: 10px 12px;
   display: block;
   margin-top: 8px;
   background: white;
-  font-size: 11px;
-  color: #6982a5;
+  font-size: 13px;
+  color: #304563;
   line-height: 1.5;
 }
 .form-body input::placeholder,
@@ -2121,7 +2121,7 @@ table {
   color: #b0bed1;
 }
 .form-body input:disabled {
-  background: #f8fafc;
+  background: #f7f8fa;
   color: #abb8cc;
 }
 /* Keep choice controls beside their labels, outside text-field sizing. */
