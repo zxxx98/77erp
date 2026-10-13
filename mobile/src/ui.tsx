@@ -685,4 +685,15 @@ export const s = StyleSheet.create({
     minWidth: 0,
   },
   divider: { height: 1, backgroundColor: colors.border },
+  progressTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.pale,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.blue,
+  },
 });

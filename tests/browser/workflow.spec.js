@@ -218,3 +218,44 @@ test("product QR labels resolve in the scan workspace and foreign labels are exp
   await input.press("Enter");
   await expect(page.locator(".scan-result-product h3")).toHaveText("极简陶瓷马克杯");
 });
+
+test("inventory page reduces stock with an adjustment record and blocks overdraw", async ({
+  page,
+}) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await page.getByRole("link", { name: "商品管理", exact: true }).click();
+  await page.getByRole("button", { name: "新增商品", exact: true }).first().click();
+  await page.getByPlaceholder("例如：极简陶瓷马克杯").fill("报损测试商品");
+  await page.getByPlaceholder("扫描或输入条码，可留空").fill("REDUCE-UI-001");
+  await page.getByRole("spinbutton", { name: /采购价/ }).fill("8");
+  await page.getByRole("spinbutton", { name: /销售价/ }).fill("15");
+  await page.getByRole("button", { name: "保存商品" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("link", { name: "库存管理", exact: true }).click();
+  await page.getByPlaceholder("搜索商品或条码").fill("REDUCE-UI-001");
+  const row = page.locator("tr", { hasText: "报损测试商品" });
+  await row.getByRole("button", { name: "补货", exact: true }).click();
+  await page.getByRole("combobox", { name: /供应商/ }).fill("自动化测试供应商");
+  await page.getByRole("spinbutton", { name: "报损测试商品 数量" }).fill("5");
+  await page.getByRole("button", { name: "确认入库", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await row.getByRole("button", { name: "减少", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("减少库存");
+  await dialog.getByRole("spinbutton").fill("9");
+  await dialog.getByPlaceholder("例如：破损报废、盘点损耗").fill("破损报废");
+  await dialog.getByRole("button", { name: "确认减少", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("减少数量不能超过现有库存");
+  await dialog.getByRole("spinbutton").fill("2");
+  page.once("dialog", (d) => d.accept());
+  await dialog.getByRole("button", { name: "确认减少", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(row.locator(".number-cell strong").first()).toContainText("3");
+  const adjustments = await (await page.request.get("/api/stocktakes")).json();
+  const record = adjustments.find((a) => a.kind === "reduce");
+  expect(record).toMatchObject({ before_stock: 5, after_stock: 3, reason: "破损报废" });
+  expect(errors).toEqual([]);
+});

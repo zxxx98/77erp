@@ -3,9 +3,12 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-li
 import { Alert, AppState, AppStateStatus } from "react-native";
 import { availableUpdate, useAppUpdate } from "../src/updates";
 import { UpdateCard } from "../src/UpdateCard";
-import { device } from "../src/native";
+import { device, onUpdateProgress } from "../src/native";
 
-jest.mock("../src/native", () => ({ device: { getVersionCode: jest.fn(), installUpdate: jest.fn() } }));
+jest.mock("../src/native", () => ({
+  device: { getVersionCode: jest.fn(), installUpdate: jest.fn() },
+  onUpdateProgress: jest.fn(() => () => {}),
+}));
 const release = (version = "1.3.0") => ({
   tag_name: `v${version}`, draft: false, prerelease: false,
   assets: [{ name: `77ERP-${version}-arm64.apk`, size: 100, state: "uploaded",
@@ -23,6 +26,7 @@ beforeEach(() => {
   jest.spyOn(Alert, "alert").mockImplementation(() => {});
   jest.mocked(device.installUpdate).mockReset().mockResolvedValue(undefined);
   jest.mocked(device.getVersionCode).mockResolvedValue(1002000);
+  jest.mocked(onUpdateProgress).mockReset().mockReturnValue(() => {});
   globalThis.fetch = fetchMock.mockResolvedValue({ ok: true, json: async () => release() });
 });
 afterEach(() => { jest.restoreAllMocks(); fetchMock.mockReset(); globalThis.fetch = originalFetch; });
@@ -130,4 +134,23 @@ test("missing APK is reported and installation failures can be retried", async (
   await screen.findByText("未允许安装应用");
   fireEvent.press(screen.getByText("立即更新"));
   await screen.findByText(/已打开系统安装界面/);
+});
+
+test("download progress is shown as a percentage and cleared when installation opens", async () => {
+  let emit!: (progress: { received: number; total: number; done: boolean }) => void;
+  jest.mocked(onUpdateProgress).mockImplementation(handler => { emit = handler; return () => {}; });
+  let finish!: () => void;
+  jest.mocked(device.installUpdate).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  render(<UpdateCard />);
+  fireEvent.press(screen.getByText("检查更新"));
+  await screen.findByText("发现新版本 1.3.0");
+  fireEvent.press(screen.getByText("立即更新"));
+  expect(await screen.findByText("已下载 0.0 MB")).toBeTruthy();
+  act(() => { emit({ received: 5 * 1024 * 1024, total: 20 * 1024 * 1024, done: false }); });
+  expect(screen.getByText("已下载 25%（5.0 MB / 20.0 MB）")).toBeTruthy();
+  act(() => { emit({ received: 20 * 1024 * 1024, total: 20 * 1024 * 1024, done: true }); });
+  expect(screen.getByText("已下载 25%（5.0 MB / 20.0 MB）")).toBeTruthy();
+  await act(async () => { finish(); });
+  expect(screen.queryByText(/已下载/)).toBeNull();
+  expect(screen.getByText(/已打开系统安装界面/)).toBeTruthy();
 });

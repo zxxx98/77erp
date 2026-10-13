@@ -1,4 +1,4 @@
-import { NativeModules, PermissionsAndroid } from "react-native";
+import { DeviceEventEmitter, NativeModules, PermissionsAndroid } from "react-native";
 
 export interface Device {
   getVersionCode(): Promise<number>;
@@ -18,6 +18,15 @@ export interface Device {
   uploadImage(uri: string, warehouseId: number): Promise<{ status: number; body: string }>;
 }
 export const device = NativeModules.ErpNative as Device;
+export type UpdateProgress = { received: number; total: number; done: boolean };
+// The native updater reports download bytes; total is -1 when the server omits a length.
+export function onUpdateProgress(handler: (progress: UpdateProgress) => void) {
+  const subscription = DeviceEventEmitter.addListener("updateProgress", (event) => {
+    if (!event || typeof event.received !== "number" || typeof event.total !== "number") return;
+    handler({ received: event.received, total: event.total, done: event.done === true });
+  });
+  return () => subscription.remove();
+}
 let warehouseId = 1;
 export const getWarehouseId = () => warehouseId;
 export const setWarehouseId = (id: number) => { warehouseId = id; };

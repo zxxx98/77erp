@@ -8,8 +8,10 @@ import android.content.pm.Signature;
 import android.net.Uri;
 import android.provider.Settings;
 import androidx.core.content.FileProvider;
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.WritableMap;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -28,6 +30,8 @@ import okhttp3.Response;
 final class AppUpdater {
     private static final int INSTALL_PERMISSION_REQUEST = 7703;
     private static final long MAX_APK_SIZE = 250L * 1024 * 1024;
+    // Report progress at most this often to avoid flooding the JS thread.
+    private static final long PROGRESS_INTERVAL_MS = 200;
     private static final Pattern RELEASE_URL = Pattern.compile(
         "https://github\\.com/zxxx98/77erp/releases/download/v((0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*))/77ERP-\\1-arm64\\.apk");
     private final ReactApplicationContext context;
@@ -72,6 +76,8 @@ final class AppUpdater {
                 long length = response.body().contentLength();
                 if (length > MAX_APK_SIZE) throw new IOException();
                 long received = 0;
+                long lastReport = 0;
+                emitProgress(0, length, false);
                 try (InputStream input = response.body().byteStream(); FileOutputStream output = new FileOutputStream(target)) {
                     byte[] buffer = new byte[65536];
                     int count;
@@ -79,9 +85,15 @@ final class AppUpdater {
                         received += count;
                         if (received > MAX_APK_SIZE || Thread.currentThread().isInterrupted()) throw new IOException();
                         output.write(buffer, 0, count);
+                        long now = System.currentTimeMillis();
+                        if (now - lastReport >= PROGRESS_INTERVAL_MS) {
+                            lastReport = now;
+                            emitProgress(received, length, false);
+                        }
                     }
                 }
                 if (received == 0 || (length >= 0 && received != length)) throw new IOException();
+                emitProgress(received, length >= 0 ? length : received, true);
             }
             PackageManager manager = context.getPackageManager();
             PackageInfo archive = manager.getPackageArchiveInfo(target.getAbsolutePath(), PackageManager.GET_SIGNING_CERTIFICATES);
@@ -102,8 +114,18 @@ final class AppUpdater {
             });
         } catch (Exception e) {
             if (target != null) target.delete();
+            emitProgress(0, -1, true);
             context.runOnUiQueueThread(() -> fail("下载安装包失败，请检查网络、存储空间以及发布包的版本和签名后重试。"));
         }
+    }
+
+    // total is -1 when the server does not report a content length.
+    private void emitProgress(long received, long total, boolean done) {
+        WritableMap payload = Arguments.createMap();
+        payload.putDouble("received", received);
+        payload.putDouble("total", total);
+        payload.putBoolean("done", done);
+        context.emitDeviceEvent("updateProgress", payload);
     }
 
     private void openInstaller(boolean requestPermission) {

@@ -247,6 +247,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (post && path === '/orders') permission = req.body?.type === 'in' ? 'purchase' : req.body?.type === 'out' ? 'sale' : null;
       if (post && /^\/orders\/\d+\/(void|returns)$/.test(path)) permission = 'corrections';
       if ((read || post) && path === '/stocktakes') permission = 'stocktake';
+      if (post && path === '/stock/reduce') permission = 'stocktake';
       if ((read && path === '/stocktakes/multi/products') || (post && path === '/stocktakes/multi/compare')) permission = 'stocktake';
       if ((post && ['/contacts','/templates'].includes(path)) ||
           (post && /^\/templates\/\d+\/delete$/.test(path)) ||

@@ -1219,6 +1219,29 @@ table {
 .text-button:hover {
   color: #2563eb;
 }
+.text-button.danger {
+  color: #c4737d;
+}
+.text-button.danger:hover {
+  color: var(--red);
+}
+.reduce-stock-product {
+  display: grid;
+  gap: 6px;
+  padding: 14px 15px;
+  border: 1px solid #e9ecf1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.reduce-stock-product strong {
+  font-size: 14px;
+  color: #263e61;
+  overflow-wrap: anywhere;
+}
+.reduce-stock-product small {
+  font-size: 12px;
+  color: #7e8798;
+}
 .inline-tabs {
   display: flex;
   gap: 22px;
@@ -4708,6 +4731,15 @@ table {
 .product-image-hint { font-size: 12px; color: #879ab5; line-height: 1.6; }
 .product-image-preview { display: flex; gap: 14px; align-items: center; }
 .product-image-preview img { width: 112px; height: 112px; object-fit: contain; border-radius: 8px; border: 1px solid #e9ecf1; }
+.file-upload-field { display: grid; gap: 12px; }
+.file-upload-label { font-size: 12px; color: #647a99; font-weight: 500; }
+.file-upload-button { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px; border: 1px dashed #ccd9ed; border-radius: 10px; background: #f8faff; color: #2563eb; text-align: left; }
+.file-upload-button:hover:not(:disabled) { border-color: #7ca9f7; background: #eff5ff; }
+.file-upload-button:disabled { opacity: .7; }
+.file-upload-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: #eaf1ff; }
+.file-upload-copy { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.file-upload-copy strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.file-upload-copy > span { font-size: 12px; color: #7e8798; line-height: 1.6; overflow-wrap: anywhere; }
 .product-info .product-spec, .product-grid .product-spec { color: #45546d; white-space: pre-wrap; overflow-wrap: anywhere; }
 .product-info .product-note, .product-grid .product-note { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 1050px) { .catalog-layout { grid-template-columns: 175px minmax(0, 1fr); gap: 12px; } }
@@ -4757,6 +4789,7 @@ table {
   .product-toolbar-actions .product-status-filter { width: 100%; }
   .product-status-filter button { flex: 1; justify-content: center; }
   .product-image-upload { padding: 14px; gap: 12px; }
+  .file-upload-button { padding: 14px; gap: 12px; }
 }
 /* Keep long notes and image comparisons inside narrow product editors. */
 .product-conflict { margin: 12px 0; font-size: 13px; }

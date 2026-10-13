@@ -2,7 +2,7 @@ import { Select } from "./Dropdown.jsx";
 import { PermissionContext, usePermissions } from './permissions.jsx';
 import { hasPermission, canManage } from '../shared/permissions.js';
 import { StockQrManager, StockQrExecution } from './StockQr.jsx';
-import { addQuantity } from "../shared/quantity.js";
+import { addQuantity, parseQuantity } from "../shared/quantity.js";
 import { stockQrLabel } from './stock-qr-client.js';
 import React, { useEffect, useId, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -31,6 +31,7 @@ import {
   LayoutDashboard,
   List,
   LoaderCircle,
+  Minus,
   Package,
   PackageCheck,
   Plus,
@@ -664,6 +665,10 @@ function App({ admin, onLogout }) {
     if (!can(type === 'in' ? 'purchase' : 'sale')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
     setModal({ kind: 'order', type, product, template });
   };
+  const reduceStock = (product) => {
+    if (!can('stocktake')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
+    setModal({ kind: 'reduce', product });
+  };
   const currentNav = navItems.find((n) => n.id === page);
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
@@ -913,6 +918,7 @@ function App({ admin, onLogout }) {
                   filter={inventoryFilter}
                   setFilter={setInventoryFilter}
                   openOrder={openOrder}
+                  reduceStock={reduceStock}
                   showBarcode={(product) =>
                     setModal({ kind: "barcode", product })
                   }
@@ -966,6 +972,13 @@ function App({ admin, onLogout }) {
       )}
       {modal?.kind === "detail" && (
         <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
+      )}
+      {modal?.kind === "reduce" && can('stocktake') && (
+        <ReduceStockModal
+          product={modal.product}
+          onClose={() => setModal(null)}
+          onSaved={saved}
+        />
       )}
       {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
       {modal?.kind === "barcode" && (
@@ -1970,7 +1983,7 @@ function Pagination({ total, page, setPage }) {
     </div>
   );
 }
-function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
+function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcode }) {
   const { can, costs } = usePermissions();
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
@@ -2148,13 +2161,22 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
                   </td>
                   <td className="number-cell">¥ {costs ? money((p.inventory_value_cents ?? Math.round(p.cost * p.stock * 100)) / 100) : '—'}</td>
                   <td className="number-cell">
-                    <button
-                      className="text-button"
-                      hidden={!can("purchase")} onClick={() => openOrder("in", p)}
-                    >
-                      <Plus size={14} />
-                      补货
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        className="text-button"
+                        hidden={!can("purchase")} onClick={() => openOrder("in", p)}
+                      >
+                        <Plus size={14} />
+                        补货
+                      </button>
+                      <button
+                        className="text-button danger"
+                        hidden={!can("stocktake")} onClick={() => reduceStock(p)}
+                      >
+                        <Minus size={14} />
+                        减少
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -2712,6 +2734,90 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             disabled={busy || readingImage || conflict}
           >
             {busy ? "正在保存…" : "保存商品"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ReduceStockModal({ product, onClose, onSaved }) {
+  const { busy, error, run, send } = useBusiness();
+  const [quantity, setQuantity] = useState(""),
+    [reason, setReason] = useState("");
+  const submit = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const amount = parseQuantity(quantity, true);
+      if (!reason.trim()) throw new Error("请填写减少原因。");
+      if (amount > product.stock)
+        throw new Error(`减少数量不能超过现有库存 ${product.stock} ${product.unit}。`);
+      if (
+        !window.confirm(
+          `确认将「${product.name}」库存从 ${product.stock} 减少 ${amount} ${product.unit}？`,
+        )
+      )
+        return;
+      await send("/stock/reduce", {
+        product_id: product.id,
+        quantity: amount,
+        expected_stock: product.stock,
+        reason,
+      });
+      await onSaved(`库存已减少 · ${product.name}`);
+    });
+  };
+  return (
+    <Modal
+      title="减少库存"
+      subtitle="用于报损、损耗或盘亏，直接调整现有库存并记录原因。"
+      onClose={onClose}
+    >
+      <form onSubmit={submit}>
+        <div className="form-body">
+          <div className="reduce-stock-product">
+            <strong>{product.name}</strong>
+            <small>
+              {product.barcode} · 现有库存 {product.stock} {product.unit}
+            </small>
+          </div>
+          <label>
+            减少数量（{product.unit}） <span>*</span>
+            <input
+              required
+              data-autofocus
+              type="number"
+              min="0.000001"
+              step="0.000001"
+              placeholder="0"
+              value={quantity}
+              disabled={busy}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+          </label>
+          <label>
+            减少原因 <span>*</span>
+            <input
+              required
+              maxLength={500}
+              placeholder="例如：破损报废、盘点损耗"
+              value={reason}
+              disabled={busy}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </label>
+          {error && (
+            <div className="form-error" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <Button type="button" onClick={onClose} disabled={busy}>
+            取消
+          </Button>
+          <Button type="submit" kind="primary" icon={Minus} disabled={busy}>
+            {busy ? "处理中…" : "确认减少"}
           </Button>
         </div>
       </form>

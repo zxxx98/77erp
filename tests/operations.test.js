@@ -101,6 +101,28 @@ test("decimal stock moves, partial returns, voids and stocktakes retain quantiti
   assert.equal(f.db.prepare("SELECT inventory_value_cents FROM products WHERE id=?").get(id).inventory_value_cents, 0);
 });
 
+test("reducing stock records an adjustment, caps at available stock and rolls back on failure", async (t) => {
+  const f = await fixture(t), id = await f.makeProduct();
+  await f.makeOrder(id, "in", 5);
+  assert.equal(f.stock(id), 5);
+  const before = f.db.prepare("SELECT inventory_value_cents FROM products WHERE id=?").get(id).inventory_value_cents;
+  const reduced = await f.command("/stock/reduce", { product_id: id, quantity: 2, expected_stock: 5, reason: "破损报废" });
+  assert.equal(reduced.status, 200, JSON.stringify(reduced.data));
+  assert.equal(f.stock(id), 3);
+  assert.equal(f.db.prepare("SELECT inventory_value_cents FROM products WHERE id=?").get(id).inventory_value_cents, before - 2000);
+  const records = (await f.request("/stocktakes")).data;
+  assert.equal(records.length, 1);
+  assert.equal(records[0].kind, "reduce");
+  assert.equal(records[0].reason, "破损报废");
+  assert.equal(records[0].before_stock, 5);
+  assert.equal(records[0].after_stock, 3);
+  assert.equal((await f.command("/stock/reduce", { product_id: id, quantity: 4, expected_stock: 3, reason: "超额" })).status, 400);
+  assert.equal((await f.command("/stock/reduce", { product_id: id, quantity: 0, expected_stock: 3, reason: "零" })).status, 400);
+  assert.equal((await f.command("/stock/reduce", { product_id: id, quantity: 1, expected_stock: 99, reason: "过期" })).status, 400);
+  assert.equal(f.stock(id), 3);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM stock_adjustments").get().n, 1);
+});
+
 test("decimal import, templates and backup restoration preserve quantities and reject excess precision", async (t) => {
   const f = await fixture(t);
   const rows = rowsToProducts(parseCSV(importTemplate.replace(",5,20", ",0.123456,0.3")));

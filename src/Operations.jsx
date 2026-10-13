@@ -1,5 +1,6 @@
 import { parseQuantity, addQuantity } from "../shared/quantity.js";
 import React, { useEffect, useRef, useState } from "react";
+import { FileSpreadsheet, LoaderCircle, Upload } from "lucide-react";
 import { api } from "./api.js";
 import {
   download,
@@ -319,7 +320,28 @@ export function Stocktake({ products, onSaved }) {
 export function ProductImport({ onSaved }) {
   const { busy, error, run, send } = useOperation();
   const [rows, setRows] = useState(null),
-    [preview, setPreview] = useState(null);
+    [preview, setPreview] = useState(null),
+    [fileName, setFileName] = useState("");
+  const fileInput = useRef(null);
+  const readFile = async (file) => {
+    if (file.size > 5 * 1024 * 1024)
+      throw new Error("商品文件不能超过 5 MB。");
+    let table;
+    if (/\.xlsx$/i.test(file.name)) {
+      const { readSheet } = await import("read-excel-file/browser");
+      table = await readSheet(file);
+    } else if (/\.csv$/i.test(file.name))
+      table = parseCSV(await file.text());
+    else throw new Error("请选择 .csv 或 .xlsx 文件。");
+    const parsed = rowsToProducts(table);
+    setRows(parsed);
+    setPreview(
+      await api("/products/import/preview", {
+        method: "POST",
+        body: { rows: parsed },
+      }),
+    );
+  };
   return (
     <div>
       <p>
@@ -339,39 +361,49 @@ export function ProductImport({ onSaved }) {
       >
         下载商品模板
       </button>
-      <label>
-        选择商品文件
+      <div className="file-upload-field" role="group">
+        <div className="file-upload-label">选择商品文件</div>
         <input
+          ref={fileInput}
+          hidden
           type="file"
           accept=".csv,.xlsx"
           disabled={busy}
+          aria-label="选择商品文件"
           onChange={(e) => {
             const file = e.target.files?.[0];
+            e.target.value = "";
             setRows(null);
             setPreview(null);
+            setFileName("");
             if (!file) return;
             void run(async () => {
-              if (file.size > 5 * 1024 * 1024)
-                throw new Error("商品文件不能超过 5 MB。");
-              let table;
-              if (/\.xlsx$/i.test(file.name)) {
-                const { readSheet } = await import("read-excel-file/browser");
-                table = await readSheet(file);
-              } else if (/\.csv$/i.test(file.name))
-                table = parseCSV(await file.text());
-              else throw new Error("请选择 .csv 或 .xlsx 文件。");
-              const parsed = rowsToProducts(table);
-              setRows(parsed);
-              setPreview(
-                await api("/products/import/preview", {
-                  method: "POST",
-                  body: { rows: parsed },
-                }),
-              );
+              await readFile(file);
+              setFileName(file.name);
             });
           }}
         />
-      </label>
+        <button
+          type="button"
+          className="file-upload-button"
+          disabled={busy}
+          aria-busy={busy}
+          onClick={() => fileInput.current?.click()}
+        >
+          <span className="file-upload-icon" aria-hidden="true">
+            {busy ? <LoaderCircle size={22} className="spin" /> : <FileSpreadsheet size={22} />}
+          </span>
+          <span className="file-upload-copy">
+            <strong>{busy ? "正在读取文件…" : fileName || "选择商品文件"}</strong>
+            <span>
+              {busy
+                ? "正在解析并生成预览，请稍候"
+                : "点击选择文件，支持 CSV、Excel（.xlsx）"}
+            </span>
+          </span>
+          {!busy && <Upload size={18} aria-hidden="true" />}
+        </button>
+      </div>
       {rows && (
         <div className="operation-scroll">
           <table className="data-table">

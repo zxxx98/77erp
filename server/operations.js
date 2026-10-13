@@ -273,6 +273,29 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       }),
     ),
   );
+  app.post(
+    "/api/stock/reduce",
+    route((req) =>
+      mutation(req, () => {
+        const reason = reasonOf(req.body),
+          { product_id, quantity, expected_stock } = req.body;
+        if (!integer(product_id) || !validQuantity(quantity, true))
+          fail("请填写有效的商品和减少数量（正数，最多 6 位小数）。");
+        const p = product(product_id);
+        if (p.warehouse_id !== req.warehouse.id)
+          fail("商品不属于当前仓库。");
+        if (expected_stock !== undefined && p.stock !== expected_stock)
+          fail(`${p.name} 库存已变化，请刷新后重试。`);
+        if (quantity > p.stock)
+          fail(`减少数量不能超过现有库存 ${p.stock}。`);
+        if (quantity === 0) fail("减少数量需大于 0。");
+        const next = addQuantity(p.stock, -quantity);
+        adjustment(randomUUID(), p, next, reason, "reduce");
+        changeStock(p.id, -quantity);
+        return { ok: true, stock: next };
+      }),
+    ),
+  );
 
   function validateRows(rows, warehouseId) {
     if (!Array.isArray(rows) || !rows.length || rows.length > 1000)
@@ -562,7 +585,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !text(a.batch, 100) ||
         !text(a.name, 100) ||
         !text(a.reason) ||
-        !["stocktake", "opening"].includes(a.kind) ||
+        !["stocktake", "opening", "reduce"].includes(a.kind) ||
         !text(a.created_at, 100)
       )
         fail("备份盘点记录无效。");
