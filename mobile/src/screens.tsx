@@ -532,7 +532,7 @@ export function ProductDetail({
       <Card>
         <View style={s.row}>
           <View style={s.productIcon}>
-            {product.image ? <ProductImage uri={product.image} label={product.name} style={{ width: 48, height: 48, borderRadius: 8 }} /> : <Box color={colors.blue} size={27} />}
+            {product.image ? <ProductImage uri={product.image} label={product.name} thumbnailSize={100} style={{ width: 48, height: 48, borderRadius: 8 }} /> : <Box color={colors.blue} size={27} />}
           </View>
           <View style={s.grow}>
             <Text style={s.subtitle}>{product.name}</Text>

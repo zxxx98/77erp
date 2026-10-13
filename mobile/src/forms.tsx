@@ -189,6 +189,7 @@ export function ProductEditor({
           finally { setPickingImage(false); }
         }} />
         {!!form.image && <Button title="移除图片" kind="secondary" disabled={busy || pickingImage} onPress={() => field('image')('')} />}
+        <Text style={s.caption}>自动压缩并转为 WebP 上传图床。</Text>
         <Field label="商品规格" value={form.specification} onChangeText={field('specification')} maxLength={500} editable={!busy} placeholder="例如：白色 / 350ml / 12个装" />
         <Field label="商品备注" value={form.note} onChangeText={field('note')} maxLength={2000} multiline numberOfLines={3} editable={!busy} placeholder="填写商品补充说明" />
       </Card>

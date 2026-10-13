@@ -9,7 +9,7 @@ const product = { name: '图片商品', category: '图片测试', unit: '件', c
 const png = await sharp({ create: { width: 24, height: 16, channels: 4, background: '#2563eb' } }).png().toBuffer();
 async function fixture(t) {
   const calls = [];
-  let respond = () => new Response(JSON.stringify([{ src: '/file/77erp/products/image.jpg' }]));
+  let respond = () => new Response(JSON.stringify([{ src: '/file/77erp/products/image.webp' }]));
   const instance = createApp(':memory:', { imagebedFetch: async (url, options) => { calls.push({ url, options }); return respond(); } });
   const server = instance.app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -64,15 +64,17 @@ test('upload forwards a decoded image to cfr2 and persists only a URL through sy
   const f = await fixture(t);
   await f.request('/settings/imagebed', 'PUT', config);
   const uploaded = await f.upload();
-  assert.equal(uploaded.status, 200); assert.equal(uploaded.data.url, 'https://img.example.com/file/77erp/products/image.jpg');
+  assert.equal(uploaded.status, 200); assert.equal(uploaded.data.url, 'https://img.example.com/file/77erp/products/image.webp');
   const { url, options } = f.calls[0];
   assert.equal(url.pathname, '/upload'); assert.equal(url.searchParams.get('uploadChannel'), 'cfr2');
   assert.equal(url.searchParams.get('autoRetry'), 'false'); assert.equal(url.searchParams.get('uploadFolder'), config.upload_folder);
   assert.equal(url.searchParams.get('channelName'), config.channel_name); assert.equal(options.headers.Authorization, `Bearer ${config.secret}`);
   assert.equal(options.redirect, 'error'); assert.equal(url.searchParams.has('authCode'), false);
   const file = options.body.get('file');
-  assert.equal(file.type, 'image/jpeg'); assert.match(file.name, /^[\da-f-]+\.jpg$/);
-  assert.equal((await sharp(Buffer.from(await file.arrayBuffer())).metadata()).format, 'jpeg');
+  assert.equal(file.type, 'image/webp'); assert.match(file.name, /^[\da-f-]+\.webp$/);
+  const metadata = await sharp(Buffer.from(await file.arrayBuffer())).metadata();
+  assert.equal(metadata.format, 'webp');
+  assert.equal(metadata.width, 24); assert.equal(metadata.height, 16);
   const warehouse = (await f.request('/warehouses', 'POST', { name: '图片分仓' })).data.id;
   const created = await f.request('/products', 'POST', { ...product, image: uploaded.data.url, sync_warehouse_ids: [warehouse] });
   assert.equal(created.status, 201);
@@ -101,6 +103,20 @@ test('authCode is sent only to the image host and unauthenticated mode clears sa
   assert.equal((await f.upload()).status, 200);
   assert.deepEqual(f.calls[1].options.headers, {});
   assert.equal((await f.request('/settings/imagebed')).data.has_secret, false);
+});
+
+test('large images are scaled, converted to actual WebP bytes and stripped of metadata before upload', async t => {
+  const f = await fixture(t);
+  await f.request('/settings/imagebed', 'PUT', config);
+  const large = await sharp({ create: { width: 2560, height: 1920, channels: 4, background: '#2563eb' } }).withMetadata().png().toBuffer();
+  assert.equal((await f.upload(large)).status, 200);
+  const file = f.calls[0].options.body.get('file');
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const metadata = await sharp(bytes).metadata();
+  assert.equal(metadata.format, 'webp');
+  assert.equal(metadata.width, 1280); assert.equal(metadata.height, 960);
+  assert.equal(metadata.exif, undefined); assert.equal(metadata.icc, undefined);
+  assert.ok(bytes.length <= 1024 * 1024);
 });
 
 test('invalid and oversized files and wrong multipart fields are rejected before contacting the image host', async t => {

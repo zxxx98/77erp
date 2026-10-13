@@ -2,9 +2,9 @@ import { createApp } from "../../server/app.js";
 import { randomUUID } from 'node:crypto';
 // An isolated database keeps browser mutations out of the user's working data.
 const { app, db } = createApp(":memory:", { imagebedFetch: async (url, options) => {
-  if (url.origin !== 'https://img.77erp.test' || url.pathname !== '/upload' || url.searchParams.get('uploadChannel') !== 'cfr2' || options.body.get('file')?.type !== 'image/jpeg')
+  if (url.origin !== 'https://img.77erp.test' || url.pathname !== '/upload' || url.searchParams.get('uploadChannel') !== 'cfr2' || options.body.get('file')?.type !== 'image/webp')
     throw new Error('Unexpected image host request in browser fixture');
-  return new Response(JSON.stringify([{ src: `/file/77erp/products/${randomUUID()}.jpg` }]));
+  return new Response(JSON.stringify([{ src: `/file/77erp/products/${randomUUID()}.webp` }]));
 } });
 // A separate fresh instance covers the first-run UI without resetting other tests.
 const fresh = createApp(":memory:");

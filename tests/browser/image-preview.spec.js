@@ -24,10 +24,12 @@ test('product images fit a simple overlay; closing preserves the editor and rest
   await page.reload();
   await page.getByRole('textbox', { name: '筛选商品' }).fill('大图测试商品');
   const thumbnail = page.getByRole('button', { name: '放大查看 大图测试商品', exact: true });
+  await expect(thumbnail.getByRole('img')).toHaveAttribute('src', 'https://img.77erp.test/file/preview.jpg?width=100&height=100&fallback=original');
   await thumbnail.click();
   const viewer = page.getByRole('dialog', { name: '图片预览：大图测试商品' });
   await expect(viewer.getByRole('img', { name: '大图测试商品 大图' })).toBeVisible();
   const previewImage = viewer.getByRole('img', { name: '大图测试商品 大图' });
+  await expect(previewImage).toHaveAttribute('src', 'https://img.77erp.test/file/preview.jpg');
   const imageFits = () => previewImage.evaluate(el => {
     const image = el.getBoundingClientRect();
     return image.width <= 640 && image.height <= 480 && image.x >= 0 && image.y >= 0 && image.right <= window.innerWidth && image.bottom <= window.innerHeight && getComputedStyle(el).objectFit === 'contain';

@@ -4,16 +4,21 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
+import { productThumbnailUrl } from './image-url';
 
-export function ProductImage({ uri, label, style }: {
+export function ProductImage({ uri, label, style, thumbnailSize }: {
   uri: string;
   label: string;
   style: StyleProp<ImageStyle>;
+  thumbnailSize?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [failedThumbnail, setFailedThumbnail] = useState('');
+  const thumbnail = productThumbnailUrl(uri, thumbnailSize);
+  const displayUri = failedThumbnail === thumbnail ? uri : thumbnail;
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel={`放大查看 ${label}`} onPress={e => { e.stopPropagation(); setOpen(true); }}>
-      <Image source={{ uri }} accessibilityLabel={label} style={style} resizeMode="contain" />
+      <Image source={{ uri: displayUri }} accessibilityLabel={label} style={style} resizeMode="contain" onError={() => { if (displayUri !== uri) setFailedThumbnail(thumbnail); }} />
     </Pressable>
     {open && <ImageViewer uri={uri} title={label} onClose={() => setOpen(false)} />}
   </>;

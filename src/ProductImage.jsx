@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
+import { productThumbnailUrl } from './image-url.js';
 
-export function ProductImage({ src, alt, className = '', preview = true }) {
+export function ProductImage({ src, alt, className = '', preview = true, thumbnailSize }) {
   const [open, setOpen] = useState(false);
-  const img = <img src={src} alt={alt} loading="lazy" decoding="async" />;
+  const [failedThumbnail, setFailedThumbnail] = useState('');
+  const thumbnail = productThumbnailUrl(src, thumbnailSize);
+  const displaySrc = failedThumbnail === thumbnail ? src : thumbnail;
+  const img = <img src={displaySrc} alt={alt} loading="lazy" decoding="async" onError={() => { if (displaySrc !== src) setFailedThumbnail(thumbnail); }} />;
   if (!preview) return <span className={className}>{img}</span>;
   return <>
     <button type="button" className={`product-image-button ${className}`} aria-label={`放大查看 ${alt}`} onClick={e => { e.stopPropagation(); setOpen(true); }}>{img}</button>

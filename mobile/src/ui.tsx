@@ -312,7 +312,7 @@ export function ProductRow({
   return (
     <View style={[s.productRow, s.row, { alignItems: "flex-start" }]}>
       <View style={s.productIcon}>
-        {product.image ? <ProductImage uri={product.image} label={product.name} style={{ width: 40, height: 40, borderRadius: 8 }} /> : <Box color={colors.blue} size={24} />}
+        {product.image ? <ProductImage uri={product.image} label={product.name} thumbnailSize={100} style={{ width: 40, height: 40, borderRadius: 8 }} /> : <Box color={colors.blue} size={24} />}
       </View>
       <Pressable
         accessibilityRole="button"

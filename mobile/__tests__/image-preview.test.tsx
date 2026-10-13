@@ -38,8 +38,13 @@ test('previewing an unsaved image does not close the product editor or discard i
 test('pressing a list thumbnail opens the image without opening the product row', () => {
   const openProduct = jest.fn(), stopped = jest.fn();
   render(<ProductRow product={{ ...product, image }} onPress={openProduct} />);
+  expect(screen.getByLabelText('陶瓷杯')).toHaveProp('source', { uri: `${image}?width=100&height=100&fallback=original` });
   fireEvent.press(screen.getByRole('button', { name: '放大查看 陶瓷杯' }), { stopPropagation: stopped });
   expect(stopped).toHaveBeenCalled();
   expect(openProduct).not.toHaveBeenCalled();
   expect(screen.getByLabelText('陶瓷杯 大图')).toBeOnTheScreen();
+  expect(screen.getByLabelText('陶瓷杯 大图')).toHaveProp('source', { uri: image });
+  fireEvent.press(screen.getByRole('button', { name: '关闭图片预览' }));
+  fireEvent(screen.getByLabelText('陶瓷杯'), 'error');
+  expect(screen.getByLabelText('陶瓷杯')).toHaveProp('source', { uri: image });
 });

@@ -76,7 +76,7 @@ async function normalizeImage(file) {
   if (metadata.format !== types.get(file.mimetype) || (metadata.pages || 1) > 1) throw new Error('invalid image content');
   // Decode and re-encode to reject malformed files and strip metadata before forwarding.
   const buffer = await input.rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
-    .flatten({ background: '#fff' }).jpeg({ quality: 82 }).toBuffer();
+    .flatten({ background: '#fff' }).webp({ quality: 82 }).toBuffer();
   if (buffer.length > imageLimit) throw new Error('oversized image');
   return buffer;
 }
@@ -133,7 +133,7 @@ export function installImagebed(app, db, { imagebedFetch = fetch } = {}) {
         if (config.auth_type === 'token') headers.Authorization = `Bearer ${config.secret}`;
         if (config.auth_type === 'authCode') headers.authCode = config.secret;
         const form = new FormData();
-        form.append('file', new Blob([buffer], { type: 'image/jpeg' }), `${randomUUID()}.jpg`);
+        form.append('file', new Blob([buffer], { type: 'image/webp' }), `${randomUUID()}.webp`);
         const response = await imagebedFetch(endpoint, { method: 'POST', headers, body: form, redirect: 'error', signal: AbortSignal.timeout(30_000) });
         if (!response.ok) {
           await response.body?.cancel();

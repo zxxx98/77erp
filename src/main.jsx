@@ -106,7 +106,7 @@ function Badge({ children, tone = "green", dot = true }) {
   );
 }
 function ProductArt({ product, size = "normal", preview = true }) {
-  if (product.image) return <ProductImage src={product.image} alt={product.name} preview={preview} className={`product-art art-${size}`} />;
+  if (product.image) return <ProductImage src={product.image} alt={product.name} preview={preview} thumbnailSize={size === 'large' ? 200 : 100} className={`product-art art-${size}`} />;
   const n = product.name;
   const type = /杯/.test(n)
     ? /保温/.test(n)
@@ -2580,7 +2580,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                   catch (e) { setError(e.message); }
                   finally { setReadingImage(false); }
                 }} />
-              <small>{readingImage ? '正在压缩并上传图片…' : '支持 JPEG、PNG、WebP，自动压缩后上传图床。'}</small>
+              <small>{readingImage ? '正在压缩并上传图片…' : '支持 JPEG、PNG、WebP，自动压缩并转为 WebP 上传图床。'}</small>
             </label>
             {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="商品图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
           </div>

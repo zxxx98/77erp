@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { readProductImage } from './catalog.js';
 import { ProductImage } from './ProductImage.jsx';
+import './imagebed.css';
 
 export function ImagebedSettings({ onBusy, active }) {
   const [config, setConfig] = useState(null);
@@ -42,7 +43,7 @@ export function ImagebedSettings({ onBusy, active }) {
       {config.auth_type !== 'none' && <>
         <label>上传凭据<input type="password" autoComplete="new-password" maxLength={4096} value={secret} placeholder={config.has_secret ? '已保存，留空保留现有凭据' : '填写有上传权限的 Token 或认证码'} disabled={busy || clearSecret} onChange={e => setSecret(e.target.value)} /></label>
         <small>凭据仅保存在服务器，不会随商品数据或业务备份返回。</small>
-        {config.has_secret && <label><input type="checkbox" checked={clearSecret} disabled={busy} onChange={e => setClearSecret(e.target.checked)} />清除已保存凭据（需同时停用上传或改为无需认证）</label>}
+        {config.has_secret && <label className="imagebed-clear-secret"><input type="checkbox" checked={clearSecret} disabled={busy} onChange={e => setClearSecret(e.target.checked)} /><span>清除已保存凭据（需同时停用上传或改为无需认证）</span></label>}
       </>}
       <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? '处理中…' : '保存图床配置'}</button>
       <label>上传测试图片<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || !config.base_url} onChange={e => {
