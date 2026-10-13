@@ -1,3 +1,4 @@
+import { usePermissions } from './permissions';
 import { StockQrExecution, stockQrLabel } from './stock-qr';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, FlatList, Linking, StyleSheet, Text, View } from "react-native";
@@ -268,6 +269,7 @@ export function Dashboard({
   openProduct: (product: Product) => void;
   openHistory: () => void;
 }) {
+  const { costs } = usePermissions();
   const today = reportOrders(data.orders).filter(
     (order) =>
       new Date(order.created_at).toDateString() === new Date().toDateString(),
@@ -322,7 +324,7 @@ export function Dashboard({
               <stat.icon size={18} color={colors.blue} />
             </View>
             <Text selectable style={styles.statValue}>
-              {stat.value}
+              {stat.label === '库存成本' && !costs ? '—' : stat.value}
             </Text>
           </View>
         ))}
@@ -331,13 +333,13 @@ export function Dashboard({
         <Text style={s.subtitle}>快速操作</Text>
         <Button title="扫描商品条码" icon={ScanLine} onPress={openScanner} />
         <Columns>
-          <Button
+          <Button permission="purchase"
             title="采购入库"
             icon={ArrowDownToLine}
             kind="secondary"
             onPress={() => openOrder("in")}
           />
-          <Button
+          <Button permission="sale"
             title="销售出库"
             icon={ArrowUpFromLine}
             kind="secondary"
@@ -443,7 +445,7 @@ export function ProductsScreen({
               </Text>
             </View>
             {!inventory && (
-              <IconButton label="新增商品" icon={Plus} onPress={addProduct} />
+              <IconButton permission="products" label="新增商品" icon={Plus} onPress={addProduct} />
             )}
           </View>
           {!inventory && manageCategories && <Button title="管理分类" kind="secondary" onPress={manageCategories} />}
@@ -518,13 +520,13 @@ export function ProductDetail({
       onClose={onClose}
       footer={
         <Columns>
-          <Button
+          <Button permission="purchase"
             title="采购入库"
             kind="secondary"
             disabled={busy}
             onPress={() => openOrder("in", product)}
           />
-          <Button
+          <Button permission="sale"
             title="销售出库"
             disabled={busy || !product.stock}
             onPress={() => openOrder("out", product)}
@@ -564,9 +566,9 @@ export function ProductDetail({
         <DetailRow label="采购价" value={money(product.cost)} />
         <DetailRow label="销售价" value={money(product.price)} />
       </Card>
-      <Button title="编辑商品" kind="secondary" disabled={busy} onPress={edit} />
+      <Button permission="products" title="编辑商品" kind="secondary" disabled={busy} onPress={edit} />
+      {manageStockQr && <Button title="出入库二维码" kind="secondary" disabled={busy} onPress={manageStockQr} />}
       {isAdmin && <>
-        {manageStockQr && <Button title="出入库二维码" kind="secondary" disabled={busy} onPress={manageStockQr} />}
         <Button title={product.active === 0 ? "上架商品" : "下架商品"} kind="secondary" disabled={busy} onPress={() => change()} />
         <Button title="删除商品" kind="danger" disabled={busy} onPress={() => change(true)} />
       </>}
@@ -637,13 +639,13 @@ export function OrdersScreen({
           {notice}
           <Text style={s.title}>操作记录</Text>
           <Columns>
-            <Button
+            <Button permission="purchase"
               title="新建入库"
               icon={ArrowDownToLine}
               kind="secondary"
               onPress={() => openOrder("in")}
             />
-            <Button
+            <Button permission="sale"
               title="新建出库"
               icon={ArrowUpFromLine}
               onPress={() => openOrder("out")}
@@ -703,6 +705,7 @@ export function OrderDetail({
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
+  const { can, user } = usePermissions();
   return (
     <ScreenModal title="单据详情" onClose={onClose}>
       <Card>
@@ -732,7 +735,8 @@ export function OrderDetail({
         </Card>
       ))}
       <Text style={s.caption}>开单人：{order.created_by_name || '历史记录，操作人未知'}</Text>
-      {isAdmin && <><PaymentEditor order={order} /><OrderCorrection order={order} onSaved={onSaved} /></>}
+      {(isAdmin || (user.role === 'employee' && can('finance'))) && <PaymentEditor order={order} />}
+      {(isAdmin || (user.role === 'employee' && can('corrections'))) && <OrderCorrection order={order} onSaved={onSaved} />}
       {!!order.note && (
         <Card>
           <Text style={s.label}>备注</Text>
@@ -762,6 +766,7 @@ export function ScannerScreen({
   warehouseId?: number;
   sourceId?: string;
 }) {
+  const { can, user } = usePermissions();
   const [stockLabel,setStockLabel]=useState<object|null>(null),[stockBusy,setStockBusy]=useState(false);
   const scanLock=useRef(false);
   const [mode, setMode] = useState<"query" | "in" | "out">("query");
@@ -769,6 +774,9 @@ export function ScannerScreen({
   const [selected, setSelected] = useState<Product>();
   const [busy, setBusy] = useState(false);
   const { error, errorRevision, setError } = useFormError();
+  useEffect(() => {
+    if (mode !== 'query' && !can(mode === 'in' ? 'purchase' : 'sale')) { setMode('query'); setStockLabel(null); }
+  }, [mode, user]);
   const lookup = (code: string) => {
     if(stockBusy)return;
     const label=stockQrLabel(code);
@@ -815,12 +823,12 @@ export function ScannerScreen({
     >
       <Chips
         value={mode}
-        onChange={value=>{if(!busy&&!stockBusy)setMode(value);}}
+        onChange={value=>{if(!busy&&!stockBusy && (value === "query" || value === "in" || value === "out"))setMode(value);}}
         options={[
           { id: "query", label: "查找商品" },
           { id: "in", label: "扫码入库" },
           { id: "out", label: "扫码出库" },
-        ]}
+        ].filter(item => item.id === "query" || can(item.id === "in" ? "purchase" : "sale"))}
       />
       {manageStockQr && <Button title="管理出入库二维码" kind="secondary" disabled={busy||stockBusy} onPress={manageStockQr} />}
       <Card>
@@ -878,12 +886,12 @@ export function ScannerScreen({
             当前库存 {selected.stock} {selected.unit}
           </Text>
           <Columns>
-            <Button
+            <Button permission="purchase"
               title="采购入库"
               kind="secondary"
               onPress={() => openOrder("in", selected)}
             />
-            <Button
+            <Button permission="sale"
               title="销售出库"
               onPress={() => openOrder("out", selected)}
               disabled={!selected.stock}
@@ -903,7 +911,6 @@ export function MoreScreen({
   data,
   busy,
   settings,
-  stocktake,
   commerce,
   changeServer,
   logout,
@@ -915,7 +922,6 @@ export function MoreScreen({
   data: Workspace;
   busy: boolean;
   settings: () => void;
-  stocktake: () => void;
   commerce: () => void;
   changeServer: () => void;
   logout: () => void;
@@ -943,8 +949,7 @@ export function MoreScreen({
         />}
       </Card>
       {changePassword && <Button title="修改密码" kind="secondary" onPress={changePassword} />}
-      <Button title={isAdmin ? "往来、模板与财务" : "单据模板"} kind="secondary" onPress={commerce} />
-      {isAdmin && <Button title="库存盘点" kind="secondary" onPress={stocktake} />}
+      <Button title="业务管理" kind="secondary" onPress={commerce} />
       <Card>
         <Text style={s.label}>服务器地址</Text>
         <Text selectable style={s.caption}>

@@ -23,11 +23,11 @@ async function fixture(page) {
 }
 const settings = async (page) => {
   await page.getByRole("button", { name: "系统设置", exact: true }).click();
-  await page.getByRole("button", { name: "库存与数据", exact: false }).click();
+  await page.getByRole("button", { name: /备份与恢复/ }).click();
 };
 const accept = (page) => page.once("dialog", (dialog) => dialog.accept());
 
-test("CSV import, stocktake, backup download and restore work through settings", async ({
+test("shared business management handles import and stocktake while settings retain backup and restore", async ({
   page,
 }) => {
   const f = await fixture(page),
@@ -41,34 +41,37 @@ test("CSV import, stocktake, backup download and restore work through settings",
       .setInputFiles({
         name: "products.csv",
         mimeType: "text/csv",
-        buffer: Buffer.from(importTemplate),
+        buffer: Buffer.from(importTemplate.replace(",5,20", ",0.5,20.25")),
       });
     await expect(
       page.getByText("共 1 行，0 行错误。确认前请核对预览。"),
     ).toBeVisible();
+    await page.getByRole('button', { name: '库存盘点', exact: true }).click();
+    await page.getByRole('button', { name: '批量导入', exact: true }).click();
+    await expect(page.getByText('共 1 行，0 行错误。确认前请核对预览。')).toBeVisible();
     accept(page);
     await page.getByRole("button", { name: "确认导入", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(20);
-    await settings(page);
+    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(20.25);
+    await page.getByRole("button", { name: "业务管理", exact: true }).click();
+    await page.getByRole("button", { name: "库存盘点", exact: true }).click();
     await page.getByRole("checkbox", { name: /示例商品/ }).check();
     await page
       .getByRole("spinbutton", { name: "示例商品 实盘数量" })
-      .fill("18");
-    await page.getByLabel("盘点原因").fill("破损两件");
+      .fill("18.125");
+    await page.getByLabel("盘点原因").fill("盘点差异");
     accept(page);
     await page.getByRole("button", { name: "确认盘点", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(18);
+    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(18.125);
     await settings(page);
-    await page.getByRole("button", { name: "备份与恢复", exact: true }).click();
     const downloadEvent = page.waitForEvent("download");
     await page
       .getByRole("button", { name: "下载业务备份", exact: true })
       .click();
     const download = await downloadEvent;
     const backup = await readFile(await download.path());
-    expect(JSON.parse(backup).data.products[0].stock).toBe(18);
+    expect(JSON.parse(backup).data.products[0].stock).toBe(18.125);
     accept(page);
     await page
       .getByRole("button", { name: "重置业务数据", exact: true })
@@ -76,7 +79,6 @@ test("CSV import, stocktake, backup download and restore work through settings",
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(f.db.prepare("SELECT COUNT(*) AS n FROM products").get().n).toBe(0);
     await settings(page);
-    await page.getByRole("button", { name: "备份与恢复", exact: true }).click();
     await page
       .getByLabel("选择备份文件")
       .setInputFiles({
@@ -92,7 +94,7 @@ test("CSV import, stocktake, backup download and restore work through settings",
       .getByRole("button", { name: "确认恢复备份", exact: true })
       .click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(18);
+    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(18.125);
     expect((await page.request.get(f.base + "/api/data")).status()).toBe(200);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(f.base + "/?manage=data");
@@ -101,6 +103,9 @@ test("CSV import, stocktake, backup download and restore work through settings",
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
+    await page.goto(f.base + '/?manage=backup');
+    await expect(page.getByRole('button', { name: '下载业务备份', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '批量导入', exact: true })).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
     await f.close();

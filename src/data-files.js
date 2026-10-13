@@ -1,3 +1,5 @@
+import { parseQuantity } from "../shared/quantity.js";
+
 export const importHeaders = [
   "商品名称",
   "条码",
@@ -68,11 +70,15 @@ export function rowsToProducts(table) {
     throw new Error("表头不匹配，请使用导入模板，保持列顺序。");
   if (!rows.length || rows.length > 1000)
     throw new Error("每次导入 1–1000 行商品。");
-  const numeric = (value, integer, row) => {
+  const numeric = (value, quantity, row) => {
     const s = value == null ? "" : String(value).trim();
-    if (!(integer ? /^\d+$/ : /^\d+(\.\d{1,2})?$/).test(s))
+    if (quantity) {
+      try { return parseQuantity(s); }
+      catch (error) { throw new Error(`第 ${row} 行：${error.message}`); }
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(s))
       throw new Error(
-        `第 ${row} 行：数量需为非负整数，金额最多两位小数，不能留空。`,
+        `第 ${row} 行：数量最多 6 位小数，金额最多两位小数，不能留空。`,
       );
     return Number(s);
   };

@@ -1,3 +1,5 @@
+import { addQuantity } from "../../shared/quantity";
+import { usePermissions } from './permissions';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
@@ -257,7 +259,7 @@ export function ProductEditor({
           label="安全库存"
           value={form.threshold}
           onChangeText={field("threshold")}
-          keyboardType="number-pad"
+          keyboardType="decimal-pad"
           editable={!busy}
         />
       </Card>
@@ -295,6 +297,7 @@ export function OrderEditor({
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
+  const { templates: manageTemplates } = usePermissions();
   const [template, setTemplate] = useState(initialTemplate);
   const [templateName, setTemplateName] = useState(initialTemplate?.name || "");
   const [templateMessage, setTemplateMessage] = useState("");
@@ -440,12 +443,12 @@ export function OrderEditor({
       <Button title="选择单据模板" kind="secondary" disabled={busy || scanning} onPress={() => setTemplatePicker(!templatePicker)} />
       {templatePicker && <TemplateList type={type} disabled={busy || scanning} refreshKey={templateRevision} onUse={useTemplate} />}
       {template && <Text style={s.caption}>已套用「{template.name}」，本次修改不会自动更新模板。</Text>}
-      <Card>
+      {manageTemplates && <Card>
         <Field label="模板名称" placeholder="例如：每周日用品补货" value={templateName} maxLength={100} editable={!busy && !scanning} onChangeText={setTemplateName} />
         <Button title={template ? "另存为模板" : "保存为模板"} kind="secondary" disabled={busy || scanning || !lines.length} onPress={() => void saveTemplate()} />
         {template && <Button title="更新模板" kind="secondary" disabled={busy || scanning || !lines.length} onPress={() => void saveTemplate(true)} />}
         {!!templateMessage && <Text style={s.caption} accessibilityRole="text">{templateMessage}</Text>}
-      </Card>
+      </Card>}
       <Field
         label={type === "in" ? "供应商" : "客户"}
         placeholder={type === "in" ? "必填：请输入供应商名称" : "必填：请输入客户名称"}
@@ -519,7 +522,7 @@ export function OrderEditor({
               onChangeText={(value) =>
                 update(line.product.id, "quantity", value)
               }
-              keyboardType="number-pad"
+              keyboardType="decimal-pad"
               editable={!busy}
             />
             <Field
@@ -542,7 +545,7 @@ export function OrderEditor({
                     update(
                       line.product.id,
                       "quantity",
-                      String(Math.max(1, (Number(line.quantity) || 1) - 1)),
+                      String(Math.max(0.000001, addQuantity(Number(line.quantity) || 0, -1))),
                     );
                 }}
               />
@@ -555,7 +558,7 @@ export function OrderEditor({
                     update(
                       line.product.id,
                       "quantity",
-                      String((Number(line.quantity) || 0) + 1),
+                      String(addQuantity(Number(line.quantity) || 0, 1)),
                     );
                 }}
               />
@@ -713,8 +716,8 @@ export function SettingsEditor({
       </Card>
       <Card>
         {server && <>
-          <Text style={s.caption}>Excel / CSV 导入和备份恢复在网页设置中操作，浏览器需单独登录。</Text>
-          <Button title="打开网页数据管理" kind="secondary" disabled={busy} onPress={() => void Linking.openURL(`${server}/?manage=data&warehouse_id=${getWarehouseId()}`).catch(() => setError("无法打开浏览器，请手动访问服务器网页。"))} />
+          <Text style={s.caption}>备份恢复在网页系统设置中操作，浏览器需单独登录。商品导入导出请进入业务管理。</Text>
+          <Button title="打开网页备份与恢复" kind="secondary" disabled={busy} onPress={() => void Linking.openURL(`${server}/?manage=backup&warehouse_id=${getWarehouseId()}`).catch(() => setError("无法打开浏览器，请手动访问服务器网页。"))} />
         </>}
         <Text style={s.subtitle}>重置业务数据</Text>
         <Text style={s.caption}>永久清空所有商品、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器地址及已保存的商户和仓库名称。</Text>

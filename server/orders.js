@@ -1,3 +1,4 @@
+import { validQuantity, addQuantity } from "../shared/quantity.js";
 import { resolveContact, moveInventory } from "./commerce.js";
 const validNumber = (n) =>
   typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 99999999;
@@ -24,11 +25,10 @@ export function createOrder(db, req, body) {
   const normalized = items.map((item) => {
     if (
       !validInteger(item.product_id) ||
-      !validInteger(item.quantity) ||
-      item.quantity < 1 ||
+      !validQuantity(item.quantity, true) ||
       !validMoney(item.price)
     )
-      throw new Error("商品数量必须为正整数，单价最多两位小数且不能为负数。");
+      throw new Error("商品数量必须为正数且最多 6 位小数，单价最多两位小数且不能为负数。");
     if (seen.has(item.product_id))
       throw new Error("同一商品不能重复添加，请合并数量。");
     seen.add(item.product_id);
@@ -40,7 +40,7 @@ export function createOrder(db, req, body) {
       throw new Error("商品不属于当前仓库。");
     if (type === "out" && p.stock < item.quantity)
       throw new Error(`${p.name} 库存不足（当前 ${p.stock} ${p.unit}）。`);
-    if (type === "in" && !validInteger(p.stock + item.quantity))
+    if (type === "in" && !validQuantity(addQuantity(p.stock, item.quantity)))
       throw new Error(`${p.name} 入库后库存超出上限。`);
     const lineTotal = Math.round(item.quantity * item.price * 100);
     if (!Number.isSafeInteger(lineTotal))

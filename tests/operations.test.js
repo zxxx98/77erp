@@ -68,6 +68,68 @@ async function fixture(t) {
     db.prepare("SELECT stock FROM products WHERE id=?").get(id).stock;
   return { db, request, command, stock, makeProduct, makeOrder };
 }
+test("decimal stock moves, partial returns, voids and stocktakes retain quantities and costs", async (t) => {
+  const f = await fixture(t), id = await f.makeProduct();
+  await f.makeOrder(id, "in", 0.1);
+  await f.makeOrder(id, "in", 0.2);
+  assert.equal(f.stock(id), 0.3);
+  const sale = await f.makeOrder(id, "out", 0.3);
+  assert.equal(f.stock(id), 0);
+  const returned = [];
+  for (const quantity of [0.1, 0.2]) {
+    const response = await f.command(`/orders/${sale.id}/returns`, {
+      reason: "部分退货", items: [{ product_id: id, quantity }],
+    });
+    assert.equal(response.status, 200, JSON.stringify(response.data));
+    returned.push(response.data.id);
+  }
+  assert.equal(f.stock(id), 0.3);
+  const snapshot = (await f.request("/data")).data.orders.find(o => o.id === sale.id);
+  assert.equal(snapshot.items[0].returned_quantity, 0.3);
+  assert.equal(f.db.prepare("SELECT inventory_value_cents FROM products WHERE id=?").get(id).inventory_value_cents, 300);
+  assert.equal((await f.command(`/orders/${sale.id}/returns`, { reason: "超量", items: [{ product_id: id, quantity: 0.000001 }] })).status, 400);
+  for (const returnId of returned)
+    assert.equal((await f.command(`/orders/${returnId}/void`, { reason: "撤销退货" })).status, 200);
+  assert.equal(f.stock(id), 0);
+  assert.equal((await f.command(`/orders/${sale.id}/void`, { reason: "撤销销售" })).status, 200);
+  assert.equal(f.stock(id), 0.3);
+  for (const counted of [0.123456, 0]) {
+    const result = await f.command("/stocktakes", { reason: "盘点", items: [{ product_id: id, expected_stock: f.stock(id), counted }] });
+    assert.equal(result.status, 200, JSON.stringify(result.data));
+    assert.equal(f.stock(id), counted);
+  }
+  assert.equal(f.db.prepare("SELECT inventory_value_cents FROM products WHERE id=?").get(id).inventory_value_cents, 0);
+});
+
+test("decimal import, templates and backup restoration preserve quantities and reject excess precision", async (t) => {
+  const f = await fixture(t);
+  const rows = rowsToProducts(parseCSV(importTemplate.replace(",5,20", ",0.123456,0.3")));
+  const preview = await f.request("/products/import/preview", { rows });
+  assert.deepEqual(preview.data.errors, []);
+  assert.equal((await f.command("/products/import", { rows, token: preview.data.token })).status, 200);
+  const p = f.db.prepare("SELECT * FROM products WHERE barcode='TEST-001'").get();
+  assert.equal(p.stock, 0.3);
+  assert.equal(p.threshold, 0.123456);
+  const template = await f.command("/templates", { name: "小数模板", type: "out", partner: "客户", note: "", items: [{ product_id: p.id, quantity: "0.123456", price: "15" }] });
+  assert.equal(template.status, 200, JSON.stringify(template.data));
+  await f.makeOrder(p.id, "out", 0.1);
+  for (const quantity of [0, -0.1, 0.0000001, 1e-15, 1e-30, 99999999.1, "0.1", null]) {
+    const result = await f.request("/orders", { type: "in", partner: "供应商", items: [{ product_id: p.id, quantity, price: 10 }] });
+    assert.equal(result.status, 400);
+    assert.equal(f.stock(p.id), 0.2);
+  }
+  const backup = (await f.request("/backup")).data;
+  await f.makeOrder(p.id, "in", 1);
+  const restorePreview = await f.request("/backup/preview", { backup });
+  assert.equal(restorePreview.status, 200, JSON.stringify(restorePreview.data));
+  assert.equal((await f.command("/backup/restore", { backup, ...restorePreview.data, confirmation: "RESTORE_BUSINESS_DATA" })).status, 200);
+  assert.equal(f.stock(p.id), 0.2);
+  assert.equal(JSON.parse(f.db.prepare("SELECT items FROM templates WHERE id=?").get(template.data.id).items)[0].quantity, 0.123456);
+  const invalid = structuredClone(backup);
+  invalid.data.products.find(product => product.id === p.id).stock = 0.0000001;
+  assert.equal((await f.request("/backup/preview", { backup: invalid })).status, 400);
+});
+
 test("partial returns, replay protection, voiding returns and original orders preserve inventory", async (t) => {
   const f = await fixture(t),
     id = await f.makeProduct();

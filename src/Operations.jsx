@@ -1,3 +1,4 @@
+import { parseQuantity, addQuantity } from "../shared/quantity.js";
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import {
@@ -78,9 +79,8 @@ export function OrderActions({ order, onSaved }) {
       const items = order.items
         .filter(
           (i) =>
-            quantities[i.product_id] !== undefined &&
-            quantities[i.product_id] !== "" &&
-            quantities[i.product_id] !== "0",
+            quantities[i.product_id]?.trim() &&
+            Number(quantities[i.product_id]) !== 0,
         )
         .map((i) => ({
           product_id: i.product_id,
@@ -124,13 +124,13 @@ export function OrderActions({ order, onSaved }) {
           <p>退货沿用原单价格；数量留空或为 0 表示不退此商品。</p>
           {order.items.map((i) => (
             <label key={i.product_id}>
-              {i.name}（可退 {i.quantity - (i.returned_quantity || 0)}）
+              {i.name}（可退 {addQuantity(i.quantity, -(i.returned_quantity || 0))}）
               <input
                 aria-label={`${i.name} 退货数量`}
                 type="number"
                 min="0"
-                step="1"
-                max={i.quantity - (i.returned_quantity || 0)}
+                step="0.000001"
+                max={addQuantity(i.quantity, -(i.returned_quantity || 0))}
                 value={quantities[i.product_id] ?? ""}
                 disabled={busy}
                 onChange={(e) =>
@@ -168,40 +168,7 @@ export function OrderActions({ order, onSaved }) {
     </section>
   );
 }
-export function DataTools({ products, onSaved }) {
-  const [tab, setTab] = useState("stocktake");
-  return (
-    <section className="operation-panel">
-      <h3>库存与数据管理</h3>
-      <div className="operation-tabs">
-        {[
-          ["stocktake", "库存盘点"],
-          ["import", "批量导入"],
-          ["backup", "备份与恢复"],
-        ].map(([id, label]) => (
-          <button
-            type="button"
-            className={`btn ${tab === id ? "btn-primary" : "btn-secondary"}`}
-            key={id}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div hidden={tab !== "stocktake"}>
-        <Stocktake products={products} onSaved={onSaved} />
-      </div>
-      <div hidden={tab !== "import"}>
-        <ProductImport onSaved={onSaved} />
-      </div>
-      <div hidden={tab !== "backup"}>
-        <Backup onSaved={onSaved} />
-      </div>
-    </section>
-  );
-}
-function Stocktake({ products, onSaved }) {
+export function Stocktake({ products, onSaved }) {
   const { busy, error, run, send } = useOperation();
   const [query, setQuery] = useState(""),
     [selected, setSelected] = useState({}),
@@ -262,7 +229,7 @@ function Stocktake({ products, onSaved }) {
                     aria-label={`${p.name} 实盘数量`}
                     type="number"
                     min="0"
-                    step="1"
+                    step="0.000001"
                     value={selected[p.id].counted}
                     disabled={busy}
                     onChange={(e) =>
@@ -283,7 +250,7 @@ function Stocktake({ products, onSaved }) {
           {items
             .map(
               (i) =>
-                `${i.name} ${i.expected_stock} → ${i.counted || "未填"}（差异 ${i.counted === "" ? "未填" : Number(i.counted) - i.expected_stock}）`,
+                `${i.name} ${i.expected_stock} → ${i.counted || "未填"}（差异 ${i.counted === "" ? "未填" : addQuantity(Number(i.counted), -i.expected_stock)}）`,
             )
             .join("；")}
         </p>
@@ -304,8 +271,8 @@ function Stocktake({ products, onSaved }) {
         disabled={busy || !items.length}
         onClick={() =>
           run(async () => {
-            if (!reason.trim() || items.some((i) => !/^\d+$/.test(i.counted)))
-              throw new Error("请填写原因和非负整数实盘数量。");
+            if (!reason.trim()) throw new Error("请填写盘点原因。");
+            items.forEach(i => parseQuantity(i.counted));
             if (
               !window.confirm(
                 `确认提交 ${items.length} 种商品的盘点，按实盘数量调整库存？`,
@@ -349,7 +316,7 @@ function Stocktake({ products, onSaved }) {
     </div>
   );
 }
-function ProductImport({ onSaved }) {
+export function ProductImport({ onSaved }) {
   const { busy, error, run, send } = useOperation();
   const [rows, setRows] = useState(null),
     [preview, setPreview] = useState(null);
@@ -477,7 +444,7 @@ function ProductImport({ onSaved }) {
     </div>
   );
 }
-function Backup({ onSaved }) {
+export function Backup({ onSaved }) {
   const { busy, error, run, send } = useOperation();
   const [backup, setBackup] = useState(null),
     [preview, setPreview] = useState(null);

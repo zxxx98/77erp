@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import './users.css';
+import { permissionOptions } from '../shared/permissions.js';
 
 export function ChangePassword({ onChanged }) {
   const [current, setCurrent] = useState('');
@@ -30,11 +31,13 @@ export function ChangePassword({ onChanged }) {
   </section>;
 }
 
-export function UserManager() {
+export function UserManager({ Modal }) {
   const [users, setUsers] = useState([]);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('employee');
+  const [permissionUser, setPermissionUser] = useState(null);
+  const [permissions, setPermissions] = useState([]);
   const [resetUser, setResetUser] = useState(null);
   const [resetPassword, setResetPassword] = useState('');
   const [error, setError] = useState('');
@@ -55,7 +58,7 @@ export function UserManager() {
   }), '账号已更新');
   return <section aria-label="用户管理">
     <h3>用户管理</h3>
-    <p className="muted">所有用户共享全部仓库。员工可管理商品、开单及自己的模板；管理操作仅限管理员。</p>
+    <p className="muted">所有用户共享全部仓库。新员工默认只读，由管理员配置业务权限；管理员拥有全部权限。</p>
     <div className="account-fields">
       <label>新账号<input autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>
       <label>初始密码<input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
@@ -82,12 +85,31 @@ export function UserManager() {
               <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => {
                 if (window.confirm(`${user.active ? '停用' : '启用'}账号 ${user.username}？`)) void update(user, { active: user.active ? 0 : 1 });
               }}>{user.active ? '停用' : '启用'}</button>
+              {user.role === 'employee' ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPermissionUser(user); setPermissions([...user.permissions]); setError(''); }}>权限配置</button> : <span className="muted">全部权限</span>}
               <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(user); setResetPassword(''); }}>重置密码</button>
             </div></td>
           </tr>)}
         </tbody>
       </table>
     </div>
+    {permissionUser && <Modal title={`${permissionUser.username} 的权限配置`} className="permission-dialog" onClose={() => { if (!busy) { setPermissionUser(null); setError(''); } }}>
+      <div className="form-body">
+        <p className="muted">商品、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。</p>
+        {permissionUser.legacy_permissions && <p className="info-box">此账号目前沿用原员工权限。保存后按下面的模块授权，勾选模块包含该模块的全部操作。</p>}
+        <div className="permission-options">{permissionOptions.map(option => <label key={option.key}>
+          <input type="checkbox" checked={permissions.includes(option.key)} disabled={busy} onChange={e => setPermissions(current => e.target.checked ? [...current, option.key] : current.filter(key => key !== option.key))} />
+          <span><strong>{option.label}</strong><small>{option.description}</small></span>
+        </label>)}</div>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <div className="permission-dialog-actions">
+          <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPermissionUser(null); setError(''); }}>取消配置</button>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
+            await api(`/users/${permissionUser.id}/permissions`, { method: 'PUT', body: { permissions, version: permissionUser.permissions_version } });
+            setPermissionUser(null);
+          }, '权限配置已保存，立即生效')}>保存权限</button>
+        </div>
+      </div>
+    </Modal>}
     {resetUser && <div className="account-fields">
       <h4>重置 {resetUser.username} 的密码</h4>
       <label>重置后的密码<input type="password" autoComplete="new-password" maxLength={128} value={resetPassword} onChange={e => setResetPassword(e.target.value)} disabled={busy} /></label>

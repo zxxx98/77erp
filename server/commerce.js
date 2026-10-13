@@ -1,3 +1,5 @@
+import { validQuantity, quantityUnits, addQuantity } from "../shared/quantity.js";
+
 const fail = (message) => {
   throw new Error(message);
 };
@@ -76,20 +78,21 @@ export function allocate(value, quantity, stock) {
   if (
     !Number.isSafeInteger(value) ||
     value < 0 ||
-    !integer(quantity) ||
-    !integer(stock) ||
+    !validQuantity(quantity) ||
+    !validQuantity(stock) ||
     !stock
   )
     fail("库存成本数据无效。");
   return Number(
-    (BigInt(value) * BigInt(quantity) * 2n + BigInt(stock)) /
-      (BigInt(stock) * 2n),
+    (BigInt(value) * BigInt(quantityUnits(quantity)) * 2n + BigInt(quantityUnits(stock))) /
+      (BigInt(quantityUnits(stock)) * 2n),
   );
 }
 // Value and quantity move together. Explicit value is used for receipts and reversals.
 export function moveInventory(db, id, delta, explicit) {
   const p = db.prepare("SELECT * FROM products WHERE id=?").get(id);
-  if (!p || !integer(p.stock + delta) || p.stock + delta > 99999999)
+  const stock = p ? addQuantity(p.stock, delta) : NaN;
+  if (!p || !validQuantity(stock))
     fail("库存不足或超出上限。");
   const amount =
     explicit == null
@@ -100,11 +103,11 @@ export function moveInventory(db, id, delta, explicit) {
   const next = p.inventory_value_cents + (delta < 0 ? -amount : amount);
   if (!integer(amount) || !integer(next))
     fail("库存成本不足或超出范围，请使用退货或盘点纠正后续业务。");
-  if (p.stock + delta === 0 && next !== 0)
+  if (stock === 0 && next !== 0)
     fail("后续交易已改变库存成本，不能直接作废此单，请使用退货处理。");
   db.prepare(
     "UPDATE products SET stock=?,inventory_value_cents=? WHERE id=?",
-  ).run(p.stock + delta, next, id);
+  ).run(stock, next, id);
   return amount;
 }
 export function settlement(db, order) {
@@ -157,11 +160,11 @@ export function validateTemplate(db, body) {
       !db.prepare("SELECT 1 FROM products WHERE id=?").get(i.product_id) ||
       !["string", "number"].includes(typeof i.quantity) ||
       !["string", "number"].includes(typeof i.price) ||
-      !/^\d+$/.test(String(i.quantity)) ||
-      !Number.isSafeInteger(Number(i.quantity)) || Number(i.quantity) < 1 || Number(i.quantity) > 99999999 ||
+      !/^\d+(\.\d{1,6})?$/.test(String(i.quantity)) ||
+      !validQuantity(Number(i.quantity), true) ||
       !/^\d+(\.\d{1,2})?$/.test(String(i.price))
     )
-      fail("模板商品无效，请填写正整数数量和最多两位小数的非负单价。");
+      fail("模板商品无效，请填写正数数量（最多 6 位小数）和最多两位小数的非负单价。");
     cents(Number(i.price));
     seen.add(i.product_id);
   }
@@ -458,7 +461,7 @@ export function installCommerce(app, db, { route, mutation }) {
           });
         const g = groups.get(i.product_id),
           revenue = sign * Math.round(i.quantity * i.price * 100);
-        g.quantity += sign * i.quantity;
+        g.quantity = addQuantity(g.quantity, sign * i.quantity);
         g.revenue_cents += revenue;
         if (i.cost_cents == null) {
           g.unknown_revenue_cents += revenue;

@@ -1,6 +1,9 @@
+import { PermissionContext, usePermissions } from './permissions.jsx';
+import { hasPermission, canManage } from '../shared/permissions.js';
 import { StockQrManager, StockQrExecution } from './StockQr.jsx';
+import { addQuantity } from "../shared/quantity.js";
 import { stockQrLabel } from './stock-qr-client.js';
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowDownLeft,
@@ -56,14 +59,14 @@ import { resolveProductCode } from "./product-scan.js";
 import { ChangePassword, UserManager } from "./Users.jsx";
 import { version as appVersion } from "../package.json";
 import { BusinessTools, Templates, Payments, useBusiness } from "./Commerce.jsx";
-import { DataTools, OrderActions, orderLabel, reportOrders, businessType } from "./Operations.jsx";
+import { Backup, OrderActions, orderLabel, reportOrders, businessType } from "./Operations.jsx";
 
 const money = (v) =>
   new Intl.NumberFormat("zh-CN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(v);
-const count = (v) => new Intl.NumberFormat("zh-CN").format(v);
+const count = (v) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(v);
 const shortDate = (v) =>
   new Date(v).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
 const dateTime = (v) =>
@@ -93,8 +96,11 @@ function Button({
   icon: Icon,
   kind = "secondary",
   className = "",
+  permission,
   ...props
 }) {
+  const { can } = usePermissions();
+  if (permission && !can(permission)) return null;
   return (
     <button className={`btn btn-${kind} ${className}`} {...props}>
       {Icon && <Icon size={16} strokeWidth={1.8} />}
@@ -279,6 +285,7 @@ function Barcode({ value, height = 45 }) {
   return <svg ref={ref} className="barcode" aria-label={`条码 ${value}`} />;
 }
 function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions }) {
+  const titleId = useId();
   const ref = useRef();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -292,6 +299,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
       ref.current.querySelector("button:not(:disabled)");
     first?.focus();
     const key = (e) => {
+      if ([...document.querySelectorAll('.modal[role="dialog"]')].at(-1) !== ref.current) return;
       if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
         const targets = [
@@ -329,11 +337,11 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
         className={`modal ${wide ? "modal-wide" : ""} ${className}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
       >
         <div className="modal-header">
           <div className="modal-header-title">
-            <h2 id="modal-title">{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
           <div className="modal-header-actions">
@@ -548,7 +556,12 @@ function App({ admin, onLogout }) {
   });
   const [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
-  const [modal, setModal] = useState(() => isAdmin && new URLSearchParams(location.search).get("manage") === "data" ? { kind: "settings" } : null),
+  const [modal, setModal] = useState(() => {
+    const destination = new URLSearchParams(location.search).get('manage');
+    if (destination === 'data') return { kind: 'businessTools', initialTab: 'import' };
+    if (destination === 'backup' && isAdmin) return { kind: 'settings', section: 'data' };
+    return null;
+  }),
     [toast, setToast] = useState(null),
     [search, setSearch] = useState("");
   const [notification, setNotification] = useState(false),
@@ -605,6 +618,12 @@ function App({ admin, onLogout }) {
     };
   }, []);
   useEffect(() => {
+    const refreshPermissions = () => { if (document.visibilityState === 'visible') reload(); };
+    window.addEventListener('focus', refreshPermissions);
+    const timer = !isAdmin ? setInterval(refreshPermissions, 30000) : null;
+    return () => { window.removeEventListener('focus', refreshPermissions); if (timer) clearInterval(timer); };
+  }, [isAdmin]);
+  useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4200);
     return () => clearTimeout(t);
@@ -635,12 +654,17 @@ function App({ admin, onLogout }) {
     } catch (e) { notify(e.message, 'error'); }
     finally { setSwitching(false); }
   };
+  const user = data.user || admin;
+  const can = key => hasPermission(user, key);
+  const manage = key => canManage(user, key);
   const low = data.products.filter((p) => p.stock <= p.threshold);
-  const openOrder = (type, product) =>
-    setModal({ kind: "order", type, product });
+  const openOrder = (type, product, template) => {
+    if (!can(type === 'in' ? 'purchase' : 'sale')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
+    setModal({ kind: 'order', type, product, template });
+  };
   const currentNav = navItems.find((n) => n.id === page);
   return (
-    <div className="app-shell">
+    <PermissionContext.Provider value={user}><div className="app-shell">
       {switching && <div className="warehouse-switch-loading" role="status"><LoaderCircle className="spin" size={24} />正在切换仓库…</div>}
       <aside className="sidebar" inert={switching}>
         <a
@@ -722,15 +746,12 @@ function App({ admin, onLogout }) {
               打开扫码工作台 <ArrowRight size={13} />
             </button>
           </div>
-          {isAdmin ? <button
-            className="nav-item"
-            aria-label="系统设置"
-            title="系统设置"
-            onClick={() => setModal({ kind: "settings" })}
-          >
-            <Settings size={18} />
-            <span>系统设置</span>
-          </button> : <button className="nav-item" onClick={() => setModal({ kind: 'templates' })}><History size={18} /><span>单据模板</span></button>}
+          <button className="nav-item" onClick={() => setModal({ kind: 'businessTools' })}>
+            <History size={18} /><span>业务管理</span>
+          </button>
+          {isAdmin && <button className="nav-item" aria-label="系统设置" title="系统设置" onClick={() => setModal({ kind: 'settings' })}>
+            <Settings size={18} /><span>系统设置</span>
+          </button>}
           <button
             className="user-profile"
             onClick={() => setModal({ kind: "account" })}
@@ -875,7 +896,7 @@ function App({ admin, onLogout }) {
               {page === "products" && (
                 <Products
                   data={data}
-                  isAdmin={isAdmin}
+                  isAdmin={manage('products')}
                   onCategoriesChanged={reload}
                   onSaved={saved}
                   search={search}
@@ -905,7 +926,7 @@ function App({ admin, onLogout }) {
                 />
               )}
               {page === "scanner" && (
-                <Scanner data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={isAdmin} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({kind:"stockQr"})} />
+                <Scanner data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({kind:"stockQr"})} />
               )}
               <footer className="page-footer">
                 <span>
@@ -919,7 +940,7 @@ function App({ admin, onLogout }) {
           )}
         </main>
       </div>
-      {modal?.kind === "product" && (
+      {can('products') && modal?.kind === "product" && (
         <ProductForm
           product={modal.product}
           categories={data.categories || []}
@@ -930,7 +951,7 @@ function App({ admin, onLogout }) {
           onSaved={saved}
         />
       )}
-      {modal?.kind === "order" && (
+      {modal?.kind === "order" && can(modal.type === 'in' ? 'purchase' : 'sale') && (
         <OrderForm
           type={modal.type}
           initialProduct={modal.product}
@@ -944,26 +965,29 @@ function App({ admin, onLogout }) {
       {modal?.kind === "detail" && (
         <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
-      {isAdmin && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
+      {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}
           warehouseId={data.warehouse_id || 1}
           sourceId={data.instance_id}
-          manageStockQr={isAdmin ? () => setModal({kind:"stockQr",product:modal.product}) : undefined}
+          manageStockQr={manage('business') ? () => setModal({kind:"stockQr",product:modal.product}) : undefined}
           onClose={() => setModal(null)}
           notify={notify}
         />
       )}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
-      {modal?.kind === "templates" && <Modal title="单据模板" onClose={() => setModal(null)}><div className="form-body"><Templates onUse={template => setModal({ kind: 'order', type: template.type, template })} /></div></Modal>}
+      {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与商品导入" wide className="business-modal" onClose={() => setModal(null)}>
+        <div className="form-body"><BusinessTools products={data.products} onSaved={saved} initialTab={modal.initialTab}
+          onUse={template => openOrder(template.type, undefined, template)} onRefresh={reload} /></div>
+        <div className="modal-footer"><Button onClick={() => setModal(null)}>取消</Button></div>
+      </Modal>}
       {isAdmin && modal?.kind === "settings" && (
         <SettingsForm
           onPasswordChanged={onLogout}
+          initialSection={modal.section}
           settings={data.settings}
           warehouses={data.warehouses || []}
-          products={data.products}
-          onUse={template => setModal({kind:"order",type:template.type,template})}
           onRefresh={reload}
           onClose={() => setModal(null)}
           onSaved={saved}
@@ -1041,7 +1065,7 @@ function App({ admin, onLogout }) {
           </button>
         </div>
       )}
-    </div>
+    </div></PermissionContext.Provider>
   );
 }
 
@@ -1228,6 +1252,7 @@ function TrendChart({ orders, days }) {
   );
 }
 function Dashboard({ data, low, navigate, openOrder, showDetail }) {
+  const { can, costs } = usePermissions();
   const [days, setDays] = useState(7),
     [orderTab, setOrderTab] = useState("all");
   const reporting = reportOrders(data.orders);
@@ -1236,7 +1261,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
   );
   const incoming = todayOrders.filter((o) => o.type === "in"),
     outgoing = todayOrders.filter((o) => o.type === "out");
-  const totalStock = data.products.reduce((s, p) => s + p.stock, 0),
+  const totalStock = data.products.reduce((s, p) => addQuantity(s, p.stock), 0),
     value = data.products.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0);
   const periodStart = new Date();
   periodStart.setDate(periodStart.getDate() - days + 1);
@@ -1264,7 +1289,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     },
     {
       label: "库存总金额",
-      value: money(value),
+      value: costs ? money(value) : '—',
       prefix: "¥",
       icon: Warehouse,
       tone: "purple",
@@ -1325,7 +1350,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             {new Date().toLocaleDateString("zh-CN", { weekday: "short" })}
           </span>
         </span>
-        <Button kind="primary" icon={Plus} onClick={() => openOrder("in")}>
+        <Button permission="purchase" kind="primary" icon={Plus} onClick={() => openOrder("in")}>
           新建入库
         </Button>
       </PageHeading>
@@ -1418,7 +1443,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             <ArrowRight size={16} />
           </button>
           <div className="quick-action-row">
-            <button onClick={() => openOrder("in")}>
+            <button hidden={!can("purchase")} onClick={() => openOrder("in")}>
               <span className="quick-action-icon green">
                 <ArrowDownToLine size={17} />
               </span>
@@ -1426,7 +1451,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               <ChevronRight size={13} />
             </button>
             <i />
-            <button onClick={() => openOrder("out")}>
+            <button hidden={!can("sale")} onClick={() => openOrder("out")}>
               <span className="quick-action-icon blue">
                 <ArrowUpFromLine size={17} />
               </span>
@@ -1558,7 +1583,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                   </div>
                   <button
                     className="restock-button"
-                    onClick={() => openOrder("in", p)}
+                    hidden={!can("purchase")} onClick={() => openOrder("in", p)}
                     aria-label={`补货 ${p.name}`}
                   >
                     <Plus size={15} />
@@ -1648,6 +1673,7 @@ function CategoryManager({ categories, onClose, onChanged }) {
 }
 
 function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged, onSaved, isAdmin }) {
+  const { can } = usePermissions();
   const [status, setStatus] = useState("all");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -1697,7 +1723,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
         title="商品管理"
         description="按分类维护商品图片、规格、价格及备注。"
       >
-        <Button kind="primary" icon={Plus} onClick={() => edit(null)}>
+        <Button permission="products" kind="primary" icon={Plus} onClick={() => edit(null)}>
           新增商品
         </Button>
       </PageHeading>
@@ -1816,7 +1842,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                           </button>
                           <button
                             className="text-button"
-                            onClick={() => edit(p)}
+                            hidden={!can("products")} onClick={() => edit(p)}
                           >
                             编辑
                           </button>
@@ -1862,7 +1888,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                       <ScanLine size={15} />
                       商品条码
                     </button>
-                    <button onClick={() => edit(p)}>
+                    <button hidden={!can("products")} onClick={() => edit(p)}>
                       编辑
                       <ChevronRight size={13} />
                     </button>
@@ -1877,7 +1903,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
             title="没有找到商品"
             description="请调整搜索条件，或新增商品。"
             action={
-              <Button icon={Plus} onClick={() => edit(null)}>
+              <Button permission="products" icon={Plus} onClick={() => edit(null)}>
                 新增商品
               </Button>
             }
@@ -1943,6 +1969,7 @@ function Pagination({ total, page, setPage }) {
   );
 }
 function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
+  const { can, costs } = usePermissions();
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
   const low = data.products.filter((p) => p.stock <= p.threshold),
@@ -1968,7 +1995,7 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
           <Warehouse size={15} />
           {data.settings.warehouse_name}
         </span>
-        <Button
+        <Button permission="purchase"
           kind="primary"
           icon={ArrowDownToLine}
           onClick={() => openOrder("in")}
@@ -1984,7 +2011,7 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
           <span>
             <small>在库总数量</small>
             <strong>
-              {count(data.products.reduce((s, p) => s + p.stock, 0))}
+              {count(data.products.reduce((s, p) => addQuantity(s, p.stock), 0))}
               <em> 件</em>
             </strong>
           </span>
@@ -1997,7 +2024,7 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
             <small>库存成本金额</small>
             <strong>
               <em>¥ </em>
-              {money(data.products.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0))}
+              {costs ? money(data.products.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0)) : '—'}
             </strong>
           </span>
         </div>
@@ -2117,11 +2144,11 @@ function Inventory({ data, filter, setFilter, openOrder, showBarcode }) {
                       {stockStatus(p)}
                     </Badge>
                   </td>
-                  <td className="number-cell">¥ {money((p.inventory_value_cents ?? Math.round(p.cost * p.stock * 100)) / 100)}</td>
+                  <td className="number-cell">¥ {costs ? money((p.inventory_value_cents ?? Math.round(p.cost * p.stock * 100)) / 100) : '—'}</td>
                   <td className="number-cell">
                     <button
                       className="text-button"
-                      onClick={() => openOrder("in", p)}
+                      hidden={!can("purchase")} onClick={() => openOrder("in", p)}
                     >
                       <Plus size={14} />
                       补货
@@ -2157,6 +2184,11 @@ function downloadFile(text, filename, type = "text/plain") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 async function exportOrders(orders, notify) {
+  try {
+    const exported = await api('/orders/export');
+    const ids = new Set(orders.map(o => o.id));
+    orders = exported.filter(o => ids.has(o.id));
+  } catch (error) { notify(error.message); return; }
   const cell = (s) =>
     '"' +
     String(s)
@@ -2199,6 +2231,7 @@ async function exportOrders(orders, notify) {
   } catch (error) { notify(error.message); }
 }
 function Orders({ page, data, openOrder, showDetail, notify }) {
+  const { can } = usePermissions();
   const type = page === "purchases" ? "in" : page === "sales" ? "out" : null;
   const [query, setQuery] = useState(""),
     [days, setDays] = useState("all"),
@@ -2242,13 +2275,14 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
       >
         <Button
           icon={Download}
+          permission="data_io"
           onClick={() => exportOrders(filtered, notify)}
           disabled={!filtered.length}
         >
           导出单据
         </Button>
         {type && (
-          <Button kind="primary" icon={Plus} onClick={() => openOrder(type)}>
+          <Button permission={type === 'in' ? 'purchase' : 'sale'} kind="primary" icon={Plus} onClick={() => openOrder(type)}>
             新建{label.slice(-2)}
           </Button>
         )}
@@ -2275,7 +2309,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           <strong>
             {count(
               filtered.filter(o => o.status !== "void").reduce(
-                (s, o) => s + o.items.reduce((n, i) => n + i.quantity, 0),
+                (s, o) => addQuantity(s, o.items.reduce((n, i) => addQuantity(n, i.quantity), 0)),
                 0,
               ),
             )}
@@ -2384,7 +2418,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                       <strong>{o.items[0]?.name}</strong>
                       <small>
                         {o.items.length} 种商品 ·{" "}
-                        {o.items.reduce((s, i) => s + i.quantity, 0)} 件
+                        {o.items.reduce((s, i) => addQuantity(s, i.quantity), 0)} 件
                       </small>
                     </div>
                   </td>
@@ -2417,7 +2451,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               description="调整搜索或日期范围，或开始创建单据。"
               action={
                 type && (
-                  <Button icon={Plus} onClick={() => openOrder(type)}>
+                  <Button permission={type === 'in' ? 'purchase' : 'sale'} icon={Plus} onClick={() => openOrder(type)}>
                     新建单据
                   </Button>
                 )
@@ -2622,7 +2656,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               required
               min="0"
               max="99999999"
-              step="1"
+              step="0.000001"
               value={form.threshold}
               onChange={(e) => change("threshold", e.target.value)}
             />
@@ -2684,6 +2718,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
 }
 
 function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSaved }) {
+  const { templates } = usePermissions();
   const [template, setTemplate] = useState(initialTemplate || null);
   const [templateName, setTemplateName] = useState(initialTemplate?.name || "");
   const [templateMessage, setTemplateMessage] = useState("");
@@ -2717,7 +2752,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
       return found
         ? prev.map((i) =>
             i.product_id === p.id
-              ? { ...i, quantity: Number(i.quantity) + 1 }
+              ? { ...i, quantity: addQuantity(Number(i.quantity), 1) }
               : i,
           )
         : [
@@ -2821,7 +2856,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             setTemplate(d); setTemplateName(d.name); setTemplateMessage(""); setPartner(d.partner); setPartnerId(d.partner_id); setNote(d.note); setItems(d.items);
           }} />
           {template && <span className="order-template-status"><FilePenLine size={15} aria-hidden="true" />已套用「{template.name}」<small>本次修改不会自动更新模板</small></span>}
-          <div className="template-save-panel">
+          {templates && <div className="template-save-panel">
             <label>模板名称<input value={templateName} maxLength={100} placeholder="例如：每周日用品补货" disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
             <div className="order-template-actions">
               <Button type="button" icon={FilePenLine} disabled={busy || templateAction.busy || !items.length} onClick={() => saveTemplate(false)}>{template ? "另存为模板" : "保存为模板"}</Button>
@@ -2829,6 +2864,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             </div>
             {templateMessage && <p className="template-success" role="status">{templateMessage}</p>}
           </div>
+          }
           {templateAction.error && <p role="alert" className="form-error">{templateAction.error}</p>}
           <div className="form-grid">
             <label>
@@ -2971,9 +3007,9 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         <input
                           aria-label={`${p.name} 数量`}
                           type="number"
-                          min="1"
+                          min="0.000001"
                           max="99999999"
-                          step="1"
+                          step="0.000001"
                           required
                           value={i.quantity}
                           onChange={(e) =>
@@ -3070,6 +3106,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   );
 }
 function OrderDetail({ order, onClose, onSaved, isAdmin }) {
+  const { can } = usePermissions();
   return (
     <Modal
       title={`${orderLabel(order)}单详情`}
@@ -3130,7 +3167,8 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
           <p>{order.note || "无备注"}</p>
         </div>
         <p className="muted">开单人：{order.created_by_name || '历史记录，操作人未知'}</p>
-        {isAdmin && <><Payments order={order} /><OrderActions order={order} onSaved={onSaved} /></>}
+        {can('finance') && <Payments order={order} />}
+        {can('corrections') && <OrderActions order={order} onSaved={onSaved} />}
       </div>
       <div className="modal-footer order-form-footer">
         <div>
@@ -3147,6 +3185,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
 }
 
 function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onSaved }) {
+  const { can } = usePermissions();
   const [stockLabel, setStockLabel] = useState(null), [stockBusy, setStockBusy] = useState(false);
   const [mode, setMode] = useState("query"),
     [barcode, setBarcode] = useState(""),
@@ -3155,6 +3194,9 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
     [selected, setSelected] = useState(null),
     [error, setError] = useState(""),
     [recent, setRecent] = useState([]);
+  useEffect(() => {
+    if (mode !== 'query' && !can(mode === 'in' ? 'purchase' : 'sale')) { setMode('query'); setCamera(false); setStockLabel(null); }
+  }, [mode, data.user]);
   const product = data.products.find((p) => p.id === selected?.id) || selected;
   const input = useRef();
   useEffect(() => {
@@ -3208,6 +3250,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             ].map(([id, name, Icon]) => (
               <button
                 key={id}
+                hidden={id !== 'query' && !can(id === 'in' ? 'purchase' : 'sale')}
                 disabled={stockBusy}
                 className={mode === id ? "active" : ""}
                 onClick={() => {
@@ -3326,13 +3369,13 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 </span>
               </div>
               <div className="scan-result-actions">
-                <Button
+                <Button permission="purchase"
                   icon={ArrowDownToLine}
                   onClick={() => openOrder("in", product)}
                 >
                   采购入库
                 </Button>
-                <Button
+                <Button permission="sale"
                   kind="primary"
                   icon={ArrowUpFromLine}
                   onClick={() => openOrder("out", product)}
@@ -3406,10 +3449,10 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
     </>
   );
 }
-function SettingsForm({ settings, warehouses, products, onClose, onSaved, onUse, onRefresh, onPasswordChanged }) {
+function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPasswordChanged, initialSection = "general" }) {
   const lock = useRef(false);
   const contentRef = useRef(null);
-  const [section, setSection] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? "data" : "general");
+  const [section, setSection] = useState(initialSection);
   const [form, setForm] = useState(() => ({ ...settings, units: settings.units || ["个"] })),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -3448,14 +3491,14 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onUse,
   return (
     <Modal
       title="工作空间设置"
-      subtitle="管理工作空间、库存数据与业务往来"
+      subtitle="管理工作空间、账号与业务备份"
       className="settings-modal"
       onClose={busy ? () => {} : onClose}
     >
       <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "商品图片上传与认证"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、模板与收付"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "商品图片上传与认证"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
               <button key={id} type="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </button>
@@ -3518,13 +3561,10 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onUse,
           </div>
           <div className="info-box"><ShieldCheck size={17} /><p>商品和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
-          {section === "users" && <div className="settings-section"><UserManager /><ChangePassword onChanged={onPasswordChanged} /></div>}
+          {section === "users" && <div className="settings-section"><UserManager Modal={Modal} /><ChangePassword onChanged={onPasswordChanged} /></div>}
           <div hidden={section !== 'imagebed'} className="settings-section"><ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} /></div>
-          <div hidden={section !== "business"} className="settings-section">
-            <BusinessTools onUse={onUse} onRefresh={onRefresh} />
-          </div>
           <div hidden={section !== "data"} className="settings-section">
-          <DataTools products={products} onSaved={onSaved} />
+          {section === "data" && <Backup onSaved={onSaved} />}
           <section className="settings-danger">
           <h3>重置业务数据</h3>
           <div className="info-box">
@@ -3544,7 +3584,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onUse,
         </div>
         </div>
         <div className="modal-footer">
-          <span className="settings-footer-note">{section === "general" ? "修改名称或计量单位后，点击保存设置。" : "各项业务操作在对应区域单独确认。"}</span>
+          <span className="settings-footer-note">{section === "general" ? "修改名称或计量单位后，点击保存设置。" : "各项操作在对应区域单独确认。"}</span>
           <Button type="button" onClick={onClose} disabled={busy}>
             取消
           </Button>

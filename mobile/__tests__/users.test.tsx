@@ -12,11 +12,11 @@ jest.mock('../src/native', () => ({ api: jest.fn(), getWarehouseId: jest.fn(() =
 const request = jest.mocked(api);
 beforeEach(() => jest.clearAllMocks());
 
-test('employee menu exposes templates and password change while hiding administration and stocktake', () => {
+test('employee menu shares business management and password access while hiding administration', () => {
   render(<MoreScreen isAdmin={false} username="staff" server="https://erp.example.com" data={workspace} busy={false}
-    settings={jest.fn()} stocktake={jest.fn()} commerce={jest.fn()} changeServer={jest.fn()} logout={jest.fn()} changePassword={jest.fn()} />);
+    settings={jest.fn()} commerce={jest.fn()} changeServer={jest.fn()} logout={jest.fn()} changePassword={jest.fn()} />);
   expect(screen.getByText('员工账号')).toBeOnTheScreen();
-  expect(screen.getByRole('button', { name: '单据模板' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: '业务管理' })).toBeOnTheScreen();
   expect(screen.getByRole('button', { name: '修改密码' })).toBeOnTheScreen();
   expect(screen.queryByRole('button', { name: '库存盘点' })).toBeNull();
   expect(screen.queryByRole('button', { name: '商户与仓库设置' })).toBeNull();
@@ -69,4 +69,45 @@ test('native regular-order retry reuses its request identifier after a network f
   expect(orders[0]?.[2]).toEqual(orders[1]?.[2]);
   expect(orders[0]?.[2]).toHaveProperty('request_id', expect.any(String));
   alert.mockRestore();
+});
+
+test('configured employee has one business entry while retaining password access and hiding system settings', () => {
+  const { PermissionContext } = require('../src/permissions');
+  render(<PermissionContext.Provider value={{ role: 'employee', permissions: ['stocktake', 'finance'] }}>
+    <MoreScreen isAdmin={false} username="staff" server="https://erp.example.com" data={workspace} busy={false}
+      settings={jest.fn()} commerce={jest.fn()} changeServer={jest.fn()} logout={jest.fn()} changePassword={jest.fn()} />
+  </PermissionContext.Provider>);
+  expect(screen.queryByRole('button', { name: '库存盘点' })).toBeNull();
+  expect(screen.getByRole('button', { name: '业务管理' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: '修改密码' })).toBeOnTheScreen();
+  expect(screen.queryByRole('button', { name: '商户与仓库设置' })).toBeNull();
+});
+
+test('read-only employee sees product details without edit, lifecycle, or transaction buttons', () => {
+  const { PermissionContext } = require('../src/permissions');
+  const { ProductDetail } = require('../src/screens');
+  render(<PermissionContext.Provider value={{ role: 'employee', permissions: [] }}>
+    <ProductDetail product={product} isAdmin={false} onClose={jest.fn()} onSaved={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />
+  </PermissionContext.Provider>);
+  for (const name of ['编辑商品', '采购入库', '销售出库', '下架商品', '删除商品'])
+    expect(screen.queryByRole('button', { name })).toBeNull();
+});
+
+
+test('shared business management shows authorized financial and stocktake tools and preserves read-only templates', async () => {
+  const { PermissionContext } = require('../src/permissions');
+  request.mockImplementation(async path => path === '/finance' ? { orders: [], balances: [] } : []);
+  const stocktake = jest.fn();
+  render(<PermissionContext.Provider value={{ role: 'employee', permissions: ['stocktake', 'finance'] }}>
+    <CommerceScreen isAdmin={false} onClose={jest.fn()} onUse={jest.fn()} onRefresh={jest.fn()} onStocktake={stocktake} onDataManagement={jest.fn()} />
+  </PermissionContext.Provider>);
+  expect(screen.getByText('业务管理')).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: '模板' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: '收付款' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: '毛利' })).toBeOnTheScreen();
+  expect(screen.queryByRole('button', { name: '往来单位' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '打开网页导入导出' })).toBeNull();
+  fireEvent.press(screen.getByRole('button', { name: '库存盘点' }));
+  expect(stocktake).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/finance'));
 });

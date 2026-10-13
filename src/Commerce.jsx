@@ -1,7 +1,8 @@
+import { usePermissions } from './permissions.jsx';
 import React, { useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, Clock3, FilePenLine, LoaderCircle, Package, Search, Trash2, UserRound } from "lucide-react";
 import { api } from "./api.js";
-import { orderLabel } from "./Operations.jsx";
+import { orderLabel, Stocktake, ProductImport } from "./Operations.jsx";
 import "./commerce.css";
 const money = (n) => `¥ ${(n / 100).toFixed(2)}`;
 export const paymentLabel = {
@@ -49,32 +50,31 @@ export function useBusiness() {
   };
   return { busy, error, setError, run, send };
 }
-export function BusinessTools({ onUse, onRefresh }) {
-  const [tab, setTab] = useState("contacts");
+export function BusinessTools({ products = [], onSaved, onUse, onRefresh, initialTab }) {
+  const { can, manage } = usePermissions();
+  const available = [
+    ...(can('business') ? [['contacts', '供应商与客户']] : []),
+    ['templates', '单据模板'],
+    ...(can('finance') ? [['finance', '收付款与欠款'], ['profit', '成本与毛利']] : []),
+    ...(can('stocktake') ? [['stocktake', '库存盘点']] : []),
+    ...(manage('data_io') ? [['import', '批量导入']] : []),
+  ];
+  const [tab, setTab] = useState(initialTab || available[0][0]);
+  const active = available.some(([id]) => id === tab) ? tab : available[0][0];
   return (
     <section className="operation-panel">
-      <h3>往来、模板与财务</h3>
-      <div className="operation-tabs">
-        {[
-          ["contacts", "供应商与客户"],
-          ["templates", "单据模板"],
-          ["finance", "收付款与欠款"],
-          ["profit", "成本与毛利"],
-        ].map(([id, label]) => (
-          <button
-            type="button"
-            key={id}
-            className={`btn btn-${tab === id ? "primary" : "secondary"}`}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
+      <div className="operation-tabs" aria-label="业务分类">
+        {available.map(([id, label]) => (
+          <button type="button" key={id} aria-pressed={active === id}
+            className={`btn btn-${active === id ? 'primary' : 'secondary'}`} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
-      {tab === "contacts" && <Contacts onRefresh={onRefresh} />}
-      {tab === "templates" && <Templates onUse={onUse} />}
-      {tab === "finance" && <Finance />}
-      {tab === "profit" && <Profit />}
+      {active === 'contacts' && <Contacts onRefresh={onRefresh} />}
+      {active === 'templates' && <Templates onUse={onUse} />}
+      {active === 'finance' && <Finance />}
+      {active === 'profit' && <Profit />}
+      {can('stocktake') && <div hidden={active !== 'stocktake'}><Stocktake products={products} onSaved={onSaved} /></div>}
+      {manage('data_io') && <div hidden={active !== 'import'}><ProductImport onSaved={onSaved} /></div>}
     </section>
   );
 }
@@ -274,6 +274,7 @@ function Contacts({ onRefresh }) {
   );
 }
 export function Templates({ onUse, type, collapsible = false, disabled = false, activeId, refreshKey = 0 }) {
+  const { can, templates: manageTemplates } = usePermissions();
   const [templates, setTemplates] = useState([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -342,7 +343,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
                   type="button"
                   className="btn btn-secondary template-resume"
                   aria-label={`使用模板 #${d.id}`}
-                  disabled={busy || disabled || loading}
+                  disabled={busy || disabled || loading || !can(d.type === 'in' ? 'purchase' : 'sale')}
                   onClick={() => {
                     if (onUse(d) !== false && collapsible) {
                       setExpanded(false);
@@ -355,6 +356,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
                 <button
                   type="button"
                   className="template-delete"
+                  hidden={!manageTemplates}
                   aria-label={`删除模板 #${d.id}`}
                   title="删除模板"
                   disabled={busy || disabled || loading}

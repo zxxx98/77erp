@@ -1,3 +1,4 @@
+import { parseQuantity, addQuantity } from "../../shared/quantity";
 export type Contact = { id?:number; role:"supplier"|"customer"; name:string; person:string; phone:string; address:string; note:string; active:number; version?:number };
 export type Template = { name:string; created_by?:number|null; created_by_name?:string; id:number; type:"in"|"out"; partner:string; partner_id:number|null; note:string; version:number; updated_at:string; items:{product_id:number;quantity:string|number;price:string|number}[] };
 export type Warehouse = { id: number; name: string; created_at: string };
@@ -54,6 +55,7 @@ export const businessType = (o: Order) => o.kind === "return" ? (o.type === "in"
 export const orderLabel = (o: Order) => `${o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : (o.type === "in" ? "采购入库" : "销售出库")}${o.status === "void" ? " · 已作废" : ""}`;
 export const reportOrders = (orders: Order[]): Order[] => orders.filter(o => o.status !== "void").map(o => o.kind === "return" ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total } : o);
 export type Workspace = {
+  user?: AuthState;
   warehouses?: Warehouse[];
   warehouse_id?: number;
   instance_id?: string;
@@ -64,6 +66,9 @@ export type Workspace = {
   settings: Settings;
 };
 export type AuthState = {
+  permissions?: string[];
+  legacy_permissions?: boolean;
+  permissions_version?: number;
   id?: number;
   role?: "admin" | "employee";
   initialized: boolean;
@@ -105,15 +110,19 @@ export const matchesProduct = (product: Product, query: string) =>
     value.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
-function numberInput(value: string, label: string, integer = false) {
+function numberInput(value: string, label: string, quantity = false) {
+  if (quantity) {
+    try { return parseQuantity(value); }
+    catch (error) { throw new Error(`${label}：${(error as Error).message}`); }
+  }
   const number = Number(value);
   if (
-    !(integer ? /^\d+$/ : /^\d+(\.\d{1,2})?$/).test(value.trim()) ||
+    !/^\d+(\.\d{1,2})?$/.test(value.trim()) ||
     !Number.isFinite(number) ||
     number > 99999999
   ) {
     throw new Error(
-      `${label}${integer ? "需为非负整数" : "需为非负金额，最多两位小数"}。`,
+      `${label}需为非负金额，最多两位小数。`,
     );
   }
   return number;
@@ -153,7 +162,7 @@ export function addLine(
   if (found)
     return lines.map((line) =>
       line === found
-        ? { ...line, quantity: String((Number(line.quantity) || 0) + 1) }
+        ? { ...line, quantity: String(addQuantity(Number(line.quantity) || 0, 1)) }
         : line,
     );
   if (lines.length >= 100) throw new Error("一张单据最多添加 100 种商品。");

@@ -1,6 +1,8 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 
+import { permissionKeys, legacyPermissions, hasPermission } from '../shared/permissions.js';
+
 const deriveKey = promisify(scrypt);
 const cookieName = "77erp_session";
 const sessionLifetime = 12 * 60 * 60 * 1000;
@@ -12,6 +14,14 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     password_salt TEXT NOT NULL, password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('admin','employee')),
     active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL
+  );`);
+  const userColumns = db.prepare('PRAGMA table_info(users)').all();
+  if (!userColumns.some(c => c.name === 'permissions')) db.exec('ALTER TABLE users ADD COLUMN permissions TEXT');
+  if (!userColumns.some(c => c.name === 'permissions_version')) db.exec('ALTER TABLE users ADD COLUMN permissions_version INTEGER NOT NULL DEFAULT 1');
+  db.exec(`CREATE TABLE IF NOT EXISTS user_permission_changes (
+    id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+    changed_by INTEGER NOT NULL REFERENCES users(id), before_permissions TEXT, after_permissions TEXT NOT NULL,
+    created_at TEXT NOT NULL
   );`);
   // Run once, preserving the original password and invalidating legacy sessions.
   if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='administrator'").get()) {
@@ -38,7 +48,10 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     }
   }
   const initialized = () => !!db.prepare("SELECT 1 FROM users LIMIT 1").get();
-  const publicUser = (user) => ({ id: user.id, username: user.username, role: user.role });
+  const publicUser = (user) => ({ id: user.id, username: user.username, role: user.role,
+    permissions: user.role === 'admin' ? permissionKeys : user.permissions == null ? legacyPermissions : JSON.parse(user.permissions),
+    legacy_permissions: user.role === 'employee' && user.permissions == null,
+    permissions_version: user.permissions_version ?? 1 });
   const validUsername = (value) => typeof value === 'string' && /^[A-Za-z0-9_.-]{3,32}$/.test(value.trim());
   const validPassword = (value) => typeof value === 'string' && value.length >= 8 && value.length <= 128;
   const passwordFields = async (password) => {
@@ -68,9 +81,10 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   };
   const sessionUser = (req) => {
     const token = sessionToken(req);
-    return token ? db.prepare(`SELECT u.id,u.username,u.role FROM auth_sessions s
+    const user = token ? db.prepare(`SELECT u.id,u.username,u.role,u.permissions,u.permissions_version FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`)
       .get(digest(token), Date.now()) : undefined;
+    return user ? publicUser(user) : undefined;
   };
   const issueSession = (req, res, user) => {
     db.prepare("DELETE FROM auth_sessions WHERE expires_at<=?").run(Date.now());
@@ -204,28 +218,53 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     attempts.delete(req.ip);
     res.json({ ok: true });
   });
-  // Employee access is explicit and deny-by-default: a route added later stays administrator-only
-  // until it is listed here. Paths are lowercased and stripped of trailing slashes, the same way
-  // Express matches them.
-  //   GET  /data /style /warehouses /categories /contacts /templates, /products/barcode/:code
-  //   POST /products /orders /templates, /templates/:id/delete
-  //   PUT  /products/:id
-  // /products/barcode/:code is kept for clients released before 1.4.0; current web and Android
-  // builds resolve barcodes from the /data snapshot.
+  // Unmapped routes stay administrator-only, including account and system settings.
   app.use('/api', (req, res, next) => {
     if (req.user.role === 'admin') return next();
     const path = req.path.toLowerCase().replace(/\/+$/, '');
-    const allowed = (['GET','HEAD'].includes(req.method) && (
-      ['/data','/style','/warehouses','/categories','/contacts','/templates'].includes(path) ||
+    const read = ['GET', 'HEAD'].includes(req.method);
+    const post = req.method === 'POST';
+    const legacyAllowed = (read && (
+      ['/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export'].includes(path) ||
       /^\/products\/barcode\/[^/]+$/.test(path))) ||
-      (req.method === 'POST' && ['/products','/orders','/templates','/uploads/product-image'].includes(path)) ||
+      (post && ['/products','/orders','/templates','/uploads/product-image'].includes(path)) ||
       (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
-      (req.method === 'POST' && /^\/templates\/\d+\/delete$/.test(path)) ||
-      (req.method === 'POST' && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path)));
-    if (!allowed) return res.status(403).json({ error: '此操作仅限管理员。' });
-    next();
+      (post && /^\/templates\/\d+\/delete$/.test(path)) ||
+      (post && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path)));
+    if (req.user.legacy_permissions) {
+      if (legacyAllowed) return next();
+    } else {
+      const basicRead = read && (
+        ['/data','/style','/warehouses','/categories','/contacts','/templates'].includes(path) ||
+        /^\/products\/barcode\/[^/]+$/.test(path));
+      if (basicRead) return next();
+      let permission;
+      if ((post && ['/products','/uploads/product-image'].includes(path)) ||
+          (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
+          (post && /^\/products\/\d+\/status$/.test(path)) ||
+          (req.method === 'DELETE' && /^\/products\/\d+$/.test(path)) ||
+          (['POST','PUT'].includes(req.method) && /^\/categories(?:\/\d+(?:\/delete)?)?$/.test(path))) permission = 'products';
+      if (post && path === '/orders') permission = req.body?.type === 'in' ? 'purchase' : req.body?.type === 'out' ? 'sale' : null;
+      if (post && /^\/orders\/\d+\/(void|returns)$/.test(path)) permission = 'corrections';
+      if ((read || post) && path === '/stocktakes') permission = 'stocktake';
+      if ((post && ['/contacts','/templates'].includes(path)) ||
+          (post && /^\/templates\/\d+\/delete$/.test(path)) ||
+          ((read || ['POST','PUT'].includes(req.method)) && /^\/stock-qrs(?:\/[0-9a-f-]{36}(?:\/(usages|revisions))?)?$/.test(path))) permission = 'business';
+      if ((read && ['/finance','/reports/profit'].includes(path)) ||
+          ((read || post) && /^\/orders\/\d+\/(payments|settlement)$/.test(path)) ||
+          (post && /^\/payments\/\d+\/reverse$/.test(path))) permission = 'finance';
+      if ((post && ['/products/import/preview','/products/import'].includes(path)) || (read && path === '/orders/export')) permission = 'data_io';
+      // QR direction comes from the persisted configuration, never a client-supplied direction.
+      if (post && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path))) {
+        const qrId = path === '/stock-qrs/preview' ? req.body?.label?.qr_id : path.split('/')[2];
+        const qr = typeof qrId === 'string' ? db.prepare('SELECT type FROM stock_qr_codes WHERE qr_id=?').get(qrId) : null;
+        permission = qr?.type === 'in' ? 'purchase' : qr?.type === 'out' ? 'sale' : null;
+      }
+      if (permission && hasPermission(req.user, permission)) return next();
+    }
+    return res.status(403).json({ error: '没有此操作的权限，请联系管理员。' });
   });
-  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,role,active,created_at FROM users ORDER BY id').all()));
+  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,role,active,created_at,permissions,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
   app.post('/api/users', async (req, res) => {
     const { username, password, role = 'employee' } = req.body || {};
     if (!validUsername(username) || !validPassword(password) || !['admin','employee'].includes(role))
@@ -233,13 +272,32 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const [salt, hash] = await passwordFields(password);
     if (sessionUser(req)?.role !== 'admin') return res.status(401).json({ error: '登录或权限已变化，请重新登录。' });
     try {
-      const result = db.prepare('INSERT INTO users(username,password_salt,password_hash,role,created_at) VALUES (?,?,?,?,?)')
+      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,permissions) VALUES (?,?,?,?,?,'[]')")
         .run(username.trim(), salt, hash, role, new Date().toISOString());
       res.status(201).json({ id: Number(result.lastInsertRowid) });
     } catch (error) {
       if (!error.message.includes('UNIQUE')) throw error;
       res.status(409).json({ error: '该账号已存在。' });
     }
+  });
+  app.put('/api/users/:id/permissions', (req, res) => {
+    const { permissions, version } = req.body || {};
+    if (!Array.isArray(permissions) || permissions.some(key => !permissionKeys.includes(key)) ||
+        new Set(permissions).size !== permissions.length || !Number.isSafeInteger(version))
+      return res.status(400).json({ error: '请选择有效权限，并提交当前配置版本。' });
+    const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
+    if (!user) return res.status(404).json({ error: '账号不存在。' });
+    if (user.role !== 'employee') return res.status(400).json({ error: '管理员拥有全部权限，无需配置。' });
+    if (user.permissions_version !== version) return res.status(409).json({ error: '权限配置已被修改，请重新打开配置。' });
+    const value = JSON.stringify(permissionKeys.filter(key => permissions.includes(key)));
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare('UPDATE users SET permissions=?,permissions_version=permissions_version+1 WHERE id=?').run(value, user.id);
+      db.prepare('INSERT INTO user_permission_changes(user_id,changed_by,before_permissions,after_permissions,created_at) VALUES (?,?,?,?,?)')
+        .run(user.id, req.user.id, user.permissions, value, new Date().toISOString());
+      db.exec('COMMIT');
+      res.json({ ok: true });
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
   });
   app.put('/api/users/:id', (req, res) => {
     const { role, active } = req.body || {};

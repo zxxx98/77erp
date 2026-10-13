@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createApp } from "../server/app.js";
+import { migrateStockQr } from "../server/stock-qr.js";
 
 async function fixture(t) {
   const { app, db } = createApp(":memory:");
@@ -139,6 +140,46 @@ async function fixture(t) {
     stocks,
   };
 }
+
+test("fractional QR receipts and sales round line amounts and survive backup restore", async (t) => {
+  const f = await fixture(t);
+  const items = [{ product_id: f.products[0].id, quantity: 0.125, price_cents: 123 }];
+  const receipt = await f.create({ items });
+  const preview = (await f.preview(receipt)).data;
+  assert.equal(preview.items[0].amount_cents, 15);
+  assert.equal((await f.execute(receipt, preview)).status, 201);
+  assert.equal(f.stocks()[0].stock, 0.125);
+  assert.equal(f.stocks()[0].inventory_value_cents, 15);
+  const sale = await f.create({ type: "out", partner: "客户", items });
+  assert.equal((await f.execute(sale, (await f.preview(sale)).data)).status, 201);
+  assert.equal(f.stocks()[0].stock, 0);
+  assert.equal(f.stocks()[0].inventory_value_cents, 0);
+  const backup = (await f.request("/backup")).data;
+  const restorePreview = await f.request("/backup/preview", "POST", { backup });
+  assert.equal(restorePreview.status, 200, JSON.stringify(restorePreview.data));
+  const restored = await f.request("/backup/restore", "POST", { backup, ...restorePreview.data, confirmation: "RESTORE_BUSINESS_DATA", request_id: randomUUID() });
+  assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  assert.equal(f.db.prepare("SELECT quantity FROM stock_qr_items LIMIT 1").get().quantity, 0.125);
+  assert.equal(f.db.prepare("SELECT quantity FROM order_items LIMIT 1").get().quantity, 0.125);
+});
+
+test("legacy QR quantity constraint migrates idempotently and preserves existing rows", async (t) => {
+  const f = await fixture(t), original = await f.create();
+  const schema = f.db.prepare("SELECT sql FROM sqlite_master WHERE name='stock_qr_items'").get().sql;
+  const rows = f.db.prepare("SELECT * FROM stock_qr_items ORDER BY id").all();
+  f.db.exec("DROP TABLE stock_qr_items");
+  f.db.exec(schema.replace('quantity REAL NOT NULL CHECK(quantity > 0 AND quantity <= 99999999)', 'quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 99999999)'));
+  const insert = f.db.prepare(`INSERT INTO stock_qr_items VALUES (${Object.keys(rows[0]).map(() => '?').join(',')})`);
+  rows.forEach(row => insert.run(...Object.values(row)));
+  migrateStockQr(f.db);
+  migrateStockQr(f.db);
+  assert.deepEqual(f.db.prepare("SELECT * FROM stock_qr_items ORDER BY id").all(), rows);
+  assert.equal((await f.preview(original)).status, 200);
+  assert.deepEqual(f.db.prepare("PRAGMA foreign_key_check").all(), []);
+  const fractional = await f.create({ items: [{ product_id: f.products[0].id, quantity: 0.000001, price_cents: 1000 }] });
+  assert.equal((await f.execute(fractional, (await f.preview(fractional)).data)).status, 201);
+  assert.equal(f.stocks()[0].stock, 0.000001);
+});
 
 test("multi-product receipt uses one order, one quota and current immutable prices; defaults require confirmation", async (t) => {
   const f = await fixture(t),
@@ -395,6 +436,7 @@ test("employee can execute but cannot manage, reuse another user preview, or byp
     password: "Test-worker-123",
     role: "employee",
   });
+  f.db.prepare('UPDATE users SET permissions=? WHERE username=?').run(JSON.stringify(["purchase", "sale"]), "worker");
   const cookie = (
     await f.request("/auth/login", "POST", {
       username: "worker",

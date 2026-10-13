@@ -26,6 +26,8 @@ async function fixture(t, path = ':memory:') {
   const user = async (username, role = 'employee') => {
     const created = await request(admin, '/users', { username, password, role });
     assert.equal(created.status, 201);
+    // Exercise upgraded employees with their original capabilities in the legacy regression cases.
+    db.prepare('UPDATE users SET permissions=NULL WHERE id=?').run(created.data.id);
     const login = await request(null, '/auth/login', { username, password });
     assert.equal(login.status, 200);
     return { id: created.data.id, cookie: login.cookie, username };
@@ -227,11 +229,11 @@ test('business backups preserve actor names and same-server template owners, but
 const routeRoles = new Map(Object.entries({
   'get /api/auth/status': 'public', 'post /api/auth/setup': 'public', 'post /api/auth/login': 'public', 'post /api/auth/logout': 'public',
   'post /api/auth/password': 'employee',
-  'get /api/users': 'admin', 'post /api/users': 'admin', 'put /api/users/:id': 'admin', 'post /api/users/:id/password': 'admin',
+  'get /api/users': 'admin', 'post /api/users': 'admin', 'put /api/users/:id': 'admin', 'post /api/users/:id/password': 'admin', 'put /api/users/:id/permissions': 'admin',
   'get /api/warehouses': 'employee', 'post /api/warehouses': 'admin', 'put /api/warehouses/:id': 'admin',
   'get /api/categories': 'employee', 'post /api/categories': 'admin', 'put /api/categories/:id': 'admin', 'post /api/categories/:id/delete': 'admin',
   'get /api/data': 'employee', 'get /api/style': 'employee', 'get /api/products/barcode/:barcode': 'employee',
-  'post /api/products': 'employee', 'put /api/products/:id': 'employee', 'post /api/orders': 'employee',
+  'get /api/orders/export': 'employee', 'post /api/products': 'employee', 'put /api/products/:id': 'employee', 'post /api/orders': 'employee',
   'post /api/products/:id/status': 'admin', 'delete /api/products/:id': 'admin',
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',

@@ -39,6 +39,7 @@ test('configuration is administrator-only, redacted, persists across updates and
   assert.equal(f.db.prepare('SELECT secret FROM imagebed_settings').get().secret, config.secret);
   for (const path of ['/data', '/backup']) assert.ok(!JSON.stringify((await f.request(path)).data).includes(config.secret));
   await f.request('/users', 'POST', { username: 'employee', password: 'Test-employee-123', role: 'employee' });
+  f.db.prepare("UPDATE users SET permissions='[\"products\"]' WHERE username='employee'").run();
   const employee = (await f.request('/auth/login', 'POST', { username: 'employee', password: 'Test-employee-123' })).cookie;
   assert.equal((await f.request('/settings/imagebed', 'GET', undefined, { Cookie: employee })).status, 403);
   assert.equal((await f.request('/settings/imagebed', 'PUT', config, { Cookie: employee })).status, 403);

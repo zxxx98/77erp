@@ -1,3 +1,5 @@
+import { usePermissions } from './permissions';
+import { PermissionKey } from '../../shared/permissions';
 import React, {
   Children,
   PropsWithChildren,
@@ -57,7 +59,9 @@ export function Button({
   kind = "primary",
   busy = false,
   disabled = false,
+  permission,
 }: {
+  permission?: PermissionKey;
   title: string;
   onPress: () => void;
   icon?: LucideIcon;
@@ -65,6 +69,8 @@ export function Button({
   busy?: boolean;
   disabled?: boolean;
 }) {
+  const { can } = usePermissions();
+  if (permission && !can(permission)) return null;
   const color =
     kind === "primary"
       ? colors.white
@@ -98,12 +104,16 @@ export function IconButton({
   label,
   onPress,
   disabled = false,
+  permission,
 }: {
+  permission?: PermissionKey;
   icon: LucideIcon;
   label: string;
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const { can } = usePermissions();
+  if (permission && !can(permission)) return null;
   return (
     <Pressable
       accessibilityRole="button"

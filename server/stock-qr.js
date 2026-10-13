@@ -1,3 +1,4 @@
+import { validQuantity, addQuantity } from "../shared/quantity.js";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { resolveContact } from "./commerce.js";
 import { createOrder } from "./orders.js";
@@ -35,7 +36,7 @@ export function migrateStockQr(db) {
     CREATE TABLE IF NOT EXISTS stock_qr_items (
     id INTEGER PRIMARY KEY, stock_qr_id INTEGER NOT NULL REFERENCES stock_qr_codes(id),
     product_id INTEGER NOT NULL REFERENCES products(id), product_barcode TEXT NOT NULL, product_unit TEXT NOT NULL,
-    quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 99999999),
+    quantity REAL NOT NULL CHECK(quantity > 0 AND quantity <= 99999999),
     price_cents INTEGER NOT NULL CHECK(price_cents BETWEEN 0 AND 9999999900), sort_order INTEGER NOT NULL,
     UNIQUE(stock_qr_id,product_id), UNIQUE(stock_qr_id,sort_order));
     CREATE TABLE IF NOT EXISTS stock_qr_revisions (
@@ -55,6 +56,23 @@ export function migrateStockQr(db) {
     CREATE INDEX IF NOT EXISTS stock_qr_product ON stock_qr_items(product_id);
     CREATE INDEX IF NOT EXISTS stock_qr_usage_time ON stock_qr_usages(stock_qr_id,created_at);
     CREATE INDEX IF NOT EXISTS stock_qr_expiry ON stock_qr_previews(expires_at);`);
+  // Older QR tables reject quantities below one. SQLite's INTEGER affinity in
+  // the other legacy tables already stores decimals without truncating them.
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE name='stock_qr_items'").get().sql;
+  if (/quantity INTEGER/i.test(schema)) {
+    const objects = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name='stock_qr_items' AND type IN ('index','trigger') AND sql IS NOT NULL").all();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(schema.replace(/CREATE TABLE stock_qr_items/i, 'CREATE TABLE stock_qr_items_decimal')
+        .replace(/quantity INTEGER NOT NULL CHECK\(quantity BETWEEN 1 AND 99999999\)/i, 'quantity REAL NOT NULL CHECK(quantity > 0 AND quantity <= 99999999)'));
+      db.exec('INSERT INTO stock_qr_items_decimal SELECT * FROM stock_qr_items; DROP TABLE stock_qr_items; ALTER TABLE stock_qr_items_decimal RENAME TO stock_qr_items;');
+      for (const object of objects) db.exec(object.sql);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
 }
 export function clearStockQr(db) {
   db.exec(
@@ -89,21 +107,20 @@ function checkConfig(body, used = 0, editing = false) {
       (i) =>
         !i ||
         !integer(i.product_id, 1) ||
-        !integer(i.quantity, 1) ||
+        !validQuantity(i.quantity, true) ||
         !integer(i.price_cents, 0, 9999999900),
     )
   )
     fail(
       "INVALID_ITEMS",
-      "请选择 1–100 种不同商品，数量必须为正整数，单价不能为负数。",
+      "请选择 1–100 种不同商品，数量必须为正数且最多 6 位小数，单价不能为负数。",
       400,
     );
   let total = 0;
   for (const i of body.items) {
-    const amount = i.quantity * i.price_cents;
+    const amount = Math.round(i.quantity * (i.price_cents / 100) * 100);
     if (
       !Number.isSafeInteger(amount) ||
-      Math.round(i.quantity * (i.price_cents / 100) * 100) !== amount ||
       !Number.isSafeInteger((total += amount))
     )
       fail("INVALID_AMOUNT", "商品或单据金额过大。", 400);
@@ -154,7 +171,7 @@ export function installStockQr(app, db) {
         unit: p.unit,
         stock: p.stock,
         active: p.active,
-        amount_cents: i.quantity * i.price_cents,
+        amount_cents: Math.round(i.quantity * (i.price_cents / 100) * 100),
         product_changed:
           p.barcode !== i.product_barcode || p.unit !== i.product_unit,
       };
@@ -226,7 +243,7 @@ export function installStockQr(app, db) {
           name: i.name,
           error: `库存不足（当前 ${i.stock} ${i.unit}，需要 ${i.quantity} ${i.unit}）。`,
         });
-      else if (q.type === "in" && !integer(i.stock + i.quantity))
+      else if (q.type === "in" && !validQuantity(addQuantity(i.stock, i.quantity)))
         errors.push({
           product_id: i.product_id,
           name: i.name,
@@ -647,7 +664,7 @@ export function validateStockQrBackup(data) {
       positions.has(pos) ||
       !text(i.product_barcode, 64) ||
       !text(i.product_unit, 100) ||
-      !integer(i.quantity, 1) ||
+      !validQuantity(i.quantity, true) ||
       !integer(i.price_cents, 0, 9999999900) ||
       !integer(i.sort_order, 0, 99)
     )
@@ -655,9 +672,9 @@ export function validateStockQrBackup(data) {
     itemKeys.add(key);
     positions.add(pos);
     counts.set(q.id, (counts.get(q.id) || 0) + 1);
-    const total = (amounts.get(q.id) || 0) + i.quantity * i.price_cents;
+    const total = (amounts.get(q.id) || 0) + Math.round(i.quantity * (i.price_cents / 100) * 100);
     if (
-      !Number.isSafeInteger(i.quantity * i.price_cents) ||
+      !Number.isSafeInteger(Math.round(i.quantity * (i.price_cents / 100) * 100)) ||
       !Number.isSafeInteger(total)
     )
       bad();
@@ -684,7 +701,7 @@ export function validateStockQrBackup(data) {
         (i) =>
           !i ||
           !integer(i.product_id, 1) ||
-          !integer(i.quantity, 1) ||
+          !validQuantity(i.quantity, true) ||
           !integer(i.price_cents, 0, 9999999900) ||
           !text(i.name, 100) ||
           !text(i.product_barcode, 64) ||

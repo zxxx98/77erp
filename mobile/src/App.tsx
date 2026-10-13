@@ -1,3 +1,5 @@
+import { PermissionContext } from './permissions';
+import { hasPermission, canManage } from '../../shared/permissions';
 import { StockQrManager } from './stock-qr';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -5,6 +7,7 @@ import {
   Alert,
   AppState,
   BackHandler,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -107,7 +110,7 @@ export function AppContent() {
   const [booting, setBooting] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [auth, setAuth] = useState<AuthState | null>(null);
-  const isAdmin = auth?.role !== "employee";
+  const isAdmin = auth?.role === "admin";
   const [data, setData] = useState<Workspace | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -273,8 +276,13 @@ export function AppContent() {
     setToast(message);
     void refresh();
   };
-  const openOrder = (type: "in" | "out", product?: Product) =>
-    setModal({ kind: "orderEditor", type, product });
+  const user = data?.user || auth;
+  const can = (key: Parameters<typeof hasPermission>[1]) => hasPermission(user, key);
+  const manage = (key: Parameters<typeof canManage>[1]) => canManage(user, key);
+  const openOrder = (type: "in" | "out", product?: Product, template?: Template) => {
+    if (!can(type === 'in' ? 'purchase' : 'sale')) { setToast('没有此操作的权限，请联系管理员。'); return; }
+    setModal({ kind: 'orderEditor', type, product, template });
+  };
   const changeServer = () =>
     Alert.alert(
       "切换服务器？",
@@ -421,7 +429,7 @@ export function AppContent() {
             key={tab}
             products={data.products}
             categories={data.categories || []}
-            manageCategories={isAdmin ? () => setModal({ kind: "categories" }) : undefined}
+            manageCategories={manage('products') ? () => setModal({ kind: "categories" }) : undefined}
             inventory={tab === "inventory"}
             refreshing={refreshing}
             onRefresh={() => void refresh()}
@@ -451,7 +459,6 @@ export function AppContent() {
               data={data}
               busy={loggingOut}
               settings={() => setModal({ kind: "settings" })}
-              stocktake={() => setModal({ kind: "stocktake" })}
               commerce={() => setModal({ kind: "commerce" })}
               changeServer={changeServer}
               logout={() =>
@@ -503,8 +510,8 @@ export function AppContent() {
         )}
         {modal?.kind === "product" && (
           <ProductDetail
-            isAdmin={isAdmin}
-            manageStockQr={isAdmin ? () => setModal({kind:"stockQr",product:modal.product}) : undefined}
+            isAdmin={manage('products')}
+            manageStockQr={manage('business') ? () => setModal({kind:"stockQr",product:modal.product}) : undefined}
             onSaved={saved}
             product={
               data.products.find(
@@ -518,8 +525,8 @@ export function AppContent() {
             openOrder={openOrder}
           />
         )}
-        {isAdmin && modal?.kind === "categories" && <CategoryEditor categories={data.categories || []} onClose={() => setModal(null)} onChanged={() => refresh()} />}
-        {modal?.kind === "productEditor" && (
+        {manage('products') && modal?.kind === "categories" && <CategoryEditor categories={data.categories || []} onClose={() => setModal(null)} onChanged={() => refresh()} />}
+        {can('products') && modal?.kind === "productEditor" && (
           <ProductEditor
             product={modal.product}
             categories={data.categories || []}
@@ -530,7 +537,7 @@ export function AppContent() {
             onSaved={saved}
           />
         )}
-        {modal?.kind === "orderEditor" && (
+        {modal?.kind === "orderEditor" && can(modal.type === 'in' ? 'purchase' : 'sale') && (
           <OrderEditor
             type={modal.type}
             initialProduct={modal.product}
@@ -546,12 +553,12 @@ export function AppContent() {
         {modal?.kind === "order" && (
           <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
         )}
-        {isAdmin && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} onClose={() => setModal(null)} />}
+        {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} onClose={() => setModal(null)} />}
         {modal?.kind === "scanner" && (
           <ScannerScreen
             storageKey={`${server}:${data.instance_id}:${auth?.id || auth?.username}:${data.warehouse_id || 1}`}
             onSaved={message => {setToast(message);void refresh();}}
-            manageStockQr={isAdmin ? () => setModal({kind:"stockQr"}) : undefined}
+            manageStockQr={manage('business') ? () => setModal({kind:"stockQr"}) : undefined}
             products={data.products}
             warehouseId={data.warehouse_id || 1}
             sourceId={data.instance_id}
@@ -559,8 +566,11 @@ export function AppContent() {
             openOrder={openOrder}
           />
         )}
-        {modal?.kind === "commerce" && <CommerceScreen isAdmin={isAdmin} onClose={() => setModal(null)} onRefresh={() => void refresh()} onUse={template => setModal({kind:"orderEditor",type:template.type,template})} />}
-        {isAdmin && modal?.kind === "stocktake" && <StocktakeEditor products={data.products} onClose={() => setModal(null)} onSaved={saved} />}
+        {modal?.kind === "commerce" && <CommerceScreen isAdmin={isAdmin} onClose={() => setModal(null)} onRefresh={() => void refresh()} onUse={template => openOrder(template.type, undefined, template)}
+          onStocktake={() => setModal({ kind: 'stocktake' })} onDataManagement={() => {
+            void Linking.openURL(`${server}/?manage=data&warehouse_id=${data.warehouse_id || 1}`).catch(() => Alert.alert('无法打开浏览器', '请手动访问服务器网页。'));
+          }} />}
+        {can('stocktake') && modal?.kind === "stocktake" && <StocktakeEditor products={data.products} onClose={() => setModal(null)} onSaved={saved} />}
         {modal?.kind === "password" && <PasswordEditor onClose={() => setModal(null)} onChanged={logout} />}
         {modal?.kind === "warehouses" && <ScreenModal title="选择仓库" onClose={() => setModal(null)} busy={refreshing} error={error}>
           {(data.warehouses || []).map(w => <Button key={w.id} title={`${w.name}${w.id === (data.warehouse_id || 1) ? " · 当前仓库" : ""}`} kind="secondary" disabled={refreshing} onPress={() => w.id === getWarehouseId() ? setModal(null) : void switchWarehouse(w.id)} />)}
@@ -578,10 +588,10 @@ export function AppContent() {
       </>
     );
   return (
-    <KeyboardSafeArea>
+    <PermissionContext.Provider value={user || {}}><KeyboardSafeArea>
       <StatusBar barStyle="dark-content" />
       {body}
-    </KeyboardSafeArea>
+    </KeyboardSafeArea></PermissionContext.Provider>
   );
 }
 export default function App() {

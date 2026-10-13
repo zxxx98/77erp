@@ -10,6 +10,7 @@ test('two users keep conflicting edits, compare the latest product and explicitl
   try {
     expect((await page.request.post(base + '/api/auth/setup', { data: { username: 'owner', password: 'Test-password-123' } })).status()).toBe(201);
     expect((await page.request.post(base + '/api/users', { data: { username: 'staff', password: 'Test-password-123', role: 'employee' } })).status()).toBe(201);
+    db.prepare("UPDATE users SET permissions='[\"products\"]' WHERE username='staff'").run();
     const created = await page.request.post(base + '/api/products', { data: {
       name: '并发编辑商品', barcode: 'BROWSER-VERSION-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 5,
     } });

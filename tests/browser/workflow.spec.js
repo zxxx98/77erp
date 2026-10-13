@@ -29,7 +29,7 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
   await page.getByPlaceholder("扫描或输入条码，可留空").fill("TEST-UI-001");
   await page.getByRole("spinbutton", { name: /采购价/ }).fill("10");
   await page.getByRole("spinbutton", { name: /销售价/ }).fill("20");
-  await page.getByRole("spinbutton", { name: /安全库存/ }).fill("5");
+  await page.getByRole("spinbutton", { name: /安全库存/ }).fill("0.123456");
   await page.getByRole("button", { name: "保存商品" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("link", { name: "扫码工作台", exact: true }).click();
@@ -51,10 +51,10 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
   await page.getByRole("combobox", { name: /供应商/ }).fill("自动化测试供应商");
   await page
     .getByRole("spinbutton", { name: "浏览器测试商品 数量" })
-    .fill("10");
+    .fill("10.25");
   await page.getByRole("button", { name: "确认入库", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.locator(".scan-result-stock strong")).toContainText("10");
+  await expect(page.locator(".scan-result-stock strong")).toContainText("10.25");
   await page
     .locator(".scan-result-actions")
     .getByRole("button", { name: "销售出库" })
@@ -64,10 +64,10 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
     .fill("11");
   await page.getByRole("button", { name: "确认出库", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("库存不足");
-  await page.getByRole("spinbutton", { name: "浏览器测试商品 数量" }).fill("3");
+  await page.getByRole("spinbutton", { name: "浏览器测试商品 数量" }).fill("0.125");
   await page.getByRole("button", { name: "确认出库", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.locator(".scan-result-stock strong")).toContainText("7");
+  await expect(page.locator(".scan-result-stock strong")).toContainText("10.125");
   await page.reload();
   await page.getByRole("button", { name: "手动输入条码", exact: true }).click();
   await page
@@ -76,13 +76,13 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
   await page
     .getByRole("textbox", { name: "商品条码", exact: true })
     .press("Enter");
-  await expect(page.locator(".scan-result-stock strong")).toContainText("7");
+  await expect(page.locator(".scan-result-stock strong")).toContainText("10.125");
   await page.getByRole("link", { name: "操作记录", exact: true }).click();
   await page.getByRole("textbox", { name: "搜索单据" }).fill("浏览器测试商品");
   await expect(page.locator(".orders-table tbody tr")).toHaveCount(2);
   await page.locator(".orders-table tbody tr").first().click();
   await expect(page.getByRole("dialog")).toContainText("浏览器测试商品");
-  await expect(page.locator(".detail-table")).toContainText("60.00");
+  await expect(page.locator(".detail-table")).toContainText("2.50");
   await page.keyboard.press("Escape");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出单据" }).click();

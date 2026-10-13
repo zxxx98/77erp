@@ -1,3 +1,4 @@
+import { usePermissions } from './permissions';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Text } from "react-native";
 import { api } from "./native";
@@ -57,30 +58,40 @@ export function CommerceScreen({
   onClose,
   onUse,
   onRefresh,
+  onStocktake,
+  onDataManagement,
 }: {
+  onStocktake?: () => void;
+  onDataManagement?: () => void;
   isAdmin?: boolean;
   onClose: () => void;
   onUse: (template: Template) => void;
   onRefresh: () => void;
 }) {
-  const [tab, setTab] = useState("contacts");
-  if (!isAdmin) return <ScreenModal title="单据模板" onClose={onClose}><TemplateList onUse={onUse} /></ScreenModal>;
+  const { can, user } = usePermissions();
+  const business = isAdmin || (user.role === 'employee' && can('business'));
+  const finance = isAdmin || (user.role === 'employee' && can('finance'));
+  const [tab, setTab] = useState(business ? 'contacts' : finance ? 'finance' : 'templates');
+  const available = [...(business ? ['contacts'] : []), 'templates', ...(finance ? ['finance', 'profit'] : [])];
+  const active = available.includes(tab) ? tab : available[0] || "templates";
   return (
-    <ScreenModal title="往来与财务" onClose={onClose}>
+    <ScreenModal title="业务管理" onClose={onClose}>
       <Chips
-        value={tab}
+        value={active}
         onChange={setTab}
         options={[
           { id: "contacts", label: "往来单位" },
           { id: "templates", label: "模板" },
           { id: "finance", label: "收付款" },
           { id: "profit", label: "毛利" },
-        ]}
+        ].filter(item => available.includes(item.id))}
       />
-      {tab === "contacts" && <Contacts onRefresh={onRefresh} />}
-      {tab === "templates" && <TemplateList onUse={onUse} />}
-      {tab === "finance" && <Finance />}
-      {tab === "profit" && <Profit />}
+      {onStocktake && (isAdmin || (user.role === 'employee' && can('stocktake'))) && <Button title="库存盘点" kind="secondary" onPress={onStocktake} />}
+      {onDataManagement && (isAdmin || (user.role === 'employee' && can('data_io') && !user.legacy_permissions)) && <Button title="打开网页导入导出" kind="secondary" onPress={onDataManagement} />}
+      {active === "contacts" && <Contacts onRefresh={onRefresh} />}
+      {active === "templates" && <TemplateList onUse={onUse} />}
+      {active === "finance" && <Finance />}
+      {active === "profit" && <Profit />}
     </ScreenModal>
   );
 }
@@ -185,6 +196,7 @@ function Contacts({ onRefresh }: { onRefresh: () => void }) {
   );
 }
 export function TemplateList({ onUse, type, disabled = false, refreshKey = 0 }: { onUse: (template: Template) => void; type?: "in" | "out"; disabled?: boolean; refreshKey?: number }) {
+  const { can, templates } = usePermissions();
   const [rows, setRows] = useState<Template[]>([]);
   const { busy, error, setError, run, send } = useBusiness();
   const [loading, setLoading] = useState(true);
@@ -209,10 +221,10 @@ export function TemplateList({ onUse, type, disabled = false, refreshKey = 0 }: 
           </Text>
           <Button
             title={`使用模板 #${d.id}`}
-            disabled={busy || disabled || loading}
+            disabled={busy || disabled || loading || !can(d.type === 'in' ? 'purchase' : 'sale')}
             onPress={() => onUse(d)}
           />
-          <Button
+          {templates && <Button
             title={`删除模板 #${d.id}`}
             kind="danger"
             disabled={busy || disabled || loading}
@@ -232,7 +244,7 @@ export function TemplateList({ onUse, type, disabled = false, refreshKey = 0 }: 
                 },
               ])
             }
-          />
+          />}
         </Card>
       ))}
       {!!error && <><Text accessibilityRole="alert">{error}</Text><Button title="重新加载模板" kind="secondary" disabled={busy || disabled} onPress={() => void run(load)} /></>}

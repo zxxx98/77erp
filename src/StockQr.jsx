@@ -461,9 +461,9 @@ export function StockQrManager({
                     <input
                       type="number"
                       required
-                      min={1}
+                      min={0.000001}
                       max={99999999}
-                      step={1}
+                      step={0.000001}
                       value={i.quantity}
                       onChange={(e) =>
                         updateLine(i.product_id, "quantity", e.target.value)

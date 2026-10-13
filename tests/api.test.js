@@ -224,7 +224,7 @@ test("insufficient stock rolls back entire order, including first valid item", a
 test("invalid quantity, negative amounts, missing products, and duplicate items are rejected", async () => {
   for (const items of [
     [{ product_id: 1, quantity: 0, price: 1 }],
-    [{ product_id: 1, quantity: 1.5, price: 1 }],
+    [{ product_id: 1, quantity: 1.0000001, price: 1 }],
     [{ product_id: 1, quantity: 1, price: -1 }],
     [{ product_id: 1, quantity: 1, price: 1.001 }],
     [{ product_id: 9999, quantity: 1, price: 1 }],

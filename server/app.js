@@ -1,3 +1,5 @@
+import { validQuantity, addQuantity } from '../shared/quantity.js';
+import { hasPermission } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
 import { migrateProductVersions } from './product-version.js';
 import { migrateStockQr, installStockQr, clearStockQr } from './stock-qr.js';
@@ -41,9 +43,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-    CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, barcode TEXT NOT NULL UNIQUE, category TEXT NOT NULL, unit TEXT NOT NULL DEFAULT '件', cost REAL NOT NULL, price REAL NOT NULL, stock INTEGER NOT NULL DEFAULT 0 CHECK(stock >= 0), threshold INTEGER NOT NULL DEFAULT 20, color TEXT NOT NULL DEFAULT 'blue', created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, barcode TEXT NOT NULL UNIQUE, category TEXT NOT NULL, unit TEXT NOT NULL DEFAULT '件', cost REAL NOT NULL, price REAL NOT NULL, stock REAL NOT NULL DEFAULT 0 CHECK(stock >= 0), threshold REAL NOT NULL DEFAULT 20, color TEXT NOT NULL DEFAULT 'blue', created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, number TEXT NOT NULL UNIQUE, type TEXT NOT NULL CHECK(type IN ('in','out')), partner TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', total REAL NOT NULL, created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id), product_id INTEGER NOT NULL REFERENCES products(id), name TEXT NOT NULL, barcode TEXT NOT NULL, quantity INTEGER NOT NULL, price REAL NOT NULL);
+    CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id), product_id INTEGER NOT NULL REFERENCES products(id), name TEXT NOT NULL, barcode TEXT NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL);
     CREATE TABLE IF NOT EXISTS design_styles (id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT NOT NULL, source TEXT NOT NULL, tokens TEXT NOT NULL, specification TEXT NOT NULL, saved_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), business_name TEXT NOT NULL, warehouse_name TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS app_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -261,19 +263,23 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
   app.get("/api/data", (req, res) => {
-    const products = db.prepare("SELECT * FROM products WHERE warehouse_id=? ORDER BY id").all(req.warehouse.id);
+    const financial = hasPermission(req.user, 'finance');
+    const hideCosts = !financial && !req.user.legacy_permissions;
+    const products = db.prepare("SELECT * FROM products WHERE warehouse_id=? ORDER BY id").all(req.warehouse.id)
+      .map(p => { if (hideCosts) delete p.inventory_value_cents; return p; });
     const orders = db
       .prepare("SELECT * FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC")
       .all(req.warehouse.id)
       .map((o) => ({
         ...o,
         // Payment state is financial data: employees receive the order without it.
-        ...(req.user.role === "admin" ? settlement(db, o) : {}),
+        ...(financial ? settlement(db, o) : {}),
         items: db
           .prepare("SELECT * FROM order_items WHERE order_id=?")
-          .all(o.id).map(item => ({ ...item, returned_quantity: db.prepare(`SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders r ON r.id=i.order_id WHERE r.source_order_id=? AND r.status='active' AND i.product_id=?`).get(o.id, item.product_id).quantity })),
+          .all(o.id).map(item => { if (hideCosts) delete item.cost_cents; return ({ ...item, returned_quantity: addQuantity(0, db.prepare(`SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders r ON r.id=i.order_id WHERE r.source_order_id=? AND r.status='active' AND i.product_id=?`).get(o.id, item.product_id).quantity) }); }),
       }));
     res.json({
+      user: req.user,
       products,
       categories: db.prepare("SELECT * FROM categories ORDER BY name,id").all(),
       contacts: db.prepare("SELECT * FROM contacts ORDER BY active DESC,name,id").all(),
@@ -298,11 +304,11 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return res
         .status(404)
         .json({ error: "未找到该条码对应的商品，请先建立商品档案。" });
+    if (!hasPermission(req.user, 'finance') && !req.user.legacy_permissions) delete product.inventory_value_cents;
     res.json(product);
   });
   const validNumber = (n) =>
     typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 99999999;
-  const validInteger = (n) => validNumber(n) && Number.isInteger(n);
   const validMoney = (n) =>
     validNumber(n) && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
   function productValues(body) {
@@ -318,10 +324,10 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       (normalizedBarcode && !/^[\w.-]{3,64}$/.test(normalizedBarcode)) ||
       !validMoney(cost) ||
       !validMoney(price) ||
-      !validInteger(threshold)
+      !validQuantity(threshold)
     )
       throw new Error(
-        "请填写有效的商品信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，金额最多两位小数且不能为负数，预警值需为非负整数。",
+        "请填写有效的商品信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，金额最多两位小数且不能为负数，预警值需为非负数且最多 6 位小数。",
       );
     return [
       name.trim(),
@@ -454,6 +460,10 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (inTransaction) db.exec("ROLLBACK");
       res.status(400).json({ error: e.message.trim() });
     }
+  });
+  app.get('/api/orders/export', (req, res) => {
+    res.json(db.prepare('SELECT id,number,type,kind,status,partner,total,created_at,note FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC')
+      .all(req.warehouse.id).map(o => ({ ...o, items: db.prepare('SELECT name,quantity,price FROM order_items WHERE order_id=? ORDER BY id').all(o.id) })));
   });
   app.post("/api/orders", (req, res) => {
     let inTransaction = false;

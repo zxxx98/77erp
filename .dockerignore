@@ -12,3 +12,5 @@
 !server/**
 !docs/
 !docs/design-system.md
+!shared/
+!shared/**

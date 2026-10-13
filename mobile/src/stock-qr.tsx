@@ -446,7 +446,7 @@ export function StockQrManager({
               </Text>
               <Field
                 label={`${i.name} 单次数量（${i.unit}）`}
-                keyboardType="number-pad"
+                keyboardType="decimal-pad"
                 value={i.quantity}
                 editable={!busy}
                 onChangeText={(quantity) =>

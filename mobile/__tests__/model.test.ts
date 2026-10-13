@@ -17,7 +17,7 @@ test("outbound cannot exceed stock, and input errors do not silently become zero
   const lines = [{ product, quantity: "6", price: "20" }];
   expect(() => orderPayload("out", "客户", "", lines)).toThrow("库存不足");
   expect(orderPayload("in", "供应商", "", lines).items[0]?.quantity).toBe(6);
-  for (const quantity of ["", "0", "-1", "1.2", "Infinity", "1e2"]) {
+  for (const quantity of ["", "0", "-1", "1.0000001", "Infinity", "1e2"]) {
     expect(() =>
       orderPayload("out", "客户", "", [{ product, quantity, price: "20" }]),
     ).toThrow();
@@ -74,4 +74,13 @@ test("reports exclude voided orders and subtract returns from the original busin
   expect(reportOrders(orders).map((o: { type: string; total: number }) => [o.type, o.total])).toEqual([["in", 100], ["in", -20]]);
   expect(orderLabel(orders[1])).toBe("采购退货");
   expect(orderLabel(orders[2])).toBe("销售出库 · 已作废");
+});
+
+
+test("fractional quantities, thresholds and repeated scans preserve precision", () => {
+  const lines = [{ product, quantity: "0.123456", price: "20" }];
+  expect(orderPayload("out", "客户", "", lines).items[0]?.quantity).toBe(0.123456);
+  expect(orderTotal(lines)).toBe(2.47);
+  expect(addLine(lines, product, "out")[0]?.quantity).toBe("1.123456");
+  expect(productPayload({ name: "小数商品", barcode: "", category: "文具", unit: "件", cost: "10", price: "20", threshold: "0.5" }).threshold).toBe(0.5);
 });

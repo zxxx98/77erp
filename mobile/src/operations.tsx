@@ -1,3 +1,4 @@
+import { validQuantity, addQuantity } from "../../shared/quantity";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { api } from "./native";
@@ -67,14 +68,14 @@ export function OrderCorrection({
       return;
     }
     const selected = order.items.filter(
-      (i) => quantities[i.product_id] && quantities[i.product_id] !== "0",
+      (i) => quantities[i.product_id]?.trim() && Number(quantities[i.product_id]) !== 0,
     );
     if (
       action === "returns" &&
       (!selected.length ||
-        selected.some((i) => !/^\d+$/.test(quantities[i.product_id] || "")))
+        selected.some((i) => !/^\d+(\.\d{1,6})?$/.test(quantities[i.product_id] || "") || !validQuantity(Number(quantities[i.product_id]), true)))
     ) {
-      setError("请填写正整数退货数量。");
+      setError("请填写正数退货数量，最多 6 位小数。");
       return;
     }
     const body = {
@@ -127,12 +128,12 @@ export function OrderCorrection({
           {order.items.map((i) => (
             <Field
               key={i.product_id}
-              label={`${i.name} 退货数量（可退 ${i.quantity - (i.returned_quantity || 0)}）`}
+              label={`${i.name} 退货数量（可退 ${addQuantity(i.quantity, -(i.returned_quantity || 0))}）`}
               value={quantities[i.product_id] || ""}
               onChangeText={(value) =>
                 setQuantities({ ...quantities, [i.product_id]: value })
               }
-              keyboardType="number-pad"
+              keyboardType="decimal-pad"
               editable={!busy}
             />
           ))}
@@ -194,7 +195,7 @@ export function StocktakeEditor({
     if (
       !reason.trim() ||
       !lines.length ||
-      lines.some((i) => !/^\d+$/.test(i.counted))
+      lines.some((i) => !/^\d+(\.\d{1,6})?$/.test(i.counted) || !validQuantity(Number(i.counted)))
     ) {
       setError("请添加商品，填写实盘数量和盘点原因。");
       return;
@@ -282,7 +283,7 @@ export function StocktakeEditor({
             账面 {line.expected_stock} · 差异{" "}
             {line.counted === ""
               ? "未填"
-              : Number(line.counted) - line.expected_stock}
+              : addQuantity(Number(line.counted), -line.expected_stock)}
           </Text>
           <Field
             label={`${line.name} 实盘数量`}
@@ -292,7 +293,7 @@ export function StocktakeEditor({
                 lines.map((i) => (i === line ? { ...i, counted: value } : i)),
               )
             }
-            keyboardType="number-pad"
+            keyboardType="decimal-pad"
             editable={!busy}
           />
           <Button
