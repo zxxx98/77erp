@@ -1,4 +1,4 @@
-export const imageLimit = 1024 * 1024;
+import { validateImageUrl, validateProductImage } from './imagebed.js';
 
 export function productDetails(body, existing = {}) {
   const values = {};
@@ -9,18 +9,7 @@ export function productDetails(body, existing = {}) {
     values[key] = value.trim();
   }
   const image = body.image === undefined ? (existing.image ?? '') : body.image;
-  if (typeof image !== 'string') throw new Error('商品图片格式无效。');
-  if (image) {
-    const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(image);
-    if (!match || match[2].length > Math.ceil(imageLimit / 3) * 4)
-      throw new Error('商品图片需为 PNG、JPEG 或 WebP，大小不超过 1 MB。');
-    const bytes = Buffer.from(match[2], 'base64');
-    const valid = match[1] === 'png' ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
-      : match[1] === 'jpeg' ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255
-      : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
-    if (!valid || bytes.length > imageLimit || bytes.toString('base64') !== match[2])
-      throw new Error('商品图片内容或大小无效。');
-  }
+  validateImageUrl(image);
   return { ...values, image };
 }
 
@@ -83,6 +72,7 @@ export function installCatalog(app, db) {
   }
   function catalogValues(body, existing) {
     const { image, specification, note } = productDetails(body, existing);
+    validateProductImage(db, image, existing?.image);
     const id = resolveCategory(body);
     return { path: paths().get(id), values: [id, image, specification, note] };
   }

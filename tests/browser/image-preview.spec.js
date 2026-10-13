@@ -6,6 +6,7 @@ test.beforeAll(async ({ request }) => {
 });
 test.beforeEach(async ({ page }) => {
   expect((await page.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
+  expect((await page.request.put('/api/settings/imagebed', { data: { base_url: 'https://img.77erp.test', auth_type: 'none', upload_folder: '77erp/products' } })).ok()).toBe(true);
 });
 
 test('product images fit a simple overlay; closing preserves the editor and restores focus', async ({ page }) => {
@@ -17,7 +18,8 @@ test('product images fit a simple overlay; closing preserves the editor and rest
     const ctx = canvas.getContext('2d'); ctx.fillStyle = '#2563eb'; ctx.fillRect(0, 0, 1280, 800);
     return canvas.toDataURL('image/jpeg');
   });
-  const created = await page.request.post('/api/products', { data: { name: '大图测试商品', category: '图片测试', unit: '个', cost: 10, price: 20, threshold: 5, image } });
+  await page.route('https://img.77erp.test/**', route => route.fulfill({ contentType: 'image/jpeg', body: Buffer.from(image.split(',')[1], 'base64') }));
+  const created = await page.request.post('/api/products', { data: { name: '大图测试商品', category: '图片测试', unit: '个', cost: 10, price: 20, threshold: 5, image: 'https://img.77erp.test/file/preview.jpg' } });
   expect(created.ok()).toBe(true);
   await page.reload();
   await page.getByRole('textbox', { name: '筛选商品' }).fill('大图测试商品');

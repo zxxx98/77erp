@@ -25,6 +25,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.security.KeyStore;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -36,6 +38,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import okhttp3.Cookie;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -247,7 +250,7 @@ public class ErpModule extends ReactContextBaseJavaModule {
                 decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
             });
             ByteArrayOutputStream output = new ByteArrayOutputStream();
-            // White background preserves transparent PNG readability when storing JPEG.
+            // White background preserves transparent PNG readability when uploading JPEG.
             Bitmap opaque = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
             try {
                 android.graphics.Canvas canvas = new android.graphics.Canvas(opaque);
@@ -258,10 +261,51 @@ public class ErpModule extends ReactContextBaseJavaModule {
             if (output.size() > 1024 * 1024) {
                 promise.reject("IMAGE", "图片压缩后仍超过 1 MB，请选择较小的图片。"); return;
             }
-            promise.resolve("data:image/jpeg;base64," + Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP));
+            File cache = getReactApplicationContext().getCacheDir();
+            File[] abandoned = cache.listFiles((directory, name) -> name.startsWith("77erp-product-"));
+            if (abandoned != null) for (File file : abandoned) {
+                if (file.lastModified() < System.currentTimeMillis() - 60 * 60 * 1000) file.delete();
+            }
+            File file = File.createTempFile("77erp-product-", ".jpg", cache);
+            try (FileOutputStream saved = new FileOutputStream(file)) { output.writeTo(saved); }
+            promise.resolve(Uri.fromFile(file).toString());
         } catch (Exception e) {
             promise.reject("IMAGE", "图片无法读取，请选择有效的 JPEG、PNG 或 WebP 图片。");
         } finally { if (bitmap != null) bitmap.recycle(); }
+    }
+    @ReactMethod public void uploadImage(String uri, int warehouseId, Promise promise) {
+        requests.execute(() -> {
+            File file = null;
+            try {
+                Uri parsed = Uri.parse(uri);
+                if (!"file".equals(parsed.getScheme()) || parsed.getPath() == null || warehouseId < 1)
+                    throw new java.io.IOException();
+                File candidate = new File(parsed.getPath()).getCanonicalFile();
+                File cache = getReactApplicationContext().getCacheDir().getCanonicalFile();
+                if (!cache.equals(candidate.getParentFile()) || !candidate.getName().startsWith("77erp-product-")
+                    || !candidate.getName().endsWith(".jpg") || !candidate.isFile() || candidate.length() > 1024 * 1024)
+                    throw new java.io.IOException();
+                file = candidate;
+                String origin = server();
+                HttpUrl url = HttpUrl.get(origin).resolve("/api/uploads/product-image?warehouse_id=" + warehouseId);
+                if (url == null) throw new java.io.IOException();
+                MultipartBody body = new MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("file", file.getName(), RequestBody.create(MediaType.get("image/jpeg"), file)).build();
+                Request.Builder builder = new Request.Builder().url(url).header("Accept", "application/json").post(body);
+                String cookie = sessionCookie(origin);
+                if (cookie != null) builder.header("Cookie", cookie);
+                OkHttpClient uploadClient = http.newBuilder().readTimeout(45, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS).build();
+                try (Response response = uploadClient.newCall(builder.build()).execute()) {
+                    if (response.code() == 401) preferences.edit().remove("session").commit();
+                    WritableMap result = Arguments.createMap();
+                    result.putInt("status", response.code());
+                    result.putString("body", response.body() == null ? "{}" : response.body().string());
+                    promise.resolve(result);
+                }
+            } catch (Exception e) {
+                promise.reject("UPLOAD", "图片上传失败，请检查网络并重新选择图片重试。");
+            } finally { if (file != null) file.delete(); }
+        });
     }
     @Override public void invalidate() {
         updater.close();

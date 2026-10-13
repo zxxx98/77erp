@@ -11,11 +11,12 @@ import { AuthScreen, ProductDetail, ProductsScreen, ScannerScreen } from "../src
 import { CategoryEditor } from "../src/catalog";
 import { OrderEditor, ProductEditor, SettingsEditor } from "../src/forms";
 import { AppContent } from "../src/App";
-import { api, device, scanBarcode, getWarehouseId, setWarehouseId } from "../src/native";
+import { api, device, scanBarcode, getWarehouseId, setWarehouseId, uploadProductImage } from "../src/native";
 import { categories, product, workspace } from "./fixtures";
 
 jest.mock("../src/native", () => ({
   api: jest.fn(),
+  uploadProductImage: jest.fn(),
   getWarehouseId: jest.fn(() => 1),
   setWarehouseId: jest.fn(),
   scanBarcode: jest.fn(),
@@ -90,7 +91,7 @@ test("native product editor creates a product with an automatically generated ba
   );
 });
 test("native unit settings can add, rename and remove choices used by new products", async () => {
-  request.mockResolvedValue({ ok: true });
+  request.mockImplementation(async path => path === '/settings/imagebed' ? { base_url: '', auth_type: 'token', upload_folder: '77erp/products', channel_name: '', has_secret: false } : { ok: true });
   const saved = jest.fn();
   const settings = { ...workspace.settings, units: ["个", "件"] };
   const editor = render(<SettingsEditor settings={settings} onClose={jest.fn()} onSaved={saved} />);
@@ -111,7 +112,7 @@ test("native unit settings can add, rename and remove choices used by new produc
   await waitFor(() => expect(request).toHaveBeenCalledWith("/products", "POST", expect.objectContaining({ unit: "瓶" })));
 });
 test("native product edits retain a unit removed from the configured choices", async () => {
-  request.mockResolvedValue({ ok: true });
+  request.mockImplementation(async path => path === '/settings/imagebed' ? { base_url: '', auth_type: 'token', upload_folder: '77erp/products', channel_name: '', has_secret: false } : { ok: true });
   render(<ProductEditor product={product} categories={categories} units={["套", "瓶"]} onClose={jest.fn()} onSaved={jest.fn()} />);
   expect(screen.getByLabelText("单位")).toHaveProp("value", "个");
   expect(screen.getByRole("button", { name: "个" })).toBeOnTheScreen();
@@ -212,16 +213,16 @@ test("native application restores the server, loads API data and navigates witho
 test("business reset requires confirmation and preserves device connection and session", async () => {
   const alert = jest.spyOn(Alert, "alert");
   const saved = jest.fn();
-  request.mockResolvedValue({ ok: true });
+  request.mockImplementation(async path => path === '/settings/imagebed' ? { base_url: '', auth_type: 'token', upload_folder: '77erp/products', channel_name: '', has_secret: false } : { ok: true });
   render(<SettingsEditor settings={workspace.settings} onClose={jest.fn()} onSaved={saved} />);
   fireEvent.press(screen.getByRole("button", { name: "重置业务数据" }));
-  expect(request).not.toHaveBeenCalled();
+  expect(request.mock.calls.filter(([, method]) => method === 'POST')).toHaveLength(0);
   const buttons = alert.mock.calls.at(-1)?.[2];
   expect(buttons?.find(button => button.text === "取消")?.style).toBe("cancel");
   const confirm = buttons?.find(button => button.text === "确认清空")?.onPress;
   expect(confirm).toBeDefined();
   await act(async () => { confirm?.(); confirm?.(); });
-  expect(request).toHaveBeenCalledTimes(1);
+  expect(request.mock.calls.filter(([, method]) => method === 'POST')).toHaveLength(1);
   expect(request).toHaveBeenCalledWith("/settings/reset", "POST", { confirmation: "RESET_BUSINESS_DATA" });
   expect(saved).toHaveBeenCalledWith("业务数据已清空，账户和配置已保留");
   expect(device.setServer).not.toHaveBeenCalled();
@@ -232,7 +233,7 @@ test("business reset requires confirmation and preserves device connection and s
 test("native partial return sends original product quantities only after confirmation", async () => {
   const { OrderCorrection } = require("../src/operations");
   const alert = jest.spyOn(Alert, "alert");
-  request.mockResolvedValue({ ok: true });
+  request.mockImplementation(async path => path === '/settings/imagebed' ? { base_url: '', auth_type: 'token', upload_folder: '77erp/products', channel_name: '', has_secret: false } : { ok: true });
   const saved = jest.fn();
   render(<OrderCorrection order={{ id: 42, number: "RK42", type: "in", kind: "normal", status: "active", stock_applied: 1, partner: "供应商", note: "", total: 100, created_at: "2026-10-04T10:00:00Z", items: [{ product_id: 1, name: "陶瓷杯", barcode: "SKU-000001", quantity: 10, price: 10, returned_quantity: 2 }] }} onSaved={saved} />);
   fireEvent.changeText(screen.getByLabelText("操作原因"), "包装破损");
@@ -314,8 +315,9 @@ test("native payment registration requires confirmation and refreshes the remain
 });
 
 test("native product editor selects a descendant category and persists picked image, specification and notes", async () => {
-  const image = 'data:image/jpeg;base64,/9j/';
-  jest.mocked(device.pickImage).mockResolvedValue(image);
+  const image = 'https://img.example.com/file/cup.jpg';
+  jest.mocked(device.pickImage).mockResolvedValue('file:///cache/77erp-product-cup.jpg');
+  jest.mocked(uploadProductImage).mockResolvedValue(image);
   request.mockResolvedValue({ id: 2, barcode: 'SKU-000002' });
   const saved = jest.fn();
   render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={saved} />);
@@ -331,7 +333,7 @@ test("native product editor selects a descendant category and persists picked im
 });
 
 test("native product details display its image, specification and notes", () => {
-  const image = 'data:image/jpeg;base64,/9j/';
+  const image = 'https://img.example.com/file/cup.jpg';
   render(<ProductDetail onSaved={jest.fn()} product={{ ...product, image, specification: '350ml', note: '小心轻放' }} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
   expect(screen.getByLabelText('商品图片')).toBeOnTheScreen();
   expect(screen.getByText('350ml')).toBeOnTheScreen();

@@ -1,3 +1,5 @@
+import { api } from './api.js';
+
 export function flattenCategories(categories, parent = null, depth = 0, prefix = '') {
   return categories.filter(c => c.parent_id === parent).flatMap(c => {
     const path = prefix ? `${prefix} / ${c.name}` : c.name;
@@ -19,6 +21,7 @@ export async function readProductImage(file) {
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('请选择 JPEG、PNG 或 WebP 图片。');
   if (file.size > 10 * 1024 * 1024) throw new Error('上传图片不能超过 10 MB。');
   const url = URL.createObjectURL(file);
+  let image;
   try {
     const img = new Image();
     img.src = url;
@@ -31,10 +34,13 @@ export async function readProductImage(file) {
     context.fillStyle = '#fff';
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const image = canvas.toDataURL('image/jpeg', 0.82);
-    if (image.length > Math.ceil(1024 * 1024 / 3) * 4 + 23) throw new Error('图片压缩后仍超过 1 MB，请选择较小的图片。');
-    return image;
+    image = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+    if (!image) throw new Error('图片无法读取，请选择有效的图片。');
+    if (image.size > 1024 * 1024) throw new Error('图片压缩后仍超过 1 MB，请选择较小的图片。');
   } catch (e) {
     throw new Error(e.message.includes('MB') ? e.message : '图片无法读取，请选择有效的图片。');
   } finally { URL.revokeObjectURL(url); }
+  const body = new FormData();
+  body.append('file', image, 'product.jpg');
+  return (await api('/uploads/product-image', { method: 'POST', body })).url;
 }

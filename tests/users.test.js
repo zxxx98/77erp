@@ -195,7 +195,7 @@ test('business backups preserve actor names and same-server draft owners, but ne
   await source.command(employee.cookie, '/drafts', draftBody);
   await source.command(employee.cookie, '/orders', draftBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 5);
+  assert.equal(backup.version, 6);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -234,6 +234,7 @@ const routeRoles = new Map(Object.entries({
   'post /api/products': 'employee', 'put /api/products/:id': 'employee', 'post /api/orders': 'employee',
   'post /api/products/:id/status': 'admin', 'delete /api/products/:id': 'admin',
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
+  'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',
   'get /api/contacts': 'employee', 'post /api/contacts': 'admin',
   'get /api/drafts': 'employee', 'post /api/drafts': 'employee', 'post /api/drafts/:id/discard': 'employee',
   'get /api/orders/:id/payments': 'admin', 'post /api/orders/:id/payments': 'admin', 'post /api/orders/:id/settlement': 'admin',

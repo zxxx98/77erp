@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/app.js';
 
-const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=';
+const image = 'https://img.example.com/file/77erp/products/cup.jpg';
 const product = { name: '分类商品', unit: '件', cost: 10, price: 20, threshold: 5 };
 async function fixture(t) {
   const { app, db } = createApp(':memory:');
+  db.prepare("UPDATE imagebed_settings SET base_url='https://img.example.com',auth_type='none' WHERE id=1").run();
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); });
@@ -49,17 +50,16 @@ test('category rename and reparent update descendant product paths; cycles, dupl
 
 test('product image, specification and notes survive lookup and legacy edits, and can be explicitly cleared', async t => {
   const f = await fixture(t), id = await f.category('文具');
-  // A payload exceeding the previous 100 KB product request limit.
-  const largeImage = 'data:image/png;base64,' + Buffer.concat([Buffer.from(image.split(',')[1], 'base64'), Buffer.alloc(120000)]).toString('base64');
-  const created = await f.request('/products', 'POST', { ...product, category_id: id, image: largeImage, specification: ' A5 / 蓝色 ', note: ' 第一行\n第二行 ' });
+  const imageUrl = image;
+  const created = await f.request('/products', 'POST', { ...product, category_id: id, image: imageUrl, specification: ' A5 / 蓝色 ', note: ' 第一行\n第二行 ' });
   assert.equal(created.status, 201);
   const lookup = (await f.request(`/products/barcode/${created.data.barcode}`)).data;
-  assert.equal(lookup.image, largeImage);
+  assert.equal(lookup.image, imageUrl);
   assert.equal(lookup.specification, 'A5 / 蓝色');
   assert.equal(lookup.note, '第一行\n第二行');
   assert.equal(lookup.stock, 0);
   assert.equal((await f.request(`/products/${created.data.id}`, 'PUT', { ...product, category: '文具' })).status, 200);
-  assert.equal((await f.request(`/products/barcode/${created.data.barcode}`)).data.image, largeImage);
+  assert.equal((await f.request(`/products/barcode/${created.data.barcode}`)).data.image, imageUrl);
   assert.equal((await f.request(`/products/${created.data.id}`, 'PUT', { ...product, category_id: id, image: '', specification: '', note: '' })).status, 200);
   assert.equal((await f.request(`/products/barcode/${created.data.barcode}`)).data.image, '');
 });
@@ -70,17 +70,17 @@ test('invalid product metadata or category cannot create a product or orphan cat
     assert.equal((await f.request('/products', 'POST', { ...product, category: '不应创建', ...detail })).status, 400);
   }
   const oversized = 'data:image/png;base64,' + Buffer.alloc(1024 * 1024 + 1).toString('base64');
-  assert.equal((await f.request('/products', 'POST', { ...product, category: '不应创建', image: oversized })).status, 400);
+  assert.equal((await f.request('/products', 'POST', { ...product, category: '不应创建', image: oversized })).status, 413);
   const after = (await f.request('/data')).data;
   assert.deepEqual(after.categories, before.categories);
   assert.deepEqual(after.products, before.products);
 });
 
-test('v5 backups restore a tree and product details independently of current category IDs; malformed trees and references fail', async t => {
+test('v6 backups restore a tree and product details independently of current category IDs; malformed trees and references fail', async t => {
   const f = await fixture(t), root = await f.category('食材'), child = await f.category('调味品', root);
   await f.request('/products', 'POST', { ...product, category_id: child, image, specification: '500g', note: '避光保存' });
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 5);
+  assert.equal(backup.version, 6);
   await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
   const newRoot = await f.category('不同的当前分类');
   assert.equal((await f.request(`/categories/${newRoot}`, 'PUT', { name: '当前分类', parent_id: null })).status, 200);

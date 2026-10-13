@@ -6,6 +6,8 @@ test.beforeAll(async ({ request }) => {
 });
 test.beforeEach(async ({ page }) => {
   expect((await page.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
+  expect((await page.request.put('/api/settings/imagebed', { data: { base_url: 'https://img.77erp.test', auth_type: 'none', upload_folder: '77erp/products' } })).ok()).toBe(true);
+  await page.route('https://img.77erp.test/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64') }));
 });
 
 test('manage a category tree, upload product details, filter descendants, rename and clear the image after reload', async ({ page }) => {

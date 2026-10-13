@@ -11,14 +11,15 @@ export function setWarehouseId(id) {
 }
 export async function api(path, options) {
   const { warehouseId: selected = warehouseId, ...request } = options || {};
+  const multipart = options?.body instanceof FormData;
   const res = await fetch("/api" + path, {
     credentials: "same-origin",
     ...(!path.startsWith('/auth/') ? { headers: { 'X-Warehouse-ID': String(selected) } } : {}),
     ...(options
       ? {
           ...request,
-          headers: { "Content-Type": "application/json", ...(!path.startsWith('/auth/') ? { 'X-Warehouse-ID': String(selected) } : {}) },
-          body: options.body ? JSON.stringify(options.body) : undefined,
+          headers: { ...(!multipart ? { "Content-Type": "application/json" } : {}), ...(!path.startsWith('/auth/') ? { 'X-Warehouse-ID': String(selected) } : {}), ...request.headers },
+          body: multipart ? options.body : options.body ? JSON.stringify(options.body) : undefined,
         }
       : {}),
   });

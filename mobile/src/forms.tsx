@@ -3,7 +3,8 @@ import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
 import { UpdateCard } from "./UpdateCard";
-import { api, device, getWarehouseId, scanBarcode } from "./native";
+import { api, device, getWarehouseId, scanBarcode, uploadProductImage } from "./native";
+import { ImagebedSettings } from './ImagebedSettings';
 import { parseProductCode, resolveProductCode } from "./product-scan";
 import {
   Category,
@@ -79,6 +80,7 @@ export function ProductEditor({
   const field = (key: keyof ProductForm) => (value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
   const save = async () => {
+    if (pickingImage || scanning) return;
     if (!lock.enter()) return;
     setBusy(true);
     setError("");
@@ -182,7 +184,7 @@ export function ProductEditor({
         {!!form.image && <ProductImage uri={form.image} label="商品图片预览" style={{ width: '100%', height: 180, borderRadius: 8 }} />}
         <Button title="选择商品图片" kind="secondary" busy={pickingImage} disabled={busy || scanning} onPress={async () => {
           setPickingImage(true); setError('');
-          try { const image = await device.pickImage(); if (image) field('image')(image); }
+          try { const uri = await device.pickImage(); if (uri) field('image')(await uploadProductImage(uri)); }
           catch (e) { setError((e as Error).message); }
           finally { setPickingImage(false); }
         }} />
@@ -531,6 +533,8 @@ export function SettingsEditor({
   const [business, setBusiness] = useState(settings.business_name);
   const [warehouse, setWarehouse] = useState(settings.warehouse_name);
   const [units, setUnits] = useState(settings.units || ["件"]);
+  const [imagebedBusy, setImagebedBusy] = useState(false);
+  const [imagebedDirty, setImagebedDirty] = useState(false);
   useEffect(() => setWarehouse(settings.warehouse_name), [settings.warehouse_name]);
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
@@ -586,12 +590,13 @@ export function SettingsEditor({
       dirty={
         business !== settings.business_name ||
         warehouse !== settings.warehouse_name ||
-        JSON.stringify(units) !== JSON.stringify(settings.units || ["件"])
+        JSON.stringify(units) !== JSON.stringify(settings.units || ["件"]) || imagebedDirty
       }
-      busy={busy}
-      footer={<Button title="保存设置" onPress={save} busy={busy} />}
+      busy={busy || imagebedBusy}
+      footer={<Button title="保存设置" onPress={save} busy={busy} disabled={imagebedBusy || imagebedDirty} />}
     >
       <UpdateCard />
+      <ImagebedSettings onBusy={setImagebedBusy} onDirty={setImagebedDirty} />
       <Card>
         <Field
           label="商户名称"

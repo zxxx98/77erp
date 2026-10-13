@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrateCommerce, resolveContact, moveInventory, settlement } from "./commerce.js";
 import { installAuth } from "./auth.js";
+import { migrateImagebed, installImagebed } from './imagebed.js';
 import { migrateOperations, installOperations, operationRequest, saveOperationRequest } from "./operations.js";
 import { migrateCatalog, installCatalog } from "./catalog.js";
 import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
@@ -246,12 +247,13 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateCatalog(db);
   migrateWarehouses(db);
   migrateUnits(db);
+  migrateImagebed(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
-  app.use("/api/products", express.json({ limit: "2mb" }));
   app.use(express.json({ limit: "100kb" }));
   installAuth(app, db, options);
   const { warehouses } = installWarehouses(app, db);
+  installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
   app.get("/api/data", (req, res) => {
     const products = db.prepare("SELECT * FROM products WHERE warehouse_id=? ORDER BY id").all(req.warehouse.id);

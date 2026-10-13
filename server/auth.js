@@ -88,8 +88,9 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (!sameOrigin(req)) {
         return res.status(403).json({ error: "请从当前站点提交请求。" });
       }
-      if (!req.is("application/json")) {
-        return res.status(415).json({ error: "请求必须使用 JSON 格式。" });
+      const upload = req.method === 'POST' && req.path.toLowerCase().replace(/\/+$/, '') === '/uploads/product-image';
+      if (upload ? !req.is('multipart/form-data') : !req.is("application/json")) {
+        return res.status(415).json({ error: upload ? '图片上传必须使用 multipart/form-data 格式。' : '请求必须使用 JSON 格式。' });
       }
     }
     next();
@@ -217,7 +218,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const allowed = (['GET','HEAD'].includes(req.method) && (
       ['/data','/style','/warehouses','/categories','/contacts','/drafts'].includes(path) ||
       /^\/products\/barcode\/[^/]+$/.test(path))) ||
-      (req.method === 'POST' && ['/products','/orders','/drafts'].includes(path)) ||
+      (req.method === 'POST' && ['/products','/orders','/drafts','/uploads/product-image'].includes(path)) ||
       (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
       (req.method === 'POST' && /^\/drafts\/\d+\/discard$/.test(path));
     if (!allowed) return res.status(403).json({ error: '此操作仅限管理员。' });

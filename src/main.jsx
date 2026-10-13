@@ -45,6 +45,7 @@ import { api, getWarehouseId, setWarehouseId } from "./api.js";
 import { WarehouseManager, ProductSync } from "./Warehouses.jsx";
 import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
 import { ProductImage } from "./ProductImage.jsx";
+import { ImagebedSettings } from './ImagebedSettings.jsx';
 import { AuthGate } from "./Auth.jsx";
 import { resolveProductCode } from "./product-scan.js";
 import { ChangePassword, UserManager } from "./Users.jsx";
@@ -2579,7 +2580,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                   catch (e) { setError(e.message); }
                   finally { setReadingImage(false); }
                 }} />
-              <small>{readingImage ? '正在读取图片…' : '支持 JPEG、PNG、WebP，上传后自动压缩。'}</small>
+              <small>{readingImage ? '正在压缩并上传图片…' : '支持 JPEG、PNG、WebP，自动压缩后上传图床。'}</small>
             </label>
             {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="商品图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
           </div>
@@ -3377,8 +3378,8 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
       <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
-              <button key={id} type="button" aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "商品图片上传与认证"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
+              <button key={id} type="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </button>
             ))}
@@ -3441,6 +3442,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
           <div className="info-box"><ShieldCheck size={17} /><p>商品和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
           {section === "users" && <div className="settings-section"><UserManager /><ChangePassword onChanged={onPasswordChanged} /></div>}
+          <div hidden={section !== 'imagebed'} className="settings-section"><ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} /></div>
           <div hidden={section !== "business"} className="settings-section">
             <BusinessTools onResume={onResume} onRefresh={onRefresh} />
           </div>

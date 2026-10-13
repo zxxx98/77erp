@@ -1,7 +1,7 @@
 import { NativeModules, PermissionsAndroid } from "react-native";
 
-NativeModules.ErpNative = { request: jest.fn(), scan: jest.fn() };
-const { api, onUnauthorized, scanBarcode, setWarehouseId } =
+NativeModules.ErpNative = { request: jest.fn(), scan: jest.fn(), uploadImage: jest.fn() };
+const { api, onUnauthorized, scanBarcode, setWarehouseId, uploadProductImage } =
   require("../src/native") as typeof import("../src/native");
 const transport = NativeModules.ErpNative;
 beforeEach(() => jest.clearAllMocks());
@@ -70,4 +70,21 @@ test("selected warehouse is carried on reads, writes and existing queries withou
     await api("/auth/status");
     expect(transport.request).toHaveBeenLastCalledWith("/api/auth/status", "GET", "{}");
   } finally { setWarehouseId(1); }
+});
+
+
+test('image upload uses native files and the selected warehouse, returns a URL and expires unauthorized sessions', async () => {
+  const expired = jest.fn();
+  const unsubscribe = onUnauthorized(expired);
+  setWarehouseId(2);
+  try {
+    transport.uploadImage.mockResolvedValueOnce({ status: 200, body: '{"url":"https://img.example.com/file/cup.jpg"}' });
+    await expect(uploadProductImage('file:///cache/77erp-product-cup.jpg')).resolves.toBe('https://img.example.com/file/cup.jpg');
+    expect(transport.uploadImage).toHaveBeenCalledWith('file:///cache/77erp-product-cup.jpg', 2);
+    transport.uploadImage.mockResolvedValueOnce({ status: 401, body: '{"error":"请登录"}' });
+    await expect(uploadProductImage('file:///cache/77erp-product-cup.jpg')).rejects.toThrow('请登录');
+    expect(expired).toHaveBeenCalledTimes(1);
+    transport.uploadImage.mockResolvedValueOnce({ status: 200, body: '{"url":"data:image/png;base64,AAAA"}' });
+    await expect(uploadProductImage('file:///cache/77erp-product-cup.jpg')).rejects.toThrow('有效的图片 URL');
+  } finally { setWarehouseId(1); unsubscribe(); }
 });

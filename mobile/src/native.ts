@@ -13,6 +13,7 @@ export interface Device {
   clearSession(): Promise<void>;
   scan(): Promise<string | null>;
   pickImage(): Promise<string | null>;
+  uploadImage(uri: string, warehouseId: number): Promise<{ status: number; body: string }>;
 }
 export const device = NativeModules.ErpNative as Device;
 let warehouseId = 1;
@@ -54,6 +55,9 @@ export async function api<T>(
         : message,
     );
   }
+  return decodeResponse<T>(response, path);
+}
+function decodeResponse<T>(response: { status: number; body: string }, path: string): T {
   if (response.status === 401 && !path.startsWith("/auth/")) unauthorized?.();
   if (response.status >= 300 && response.status < 400)
     throw new ApiError(
@@ -72,6 +76,14 @@ export async function api<T>(
   if (response.status < 200 || response.status >= 300)
     throw new ApiError(data.error || "请求失败，请重试。", response.status);
   return data as T;
+}
+export async function uploadProductImage(uri: string): Promise<string> {
+  let response;
+  try { response = await device.uploadImage(uri, warehouseId); }
+  catch (error) { throw new ApiError(error instanceof Error ? error.message : '图片上传失败，请重新选择图片重试。'); }
+  const data = decodeResponse<{ url: string }>(response, '/uploads/product-image');
+  if (typeof data.url !== 'string' || !data.url.startsWith('https://')) throw new ApiError('服务器未返回有效的图片 URL。');
+  return data.url;
 }
 export async function scanBarcode(): Promise<string | null> {
   const permission = await PermissionsAndroid.request(

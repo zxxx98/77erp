@@ -5,7 +5,7 @@ import { ProductEditor } from '../src/forms';
 import { ProductRow } from '../src/ui';
 import { categories, product } from './fixtures';
 
-const image = 'data:image/jpeg;base64,/9j/';
+const image = 'https://img.example.com/file/cup.jpg';
 jest.mock('../src/native', () => ({ api: jest.fn(), device: { pickImage: jest.fn() }, scanBarcode: jest.fn() }));
 
 test('an image opens in a fitted overlay and closes without changing its source', () => {
