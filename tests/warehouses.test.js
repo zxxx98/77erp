@@ -41,6 +41,73 @@ test('warehouses validate names and IDs, require login, and settings rename only
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.settings.warehouse_name, '新分仓');
 });
 
+test('category trees, edits, product references and imports are isolated by warehouse', async t => {
+  const f = await fixture(t), w = await f.warehouse('分类分仓');
+  assert.deepEqual((await f.request('/categories', 'GET', undefined, w)).data, []);
+  const root = (await f.request('/categories', 'POST', { name: '餐厨' })).data.id;
+  const child = (await f.request('/categories', 'POST', { name: '杯具', parent_id: root })).data.id;
+  const otherRoot = (await f.request('/categories', 'POST', { name: '餐厨' }, w)).data.id;
+  const otherChild = (await f.request('/categories', 'POST', { name: '杯具', parent_id: otherRoot }, w)).data.id;
+  assert.notEqual(root, otherRoot);
+  assert.equal((await f.request('/categories', 'POST', { name: '餐厨' }, w)).status, 400);
+  const main = (await f.request('/products', 'POST', { ...product, category_id: child })).data.id;
+  const remote = (await f.request('/products', 'POST', { ...product, category_id: otherChild }, w)).data.id;
+  const before = (await f.request('/backup')).data.data;
+  for (const [path, method, body] of [
+    [`/CATEGORIES/00${root}/`, 'PUT', { name: '跨仓改名' }],
+    [`/categories/${child}/delete`, 'POST', {}],
+    ['/categories', 'POST', { name: '跨仓子类', parent_id: root }],
+    [`/categories/${otherChild}`, 'PUT', { name: '跨仓子类', parent_id: root }],
+    ['/products', 'POST', { ...product, barcode: 'CROSS-CATEGORY', category_id: child }],
+    [`/products/${remote}`, 'PUT', { ...product, version: before.products.find(p => p.id === remote).version, category_id: child }],
+  ]) {
+    assert.equal((await f.request(path, method, body, w)).status, 400, path);
+    assert.deepEqual((await f.request('/backup')).data.data, before);
+  }
+  const rows = [{ ...product, barcode: 'IMPORT-CATEGORY', category_id: child, stock: 2 }];
+  const crossPreview = await f.request('/products/import/preview', 'POST', { rows }, w);
+  assert.equal(crossPreview.data.errors.length, 1);
+  const preview = (await f.request('/products/import/preview', 'POST', { rows })).data;
+  assert.equal((await f.command('/products/import', { rows, token: preview.token }, w)).status, 400);
+  assert.deepEqual((await f.request('/backup')).data.data, before);
+  assert.equal((await f.request(`/categories/${root}`, 'PUT', { name: '主仓餐厨' })).status, 200);
+  assert.equal((await f.request('/products/barcode/WH-001')).data.category, '主仓餐厨 / 杯具');
+  assert.deepEqual((await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data, before.products.find(p => p.id === remote));
+  assert.equal((await f.request('/data')).data.categories.every(c => c.warehouse_id === 1), true);
+  assert.equal((await f.request('/data', 'GET', undefined, w)).data.categories.every(c => c.warehouse_id === w), true);
+  assert.equal(f.db.prepare('SELECT category_id FROM products WHERE id=?').get(main).category_id, child);
+  const imported = [{ ...product, barcode: 'LOCAL-IMPORT', category: '分仓导入分类', stock: 1 }];
+  const localPreview = (await f.request('/products/import/preview', 'POST', { rows: imported }, w)).data;
+  assert.equal((await f.command('/products/import', { rows: imported, token: localPreview.token }, w)).status, 200);
+  assert.equal((await f.request('/categories')).data.some(c => c.name === '分仓导入分类'), false);
+  assert.equal((await f.request('/categories', 'GET', undefined, w)).data.some(c => c.name === '分仓导入分类'), true);
+});
+
+test('explicit product synchronization reuses the target category path and leaves independent trees and stock intact', async t => {
+  const f = await fixture(t), w = await f.warehouse('同步分仓');
+  const root = (await f.request('/categories', 'POST', { name: '餐厨' })).data.id;
+  const child = (await f.request('/categories', 'POST', { name: '杯具', parent_id: root })).data.id;
+  const targetRoot = (await f.request('/categories', 'POST', { name: '餐厨' }, w)).data.id;
+  const targetChild = (await f.request('/categories', 'POST', { name: '杯具', parent_id: targetRoot }, w)).data.id;
+  const unrelated = (await f.request('/categories', 'POST', { name: '分仓专用' }, w)).data.id;
+  const created = await f.request('/products', 'POST', { ...product, category_id: child, sync_warehouse_ids: [w] });
+  assert.equal(created.status, 201);
+  const remote = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
+  assert.equal(remote.category_id, targetChild);
+  await f.order(remote.id, 'in', 3, w);
+  await f.request(`/categories/${root}`, 'PUT', { name: '主仓新路径' });
+  const current = (await f.request('/products/barcode/WH-001')).data;
+  assert.equal((await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data.category, '餐厨 / 杯具');
+  assert.equal((await f.request(`/products/${created.data.id}`, 'PUT', { ...current, sync_warehouse_ids: [w] })).status, 200);
+  const synced = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
+  assert.equal(synced.category, '主仓新路径 / 杯具');
+  assert.notEqual(synced.category_id, child);
+  assert.equal(synced.stock, 3);
+  assert.equal(synced.inventory_value_cents, 3000);
+  assert.equal((await f.request('/categories', 'GET', undefined, w)).data.find(c => c.id === unrelated).name, '分仓专用');
+  assert.equal((await f.request('/categories', 'GET', undefined, w)).data.find(c => c.id === targetRoot).name, '餐厨');
+});
+
 test('selective product sync preserves independent quantities, valuations and histories; unselected saves stay local', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓'), other = await f.warehouse('第三仓');
   const created = await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] });
@@ -153,19 +220,22 @@ test('imports, stocktakes, template submissions, and resets respect warehouse in
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.orders.length, 0);
 });
 
-test('v9 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
+test('v10 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓');
   await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] });
   const remote = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
   await f.order(remote.id, 'in', 3, w);
   await f.command('/templates', { name: '常用模板', type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: 1, price: 10 }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 9);
-  for (const corrupt of ['warehouse', 'item', 'template', 'sync', 'barcode']) {
+  assert.equal(backup.version, 10);
+  for (const corrupt of ['warehouse', 'item', 'template', 'sync', 'barcode', 'category-owner', 'category-parent', 'category-warehouse']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;
     if (corrupt === 'item') value.data.order_items[0].product_id = value.data.products[0].id;
     if (corrupt === 'template') value.data.templates[0].warehouse_id = 1;
+    if (corrupt === 'category-owner') value.data.products[1].category_id = value.data.products[0].category_id;
+    if (corrupt === 'category-parent') value.data.categories.find(c => c.warehouse_id === w).parent_id = value.data.categories.find(c => c.warehouse_id === 1).id;
+    if (corrupt === 'category-warehouse') value.data.categories[0].warehouse_id = 999;
     if (corrupt === 'sync' || corrupt === 'barcode') {
       const copy = { ...value.data.products[0], id: 9999 };
       if (corrupt === 'sync') copy.barcode = 'OTHER'; else copy.sync_key = 'OTHER';
@@ -180,6 +250,8 @@ test('v9 backups round trip multiple warehouses and sync groups, reject crossed 
   assertRestoredBusiness((await f.request('/backup')).data.data, backup.data);
   const legacy = structuredClone(backup);
   legacy.version = 3; delete legacy.data.warehouses;
+  legacy.data.categories = legacy.data.categories.filter(c => c.warehouse_id === 1);
+  for (const c of legacy.data.categories) delete c.warehouse_id;
   legacy.data.products = legacy.data.products.filter(p => p.warehouse_id === 1);
   for (const p of legacy.data.products) { delete p.warehouse_id; delete p.sync_key; }
   for (const table of ['orders','order_items','stock_adjustments','templates','payments']) legacy.data[table] = [];
@@ -187,6 +259,54 @@ test('v9 backups round trip multiple warehouses and sync groups, reject crossed 
   assert.equal((await f.command('/backup/restore', { backup: legacy, ...oldPreview, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
   assert.equal((await f.request('/data')).data.products.length, 1);
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.products.length, 0);
+});
+
+test('legacy backups v3 through v9 migrate shared trees into independent warehouse categories', async t => {
+  const f = await fixture(t), w = await f.warehouse('旧备份分仓'), empty = await f.warehouse('旧备份空仓');
+  const root = (await f.request('/categories', 'POST', { name: '旧分类' })).data.id;
+  const leaf = (await f.request('/categories', 'POST', { name: '子分类', parent_id: root })).data.id;
+  await f.request('/categories', 'POST', { name: '未使用分类' });
+  assert.equal((await f.request('/products', 'POST', { ...product, category_id: leaf, sync_warehouse_ids: [w] })).status, 201);
+  const remote = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
+  await f.order(remote.id, 'in', 3, w);
+  const backup = (await f.request('/backup')).data;
+  const oldCategories = backup.data.categories.filter(c => c.warehouse_id === 1).map(({ warehouse_id, ...c }) => c);
+  for (const version of [3, 4, 5, 6, 7, 8, 9]) {
+    const legacy = structuredClone(backup);
+    legacy.version = version;
+    legacy.data.categories = structuredClone(oldCategories);
+    for (const p of legacy.data.products) p.category_id = leaf;
+    if (version < 4) {
+      delete legacy.data.warehouses;
+      legacy.data.products = legacy.data.products.filter(p => p.warehouse_id === 1);
+      for (const p of legacy.data.products) { delete p.warehouse_id; delete p.sync_key; }
+      for (const table of ['orders', 'order_items', 'payments', 'stock_adjustments']) legacy.data[table] = [];
+    }
+    if (version < 5) for (const row of legacy.data.orders) { delete row.created_by; delete row.created_by_name; }
+    if (version < 8) for (const p of legacy.data.products) delete p.version;
+    const preview = await f.request('/backup/preview', 'POST', { backup: legacy });
+    assert.equal(preview.status, 200, `v${version}: ${JSON.stringify(preview.data)}`);
+    const restore = await f.command('/backup/restore', { backup: legacy, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' });
+    assert.equal(restore.status, 200, `v${version}: ${JSON.stringify(restore.data)}`);
+    const restored = (await f.request('/backup')).data;
+    assert.equal(restored.version, 10);
+    for (const warehouseId of [1, w, empty]) {
+      const rows = (await f.request('/categories', 'GET', undefined, warehouseId)).data;
+      assert.equal(rows.length, 3);
+      assert.equal(rows.every(c => c.warehouse_id === warehouseId), true);
+      assert.equal(rows.find(c => c.name === '子分类').parent_id, rows.find(c => c.name === '旧分类').id);
+    }
+    for (const p of restored.data.products) assert.equal(restored.data.categories.find(c => c.id === p.category_id).warehouse_id, p.warehouse_id);
+    if (version >= 4) {
+      const current = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
+      assert.equal(current.stock, 3);
+      assert.equal(current.inventory_value_cents, 3000);
+      assert.equal(current.category, '旧分类 / 子分类');
+      assert.deepEqual(restored.data.orders, version < 5 ? backup.data.orders.map(o => ({ ...o, created_by: null, created_by_name: '' })) : backup.data.orders);
+      assert.deepEqual(restored.data.order_items, backup.data.order_items);
+    }
+    assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+  }
 });
 
 test('an actual legacy database migrates without changing product IDs, stock, value or historical references; migration survives restart', async t => {

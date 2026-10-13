@@ -108,7 +108,7 @@ test('synchronizing a product invalidates target editors and failed syncs roll b
 test('restores and reused product IDs issue fresh versions; legacy backups remain readable', async t => {
   const f = await fixture(t), original = f.current();
   const backup = (await f.request('/backup')).data;
-  for (const value of [backup, { ...backup, version: 7, data: { ...backup.data, products: backup.data.products.map(({ version, ...p }) => p) } }]) {
+  for (const value of [backup, { ...backup, version: 7, data: { ...backup.data, categories: backup.data.categories.map(({ warehouse_id, ...c }) => c), products: backup.data.products.map(({ version, ...p }) => p) } }]) {
     const preview = await f.request('/backup/preview', 'POST', { backup: value });
     assert.equal(preview.status, 200);
     assert.equal((await f.command('/backup/restore', { backup: value, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);

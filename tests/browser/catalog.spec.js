@@ -1,3 +1,4 @@
+import { chooseOption } from "./dropdown-helpers.js";
 import { test, expect } from '@playwright/test';
 
 test.beforeAll(async ({ request }) => {
@@ -21,7 +22,7 @@ test('manage a category tree, upload product details, filter descendants, rename
   const roots = await (await page.request.get('/api/categories')).json();
   const root = roots.find(c => c.name === '自动化餐厨');
   await page.getByRole('textbox', { name: /分类名称/ }).fill('杯具');
-  await page.getByRole('combobox', { name: '上级分类' }).selectOption(String(root.id));
+  await chooseOption(page.getByRole('combobox', { name: '上级分类' }), String(root.id));
   await page.getByRole('button', { name: '保存分类' }).click();
   await expect(page.getByRole('textbox', { name: /分类名称/ })).toHaveValue('');
   const categories = await (await page.request.get('/api/categories')).json();
@@ -30,7 +31,7 @@ test('manage a category tree, upload product details, filter descendants, rename
   await page.getByRole('button', { name: '新增商品', exact: true }).first().click();
   await page.getByPlaceholder('例如：极简陶瓷马克杯').fill('树形分类测试杯');
   await page.getByPlaceholder('扫描或输入条码，可留空').fill('TEST-CATALOG-001');
-  await page.getByRole('combobox', { name: /商品分类/ }).selectOption(String(child.id));
+  await chooseOption(page.getByRole('combobox', { name: /商品分类/ }), String(child.id));
   await page.getByRole('spinbutton', { name: /采购价/ }).fill('12');
   await page.getByRole('spinbutton', { name: /销售价/ }).fill('24');
   await page.getByRole('textbox', { name: '商品规格' }).fill('白色 / 350ml');
@@ -58,7 +59,7 @@ test('manage a category tree, upload product details, filter descendants, rename
   await expect(page.getByRole('navigation', { name: '商品分类树' }).getByRole('button', { name: /^杯具/ })).toHaveCount(0);
   await page.getByRole('button', { name: '展开 自动化餐厨' }).click();
   await page.getByRole('button', { name: '管理分类', exact: true }).click();
-  await page.getByRole('combobox', { name: '编辑分类' }).selectOption(String(child.id));
+  await chooseOption(page.getByRole('combobox', { name: '编辑分类' }), String(child.id));
   await page.getByRole('textbox', { name: /分类名称/ }).fill('陶瓷杯');
   await page.getByRole('button', { name: '保存分类' }).click();
   await expect(page.getByRole('textbox', { name: /分类名称/ })).toHaveValue('');

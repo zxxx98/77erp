@@ -1,3 +1,4 @@
+import { Select } from "./Dropdown.jsx";
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { readProductImage } from './catalog.js';
@@ -39,7 +40,7 @@ export function ImagebedSettings({ onBusy, active }) {
       <label>上传渠道<input value="Cloudflare R2（cfr2）" disabled /></label>
       <label>渠道名称（选填）<input maxLength={100} value={config.channel_name} placeholder="留空使用图床默认的 R2 渠道" disabled={busy} onChange={e => field('channel_name', e.target.value)} /></label>
       <label>上传目录<input maxLength={200} value={config.upload_folder} placeholder="77erp/products" disabled={busy} onChange={e => field('upload_folder', e.target.value)} /></label>
-      <label>认证方式<select value={config.auth_type} disabled={busy} onChange={e => { field('auth_type', e.target.value); setSecret(''); setClearSecret(false); }}><option value="token">API Token（推荐）</option><option value="authCode">上传认证码（authCode）</option><option value="none">无需认证</option></select></label>
+      <label>认证方式<Select value={config.auth_type} disabled={busy} onChange={e => { field('auth_type', e.target.value); setSecret(''); setClearSecret(false); }}><option value="token">API Token（推荐）</option><option value="authCode">上传认证码（authCode）</option><option value="none">无需认证</option></Select></label>
       {config.auth_type !== 'none' && <>
         <label>上传凭据<input type="password" autoComplete="new-password" maxLength={4096} value={secret} placeholder={config.has_secret ? '已保存，留空保留现有凭据' : '填写有上传权限的 Token 或认证码'} disabled={busy || clearSecret} onChange={e => setSecret(e.target.value)} /></label>
         <small>凭据仅保存在服务器，不会随商品数据或业务备份返回。</small>

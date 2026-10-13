@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { copyCategoryToWarehouse } from './catalog.js';
 
 export function migrateWarehouses(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS warehouses (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);`);
@@ -39,7 +40,7 @@ export function installWarehouses(app, db) {
     if (!req.warehouse) return res.status(400).json({ error: '仓库不存在，请重新选择仓库。' });
     // Guard every route accepting existing business IDs, including financial corrections.
     const checks = [];
-    const match = /^\/(products|orders|templates|payments)\/([^/]+)(?:\/|$)/.exec(path);
+    const match = /^\/(products|orders|templates|payments|categories)\/([^/]+)(?:\/|$)/.exec(path);
     if (match && !(match[1] === 'products' && ['barcode','import'].includes(match[2])) && !(match[1] === 'orders' && match[2] === 'export')) checks.push([match[1], Number(match[2])]);
     if (path === '/templates' && req.body?.id != null) checks.push(['templates', req.body.id]);
     if (['/orders', '/stocktakes', '/templates'].includes(path)) {
@@ -52,7 +53,7 @@ export function installWarehouses(app, db) {
         : db.prepare(`SELECT warehouse_id${table === 'templates' ? ',created_by' : ''} FROM ${table} WHERE id=?`).get(itemId);
       if (table === 'templates' && row && req.user.role !== 'admin' && row.created_by !== req.user.id)
         return res.status(404).json({ error: '模板不存在或无权访问。' });
-      if (row && row.warehouse_id !== id) return res.status(400).json({ error: '该商品、单据或模板不属于当前仓库。' });
+      if (row && row.warehouse_id !== id) return res.status(400).json({ error: table === 'categories' ? '该分类不属于当前仓库。' : '该商品、单据或模板不属于当前仓库。' });
     }
     next();
   });
@@ -100,7 +101,8 @@ export function syncProduct(db, id, targets) {
     const existing = db.prepare('SELECT * FROM products WHERE warehouse_id=? AND sync_key=?').get(target, product.sync_key);
     const collision = db.prepare('SELECT id FROM products WHERE warehouse_id=? AND barcode=?').get(target, product.barcode);
     if (collision && collision.id !== existing?.id) throw new Error('目标仓库已有同条码的独立商品，请先核对条码，未保存任何修改。');
-    const values = fields.map(field => product[field]);
+    const categoryId = copyCategoryToWarehouse(db, product.category_id, target);
+    const values = fields.map(field => field === 'category_id' ? categoryId : product[field]);
     if (existing) db.prepare(`UPDATE products SET ${fields.map(f => `${f}=?`).join(',')} WHERE id=?`).run(...values, existing.id);
     else db.prepare(`INSERT INTO products (${fields.join(',')},warehouse_id,sync_key,created_at) VALUES (${fields.map(() => '?').join(',')},?,?,?)`).run(...values, target, product.sync_key, new Date().toISOString());
   }

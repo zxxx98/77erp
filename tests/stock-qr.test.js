@@ -472,7 +472,7 @@ test("backup v7 preserves multi-item history, restore rotates labels and disable
     q = await f.create();
   await f.execute(q, (await f.preview(q)).data);
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 9);
+  assert.equal(backup.version, 10);
   const restore = async (value) => {
     const p = await f.request("/backup/preview", "POST", { backup: value });
     assert.equal(p.status, 200, JSON.stringify(p.data));
@@ -505,6 +505,7 @@ test("backup v7 preserves multi-item history, restore rotates labels and disable
   );
   const legacy = structuredClone(backup);
   legacy.version = 6;
+  for (const c of legacy.data.categories) delete c.warehouse_id;
   for (const table of [
     "stock_qr_codes",
     "stock_qr_items",

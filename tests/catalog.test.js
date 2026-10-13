@@ -6,6 +6,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/app.js';
+import { DatabaseSync } from 'node:sqlite';
+import { categoryPaths, migrateWarehouseCategories } from '../server/catalog.js';
 
 const image = 'https://img.example.com/file/77erp/products/cup.jpg';
 const product = { name: '分类商品', unit: '件', cost: 10, price: 20, threshold: 5 };
@@ -77,11 +79,11 @@ test('invalid product metadata or category cannot create a product or orphan cat
   assert.deepEqual(after.products, before.products);
 });
 
-test('v8 backups restore a tree and product details independently of current category IDs; malformed trees and references fail', async t => {
+test('v10 backups restore a tree and product details independently of current category IDs; malformed trees and references fail', async t => {
   const f = await fixture(t), root = await f.category('食材'), child = await f.category('调味品', root);
   await f.request('/products', 'POST', { ...product, category_id: child, image, specification: '500g', note: '避光保存' });
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 9);
+  assert.equal(backup.version, 10);
   await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
   const newRoot = await f.category('不同的当前分类');
   assert.equal((await f.request(`/categories/${newRoot}`, 'PUT', { name: '当前分类', parent_id: null })).status, 200);
@@ -132,6 +134,79 @@ test('existing flat category database migrates idempotently without changing sto
   assert.deepEqual(db.prepare('SELECT * FROM categories ORDER BY id').all(), categories);
   assert.equal(db.prepare('SELECT specification FROM products WHERE id=1').get().specification, '350ml');
   db.close();
+});
+
+test('a shared legacy tree is copied into every existing warehouse, retaining products and history across restarts', t => {
+  const folder = mkdtempSync(join(tmpdir(), '77erp-category-scope-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const path = join(folder, 'legacy.sqlite');
+  let { db } = createApp(path);
+  db.exec("INSERT INTO warehouses(id,name,created_at) VALUES (2,'分仓','2026-01-01'),(3,'空仓','2026-01-01');");
+  // A child ID can precede its parent's ID after reparenting an old tree.
+  db.exec("INSERT INTO categories(id,name,parent_id) VALUES (100,'餐厨',NULL),(90,'杯具',100),(101,'未使用分类',NULL);");
+  db.prepare('UPDATE products SET category_id=90,category=? WHERE id=1').run('餐厨 / 杯具');
+  const source = db.prepare('SELECT * FROM products WHERE id=1').get();
+  const remote = { ...source, id: 1000, barcode: 'LEGACY-REMOTE', warehouse_id: 2, sync_key: randomUUID(), stock: 3, inventory_value_cents: 3000 };
+  const fields = Object.keys(remote);
+  db.prepare(`INSERT INTO products (${fields.join(',')}) VALUES (${fields.map(() => '?').join(',')})`).run(...Object.values(remote));
+  db.exec('DROP INDEX categories_sibling_name; ALTER TABLE categories DROP COLUMN warehouse_id; CREATE UNIQUE INDEX categories_sibling_name ON categories(COALESCE(parent_id,0),name);');
+  const oldCategories = db.prepare('SELECT * FROM categories ORDER BY id').all();
+  const oldProducts = db.prepare('SELECT * FROM products ORDER BY id').all();
+  const oldOrders = db.prepare('SELECT * FROM orders ORDER BY id').all();
+  const oldItems = db.prepare('SELECT * FROM order_items ORDER BY id').all();
+  db.close();
+  ({ db } = createApp(path));
+  const migrated = db.prepare('SELECT * FROM categories ORDER BY id').all();
+  const oldPaths = [...categoryPaths(oldCategories).values()].sort();
+  for (const warehouseId of [1, 2, 3]) {
+    const rows = migrated.filter(c => c.warehouse_id === warehouseId);
+    assert.equal(rows.length, oldCategories.length);
+    assert.deepEqual([...categoryPaths(rows).values()].sort(), oldPaths);
+  }
+  assert.deepEqual(migrated.filter(c => c.warehouse_id === 1).map(({ warehouse_id, ...c }) => c), oldCategories.map(c => ({ ...c })));
+  for (const original of oldProducts) {
+    const current = db.prepare('SELECT * FROM products WHERE id=?').get(original.id);
+    assert.deepEqual({ ...current, category_id: original.category_id, version: original.version }, { ...original });
+    const category = migrated.find(c => c.id === current.category_id);
+    assert.equal(category.warehouse_id, current.warehouse_id);
+    assert.equal(categoryPaths(migrated).get(current.category_id), original.category);
+  }
+  assert.deepEqual(db.prepare('SELECT * FROM orders ORDER BY id').all(), oldOrders);
+  assert.deepEqual(db.prepare('SELECT * FROM order_items ORDER BY id').all(), oldItems);
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  const stableProducts = db.prepare('SELECT * FROM products ORDER BY id').all();
+  db.close();
+  ({ db } = createApp(path));
+  assert.deepEqual(db.prepare('SELECT * FROM categories ORDER BY id').all(), migrated);
+  assert.deepEqual(db.prepare('SELECT * FROM products ORDER BY id').all(), stableProducts);
+  db.close();
+});
+
+test('an invalid legacy category tree rolls migration back and can be retried after repair', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`PRAGMA foreign_keys=ON;
+      CREATE TABLE warehouses(id INTEGER PRIMARY KEY);
+      INSERT INTO warehouses VALUES (1),(2);
+      CREATE TABLE categories(id INTEGER PRIMARY KEY,name TEXT,parent_id INTEGER REFERENCES categories(id));
+      CREATE UNIQUE INDEX categories_sibling_name ON categories(COALESCE(parent_id,0),name);
+      CREATE TABLE products(id INTEGER PRIMARY KEY,category_id INTEGER REFERENCES categories(id),warehouse_id INTEGER);
+      INSERT INTO categories VALUES (1,'循环分类',1);`);
+    assert.throws(() => migrateWarehouseCategories(db), /自身或下级/);
+    assert.equal(db.prepare('PRAGMA table_info(categories)').all().some(c => c.name === 'warehouse_id'), false);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM categories').get().n, 1);
+    assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+    db.exec('UPDATE categories SET parent_id=NULL');
+    db.exec('CREATE TABLE history(product_id INTEGER REFERENCES products(id)); PRAGMA foreign_keys=OFF; INSERT INTO history VALUES (999); PRAGMA foreign_keys=ON;');
+    assert.throws(() => migrateWarehouseCategories(db), /数据关联无效/);
+    assert.equal(db.prepare('PRAGMA table_info(categories)').all().some(c => c.name === 'warehouse_id'), false);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM categories').get().n, 1);
+    assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+    db.exec('DELETE FROM history');
+    migrateWarehouseCategories(db);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM categories').get().n, 2);
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally { db.close(); }
 });
 
 test('all category endpoints require authentication', async t => {

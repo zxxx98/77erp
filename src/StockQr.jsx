@@ -1,3 +1,4 @@
+import { Select, ContactPicker } from "./Dropdown.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { resolveProductCode } from "./product-scan.js";
@@ -372,7 +373,7 @@ export function StockQrManager({
               </label>
               <label>
                 操作类型
-                <select
+                <Select
                   value={form.type}
                   disabled={!!selected}
                   onChange={(e) => {
@@ -395,7 +396,7 @@ export function StockQrManager({
                 >
                   <option value="in">入库</option>
                   <option value="out">出库</option>
-                </select>
+                </Select>
               </label>
               <h3>商品明细（{form.items.length}/100）</h3>
               <label>
@@ -546,7 +547,7 @@ export function StockQrManager({
               )}
               <label>
                 次数限制
-                <select
+                <Select
                   value={form.max_scans === null ? "unlimited" : "limited"}
                   onChange={(e) =>
                     setForm({
@@ -560,7 +561,7 @@ export function StockQrManager({
                 >
                   <option value="limited">限制次数</option>
                   <option value="unlimited">不限次数</option>
-                </select>
+                </Select>
               </label>
               {form.max_scans !== null && (
                 <label>
@@ -593,40 +594,13 @@ export function StockQrManager({
                   扫码后将直接生成整张单据并更新全部商品库存。
                 </p>
               )}
-              <label>
-                往来单位
-                <input
-                  required
-                  list="stock-qr-contacts"
-                  maxLength={100}
-                  value={form.partner}
-                  onChange={(e) => {
-                    const c = (data.contacts || []).find(
-                      (c) =>
-                        c.active &&
-                        c.role ===
-                          (form.type === "in" ? "supplier" : "customer") &&
-                        c.name === e.target.value,
-                    );
-                    setForm({
-                      ...form,
-                      partner: e.target.value,
-                      partner_id: c?.id,
-                    });
-                  }}
-                />
-              </label>
-              <datalist id="stock-qr-contacts">
-                {(data.contacts || [])
-                  .filter(
-                    (c) =>
-                      c.active &&
-                      c.role === (form.type === "in" ? "supplier" : "customer"),
-                  )
-                  .map((c) => (
-                    <option key={c.id} value={c.name} />
-                  ))}
-              </datalist>
+              <ContactPicker contacts={(data.contacts || []).filter(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer"))}
+                label="往来单位" value={form.partner} selectedId={form.partner_id} required disabled={busy}
+                onChange={partner => {
+                  const contact = (data.contacts || []).find(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer") && c.name === partner);
+                  setForm({ ...form, partner, partner_id: contact?.id });
+                }}
+                onSelect={contact => setForm({ ...form, partner: contact.name, partner_id: contact.id })} />
               <label>
                 单据备注
                 <textarea
@@ -746,7 +720,7 @@ export function StockQrManager({
               <button className="btn btn-primary" onClick={() => edit(null)}>
                 新建二维码
               </button>
-              <select
+              <Select
                 aria-label="按操作类型筛选"
                 value={type}
                 onChange={(e) => {
@@ -757,8 +731,8 @@ export function StockQrManager({
                 <option value="">全部类型</option>
                 <option value="in">入库</option>
                 <option value="out">出库</option>
-              </select>
-              <select
+              </Select>
+              <Select
                 aria-label="按二维码状态筛选"
                 value={status}
                 onChange={(e) => {
@@ -770,7 +744,7 @@ export function StockQrManager({
                 <option value="available">可用</option>
                 <option value="exhausted">已用完</option>
                 <option value="disabled">已停用</option>
-              </select>
+              </Select>
             </div>
             {!rows.length && <p>暂无出入库二维码，请新建并添加商品明细。</p>}
             {rows.map((q) => (

@@ -36,6 +36,56 @@ async function fixture(page) {
     },
   };
 }
+for (const width of [1440, 390]) {
+  test(`order partner dropdowns show active contacts and preserve their IDs at width ${width}`, async ({ page }) => {
+    const f = await fixture(page);
+    try {
+      await page.setViewportSize({ width, height: 844 });
+      const rows = [];
+      for (const [role, name, active] of [["supplier", "常用供应商", 1], ["supplier", "备用供应商", 1], ["customer", "城南门店", 1], ["supplier", "停用供应商", 0]]) {
+        const response = await page.request.post(f.base + "/api/contacts", {
+          data: { request_id: `partner-${name}`, role, name, active, person: "王先生", phone: "13812345678", address: "", note: "" },
+        });
+        expect(response.ok()).toBe(true);
+        rows.push(await response.json());
+      }
+      await page.goto(f.base);
+      for (const type of ["in", "out"]) {
+        await page.getByRole("link", { name: type === "in" ? "采购入库" : "销售出库", exact: true }).click();
+        await page.getByRole("button", { name: type === "in" ? "新建入库" : "新建出库", exact: true }).click();
+        const label = type === "in" ? "供应商" : "客户 / 往来单位";
+        const input = page.getByRole("combobox", { name: label });
+        await expect(input).toHaveAttribute("aria-expanded", "false");
+        await expect(page.getByRole("listbox", { name: label })).toHaveCount(0);
+        await page.getByRole("button", { name: `展开${label}列表`, exact: true }).click();
+        const options = page.getByRole("listbox", { name: label }).getByRole("option");
+        await expect(options).toHaveCount(type === "in" ? 2 : 1);
+        await expect(options.filter({ hasText: "停用供应商" })).toHaveCount(0);
+        const bounds = await page.getByRole("listbox", { name: label }).boundingBox();
+        expect(bounds.x).toBeGreaterThanOrEqual(0);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+        await input.fill(type === "in" ? "备用" : "城南");
+        await expect(options).toHaveCount(1);
+        await input.press("ArrowDown");
+        await input.press("Enter");
+        await expect(input).toHaveValue(type === "in" ? "备用供应商" : "城南门店");
+        await expect(input).toHaveAttribute("aria-expanded", "false");
+        // Reopening must show every eligible contact, even after selecting one.
+        await input.click();
+        await expect(options).toHaveCount(type === "in" ? 2 : 1);
+        await input.press("Escape");
+        await expect(page.getByRole("dialog")).toHaveCount(1);
+        await page.getByRole("textbox", { name: "查找并添加商品" }).fill("商务");
+        await page.locator(".picker-results button").first().click();
+        await page.getByRole("button", { name: type === "in" ? "确认入库" : "确认出库", exact: true }).click();
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        expect(f.db.prepare("SELECT partner_id FROM orders WHERE type=?").get(type).partner_id).toBe(rows[type === "in" ? 1 : 2].id);
+      }
+    } finally {
+      await f.close();
+    }
+  });
+}
 test("contact selection, reusable template, payment bookkeeping and margin report work together", async ({
   page,
 }) => {

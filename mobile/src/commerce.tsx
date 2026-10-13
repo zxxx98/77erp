@@ -1,3 +1,4 @@
+import { ContactPicker } from "./ContactPicker";
 import { usePermissions } from './permissions';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Text } from "react-native";
@@ -71,8 +72,10 @@ export function CommerceScreen({
   const { can, user } = usePermissions();
   const business = isAdmin || (user.role === 'employee' && can('business'));
   const finance = isAdmin || (user.role === 'employee' && can('finance'));
+  const stocktake = !!onStocktake && (isAdmin || (user.role === 'employee' && can('stocktake')));
+  const dataManagement = !!onDataManagement && (isAdmin || (user.role === 'employee' && can('data_io') && !user.legacy_permissions));
   const [tab, setTab] = useState(business ? 'contacts' : finance ? 'finance' : 'templates');
-  const available = [...(business ? ['contacts'] : []), 'templates', ...(finance ? ['finance', 'profit'] : [])];
+  const available = [...(business ? ['contacts'] : []), 'templates', ...(finance ? ['finance', 'profit'] : []), ...(stocktake ? ['stocktake'] : []), ...(dataManagement ? ['data_io'] : [])];
   const active = available.includes(tab) ? tab : available[0] || "templates";
   return (
     <ScreenModal title="业务管理" onClose={onClose}>
@@ -84,10 +87,12 @@ export function CommerceScreen({
           { id: "templates", label: "模板" },
           { id: "finance", label: "收付款" },
           { id: "profit", label: "毛利" },
+          { id: "stocktake", label: "库存盘点" },
+          { id: "data_io", label: "导入导出" },
         ].filter(item => available.includes(item.id))}
       />
-      {onStocktake && (isAdmin || (user.role === 'employee' && can('stocktake'))) && <Button title="库存盘点" kind="secondary" onPress={onStocktake} />}
-      {onDataManagement && (isAdmin || (user.role === 'employee' && can('data_io') && !user.legacy_permissions)) && <Button title="打开网页导入导出" kind="secondary" onPress={onDataManagement} />}
+      {active === "stocktake" && stocktake && <Button title="开始库存盘点" kind="secondary" onPress={onStocktake!} />}
+      {active === "data_io" && dataManagement && <Button title="打开网页导入导出" kind="secondary" onPress={onDataManagement!} />}
       {active === "contacts" && <Contacts onRefresh={onRefresh} />}
       {active === "templates" && <TemplateList onUse={onUse} />}
       {active === "finance" && <Finance />}
@@ -106,35 +111,18 @@ function Contacts({ onRefresh }: { onRefresh: () => void }) {
     active: 1,
   };
   const [rows, setRows] = useState<Contact[]>([]),
-    [form, setForm] = useState<Contact>(empty),
-    [query, setQuery] = useState("");
+    [form, setForm] = useState<Contact>(empty);
+  const [loading, setLoading] = useState(true);
   const { busy, error, setError, run, send } = useBusiness();
   const load = async () => setRows(await api<Contact[]>("/contacts"));
   useEffect(() => {
-    void load().catch((e) => setError(e.message));
+    void load().catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, []);
   return (
     <>
-      <SearchField
-        value={query}
-        onChangeText={setQuery}
-        placeholder="搜索往来单位、联系人或电话"
-      />
-      {rows
-        .filter((c) => `${c.name} ${c.person} ${c.phone}`.includes(query))
-        .slice(0, 50)
-        .map((c) => (
-          <Button
-            key={c.id}
-            title={`${c.role === "supplier" ? "供应商" : "客户"} · ${c.name}${!c.active ? "（已停用）" : ""}`}
-            kind="secondary"
-            disabled={busy}
-            onPress={() => setForm(c)}
-          />
-        ))}
-      <Text style={s.caption}>
-        最多显示 50 条，请搜索定位。历史单据名称不会随编辑变化。
-      </Text>
+      <ContactPicker contacts={rows} label="搜索往来单位" value={form.id ? form.name : ""} selectedId={form.id}
+        loading={loading} disabled={busy} onSelect={setForm} />
+      <Text style={s.caption}>历史单据名称不会随编辑变化。</Text>
       <Button
         title="新增往来单位"
         kind="secondary"

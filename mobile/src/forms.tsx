@@ -5,6 +5,7 @@ import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
 import { ProductConflict } from './ProductConflict';
+import { ContactPicker } from "./ContactPicker";
 import { TemplateList } from "./commerce";
 import { UpdateCard } from "./UpdateCard";
 import { api, device, getWarehouseId, scanBarcode, uploadProductImage } from "./native";
@@ -265,7 +266,7 @@ export function ProductEditor({
       </Card>
       <Card>
         <Text style={s.subtitle}>同步到其他仓库（选填）</Text>
-        <Text style={s.caption}>本次保存同步商品档案和参考价格，已有库存和成本保留，新商品库存为 0。未选择的仓库保留原档案。</Text>
+        <Text style={s.caption}>本次保存同步商品档案和参考价格，并在目标仓库匹配或创建对应分类路径。已有库存和成本保留，新商品库存为 0。未选择的仓库保留原档案。</Text>
         {warehouses.filter(w => w.id !== warehouseId).map(w => <View key={w.id} style={s.row}>
           <Text style={[s.label, s.grow]}>{w.name}</Text>
           <Switch accessibilityLabel={`同步到${w.name}`} value={syncTargets.includes(w.id)} disabled={busy || scanning || pickingImage} onValueChange={checked => setSyncTargets(current => checked ? [...current, w.id] : current.filter(id => id !== w.id))} />
@@ -449,15 +450,10 @@ export function OrderEditor({
         {template && <Button title="更新模板" kind="secondary" disabled={busy || scanning || !lines.length} onPress={() => void saveTemplate(true)} />}
         {!!templateMessage && <Text style={s.caption} accessibilityRole="text">{templateMessage}</Text>}
       </Card>}
-      <Field
-        label={type === "in" ? "供应商" : "客户"}
-        placeholder={type === "in" ? "必填：请输入供应商名称" : "必填：请输入客户名称"}
-        value={partner}
-        onChangeText={value => {setPartner(value);setPartnerId(null);}}
-        maxLength={100}
-        editable={!busy}
-      />
-      {contacts.filter(c=>c.active&&c.role===(type==="in"?"supplier":"customer")&&(partner === "零售客户" || c.name.includes(partner))).slice(0,10).map(c=><Button key={c.id} title={`选择 ${c.name}`} kind="secondary" disabled={busy} onPress={()=>{setPartner(c.name);setPartnerId(c.id ?? null);}}/>)}
+      <ContactPicker contacts={contacts.filter(c => c.active && c.role === (type === "in" ? "supplier" : "customer"))}
+        label={type === "in" ? "供应商" : "客户"} value={partner} selectedId={partnerId} disabled={busy || scanning}
+        onChange={value => { setPartner(value); setPartnerId(contacts.find(c => c.active && c.role === (type === "in" ? "supplier" : "customer") && c.name === value)?.id ?? null); }}
+        onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id ?? null); }} />
       <Button
         title="扫码添加商品"
         icon={Camera}

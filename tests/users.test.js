@@ -198,7 +198,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 9);
+  assert.equal(backup.version, 10);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -219,6 +219,7 @@ test('business backups preserve actor names and same-server template owners, but
   assert.equal((await destination.request(destination.admin, '/data')).data.orders[0].created_by_name, 'alice');
   const legacy = structuredClone(backup);
   legacy.version = 4; delete legacy.source_instance_id;
+  for (const c of legacy.data.categories) delete c.warehouse_id;
   for (const table of ['orders','templates']) for (const row of legacy.data[table]) { delete row.created_by; delete row.created_by_name; }
   await restore(destination, legacy);
   assert.deepEqual((await destination.request(destination.admin, '/templates')).data, []);

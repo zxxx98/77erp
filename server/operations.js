@@ -2,7 +2,7 @@ import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.js';
 import { installCommerce, moveInventory, allocate } from "./commerce.js";
 import { createHash, randomUUID } from "node:crypto";
-import { categoryPaths, productDetails } from "./catalog.js";
+import { categoryPaths, productDetails, splitLegacyCategories } from "./catalog.js";
 
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -292,7 +292,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           fail("条码重复或已存在，不会覆盖已有商品。");
         if (values[1]) seen.add(values[1]);
         productDetails(row);
-        if (row.category_id != null && !db.prepare("SELECT 1 FROM categories WHERE id=?").get(row.category_id)) fail("分类不存在。");
+        if (row.category_id != null && row.category_id !== '' && (!Number.isSafeInteger(row.category_id) || !db.prepare("SELECT 1 FROM categories WHERE id=? AND warehouse_id=?").get(row.category_id, warehouseId))) fail("分类不存在或不属于当前仓库。");
         normalized.push({ values, stock: row.stock, index });
       } catch (error) {
         errors.push({ row: index + 2, error: error.message });
@@ -326,7 +326,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           ...normalized.filter((r) => !r.values[1]),
         ]) {
           const values = [...row.values];
-          const catalog = catalogValues(req.body.rows[row.index]);
+          const catalog = catalogValues(req.body.rows[row.index], undefined, req.warehouse.id);
           values[2] = catalog.path;
           if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
           const result = db
@@ -362,7 +362,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 9,
+    version: 10,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -370,7 +370,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
@@ -418,14 +418,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!Array.isArray(data[table]) || data[table].length > 100000)
         fail(`备份中的 ${table} 格式或数量无效。`);
       const ids = new Set();
+      const fields = table === 'categories' && value.version < 10 ? columns[table].filter(c => c !== 'warehouse_id') : columns[table];
       for (const row of data[table]) {
         if (
           !row ||
           !integer(row.id) ||
           row.id < 1 ||
           ids.has(row.id) ||
-          Object.keys(row).length !== columns[table].length ||
-          columns[table].some((c) => !(c in row))
+          Object.keys(row).length !== fields.length ||
+          fields.some((c) => !(c in row))
         )
           fail(`备份中的 ${table} 字段或编号无效。`);
         ids.add(row.id);
@@ -434,6 +435,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const warehouseIds = new Set(data.warehouses.map(w => w.id));
     if (!warehouseIds.has(1) || new Set(data.warehouses.map(w => w.name)).size !== data.warehouses.length || data.warehouses.some(w => !text(w.name,60) || w.name !== w.name.trim() || !text(w.created_at,100))) fail('备份仓库信息无效。');
     for (const table of ['products', 'orders', 'templates']) if (data[table].some(row => !warehouseIds.has(row.warehouse_id))) fail('备份仓库关联无效。');
+    if (value.version < 10) {
+      if (data.categories.length * data.warehouses.length > 100000) fail('备份分类迁移后的数量过多。');
+      const migrated = splitLegacyCategories(data.categories, data.warehouses, data.products);
+      if (migrated.categories.some(c => !integer(c.id))) fail('备份分类迁移后的编号无效。');
+      data.categories = migrated.categories;
+      data.products = migrated.products;
+    }
+    if (data.categories.some(c => !warehouseIds.has(c.warehouse_id))) fail('备份分类仓库关联无效。');
     const syncKeys = new Set();
     for (const p of data.products) {
       const key = JSON.stringify([p.warehouse_id,p.sync_key]);
@@ -441,6 +450,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       syncKeys.add(key);
     }
     const categoryMap = categoryPaths(data.categories);
+    const categoryOwners = new Map(data.categories.map(c => [c.id, c.warehouse_id]));
     const contacts = new Map(data.contacts.map(c => [c.id,c]));
     for (const c of data.contacts) if (!['supplier','customer'].includes(c.role) || !text(c.name,100) || ![0,1].includes(c.active) || !Number.isSafeInteger(c.version) || c.version < 1 || ['person','phone','address','note'].some(k => typeof c[k] !== 'string' || c[k].length > ({person:100,phone:50,address:300,note:500})[k])) fail('备份往来单位无效。');
     const contactKeys = new Set(data.contacts.map(c => `${c.role}:${c.name}`));
@@ -453,7 +463,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       productDetails(p);
       if (!Number.isSafeInteger(p.version) || p.version < 1) fail('备份商品版本无效。');
       if (![0,1].includes(p.active)) fail("备份商品上架状态无效。");
-      if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category) fail("备份商品分类关联无效。");
+      if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category || categoryOwners.get(p.category_id) !== p.warehouse_id) fail("备份商品分类关联无效。");
       if (
         !p.barcode ||
         barcodes.has(JSON.stringify([p.warehouse_id,p.barcode])) ||

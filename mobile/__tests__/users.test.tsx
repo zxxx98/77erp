@@ -108,6 +108,8 @@ test('shared business management shows authorized financial and stocktake tools 
   expect(screen.queryByRole('button', { name: '往来单位' })).toBeNull();
   expect(screen.queryByRole('button', { name: '打开网页导入导出' })).toBeNull();
   fireEvent.press(screen.getByRole('button', { name: '库存盘点' }));
+  expect(stocktake).not.toHaveBeenCalled();
+  fireEvent.press(screen.getByRole('button', { name: '开始库存盘点' }));
   expect(stocktake).toHaveBeenCalledTimes(1);
   await waitFor(() => expect(request).toHaveBeenCalledWith('/finance'));
 });

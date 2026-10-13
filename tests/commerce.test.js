@@ -304,7 +304,7 @@ test("partial payments, refunds, reversal and void guards keep balances correct 
     10000,
   );
 });
-test("unknown historical costs and settlement are explicit, and v9 backup round trips contacts, templates and payments", async (t) => {
+test("unknown historical costs and settlement are explicit, and v10 backup round trips contacts, templates and payments", async (t) => {
   const f = await fixture(t),
     id = await f.product();
   await f.order(id, "in", 10, 10);
@@ -346,7 +346,7 @@ test("unknown historical costs and settlement are explicit, and v9 backup round 
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 9);
+  assert.equal(backup.version, 10);
   assert.equal(backup.data.payments.length, 1);
   assert.equal(backup.data.templates.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });

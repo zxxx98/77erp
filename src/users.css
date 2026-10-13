@@ -4,7 +4,6 @@
 .user-table { width: 100%; border-collapse: collapse; }
 .user-table td { vertical-align: middle; }
 .user-table td strong { color: var(--text-strong, #1c2433); font-size: 12px; }
-.user-table select { border: 1px solid #e3eaf3; border-radius: 6px; min-width: 96px; min-height: 37px; padding: 8px 12px; background: white; font-size: 11px; color: #6982a5; line-height: 1.5; }
 .user-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 @media (max-width: 640px) { .user-table { min-width: 520px; } }
 

@@ -1,3 +1,4 @@
+import { Select } from "./Dropdown.jsx";
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import './users.css';
@@ -62,7 +63,7 @@ export function UserManager({ Modal }) {
     <div className="account-fields">
       <label>新账号<input autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>
       <label>初始密码<input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
-      <label>新账号角色<select value={role} onChange={e => setRole(e.target.value)} disabled={busy}><option value="employee">员工</option><option value="admin">管理员</option></select></label>
+      <label>新账号角色<Select value={role} onChange={e => setRole(e.target.value)} disabled={busy}><option value="employee">员工</option><option value="admin">管理员</option></Select></label>
       <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
         await api('/users', { method: 'POST', body: { username, password, role } });
         setUsername(''); setPassword('');
@@ -77,10 +78,10 @@ export function UserManager({ Modal }) {
           {users.map(user => <tr className="user-row" key={user.id}>
             <td><strong>{user.username}</strong></td>
             <td>{user.active ? '正常' : '已停用'}</td>
-            <td><select aria-label={`${user.username}的角色`} value={user.role} disabled={busy} onChange={e => {
+            <td><Select aria-label={`${user.username}的角色`} value={user.role} disabled={busy} onChange={e => {
               const nextRole = e.target.value;
               if (window.confirm(`修改 ${user.username} 的角色？该账号需要重新登录。`)) void update(user, { role: nextRole });
-            }}><option value="employee">员工</option><option value="admin">管理员</option></select></td>
+            }}><option value="employee">员工</option><option value="admin">管理员</option></Select></td>
             <td><div className="user-actions">
               <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => {
                 if (window.confirm(`${user.active ? '停用' : '启用'}账号 ${user.username}？`)) void update(user, { active: user.active ? 0 : 1 });

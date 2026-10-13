@@ -1,3 +1,4 @@
+import { Select } from "./Dropdown.jsx";
 import { PermissionContext, usePermissions } from './permissions.jsx';
 import { hasPermission, canManage } from '../shared/permissions.js';
 import { StockQrManager, StockQrExecution } from './StockQr.jsx';
@@ -58,7 +59,7 @@ import { AuthGate } from "./Auth.jsx";
 import { resolveProductCode } from "./product-scan.js";
 import { ChangePassword, UserManager } from "./Users.jsx";
 import { version as appVersion } from "../package.json";
-import { BusinessTools, Templates, Payments, useBusiness } from "./Commerce.jsx";
+import { BusinessTools, ContactPicker, Templates, Payments, useBusiness } from "./Commerce.jsx";
 import { Backup, OrderActions, orderLabel, reportOrders, businessType } from "./Operations.jsx";
 
 const money = (v) =>
@@ -306,7 +307,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
           ...ref.current.querySelectorAll(
             "button, input, select, textarea, a[href]",
           ),
-        ].filter((el) => !el.disabled && el.offsetParent !== null);
+        ].filter((el) => !el.matches(":disabled") && el.tabIndex >= 0 && el.offsetParent !== null);
         const first = targets[0],
           last = targets.at(-1);
         if (e.shiftKey && document.activeElement === first) {
@@ -773,9 +774,9 @@ function App({ admin, onLogout }) {
             <strong>{currentNav?.name}</strong>
           </div>
           <div className="topbar-right">
-            <select className="warehouse-select" aria-label="当前仓库" value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e.target.value))}>
+            <Select className="warehouse-select" aria-label="当前仓库" value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e.target.value))}>
               {(data.warehouses || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
+            </Select>
             <div className="sync-state">
               <i />
               数据已同步
@@ -1657,9 +1658,9 @@ function CategoryManager({ categories, onClose, onChanged }) {
   return <Modal title="管理商品分类" subtitle="建立多级分类；选择上级分类即可添加子分类。" onClose={busy ? () => {} : onClose}>
     <form onSubmit={e => { e.preventDefault(); void run(() => api(id ? `/categories/${id}` : '/categories', { method: id ? 'PUT' : 'POST', body: { name, parent_id: parent ? Number(parent) : null } })); }}>
       <fieldset className="form-body category-form" disabled={busy}>
-        <label>编辑分类<select value={id} onChange={e => choose(e.target.value)}><option value="">新增分类</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
+        <label>编辑分类<Select value={id} onChange={e => choose(e.target.value)}><option value="">新增分类</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
         <label>分类名称 <span>*</span><input required maxLength={100} value={name} placeholder="例如：杯具" onChange={e => setName(e.target.value)} /></label>
-        <label>上级分类<select value={parent} onChange={e => setParent(e.target.value)}><option value="">无（一级分类）</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
+        <label>上级分类<Select value={parent} onChange={e => setParent(e.target.value)}><option value="">无（一级分类）</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
         <small className="muted">选中父分类会包含下级商品。删除前需移走该分类的下级分类及商品。</small>
         {error && <div className="form-error" role="alert">{error}</div>}
       </fieldset>
@@ -2361,7 +2362,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                 onChange={(e) => setQuery(e.target.value)}
               />
             </div>
-            <select
+            <Select
               className="filter-select"
               aria-label="单据时间范围"
               value={days}
@@ -2370,7 +2371,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               <option value="all">全部时间</option>
               <option value="7">近 7 天</option>
               <option value="30">近 30 天</option>
-            </select>
+            </Select>
           </div>
         </div>
         <div className="table-scroll">
@@ -2567,7 +2568,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           <div className="form-grid">
             <label>
               商品分类 <span>*</span>
-              <select
+              <Select
                 required
                 value={form.category_id || ''}
                 onChange={(e) => {
@@ -2577,12 +2578,12 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               >
                 <option value="" disabled>请选择分类</option>
                 {options.map(c => <option key={c.id} value={c.id}>{'　'.repeat(c.depth)}{c.path}</option>)}
-              </select>
+              </Select>
               {!options.length && <small>请先在商品管理的「管理分类」中添加分类。</small>}
             </label>
             <label>
               计量单位 <span>*</span>
-              <select
+              <Select
                 required
                 value={form.unit}
                 onChange={(e) => change("unit", e.target.value)}
@@ -2590,7 +2591,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 {[...new Set([...units, form.unit])].map((c) => (
                   <option key={c}>{c}</option>
                 ))}
-              </select>
+              </Select>
               <small>可在「设置 → 基础设置 → 计量单位」中配置。</small>
             </label>
             <label>
@@ -2827,11 +2828,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     setTemplateRevision(value => value + 1);
     setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
   });
-  const partners = [
-    ...new Set(
-      [...(data.contacts || []).filter(c => c.active && c.role === (type === "in" ? "supplier" : "customer")).map(c => c.name), ...data.orders.filter((o) => o.type === type).map((o) => o.partner)],
-    ),
-  ];
+  const partners = (data.contacts || []).filter(c => c.active && c.role === (type === "in" ? "supplier" : "customer"));
   const matches = data.products
     .filter(p => includeInactive || p.active !== 0)
     .filter((p) =>
@@ -2867,24 +2864,12 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           }
           {templateAction.error && <p role="alert" className="form-error">{templateAction.error}</p>}
           <div className="form-grid">
-            <label>
-              {type === "in" ? "供应商" : "客户 / 往来单位"} <span>*</span>
-              <input
-                list="partners-list"
-                required
-                maxLength={100}
-                placeholder={
-                  type === "in" ? "选择或输入供应商" : "选择或输入客户"
-                }
-                value={partner}
-                onChange={(e) => { setPartner(e.target.value); setPartnerId((data.contacts || []).find(c => c.active && c.name === e.target.value && c.role === (type === "in" ? "supplier" : "customer"))?.id ?? null); }}
-              />
-              <datalist id="partners-list">
-                {partners.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
-            </label>
+            <ContactPicker contacts={partners} value={partner} selectedId={partnerId}
+              label={type === "in" ? "供应商" : "客户 / 往来单位"}
+              placeholder={type === "in" ? "选择或输入供应商" : "选择或输入客户"}
+              required disabled={busy || templateAction.busy}
+              onChange={value => { setPartner(value); setPartnerId(partners.find(c => c.name === value)?.id ?? null); }}
+              onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
             <label>
               入出库仓库
               <input value={data.settings.warehouse_name} disabled />

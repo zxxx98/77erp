@@ -14,7 +14,7 @@ import { migrateCommerce, resolveContact, moveInventory, settlement } from "./co
 import { installAuth } from "./auth.js";
 import { migrateImagebed, installImagebed } from './imagebed.js';
 import { migrateOperations, installOperations, operationRequest, saveOperationRequest } from "./operations.js";
-import { migrateCatalog, installCatalog } from "./catalog.js";
+import { migrateCatalog, migrateWarehouseCategories, installCatalog } from "./catalog.js";
 import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -251,6 +251,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateCommerce(db);
   migrateCatalog(db);
   migrateWarehouses(db);
+  migrateWarehouseCategories(db);
   migrateUnits(db);
   migrateImagebed(db);
   migrateStockQr(db);
@@ -281,7 +282,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     res.json({
       user: req.user,
       products,
-      categories: db.prepare("SELECT * FROM categories ORDER BY name,id").all(),
+      categories: db.prepare("SELECT * FROM categories WHERE warehouse_id=? ORDER BY name,id").all(req.warehouse.id),
       contacts: db.prepare("SELECT * FROM contacts ORDER BY active DESC,name,id").all(),
       orders,
       warehouses: warehouses(),
@@ -356,7 +357,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       const v = productValues(req.body);
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
-      const catalog = catalogValues(req.body);
+      const catalog = catalogValues(req.body, undefined, req.warehouse.id);
       v[2] = catalog.path;
       if (!v[1]) v[1] = generateBarcode(req.warehouse.id);
       const result = db

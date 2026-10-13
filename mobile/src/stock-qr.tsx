@@ -1,3 +1,4 @@
+import { ContactPicker } from "./ContactPicker";
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Switch, Text, View } from "react-native";
 import Svg, { Path, Rect } from "react-native-svg";
@@ -558,39 +559,13 @@ export function StockQrManager({
               扫码后将直接生成整张单据并更新全部商品库存。
             </Text>
           )}
-          <Field
-            label="往来单位"
-            value={form.partner}
-            editable={!busy}
-            maxLength={100}
-            onChangeText={(partner) => {
-              const c = data.contacts?.find(
-                (c) =>
-                  c.name === partner &&
-                  c.active &&
-                  c.role === (form.type === "in" ? "supplier" : "customer"),
-              );
-              setForm({ ...form, partner, partner_id: c?.id });
+          <ContactPicker contacts={(data.contacts || []).filter(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer"))}
+            label="往来单位" value={form.partner} selectedId={form.partner_id} disabled={busy}
+            onChange={partner => {
+              const contact = data.contacts?.find(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer") && c.name === partner);
+              setForm({ ...form, partner, partner_id: contact?.id });
             }}
-          />
-          {(data.contacts || [])
-            .filter(
-              (c) =>
-                c.active &&
-                c.role === (form.type === "in" ? "supplier" : "customer"),
-            )
-            .slice(0, 10)
-            .map((c) => (
-              <Button
-                key={c.id}
-                title={`选择 ${c.name}`}
-                kind="secondary"
-                disabled={busy}
-                onPress={() =>
-                  setForm({ ...form, partner: c.name, partner_id: c.id })
-                }
-              />
-            ))}
+            onSelect={contact => setForm({ ...form, partner: contact.name, partner_id: contact.id })} />
           <Field
             label="单据备注"
             value={form.note}

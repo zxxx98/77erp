@@ -1,3 +1,4 @@
+import { chooseOption } from "./dropdown-helpers.js";
 import { test, expect } from '@playwright/test';
 
 test.beforeAll(async ({ request }) => {
@@ -23,8 +24,10 @@ test('configure units, reload, use a custom unit and preserve a removed unit on 
     await page.getByRole('button', { name: '新增商品', exact: true }).first().click();
     const select = page.getByRole('combobox', { name: /计量单位/ });
     await expect(select).toHaveValue('套');
-    await expect(select.getByRole('option', { name: '个', exact: true })).toHaveCount(0);
-    await select.selectOption('瓶');
+    await select.click();
+    await expect(page.getByRole('option', { name: '个', exact: true })).toHaveCount(0);
+    await select.press('Escape');
+    await chooseOption(select, '瓶');
     await page.getByPlaceholder('例如：极简陶瓷马克杯').fill('自定义单位商品');
     await page.getByPlaceholder('扫描或输入条码，可留空').fill('TEST-UNITS-001');
     await page.getByRole('spinbutton', { name: /采购价/ }).fill('1');

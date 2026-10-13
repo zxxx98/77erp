@@ -1,3 +1,4 @@
+import { chooseOption } from "./dropdown-helpers.js";
 import { test, expect } from '@playwright/test';
 
 test.beforeAll(async ({ request }) => {
@@ -18,7 +19,7 @@ test('settings save redacted cfr2 credentials, preserve them when blank, and upl
   const section = page.getByRole('region', { name: '图床配置' });
   await expect(section.getByLabel('图床地址', { exact: true })).toBeVisible();
   await section.getByLabel('图床地址', { exact: true }).fill('https://img.77erp.test');
-  await section.getByLabel('认证方式').selectOption('token');
+  await chooseOption(section.getByLabel('认证方式'), 'token');
   await section.getByLabel('上传凭据', { exact: true }).fill('browser-private-token');
   await section.getByLabel('上传目录', { exact: true }).fill('77erp/products');
   await section.getByRole('button', { name: '保存图床配置', exact: true }).click();
