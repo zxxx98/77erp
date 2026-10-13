@@ -560,6 +560,7 @@ function App({ admin, onLogout }) {
   const [modal, setModal] = useState(() => {
     const destination = new URLSearchParams(location.search).get('manage');
     if (destination === 'data') return { kind: 'businessTools', initialTab: 'import' };
+    if (destination === 'multi-stocktake') return { kind: 'businessTools', initialTab: 'multi-stocktake' };
     if (destination === 'backup' && isAdmin) return { kind: 'settings', section: 'data' };
     return null;
   }),
@@ -979,7 +980,7 @@ function App({ admin, onLogout }) {
       )}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与商品导入" wide className="business-modal" onClose={() => setModal(null)}>
-        <div className="form-body"><BusinessTools products={data.products} onSaved={saved} initialTab={modal.initialTab}
+        <div className="form-body"><BusinessTools products={data.products} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
           onUse={template => openOrder(template.type, undefined, template)} onRefresh={reload} /></div>
         <div className="modal-footer"><Button onClick={() => setModal(null)}>取消</Button></div>
       </Modal>}

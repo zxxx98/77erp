@@ -4,6 +4,7 @@ data/
 *.log
 playwright-report/
 test-results/
+output/ui-preview/
 android/.gradle/
 android/.kotlin/
 android/**/build/

@@ -6,6 +6,7 @@ import { ArrowRight, ChevronDown, Clock3, FilePenLine, LoaderCircle, Package, Tr
 import { api } from "./api.js";
 import { orderLabel, Stocktake, ProductImport } from "./Operations.jsx";
 import "./commerce.css";
+import { MultiStocktake } from './MultiStocktake.jsx';
 const money = (n) => `¥ ${(n / 100).toFixed(2)}`;
 export const paymentLabel = {
   unverified: "待核对",
@@ -52,13 +53,13 @@ export function useBusiness() {
   };
   return { busy, error, setError, run, send };
 }
-export function BusinessTools({ products = [], onSaved, onUse, onRefresh, initialTab }) {
+export function BusinessTools({ products = [], warehouses = [], warehouseId, onSaved, onUse, onRefresh, initialTab }) {
   const { can, manage } = usePermissions();
   const available = [
     ...(can('business') ? [['contacts', '供应商与客户']] : []),
     ['templates', '单据模板'],
     ...(can('finance') ? [['finance', '收付款与欠款'], ['profit', '成本与毛利']] : []),
-    ...(can('stocktake') ? [['stocktake', '库存盘点']] : []),
+    ...(can('stocktake') ? [['stocktake', '库存盘点'], ['multi-stocktake', '多仓库盘点']] : []),
     ...(manage('data_io') ? [['import', '批量导入']] : []),
   ];
   const [tab, setTab] = useState(initialTab || available[0][0]);
@@ -76,6 +77,7 @@ export function BusinessTools({ products = [], onSaved, onUse, onRefresh, initia
       {active === 'finance' && <Finance />}
       {active === 'profit' && <Profit />}
       {can('stocktake') && <div hidden={active !== 'stocktake'}><Stocktake products={products} onSaved={onSaved} /></div>}
+      {can('stocktake') && <div hidden={active !== 'multi-stocktake'}><MultiStocktake key={warehouseId} warehouses={warehouses} warehouseId={warehouseId} active={active === 'multi-stocktake'} /></div>}
       {manage('data_io') && <div hidden={active !== 'import'}><ProductImport onSaved={onSaved} /></div>}
     </section>
   );

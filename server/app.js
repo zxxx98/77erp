@@ -16,6 +16,7 @@ import { migrateImagebed, installImagebed } from './imagebed.js';
 import { migrateOperations, installOperations, operationRequest, saveOperationRequest } from "./operations.js";
 import { migrateCatalog, migrateWarehouseCategories, installCatalog } from "./catalog.js";
 import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
+import { installMultiStocktake } from './multi-stocktake.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const tokens = {
@@ -544,6 +545,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   });
   installStockQr(app, db);
   installOperations(app, db, { productValues, generateBarcode, catalogValues });
+  installMultiStocktake(app, db);
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));
   app.use((error, req, res, next) => {
     if (error.type === "entity.too.large") return res.status(413).json({ error: "提交内容过大，请减少行数或选择更小的文件。" });

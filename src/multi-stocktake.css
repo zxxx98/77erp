@@ -1,0 +1,66 @@
+.business-modal .operation-panel { grid-template-columns: minmax(0, 1fr); }
+.multi-stocktake { min-width: 0; color: var(--text, #17243c); }
+.multi-stocktake-heading h3 { font-size: 20px; font-weight: 500; margin: 4px 0; }
+.multi-stocktake-heading p { margin: 0; color: #647084; font-size: 13px; }
+.multi-stocktake-steps { display: flex; gap: 10px; align-items: center; margin: 24px 0; }
+.operation-panel .multi-stocktake-steps button { border: 0; margin: 0; background: transparent; display: flex; gap: 8px; align-items: center; padding: 4px 0; color: #647084; font: inherit; font-size: 13px; white-space: nowrap; }
+.multi-stocktake-steps button > span { display: grid; place-items: center; border-radius: 50%; width: 26px; height: 26px; border: 1px solid var(--border, #e9ecf1); background: white; font-size: 12px; }
+.operation-panel .multi-stocktake-steps button[aria-current="step"] { color: var(--accent, #2563eb); }
+.multi-stocktake-steps button[aria-current="step"] > span { background: var(--accent, #2563eb); color: white; border-color: var(--accent, #2563eb); }
+.multi-stocktake-steps button.done > span { color: var(--accent, #2563eb); background: #eff5ff; border-color: #eff5ff; }
+.multi-stocktake-steps button:disabled { cursor: default; opacity: .5; }
+.multi-stocktake-connector { flex: 1; min-width: 4px; height: 1px; background: var(--border, #e9ecf1); }
+.multi-stocktake-stage { padding: 22px; border: 1px solid var(--border, #e9ecf1); border-radius: 12px; background: white; min-width: 0; }
+.multi-stocktake-stage h4 { font-size: 15px; font-weight: 500; margin: 0; }
+.multi-stocktake-warehouses { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0 0; }
+.operation-panel .multi-stocktake-warehouse { display: flex; align-items: flex-start; align-self: stretch; width: auto; max-width: none; gap: 11px; padding: 16px 14px; margin: 0; border: 1px solid var(--border, #e9ecf1); border-radius: 9px; color: var(--text, #17243c); }
+.multi-stocktake-warehouse.selected { border-color: var(--accent, #2563eb); background: #eff5ff; }
+.operation-panel .multi-stocktake-warehouse > input { margin: 3px 0 0; }
+.operation-panel .multi-stocktake-warehouse > span { color: inherit; font-size: 13px; min-width: 0; }
+.multi-stocktake-warehouse strong { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-weight: 500; overflow-wrap: anywhere; }
+.multi-stocktake-warehouse small { display: block; margin-top: 7px; color: #647084; font-size: 12px; font-weight: 400; }
+.multi-stocktake-tag { display: inline-block; font-weight: 400; font-size: 11px; background: #eff5ff; color: var(--accent, #2563eb); padding: 2px 6px; border-radius: 4px; }
+.multi-stocktake-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 18px; margin-top: 22px; border-top: 1px solid var(--border, #e9ecf1); }
+.multi-stocktake-footer > span, .multi-stocktake-section-bar span { color: #647084; font-size: 12px; }
+.multi-stocktake .btn { margin: 0; gap: 7px; }
+.operation-panel .multi-stocktake-search-label { font-size: 13px; margin: 0 0 8px; }
+.multi-stocktake-search { display: flex; gap: 8px; align-items: center; padding: 9px 12px; border: 1px solid var(--border, #e9ecf1); border-radius: 7px; background: #f7f8fa; color: #647084; }
+.multi-stocktake-search > svg { flex-shrink: 0; }
+.operation-panel .multi-stocktake-search input { margin: 0; padding: 0; border: 0; border-radius: 0; font: inherit; font-size: 14px; width: 100%; min-width: 0; color: var(--text, #17243c); background: transparent; }
+.multi-stocktake-results { margin: 12px 0 26px; }
+.multi-stocktake-section-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 22px 0 16px; }
+.multi-stocktake-stage > .multi-stocktake-section-bar:first-child { margin-top: 0; }
+.multi-stocktake-product-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border, #e9ecf1); }
+.multi-stocktake-product-row > .btn { flex-shrink: 0; }
+.multi-stocktake-product-name { text-align: left; min-width: 0; overflow-wrap: anywhere; }
+.multi-stocktake-product-name strong { display: block; font-weight: 500; font-size: 13px; color: var(--text, #17243c); }
+.multi-stocktake-product-name small { display: block; margin-top: 4px; font-weight: 400; font-size: 12px; color: #647084; }
+.operation-panel .multi-stocktake-empty { padding: 24px 8px; color: #647084; text-align: center; font-size: 13px; margin: 0; }
+.multi-stocktake-status { display: flex; align-items: center; gap: 8px; color: #647084; }
+.multi-stocktake-table-scroll { width: 100%; overflow-x: auto; }
+.multi-stocktake-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.multi-stocktake-table thead th { background: #f7f8fa; font-weight: 400; color: #647084; text-align: right; padding: 13px 18px; vertical-align: middle; max-width: 220px; overflow-wrap: anywhere; }
+.multi-stocktake-table th:first-child { text-align: left; width: 180px; position: sticky; left: 0; z-index: 1; }
+.multi-stocktake-table tbody th { background: white; font-weight: 400; }
+.multi-stocktake-table td, .multi-stocktake-table tbody th { padding: 17px 18px; border-bottom: 1px solid var(--border, #e9ecf1); vertical-align: middle; }
+.multi-stocktake-table td { text-align: right; font-variant-numeric: tabular-nums; }
+.multi-stocktake-table .multi-stocktake-base { background: #eff5ff; }
+.multi-stocktake-table thead .multi-stocktake-base { color: var(--accent, #2563eb); }
+.multi-stocktake-table thead .multi-stocktake-tag { display: block; }
+.multi-stocktake-quantity { display: block; font-size: 18px; font-weight: 500; color: var(--text, #17243c); }
+.multi-stocktake-difference { display: block; margin-top: 4px; font-size: 12px; color: #647084; }
+.multi-stocktake-difference.positive { color: #11785e; }
+.multi-stocktake-difference.negative { color: #bc4350; }
+.operation-panel .multi-stocktake-note { color: #647084; font-size: 12px; margin: 15px 0 0; }
+.multi-stocktake-notice { color: #11785e; font-size: 12px; }
+@media (max-width: 480px) {
+  .multi-stocktake-stage { padding: 17px 12px; }
+  .multi-stocktake-warehouses { grid-template-columns: 1fr; }
+  .multi-stocktake-steps { gap: 5px; }
+  .operation-panel .multi-stocktake-steps button { gap: 4px; font-size: 12px; }
+  .multi-stocktake-steps button > span { width: 22px; height: 22px; }
+  .multi-stocktake-connector { min-width: 0; }
+  .multi-stocktake-table th:first-child { width: 150px; }
+  .multi-stocktake-table th, .multi-stocktake-table td { padding: 14px 12px; }
+  .operation-panel .multi-stocktake-search input { font-size: 16px; }
+}
