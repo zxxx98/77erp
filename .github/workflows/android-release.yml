@@ -154,3 +154,31 @@ jobs:
             gh release create "$RELEASE_TAG" artifacts/* --verify-tag \
               --title "77 ERP $VERSION · Android ARM64" --generate-notes
           fi
+      - name: Send WeChat Work release notification
+        if: success() && env.WECHAT_WEBHOOK_URL != ''
+        env:
+          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          APK_NAME="77ERP-${VERSION}-arm64.apk"
+          DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${APK_NAME}"
+          RELEASE_URL="https://github.com/${REPO}/releases/tag/${RELEASE_TAG}"
+
+          PAYLOAD=$(jq -n \
+            --arg repo "$REPO" \
+            --arg tag "$RELEASE_TAG" \
+            --arg version "$VERSION" \
+            --arg apk_name "$APK_NAME" \
+            --arg download_url "$DOWNLOAD_URL" \
+            --arg release_url "$RELEASE_URL" \
+            '{
+              msgtype: "markdown",
+              markdown: {
+                content: "### 📱 77ERP Android 客户端 Release 发布完成\n> **版本号**: <font color=\"info\">\($version)</font> (\($tag))\n> **安装包**: `\($apk_name)`\n> **直接下载**: [点击下载 APK](\($download_url))\n> **Release 页面**: [查看 GitHub Release](\($release_url))\n> **状态**: <font color=\"comment\">ARM64 签名验证通过，已上传资产</font>"
+              }
+            }')
+
+          curl -s -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WECHAT_WEBHOOK_URL"
+
