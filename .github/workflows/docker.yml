@@ -67,3 +67,29 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Send WeChat Work notification
+        if: github.event_name != 'pull_request' && success() && env.WECHAT_WEBHOOK_URL != ''
+        env:
+          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
+          COMMIT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          REF_NAME="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          IMAGE="${{ steps.image.outputs.name }}:latest"
+
+          PAYLOAD=$(jq -n \
+            --arg repo "$REPO" \
+            --arg ref "$REF_NAME" \
+            --arg sha "$COMMIT_SHA" \
+            --arg msg "$COMMIT_MSG" \
+            --arg image "$IMAGE" \
+            '{
+              msgtype: "markdown",
+              markdown: {
+                content: "### 🚀 77ERP Docker 镜像构建完成\n> **仓库**: \($repo)\n> **分支/标签**: <font color=\"info\">\($ref)</font> (\($sha))\n> **最新提交**: \($msg)\n> **镜像地址**: `\($image)`\n> **状态**: <font color=\"comment\">多架构(amd64/arm64)发布成功，可执行更新拉取</font>"
+              }
+            }')
+
+          curl -s -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WECHAT_WEBHOOK_URL"
+
