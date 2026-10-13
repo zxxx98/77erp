@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
+import { ArrowRight, ChevronDown, Clock3, FilePenLine, LoaderCircle, Package, Trash2, UserRound } from "lucide-react";
 import { api } from "./api.js";
 import { orderLabel } from "./Operations.jsx";
+import "./commerce.css";
 const money = (n) => `¥ ${(n / 100).toFixed(2)}`;
 export const paymentLabel = {
   unverified: "待核对",
@@ -47,15 +49,15 @@ export function useBusiness() {
   };
   return { busy, error, setError, run, send };
 }
-export function BusinessTools({ onResume, onRefresh }) {
+export function BusinessTools({ onUse, onRefresh }) {
   const [tab, setTab] = useState("contacts");
   return (
     <section className="operation-panel">
-      <h3>往来、草稿与财务</h3>
+      <h3>往来、模板与财务</h3>
       <div className="operation-tabs">
         {[
           ["contacts", "供应商与客户"],
-          ["drafts", "单据草稿"],
+          ["templates", "单据模板"],
           ["finance", "收付款与欠款"],
           ["profit", "成本与毛利"],
         ].map(([id, label]) => (
@@ -70,7 +72,7 @@ export function BusinessTools({ onResume, onRefresh }) {
         ))}
       </div>
       {tab === "contacts" && <Contacts onRefresh={onRefresh} />}
-      {tab === "drafts" && <Drafts onResume={onResume} />}
+      {tab === "templates" && <Templates onUse={onUse} />}
       {tab === "finance" && <Finance />}
       {tab === "profit" && <Profit />}
     </section>
@@ -193,56 +195,113 @@ function Contacts({ onRefresh }) {
     </div>
   );
 }
-export function Drafts({ onResume, type }) {
-  const [drafts, setDrafts] = useState([]);
+export function Templates({ onUse, type, collapsible = false, disabled = false, activeId, refreshKey = 0 }) {
+  const [templates, setTemplates] = useState([]);
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const listId = useId();
+  const trigger = useRef(null);
   const { busy, error, setError, run, send } = useBusiness();
-  const load = async () => setDrafts(await api("/drafts"));
+  const load = async () => {
+    setLoading(true);
+    try {
+      setTemplates(await api("/templates"));
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
     load().catch((e) => setError(e.message));
-  }, []);
+  }, [refreshKey]);
+  const visibleTemplates = templates.filter((d) => !type || d.type === type);
+  const header = <>
+    <span className="template-heading-icon"><FilePenLine size={20} aria-hidden="true" /></span>
+    <span className="template-heading-copy">
+      <strong>{collapsible ? "选择单据模板" : "单据模板"}</strong>
+      <span>{collapsible ? "套用常用商品组合，快速开单" : "保存常用开单内容，可反复套用"}</span>
+    </span>
+    {!loading && !error && <span className="template-count">{visibleTemplates.length} 份</span>}
+  </>;
   return (
-    <div>
-      <p>草稿保存在服务器，不影响库存；保存后可在网页或安卓继续。</p>
-      {drafts
-        .filter((d) => !type || d.type === type)
-        .map((d) => (
-          <div className="operation-row" key={d.id}>
-            <p>
-              {d.type === "in" ? "采购" : "销售"} ·{" "}
-              {d.partner || "未填往来单位"} · {d.items.length} 种商品 ·{" "}
-              {new Date(d.updated_at).toLocaleString()} · {d.created_by_name || "操作人未知"}
-            </p>
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() => onResume(d)}
-            >
-              继续草稿 #{d.id}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  if (!window.confirm("确认删除此草稿？")) return;
-                  await send(`/drafts/${d.id}/discard`, { version: d.version });
-                  await load();
-                })
-              }
-            >
-              删除草稿 #{d.id}
-            </button>
+    <section className={`template-panel${collapsible ? " template-picker" : ""}`}>
+      {collapsible ? <button
+        ref={trigger}
+        type="button"
+        className="template-trigger"
+        aria-label="选择单据模板"
+        aria-expanded={expanded}
+        aria-controls={listId}
+        disabled={disabled || busy}
+        onClick={() => setExpanded(!expanded)}
+      >{header}<ChevronDown className="template-chevron" size={18} aria-hidden="true" /></button>
+        : <div className="template-heading">{header}</div>}
+      <div id={listId} className="template-content" hidden={collapsible && !expanded}>
+        {collapsible && <p className="template-hint">套用后可修改本次单据，提交后模板仍会保留。</p>}
+        {loading && <div className="template-empty" role="status"><LoaderCircle size={22} className="spin" aria-hidden="true" /><span>正在加载模板…</span></div>}
+        {!loading && !error && !visibleTemplates.length && <div className="template-empty">
+          <FilePenLine size={28} aria-hidden="true" />
+          <strong>暂无模板</strong>
+          <span>{type ? `当前仓库还没有${type === "in" ? "采购" : "销售"}模板` : "在开单页面保存常用商品组合，即可在这里套用"}</span>
+        </div>}
+        <div className="template-list" aria-busy={loading}>
+          {visibleTemplates.map((d) => (
+            <article className={`template-card${d.id === activeId ? " is-active" : ""}`} key={d.id}>
+              <div className="template-card-top">
+                <span className={`template-type template-type-${d.type}`}>{d.type === "in" ? "采购入库" : "销售出库"}</span>
+                <span className="template-number">#{d.id}</span>
+                {d.id === activeId && <span className="template-active">本次已套用</span>}
+              </div>
+              <h4>{d.name}</h4>
+              <p className="template-partner">{d.partner || "未指定往来单位"}</p>
+              <div className="template-meta">
+                <span><Package size={14} aria-hidden="true" />{d.items.length} 种商品</span>
+                <span><UserRound size={14} aria-hidden="true" />{d.created_by_name || "操作人未知"}</span>
+                <span><Clock3 size={14} aria-hidden="true" /><time dateTime={d.updated_at}>{new Date(d.updated_at).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}</time></span>
+              </div>
+              {d.note && <p className="template-note" title={d.note}>{d.note}</p>}
+              <div className="template-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary template-resume"
+                  aria-label={`使用模板 #${d.id}`}
+                  disabled={busy || disabled || loading}
+                  onClick={() => {
+                    if (onUse(d) !== false && collapsible) {
+                      setExpanded(false);
+                      trigger.current?.focus();
+                    }
+                  }}
+                >
+                  使用模板 <ArrowRight size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="template-delete"
+                  aria-label={`删除模板 #${d.id}`}
+                  title="删除模板"
+                  disabled={busy || disabled || loading}
+                  onClick={() =>
+                    run(async () => {
+                      if (!window.confirm("确认删除此模板？")) return;
+                      await send(`/templates/${d.id}/delete`, { version: d.version });
+                      await load();
+                    })
+                  }
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+        {error && (
+          <div className="template-error">
+            <p role="alert" className="form-error">{error}</p>
+            <button type="button" className="btn btn-secondary" disabled={busy || disabled} onClick={() => run(load)}>重新加载</button>
           </div>
-        ))}
-      {!drafts.length && <p>暂无草稿</p>}
-      {error && (
-        <p role="alert" className="form-error">
-          {error}
-        </p>
-      )}
-    </div>
+        )}
+      </div>
+    </section>
   );
 }
 export function Payments({ order, onChanged }) {

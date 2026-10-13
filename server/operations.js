@@ -342,7 +342,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "drafts", "payments", ...stockQrTables];
+  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "templates", "payments", ...stockQrTables];
   const columns = Object.fromEntries(
     tables.map((table) => [
       table,
@@ -361,7 +361,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 8,
+    version: 9,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -369,14 +369,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 9) data.templates = [];
     if (value.version < 7) for (const table of stockQrTables) data[table] = [];
     if (value.version === 1) {
-      data.contacts = []; data.drafts = []; data.payments = [];
+      data.contacts = []; data.templates = []; data.payments = [];
       for (const p of data.products || []) p.inventory_value_cents = Math.round(p.stock*p.cost*100);
       for (const o of data.orders || []) { o.partner_id = null; o.settlement_tracked = 0; }
       for (const i of data.order_items || []) i.cost_cents = null;
@@ -397,14 +398,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     if (value.version < 4) {
       data.warehouses = db.prepare('SELECT * FROM warehouses ORDER BY id').all();
       for (const p of data.products || []) { p.warehouse_id ??= 1; p.sync_key ??= `legacy-${p.id}`; }
-      for (const table of ['orders', 'drafts']) for (const row of data[table] || []) row.warehouse_id ??= 1;
+      for (const table of ['orders', 'templates']) for (const row of data[table] || []) row.warehouse_id ??= 1;
     }
     if (value.version < 5) {
-      for (const table of ['orders','drafts']) for (const row of data[table] || []) {
+      for (const table of ['orders','templates']) for (const row of data[table] || []) {
         row.created_by = null; row.created_by_name = '';
       }
     }
-    for (const table of ['orders','drafts']) for (const row of data[table] || []) {
+    for (const table of ['orders','templates']) for (const row of data[table] || []) {
       if (!(row.created_by === null || (Number.isSafeInteger(row.created_by) && row.created_by > 0)) ||
           typeof row.created_by_name !== 'string' || row.created_by_name.length > 32)
         fail('备份操作人信息无效。');
@@ -431,7 +432,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     }
     const warehouseIds = new Set(data.warehouses.map(w => w.id));
     if (!warehouseIds.has(1) || new Set(data.warehouses.map(w => w.name)).size !== data.warehouses.length || data.warehouses.some(w => !text(w.name,60) || w.name !== w.name.trim() || !text(w.created_at,100))) fail('备份仓库信息无效。');
-    for (const table of ['products', 'orders', 'drafts']) if (data[table].some(row => !warehouseIds.has(row.warehouse_id))) fail('备份仓库关联无效。');
+    for (const table of ['products', 'orders', 'templates']) if (data[table].some(row => !warehouseIds.has(row.warehouse_id))) fail('备份仓库关联无效。');
     const syncKeys = new Set();
     for (const p of data.products) {
       const key = JSON.stringify([p.warehouse_id,p.sync_key]);
@@ -561,10 +562,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!o || !o.settlement_tracked || !Number.isSafeInteger(p.amount_cents) || p.amount_cents <= 0 || !text(p.method,50) || typeof p.note !== 'string' || p.note.length > 500 || !text(p.created_at,100) || !(p.reversed_at === null || text(p.reversed_at,100)) || typeof p.reverse_reason !== 'string' || p.reverse_reason.length > 500) fail('备份收付款无效。');
       if (p.reversed_at === null) { paid.set(o.id,(paid.get(o.id)||0)+p.amount_cents); if (o.status === 'void' || paid.get(o.id) > Math.round(o.total*100)) fail('备份收付款超过单据金额。'); }
     }
-    for (const d of data.drafts) {
-      if (!['in','out'].includes(d.type) || !['active','submitted'].includes(d.status) || !Number.isSafeInteger(d.version) || d.version < 1 || typeof d.partner !== 'string' || d.partner.length > 100 || typeof d.note !== 'string' || d.note.length > 500 || (d.partner_id !== null && !contacts.has(d.partner_id)) || (d.status === 'submitted' ? (!orders.has(d.order_id) || orders.get(d.order_id)?.warehouse_id !== d.warehouse_id) : d.order_id !== null) || !text(d.updated_at,100)) fail('备份草稿无效。');
+    for (const d of data.templates) {
+      if (!['in','out'].includes(d.type) || !text(d.name,100) || !Number.isSafeInteger(d.version) || d.version < 1 || typeof d.partner !== 'string' || d.partner.length > 100 || typeof d.note !== 'string' || d.note.length > 500 || (d.partner_id !== null && !contacts.has(d.partner_id)) || !text(d.updated_at,100)) fail('备份模板无效。');
       const items = JSON.parse(d.items);
-      if (!Array.isArray(items) || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !['string','number'].includes(typeof i.quantity) || !['string','number'].includes(typeof i.price) || String(i.quantity).length > 30 || String(i.price).length > 30)) fail('备份草稿明细无效。');
+      if (!Array.isArray(items) || !items.length || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !Number.isSafeInteger(i.quantity) || i.quantity < 1 || i.quantity > 99999999 || typeof i.price !== 'number' || !Number.isFinite(i.price) || i.price < 0 || !Number.isSafeInteger(Math.round(i.price * 100)) || Math.abs(i.price * 100 - Math.round(i.price * 100)) > 0.00001)) fail('备份模板明细无效。');
     }
     validateStockQrBackup(data);
     return data;
@@ -584,7 +585,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         products: data.products.length,
         orders: data.orders.length,
         adjustments: data.stock_adjustments.length,
-        contacts: data.contacts.length, drafts: data.drafts.filter(d => d.status === "active").length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
+        contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
       };
     }),
   );
@@ -603,7 +604,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         // Deferred references allow return records to refer to original orders regardless of array order.
         clearStockQr(db);
         db.exec(
-          "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
+          "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
         );
         for (const table of tables) {
           const fields = columns[table];
@@ -611,8 +612,8 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             `INSERT INTO ${table} (${fields.join(",")}) VALUES (${fields.map(() => "?").join(",")})`,
           );
           for (const row of data[table]) {
-            // Cross-server user IDs must never become local owners of restored drafts.
-            if (['orders','drafts'].includes(table) && row.created_by !== null &&
+            // Cross-server user IDs must never become local owners of restored templates.
+            if (['orders','templates'].includes(table) && row.created_by !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
                  !db.prepare('SELECT 1 FROM users WHERE id=?').get(row.created_by))) row.created_by = null;
             if (table === 'stock_qr_codes') { row.qr_id = randomUUID(); row.enabled = 0; }

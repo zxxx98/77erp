@@ -18,7 +18,7 @@ export function WarehouseManager({ warehouses, onRefresh }) {
   };
   return <section className="operation-panel">
     <h3>仓库管理</h3>
-    <p>新增仓库后可在页面顶部切换。库存、单据和草稿按仓库独立管理。</p>
+    <p>新增仓库后可在页面顶部切换。库存、单据和模板按仓库独立管理。</p>
     <label>新仓库名称<input maxLength={60} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
     <button type="button" className="btn btn-secondary" disabled={busy || !name.trim()} onClick={() => save(null, name)}>新增仓库</button>
     {warehouses.map(w => <div className="warehouse-row" key={w.id}>

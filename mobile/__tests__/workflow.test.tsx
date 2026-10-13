@@ -268,29 +268,52 @@ test("native stocktake includes expected stock and permits counting zero", async
   alert.mockRestore();
 });
 
-test("native order can save an incomplete draft without affecting stock", async () => {
-  request.mockResolvedValue({ id: 7, version: 1 });
+test("native order saves a named reusable template and keeps the current order open", async () => {
+  const template = { id: 7, name: "每周补货", version: 1, type: "in" as const, partner: "", partner_id: null, note: "", updated_at: "2026-10-04T10:00:00Z", items: [{ product_id: 1, quantity: 1, price: 10 }] };
+  request.mockResolvedValue(template);
   const saved = jest.fn();
   render(<OrderEditor type="in" products={[product]} initialProduct={product} onClose={jest.fn()} onSaved={saved} />);
-  fireEvent.changeText(screen.getByLabelText("陶瓷杯 数量"), "");
-  fireEvent.press(screen.getByRole("button", { name: "保存草稿并关闭" }));
-  await waitFor(() => expect(saved).toHaveBeenCalledWith("草稿已保存，库存未变化"));
-  expect(request).toHaveBeenCalledWith("/drafts", "POST", expect.objectContaining({ type: "in", partner: "", items: [{ product_id: 1, quantity: "", price: "10" }], request_id: expect.any(String) }));
-  expect(request).toHaveBeenCalledTimes(1);
+  fireEvent.changeText(screen.getByLabelText("模板名称"), "每周补货");
+  fireEvent.press(screen.getByRole("button", { name: "保存为模板" }));
+  await waitFor(() => expect(screen.getByText('模板「每周补货」已保存，可反复套用')).toBeOnTheScreen());
+  expect(saved).not.toHaveBeenCalled();
+  expect(request).toHaveBeenCalledWith("/templates", "POST", expect.objectContaining({ name: "每周补货", type: "in", partner: "", items: [{ product_id: 1, quantity: "1", price: "10" }], request_id: expect.any(String) }));
+  fireEvent.changeText(screen.getByLabelText("陶瓷杯 数量"), "4");
+  fireEvent.press(screen.getByRole("button", { name: "更新模板" }));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+  expect(request.mock.calls[1]?.[2]).toEqual(expect.objectContaining({ id: 7, version: 1, items: [{ product_id: 1, quantity: "4", price: "10" }] }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "另存为模板" })).toBeEnabled());
+  fireEvent.press(screen.getByRole("button", { name: "另存为模板" }));
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+  expect(request.mock.calls[2]?.[2]).not.toHaveProperty('id');
 });
 
-test("native order resumes a shared draft and submits its revision with the selected contact", async () => {
+test("native order copies a template and submits an independent order with the selected contact", async () => {
   const alert = jest.spyOn(Alert, "alert");
   request.mockResolvedValue({ number: "RK99" });
   const saved = jest.fn();
-  render(<OrderEditor type="in" products={[product]} initialDraft={{ id: 7, version: 2, type: "in", partner: "供应商", partner_id: 9, note: "继续", updated_at: "2026-10-04T10:00:00Z", items: [{ product_id: 1, quantity: "3", price: "10" }] }} onClose={jest.fn()} onSaved={saved} />);
+  render(<OrderEditor type="in" products={[product]} initialTemplate={{ name: "供应商补货", id: 7, version: 2, type: "in", partner: "供应商", partner_id: 9, note: "继续", updated_at: "2026-10-04T10:00:00Z", items: [{ product_id: 1, quantity: 3, price: 10 }] }} onClose={jest.fn()} onSaved={saved} />);
   expect(screen.getByLabelText("陶瓷杯 数量")).toHaveProp("value", "3");
+  fireEvent.changeText(screen.getByLabelText("陶瓷杯 数量"), "5");
   fireEvent.press(screen.getByRole("button", { name: "确认入库" }));
   const confirm = alert.mock.calls.at(-1)?.[2]?.find(button => button.text === "确认提交")?.onPress;
   await act(async () => { confirm?.(); });
-  expect(request).toHaveBeenCalledWith("/orders", "POST", expect.objectContaining({ draft_id: 7, draft_version: 2, partner_id: 9, items: [{ product_id: 1, quantity: 3, price: 10 }] }));
+  expect(request).toHaveBeenCalledWith("/orders", "POST", expect.objectContaining({ partner_id: 9, items: [{ product_id: 1, quantity: 5, price: 10 }] }));
+  expect(request.mock.calls[0]?.[2]).not.toHaveProperty('template_id');
   expect(saved).toHaveBeenCalledWith("单据 RK99 已保存");
   alert.mockRestore();
+});
+
+test("native order can select a matching template directly while opening a new order", async () => {
+  request.mockResolvedValue([{ name: "采购组合", id: 7, version: 1, type: "in", partner: "常用供应商", partner_id: null, note: "", updated_at: "2026-10-04T10:00:00Z", items: [{ product_id: 1, quantity: 3, price: 10 }] }, { name: "销售组合", id: 8, version: 1, type: "out", partner: "客户", partner_id: null, note: "", updated_at: "2026-10-04T10:00:00Z", items: [{ product_id: 1, quantity: 1, price: 30 }] }]);
+  render(<OrderEditor type="in" products={[product]} onClose={jest.fn()} onSaved={jest.fn()} />);
+  fireEvent.press(screen.getByRole("button", { name: "选择单据模板" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "使用模板 #7" })).toBeOnTheScreen());
+  expect(screen.queryByText("销售组合")).toBeNull();
+  fireEvent.press(screen.getByRole("button", { name: "使用模板 #7" }));
+  expect(screen.getByLabelText("陶瓷杯 数量")).toHaveProp("value", "3");
+  expect(screen.getByLabelText("供应商")).toHaveProp("value", "常用供应商");
+  expect(screen.queryByRole("button", { name: "使用模板 #7" })).toBeNull();
 });
 
 test("native payment registration requires confirmation and refreshes the remaining balance", async () => {

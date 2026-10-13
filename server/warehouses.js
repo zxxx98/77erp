@@ -15,8 +15,7 @@ export function migrateWarehouses(db) {
       ALTER TABLE products ADD COLUMN sync_key TEXT NOT NULL DEFAULT '';
       CREATE UNIQUE INDEX products_warehouse_barcode ON products(warehouse_id,barcode);
       CREATE UNIQUE INDEX products_warehouse_sync ON products(warehouse_id,sync_key) WHERE sync_key!='';
-      ALTER TABLE orders ADD COLUMN warehouse_id INTEGER NOT NULL DEFAULT 1 REFERENCES warehouses(id);
-      ALTER TABLE drafts ADD COLUMN warehouse_id INTEGER NOT NULL DEFAULT 1 REFERENCES warehouses(id);`);
+      ALTER TABLE orders ADD COLUMN warehouse_id INTEGER NOT NULL DEFAULT 1 REFERENCES warehouses(id);`);
     const update = db.prepare('UPDATE products SET sync_key=? WHERE id=?');
     for (const p of db.prepare('SELECT id FROM products').all()) update.run(randomUUID(), p.id);
     db.exec('COMMIT');
@@ -40,21 +39,20 @@ export function installWarehouses(app, db) {
     if (!req.warehouse) return res.status(400).json({ error: '仓库不存在，请重新选择仓库。' });
     // Guard every route accepting existing business IDs, including financial corrections.
     const checks = [];
-    const match = /^\/(products|orders|drafts|payments)\/([^/]+)(?:\/|$)/.exec(path);
+    const match = /^\/(products|orders|templates|payments)\/([^/]+)(?:\/|$)/.exec(path);
     if (match && !(match[1] === 'products' && ['barcode','import'].includes(match[2]))) checks.push([match[1], Number(match[2])]);
-    if (path === '/orders' && req.body?.draft_id != null) checks.push(['drafts', req.body.draft_id]);
-    if (path === '/drafts' && req.body?.id != null) checks.push(['drafts', req.body.id]);
-    if (['/orders', '/stocktakes', '/drafts'].includes(path)) {
+    if (path === '/templates' && req.body?.id != null) checks.push(['templates', req.body.id]);
+    if (['/orders', '/stocktakes', '/templates'].includes(path)) {
       for (const item of Array.isArray(req.body?.items) ? req.body.items : []) checks.push(['products', item?.product_id]);
     }
     for (const [table, itemId] of checks) {
       if (!Number.isSafeInteger(itemId)) return res.status(400).json({ error: '商品或单据编号无效。' });
       const row = table === 'payments'
         ? db.prepare('SELECT o.warehouse_id FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=?').get(itemId)
-        : db.prepare(`SELECT warehouse_id${table === 'drafts' ? ',created_by' : ''} FROM ${table} WHERE id=?`).get(itemId);
-      if (table === 'drafts' && row && req.user.role !== 'admin' && row.created_by !== req.user.id)
-        return res.status(404).json({ error: '草稿不存在或无权访问。' });
-      if (row && row.warehouse_id !== id) return res.status(400).json({ error: '该商品、单据或草稿不属于当前仓库。' });
+        : db.prepare(`SELECT warehouse_id${table === 'templates' ? ',created_by' : ''} FROM ${table} WHERE id=?`).get(itemId);
+      if (table === 'templates' && row && req.user.role !== 'admin' && row.created_by !== req.user.id)
+        return res.status(404).json({ error: '模板不存在或无权访问。' });
+      if (row && row.warehouse_id !== id) return res.status(400).json({ error: '该商品、单据或模板不属于当前仓库。' });
     }
     next();
   });

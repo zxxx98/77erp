@@ -12,11 +12,11 @@ jest.mock('../src/native', () => ({ api: jest.fn(), getWarehouseId: jest.fn(() =
 const request = jest.mocked(api);
 beforeEach(() => jest.clearAllMocks());
 
-test('employee menu exposes drafts and password change while hiding administration and stocktake', () => {
+test('employee menu exposes templates and password change while hiding administration and stocktake', () => {
   render(<MoreScreen isAdmin={false} username="staff" server="https://erp.example.com" data={workspace} busy={false}
     settings={jest.fn()} stocktake={jest.fn()} commerce={jest.fn()} changeServer={jest.fn()} logout={jest.fn()} changePassword={jest.fn()} />);
   expect(screen.getByText('员工账号')).toBeOnTheScreen();
-  expect(screen.getByRole('button', { name: '单据草稿' })).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: '单据模板' })).toBeOnTheScreen();
   expect(screen.getByRole('button', { name: '修改密码' })).toBeOnTheScreen();
   expect(screen.queryByRole('button', { name: '库存盘点' })).toBeNull();
   expect(screen.queryByRole('button', { name: '商户与仓库设置' })).toBeNull();
@@ -31,10 +31,10 @@ test('employee order details display the creator and never load financial or cor
   expect(request).not.toHaveBeenCalled();
 });
 
-test('employee business screen loads drafts without finance or contact management', async () => {
+test('employee business screen loads templates without finance or contact management', async () => {
   request.mockResolvedValue([]);
-  render(<CommerceScreen isAdmin={false} onClose={jest.fn()} onResume={jest.fn()} onRefresh={jest.fn()} />);
-  await waitFor(() => expect(request).toHaveBeenCalledWith('/drafts'));
+  render(<CommerceScreen isAdmin={false} onClose={jest.fn()} onUse={jest.fn()} onRefresh={jest.fn()} />);
+  await waitFor(() => expect(request).toHaveBeenCalledWith('/templates'));
   expect(screen.queryByRole('button', { name: '收付款' })).toBeNull();
   expect(screen.queryByRole('button', { name: '毛利' })).toBeNull();
 });

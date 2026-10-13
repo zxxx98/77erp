@@ -34,7 +34,7 @@ async function fixture(t, path = ':memory:') {
   return { db, request, admin, user, command };
 }
 const product = { name: '协作商品', barcode: 'TEAM-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 0 };
-const draftBody = { type: 'in', partner: '供应商', note: '', items: [{ product_id: 1, quantity: 2, price: 10 }] };
+const templateBody = { name: '常用补货', type: 'in', partner: '供应商', note: '', items: [{ product_id: 1, quantity: 2, price: 10 }] };
 
 test('employees share warehouses and prices, can edit products and open orders, but cannot call management APIs', async t => {
   const f = await fixture(t), employee = await f.user('staff');
@@ -44,7 +44,7 @@ test('employees share warehouses and prices, can edit products and open orders, 
   const created = await f.request(employee.cookie, '/products', { ...product, sync_warehouse_ids: [warehouse] });
   assert.equal(created.status, 201);
   assert.equal((await f.request(employee.cookie, `/products/${created.data.id}`, { ...product, version: created.data.version, name: '已编辑' }, 'PUT')).status, 200);
-  const order = await f.command(employee.cookie, '/orders', { ...draftBody, items: [{ product_id: created.data.id, quantity: 2, price: 10 }] });
+  const order = await f.command(employee.cookie, '/orders', { ...templateBody, items: [{ product_id: created.data.id, quantity: 2, price: 10 }] });
   assert.equal(order.status, 201);
   const data = (await f.request(employee.cookie, '/data')).data;
   assert.equal(data.products[0].cost, 10);
@@ -64,31 +64,32 @@ test('employees share warehouses and prices, can edit products and open orders, 
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(created.data.id).stock, 2);
 });
 
-test('draft ownership is enforced for listing, editing, discarding, submitting, and replay; administrators can manage all drafts', async t => {
+test('template ownership is enforced for listing, editing and deleting; administrators can manage all templates', async t => {
   const f = await fixture(t), a = await f.user('alice'), b = await f.user('bobby');
-  const created = await f.command(a.cookie, '/drafts', { ...draftBody, created_by: b.id });
+  const created = await f.command(a.cookie, '/templates', { ...templateBody, created_by: b.id });
   const own = created.data;
   assert.equal(own.created_by, a.id);
-  await f.command(b.cookie, '/drafts', draftBody);
-  await f.command(f.admin, '/drafts', draftBody);
-  assert.equal((await f.request(a.cookie, '/drafts')).data.length, 1);
-  assert.equal((await f.request(f.admin, '/drafts')).data.length, 3);
-  for (const path of ['/drafts', `/drafts/${own.id}/discard`, '/orders']) {
-    const body = path === '/drafts' ? { ...draftBody, id: own.id, version: own.version } :
-      path === '/orders' ? { ...draftBody, draft_id: own.id, draft_version: own.version } : { version: own.version };
+  await f.command(b.cookie, '/templates', templateBody);
+  await f.command(f.admin, '/templates', templateBody);
+  assert.equal((await f.request(a.cookie, '/templates')).data.length, 1);
+  assert.equal((await f.request(f.admin, '/templates')).data.length, 3);
+  for (const path of ['/templates', `/templates/${own.id}/delete`]) {
+    const body = path === '/templates' ? { ...templateBody, id: own.id, version: own.version } :
+      { version: own.version };
     assert.equal((await f.command(b.cookie, path, body)).status, 404);
   }
-  assert.equal(f.db.prepare('SELECT version FROM drafts WHERE id=?').get(own.id).version, 1);
-  const edited = await f.command(a.cookie, '/drafts', { ...draftBody, id: own.id, version: own.version, note: '继续' });
+  assert.equal(f.db.prepare('SELECT version FROM templates WHERE id=?').get(own.id).version, 1);
+  const edited = await f.command(a.cookie, '/templates', { ...templateBody, id: own.id, version: own.version, note: '继续' });
   assert.equal(edited.status, 200);
-  assert.equal((await f.command(a.cookie, '/drafts', { ...draftBody, id: own.id, version: own.version })).status, 400);
-  const body = { ...draftBody, draft_id: own.id, draft_version: edited.data.version, request_id: randomUUID() };
+  assert.equal((await f.command(a.cookie, '/templates', { ...templateBody, id: own.id, version: own.version })).status, 400);
+  const body = { ...templateBody, request_id: randomUUID() };
   const order = await f.request(a.cookie, '/orders', body);
   assert.equal(order.status, 201);
   assert.equal((await f.request(a.cookie, '/orders', body)).data.id, order.data.id);
-  assert.equal((await f.request(b.cookie, '/orders', body)).status, 404);
-  assert.equal((await f.command(f.admin, '/drafts', { ...draftBody, id: 2, version: 1 })).status, 200);
-  assert.equal((await f.command(f.admin, '/drafts/2/discard', { version: 2 })).status, 200);
+  assert.equal((await f.request(b.cookie, '/orders', body)).status, 201);
+  assert.equal((await f.request(a.cookie, '/templates')).data.length, 1);
+  assert.equal((await f.command(f.admin, '/templates', { ...templateBody, id: 2, version: 1 })).status, 200);
+  assert.equal((await f.command(f.admin, '/templates/2/delete', { version: 2 })).status, 200);
 });
 
 test('account management hides secrets, revokes sessions, protects the last active admin, and preserves accounts on reset', async t => {
@@ -145,7 +146,7 @@ test('changing own password checks the current password and revokes every device
 test('regular orders deduplicate retries by user, reject changed payloads, and keep inventory transactional', async t => {
   const f = await fixture(t), a = await f.user('alice'), b = await f.user('bobby');
   const stock = f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock;
-  const body = { ...draftBody, request_id: randomUUID() };
+  const body = { ...templateBody, request_id: randomUUID() };
   const results = await Promise.all([f.request(a.cookie, '/orders', body), f.request(a.cookie, '/orders', body)]);
   assert.equal(results[0].data.id, results[1].data.id);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, stock + 2);
@@ -156,7 +157,7 @@ test('regular orders deduplicate retries by user, reject changed payloads, and k
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, stock + 4);
   // Both users attempting to sell the final unit cannot oversell.
   const id = (await f.request(a.cookie, '/products', product)).data.id;
-  await f.command(a.cookie, '/orders', { ...draftBody, items: [{ product_id: id, quantity: 1, price: 10 }] });
+  await f.command(a.cookie, '/orders', { ...templateBody, items: [{ product_id: id, quantity: 1, price: 10 }] });
   const sale = { type: 'out', partner: '客户', items: [{ product_id: id, quantity: 1, price: 20 }] };
   const sales = await Promise.all([f.command(a.cookie, '/orders', sale), f.command(b.cookie, '/orders', sale)]);
   assert.deepEqual(sales.map(r => r.status).sort(), [201, 400]);
@@ -190,12 +191,12 @@ test('legacy administrator migrates with the same password and data, invalidates
   restart.db.close();
 });
 
-test('business backups preserve actor names and same-server draft owners, but never assign foreign or legacy owners to local users', async t => {
+test('business backups preserve actor names and same-server template owners, but never assign foreign or legacy owners to local users', async t => {
   const source = await fixture(t), employee = await source.user('alice');
-  await source.command(employee.cookie, '/drafts', draftBody);
-  await source.command(employee.cookie, '/orders', draftBody);
+  await source.command(employee.cookie, '/templates', templateBody);
+  await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 8);
+  assert.equal(backup.version, 9);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -205,21 +206,20 @@ test('business backups preserve actor names and same-server draft owners, but ne
     assert.equal(result.status, 200, JSON.stringify(result.data));
   };
   await restore(source, backup);
-  assert.equal((await source.request(employee.cookie, '/drafts')).data[0].created_by, employee.id);
+  assert.equal((await source.request(employee.cookie, '/templates')).data[0].created_by, employee.id);
   const destination = await fixture(t), other = await destination.user('bobby');
   assert.equal(other.id, employee.id);
   await restore(destination, backup);
-  assert.equal((await destination.request(other.cookie, '/drafts')).data.length, 0);
-  const restored = (await destination.request(destination.admin, '/drafts')).data[0];
+  assert.equal((await destination.request(other.cookie, '/templates')).data.length, 0);
+  const restored = (await destination.request(destination.admin, '/templates')).data[0];
   assert.equal(restored.created_by, null);
   assert.equal(restored.created_by_name, 'alice');
   assert.equal((await destination.request(destination.admin, '/data')).data.orders[0].created_by_name, 'alice');
   const legacy = structuredClone(backup);
   legacy.version = 4; delete legacy.source_instance_id;
-  for (const table of ['orders','drafts']) for (const row of legacy.data[table]) { delete row.created_by; delete row.created_by_name; }
+  for (const table of ['orders','templates']) for (const row of legacy.data[table]) { delete row.created_by; delete row.created_by_name; }
   await restore(destination, legacy);
-  assert.equal((await destination.request(destination.admin, '/drafts')).data[0].created_by, null);
-  assert.equal((await destination.request(destination.admin, '/drafts')).data[0].created_by_name, '');
+  assert.deepEqual((await destination.request(destination.admin, '/templates')).data, []);
 });
 
 // Every /api route must declare who may call it, so a new endpoint cannot quietly gain or lose
@@ -236,7 +236,7 @@ const routeRoles = new Map(Object.entries({
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',
   'get /api/contacts': 'employee', 'post /api/contacts': 'admin',
-  'get /api/drafts': 'employee', 'post /api/drafts': 'employee', 'post /api/drafts/:id/discard': 'employee',
+  'get /api/templates': 'employee', 'post /api/templates': 'employee', 'post /api/templates/:id/delete': 'employee',
   'get /api/orders/:id/payments': 'admin', 'post /api/orders/:id/payments': 'admin', 'post /api/orders/:id/settlement': 'admin',
   'post /api/payments/:id/reverse': 'admin', 'get /api/finance': 'admin', 'get /api/reports/profit': 'admin',
   'post /api/orders/:id/void': 'admin', 'post /api/orders/:id/returns': 'admin',
@@ -258,7 +258,7 @@ test('every API route declares its role, and employee access matches that declar
   assert.deepEqual(routes.filter(key => !routeRoles.has(key)), [], '路由未在测试中声明角色');
   assert.deepEqual([...routeRoles.keys()].filter(key => !routes.includes(key)), [], '测试声明了不存在的路由');
   const f = await fixture(t), employee = await f.user('staff');
-  const counts = () => f.db.prepare('SELECT (SELECT COUNT(*) FROM products) AS p,(SELECT COUNT(*) FROM orders) AS o,(SELECT COUNT(*) FROM drafts) AS d').get();
+  const counts = () => f.db.prepare('SELECT (SELECT COUNT(*) FROM products) AS p,(SELECT COUNT(*) FROM orders) AS o,(SELECT COUNT(*) FROM templates) AS d').get();
   const before = counts();
   for (const [key, role] of routeRoles) {
     // Logout ends the session under test, so it is asserted separately below.
@@ -274,7 +274,7 @@ test('every API route declares its role, and employee access matches that declar
 
 test('order settlement state is administrator-only in the workspace payload', async t => {
   const f = await fixture(t), employee = await f.user('staff');
-  const created = await f.command(f.admin, '/orders', draftBody);
+  const created = await f.command(f.admin, '/orders', templateBody);
   const mine = (data) => data.orders.find(o => o.id === created.data.id);
   const admin = mine((await f.request(f.admin, '/data')).data);
   const staff = mine((await f.request(employee.cookie, '/data')).data);

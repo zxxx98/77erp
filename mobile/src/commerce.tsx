@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Text } from "react-native";
 import { api } from "./native";
-import { Contact, Draft, Order, orderLabel } from "./model";
+import { Contact, Template, Order, orderLabel } from "./model";
 import {
   Button,
   Card,
@@ -55,16 +55,16 @@ function useBusiness() {
 export function CommerceScreen({
   isAdmin = true,
   onClose,
-  onResume,
+  onUse,
   onRefresh,
 }: {
   isAdmin?: boolean;
   onClose: () => void;
-  onResume: (draft: Draft) => void;
+  onUse: (template: Template) => void;
   onRefresh: () => void;
 }) {
   const [tab, setTab] = useState("contacts");
-  if (!isAdmin) return <ScreenModal title="单据草稿" onClose={onClose}><DraftList onResume={onResume} /></ScreenModal>;
+  if (!isAdmin) return <ScreenModal title="单据模板" onClose={onClose}><TemplateList onUse={onUse} /></ScreenModal>;
   return (
     <ScreenModal title="往来与财务" onClose={onClose}>
       <Chips
@@ -72,13 +72,13 @@ export function CommerceScreen({
         onChange={setTab}
         options={[
           { id: "contacts", label: "往来单位" },
-          { id: "drafts", label: "草稿" },
+          { id: "templates", label: "模板" },
           { id: "finance", label: "收付款" },
           { id: "profit", label: "毛利" },
         ]}
       />
       {tab === "contacts" && <Contacts onRefresh={onRefresh} />}
-      {tab === "drafts" && <DraftList onResume={onResume} />}
+      {tab === "templates" && <TemplateList onUse={onUse} />}
       {tab === "finance" && <Finance />}
       {tab === "profit" && <Profit />}
     </ScreenModal>
@@ -184,43 +184,47 @@ function Contacts({ onRefresh }: { onRefresh: () => void }) {
     </>
   );
 }
-export function DraftList({ onResume }: { onResume: (draft: Draft) => void }) {
-  const [rows, setRows] = useState<Draft[]>([]);
+export function TemplateList({ onUse, type, disabled = false, refreshKey = 0 }: { onUse: (template: Template) => void; type?: "in" | "out"; disabled?: boolean; refreshKey?: number }) {
+  const [rows, setRows] = useState<Template[]>([]);
   const { busy, error, setError, run, send } = useBusiness();
-  const load = async () => setRows(await api<Draft[]>("/drafts"));
+  const [loading, setLoading] = useState(true);
+  const visibleRows = rows.filter(row => !type || row.type === type);
+  const load = async () => { setLoading(true); try { setRows(await api<Template[]>("/templates")); } finally { setLoading(false); } };
   useEffect(() => {
     void load().catch((e) => setError(e.message));
-  }, []);
+  }, [refreshKey]);
   return (
     <>
-      <Text style={s.caption}>保存的草稿可跨设备继续，不影响库存。</Text>
-      {!rows.length && <Text style={s.caption}>暂无草稿</Text>}
-      {rows.map((d) => (
+      <Text style={s.caption}>套用后生成新单据，提交后模板仍可重复使用。</Text>
+      {loading && <Text style={s.caption}>正在加载模板…</Text>}
+      {!loading && !error && !visibleRows.length && <Text style={s.caption}>暂无模板</Text>}
+      {visibleRows.map((d) => (
         <Card key={d.id}>
           <Text style={s.subtitle}>
-            {d.type === "in" ? "采购" : "销售"} · {d.partner || "未填往来单位"}
+            {d.name}
           </Text>
+          <Text style={s.caption}>{d.type === "in" ? "采购入库" : "销售出库"} · {d.partner || "未指定往来单位"}</Text>
           <Text style={s.caption}>
             {d.items.length} 种商品 · {d.updated_at} · {d.created_by_name || "操作人未知"}
           </Text>
           <Button
-            title={`继续草稿 #${d.id}`}
-            disabled={busy}
-            onPress={() => onResume(d)}
+            title={`使用模板 #${d.id}`}
+            disabled={busy || disabled || loading}
+            onPress={() => onUse(d)}
           />
           <Button
-            title={`删除草稿 #${d.id}`}
+            title={`删除模板 #${d.id}`}
             kind="danger"
-            disabled={busy}
+            disabled={busy || disabled || loading}
             onPress={() =>
-              Alert.alert("删除草稿？", "不会影响库存。", [
+              Alert.alert("删除模板？", "不会影响库存。", [
                 { text: "取消", style: "cancel" },
                 {
                   text: "确认删除",
                   style: "destructive",
                   onPress: () =>
                     void run(async () => {
-                      await send(`/drafts/${d.id}/discard`, {
+                      await send(`/templates/${d.id}/delete`, {
                         version: d.version,
                       });
                       await load();
@@ -231,7 +235,7 @@ export function DraftList({ onResume }: { onResume: (draft: Draft) => void }) {
           />
         </Card>
       ))}
-      {!!error && <Text accessibilityRole="alert">{error}</Text>}
+      {!!error && <><Text accessibilityRole="alert">{error}</Text><Button title="重新加载模板" kind="secondary" disabled={busy || disabled} onPress={() => void run(load)} /></>}
     </>
   );
 }

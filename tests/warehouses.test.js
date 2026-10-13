@@ -97,11 +97,11 @@ test('sync collisions and invalid targets roll back the source and every target;
   assert.deepEqual((await f.request('/backup')).data.data, before);
 });
 
-test('cross-warehouse IDs cannot mutate products, orders, drafts, stocktakes or payments, including alternate numeric paths and replay IDs', async t => {
+test('cross-warehouse IDs cannot mutate products, orders, templates, stocktakes or payments, including alternate numeric paths and replay IDs', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓');
   const id = (await f.request('/products', 'POST', product)).data.id;
   const incoming = (await f.order(id, 'in', 5)).data;
-  const draft = (await f.command('/drafts', { type: 'out', partner: '', note: '', items: [{ product_id: id, quantity: '', price: '' }] })).data;
+  const template = (await f.command('/templates', { name: '常用模板', type: 'out', partner: '', note: '', items: [{ product_id: id, quantity: 1, price: 10 }] })).data;
   const payment = (await f.command(`/orders/${incoming.id}/payments`, { amount: 1, method: '现金', note: '' })).data;
   const before = (await f.request('/backup')).data.data;
   for (const path of [`/products/${id}`, `/products/${id}.0`, `/PRODUCTS/${id}/`]) assert.equal((await f.request(path, 'PUT', product, w)).status, 400);
@@ -109,9 +109,9 @@ test('cross-warehouse IDs cannot mutate products, orders, drafts, stocktakes or 
   assert.equal((await f.request('/ORDERS/', 'POST', { type: 'in', partner: '供应商', items: [{ product_id: id, quantity: 1, price: 1 }] }, w)).status, 400);
   for (const [path, body] of [
     ['/STOCKTAKES/', { reason: '跨仓盘点', items: [{ product_id: id, expected_stock: 5, counted: 0 }] }],
-    ['/drafts', { type: 'out', partner: '', note: '', items: [{ product_id: id, quantity: '', price: '' }] }],
-    ['/drafts', { ...draft, items: [] }],
-    [`/drafts/${draft.id}/discard`, { version: draft.version }],
+    ['/templates', { type: 'out', partner: '', note: '', items: [{ product_id: id, quantity: 1, price: 10 }] }],
+    ['/templates', { ...template, items: [] }],
+    [`/templates/${template.id}/delete`, { version: template.version }],
     [`/orders/${incoming.id}/void`, { reason: '跨仓作废' }],
     [`/orders/${incoming.id}/returns`, { reason: '跨仓退货', items: [{ product_id: id, quantity: 1 }] }],
     [`/orders/${incoming.id}/payments`, { amount: 1, method: '现金', note: '' }],
@@ -120,17 +120,14 @@ test('cross-warehouse IDs cannot mutate products, orders, drafts, stocktakes or 
   ]) assert.equal((await f.command(path, body, w)).status, 400, path);
   assert.equal((await f.request(`/orders/${incoming.id}/payments`, 'GET', undefined, w)).status, 400);
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.products.length, 0);
-  assert.equal((await f.request('/drafts', 'GET', undefined, w)).data.length, 0);
+  assert.equal((await f.request('/templates', 'GET', undefined, w)).data.length, 0);
   assert.deepEqual((await f.request('/backup')).data.data, before);
-  // A draft ID must also be guarded at submission, even with no draft items remaining.
-  const remote = (await f.request('/products', 'POST', product, w)).data.id;
-  assert.equal((await f.request('/orders', 'POST', { type: 'in', partner: '客户', draft_id: draft.id, draft_version: draft.version, items: [{ product_id: remote, quantity: 1, price: 1 }] }, w)).status, 400);
-  const body = { request_id: randomUUID(), type: 'in', partner: '', note: '', items: [] };
-  assert.equal((await f.request('/drafts', 'POST', body)).status, 200);
-  assert.equal((await f.request('/drafts', 'POST', body, w)).status, 400);
+  const body = { name: '重试模板', request_id: randomUUID(), type: 'in', partner: '', note: '', items: [{product_id: id, quantity: 1, price: 10}] };
+  assert.equal((await f.request('/templates', 'POST', body)).status, 200);
+  assert.equal((await f.request('/templates', 'POST', body, w)).status, 400);
 });
 
-test('imports, stocktakes, draft submissions, and resets respect warehouse inventory boundaries', async t => {
+test('imports, stocktakes, template submissions, and resets respect warehouse inventory boundaries', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓');
   const id = (await f.request('/products', 'POST', product)).data.id;
   const rows = [{ ...product, stock: 8 }];
@@ -142,8 +139,8 @@ test('imports, stocktakes, draft submissions, and resets respect warehouse inven
   assert.equal((await f.request('/stocktakes')).data.length, 0);
   assert.equal((await f.request('/stocktakes', 'GET', undefined, w)).data.length, 1);
   assert.equal((await f.command('/stocktakes', { reason: '分仓盘点', items: [{ product_id: remote.id, expected_stock: 8, counted: 9 }] }, w)).status, 200);
-  const draft = (await f.command('/drafts', { type: 'out', partner: '客户', note: '', items: [{ product_id: remote.id, quantity: 2, price: 20 }] }, w)).data;
-  const submission = { type: 'out', partner: '客户', draft_id: draft.id, draft_version: draft.version, items: draft.items };
+  const template = (await f.command('/templates', { name: '常用模板', type: 'out', partner: '客户', note: '', items: [{ product_id: remote.id, quantity: 2, price: 20 }] }, w)).data;
+  const submission = { request_id: randomUUID(), type: 'out', partner: '客户', items: template.items };
   const order = await f.request('/orders', 'POST', submission, w);
   assert.equal(order.status, 201);
   assert.equal((await f.request('/orders', 'POST', submission, w)).data.id, order.data.id);
@@ -156,19 +153,19 @@ test('imports, stocktakes, draft submissions, and resets respect warehouse inven
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.orders.length, 0);
 });
 
-test('v7 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
+test('v9 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓');
   await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] });
   const remote = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
   await f.order(remote.id, 'in', 3, w);
-  await f.command('/drafts', { type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: '', price: '' }] }, w);
+  await f.command('/templates', { name: '常用模板', type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: 1, price: 10 }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 8);
-  for (const corrupt of ['warehouse', 'item', 'draft', 'sync', 'barcode']) {
+  assert.equal(backup.version, 9);
+  for (const corrupt of ['warehouse', 'item', 'template', 'sync', 'barcode']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;
     if (corrupt === 'item') value.data.order_items[0].product_id = value.data.products[0].id;
-    if (corrupt === 'draft') value.data.drafts[0].warehouse_id = 1;
+    if (corrupt === 'template') value.data.templates[0].warehouse_id = 1;
     if (corrupt === 'sync' || corrupt === 'barcode') {
       const copy = { ...value.data.products[0], id: 9999 };
       if (corrupt === 'sync') copy.barcode = 'OTHER'; else copy.sync_key = 'OTHER';
@@ -185,7 +182,7 @@ test('v7 backups round trip multiple warehouses and sync groups, reject crossed 
   legacy.version = 3; delete legacy.data.warehouses;
   legacy.data.products = legacy.data.products.filter(p => p.warehouse_id === 1);
   for (const p of legacy.data.products) { delete p.warehouse_id; delete p.sync_key; }
-  for (const table of ['orders','order_items','stock_adjustments','drafts','payments']) legacy.data[table] = [];
+  for (const table of ['orders','order_items','stock_adjustments','templates','payments']) legacy.data[table] = [];
   const oldPreview = (await f.request('/backup/preview', 'POST', { backup: legacy })).data;
   assert.equal((await f.command('/backup/restore', { backup: legacy, ...oldPreview, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
   assert.equal((await f.request('/data')).data.products.length, 1);

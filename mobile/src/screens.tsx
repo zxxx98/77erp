@@ -499,7 +499,7 @@ export function ProductDetail({
     if (lock.current) return;
     const active = product.active === 0 ? 1 : 0;
     Alert.alert(remove ? "删除商品" : active ? "上架商品" : "下架商品",
-      remove ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和草稿关联的商品。仅影响当前仓库。`
+      remove ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和模板关联的商品。仅影响当前仓库。`
         : `确定${active ? "上架" : "下架"}「${product.name}」？${active ? "恢复普通开单选品。" : "保留库存和历史记录，普通开单选品默认隐藏，可从库存页面开单清库存。"}仅影响当前仓库。`,
       [{text: "取消", style: "cancel"}, {text: "确认", style: remove ? "destructive" : "default", onPress: async () => {
         if (lock.current) return;
@@ -943,7 +943,7 @@ export function MoreScreen({
         />}
       </Card>
       {changePassword && <Button title="修改密码" kind="secondary" onPress={changePassword} />}
-      <Button title={isAdmin ? "往来、草稿与财务" : "单据草稿"} kind="secondary" onPress={commerce} />
+      <Button title={isAdmin ? "往来、模板与财务" : "单据模板"} kind="secondary" onPress={commerce} />
       {isAdmin && <Button title="库存盘点" kind="secondary" onPress={stocktake} />}
       <Card>
         <Text style={s.label}>服务器地址</Text>

@@ -81,7 +81,7 @@ test('v8 backups restore a tree and product details independently of current cat
   const f = await fixture(t), root = await f.category('食材'), child = await f.category('调味品', root);
   await f.request('/products', 'POST', { ...product, category_id: child, image, specification: '500g', note: '避光保存' });
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 8);
+  assert.equal(backup.version, 9);
   await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
   const newRoot = await f.category('不同的当前分类');
   assert.equal((await f.request(`/categories/${newRoot}`, 'PUT', { name: '当前分类', parent_id: null })).status, 200);

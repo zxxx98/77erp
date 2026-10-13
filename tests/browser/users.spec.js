@@ -60,13 +60,13 @@ test('administrator creates accounts, protects the last administrator, resets pa
   } finally { await f.close(); }
 });
 
-test('employee sees shared business data and own drafts, opens orders with an actor, and changes password', async ({ page }) => {
+test('employee sees shared business data and own templates, opens orders with an actor, and changes password', async ({ page }) => {
   const f = await fixture(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   try {
     await f.adminRequest('/users', { username: 'staff', password: 'Employee-password-123' });
-    await f.adminRequest('/drafts', { request_id: 'admin-draft', type: 'in', partner: '管理员草稿', note: '', items: [] });
+    await f.adminRequest('/templates', { name: '管理员模板', request_id: 'admin-template', type: 'in', partner: '管理员模板', note: '', items: [{product_id: 1, quantity: 1, price: 10}] });
     await page.goto(f.base);
     await page.getByRole('button', { name: '退出登录', exact: true }).click();
     await login(page, 'staff', 'Employee-password-123');
@@ -74,20 +74,23 @@ test('employee sees shared business data and own drafts, opens orders with an ac
     await page.getByRole('link', { name: '商品管理', exact: true }).click();
     await expect(page.getByRole('button', { name: '新增商品', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '管理分类', exact: true })).toHaveCount(0);
-    await page.getByRole('button', { name: '单据草稿', exact: true }).click();
-    await expect(page.getByText('管理员草稿')).toHaveCount(0);
-    await expect(page.getByText('暂无草稿')).toBeVisible();
+    await page.getByRole('button', { name: '单据模板', exact: true }).click();
+    await expect(page.getByText('管理员模板')).toHaveCount(0);
+    await expect(page.getByText('暂无模板')).toBeVisible();
     await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
     await page.getByRole('link', { name: '采购入库', exact: true }).click();
     await page.getByRole('button', { name: '新建入库', exact: true }).click();
     await page.getByPlaceholder('选择或输入供应商').fill('员工供应商');
     await page.getByRole('textbox', { name: '查找并添加商品' }).fill('马克杯');
     await page.locator('.picker-results button').first().click();
-    await page.getByRole('button', { name: '保存草稿并关闭', exact: true }).click();
+    await page.getByLabel('模板名称', {exact: true}).fill('员工补货模板');
+    await page.getByRole('button', { name: '保存为模板', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('员工补货模板');
+    await page.getByRole('button', {name: '取消', exact: true}).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    const draft = f.db.prepare("SELECT * FROM drafts WHERE created_by_name='staff'").get();
-    await page.getByRole('button', { name: '单据草稿', exact: true }).click();
-    await page.getByRole('button', { name: `继续草稿 #${draft.id}`, exact: true }).click();
+    const template = f.db.prepare("SELECT * FROM templates WHERE created_by_name='staff'").get();
+    await page.getByRole('button', { name: '单据模板', exact: true }).click();
+    await page.getByRole('button', { name: `使用模板 #${template.id}`, exact: true }).click();
     await page.getByRole('button', { name: '确认入库', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     const order = f.db.prepare("SELECT * FROM orders WHERE created_by_name='staff'").get();

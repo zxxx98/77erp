@@ -30,8 +30,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
     token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL
   );`);
-  // installAuth runs after the business migrations, so orders and drafts already exist here.
-  for (const table of ['orders', 'drafts']) {
+  // installAuth runs after the business migrations, so orders and templates already exist here.
+  for (const table of ['orders', 'templates']) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
     for (const [name, definition] of Object.entries({ created_by: 'INTEGER REFERENCES users(id)', created_by_name: "TEXT NOT NULL DEFAULT ''" })) {
       if (!columns.some(c => c.name === name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
@@ -207,8 +207,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   // Employee access is explicit and deny-by-default: a route added later stays administrator-only
   // until it is listed here. Paths are lowercased and stripped of trailing slashes, the same way
   // Express matches them.
-  //   GET  /data /style /warehouses /categories /contacts /drafts, /products/barcode/:code
-  //   POST /products /orders /drafts, /drafts/:id/discard
+  //   GET  /data /style /warehouses /categories /contacts /templates, /products/barcode/:code
+  //   POST /products /orders /templates, /templates/:id/delete
   //   PUT  /products/:id
   // /products/barcode/:code is kept for clients released before 1.4.0; current web and Android
   // builds resolve barcodes from the /data snapshot.
@@ -216,11 +216,11 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     if (req.user.role === 'admin') return next();
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const allowed = (['GET','HEAD'].includes(req.method) && (
-      ['/data','/style','/warehouses','/categories','/contacts','/drafts'].includes(path) ||
+      ['/data','/style','/warehouses','/categories','/contacts','/templates'].includes(path) ||
       /^\/products\/barcode\/[^/]+$/.test(path))) ||
-      (req.method === 'POST' && ['/products','/orders','/drafts','/uploads/product-image'].includes(path)) ||
+      (req.method === 'POST' && ['/products','/orders','/templates','/uploads/product-image'].includes(path)) ||
       (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
-      (req.method === 'POST' && /^\/drafts\/\d+\/discard$/.test(path)) ||
+      (req.method === 'POST' && /^\/templates\/\d+\/delete$/.test(path)) ||
       (req.method === 'POST' && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path)));
     if (!allowed) return res.status(403).json({ error: '此操作仅限管理员。' });
     next();

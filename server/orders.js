@@ -4,7 +4,7 @@ const validNumber = (n) =>
 const validInteger = (n) => validNumber(n) && Number.isInteger(n);
 const validMoney = (n) =>
   validNumber(n) && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
-// The caller owns the transaction, including drafts, QR quotas and request receipts.
+// The caller owns the transaction, including inventory, QR quotas and request receipts.
 export function createOrder(db, req, body) {
   const { type, partner, note = "", items } = body;
   if (

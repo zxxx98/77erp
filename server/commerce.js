@@ -21,7 +21,7 @@ export const businessRole = (order) =>
     : "customer";
 export function migrateCommerce(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY, role TEXT NOT NULL CHECK(role IN ('supplier','customer')), name TEXT NOT NULL, person TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1, UNIQUE(role,name));
-    CREATE TABLE IF NOT EXISTS drafts (id INTEGER PRIMARY KEY, type TEXT NOT NULL, partner TEXT NOT NULL, partner_id INTEGER REFERENCES contacts(id), note TEXT NOT NULL, items TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', order_id INTEGER REFERENCES orders(id), updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('in','out')), partner TEXT NOT NULL, partner_id INTEGER REFERENCES contacts(id), note TEXT NOT NULL, items TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL, warehouse_id INTEGER NOT NULL DEFAULT 1 REFERENCES warehouses(id));
     CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id), amount_cents INTEGER NOT NULL, method TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL, reversed_at TEXT, reverse_reason TEXT NOT NULL DEFAULT '');`);
   const add = (table, name, def) => {
     if (
@@ -131,34 +131,38 @@ export function settlement(db, order) {
     direction: order.type === "out" ? "receive" : "pay",
   };
 }
-export function validateDraft(db, body) {
+export function validateTemplate(db, body) {
   if (
     !["in", "out"].includes(body.type) ||
+    !text(body.name, 100) ||
     !text(body.partner, 100, true) ||
     !text(body.note, 500, true) ||
     !Array.isArray(body.items) ||
+    !body.items.length ||
     body.items.length > 100
   )
-    fail("草稿格式无效，每张最多 100 种商品。");
+    fail("请填写模板名称并添加 1–100 种商品。");
   if (body.partner_id != null) {
     const c = db
       .prepare("SELECT * FROM contacts WHERE id=?")
       .get(body.partner_id);
     if (!c || c.role !== (body.type === "in" ? "supplier" : "customer"))
-      fail("草稿往来单位无效。");
+      fail("模板往来单位无效。");
   }
   const seen = new Set();
   for (const i of body.items) {
     if (
-      !Number.isSafeInteger(i.product_id) ||
+      !i || !Number.isSafeInteger(i.product_id) ||
       seen.has(i.product_id) ||
       !db.prepare("SELECT 1 FROM products WHERE id=?").get(i.product_id) ||
       !["string", "number"].includes(typeof i.quantity) ||
       !["string", "number"].includes(typeof i.price) ||
-      String(i.quantity).length > 30 ||
-      String(i.price).length > 30
+      !/^\d+$/.test(String(i.quantity)) ||
+      !Number.isSafeInteger(Number(i.quantity)) || Number(i.quantity) < 1 || Number(i.quantity) > 99999999 ||
+      !/^\d+(\.\d{1,2})?$/.test(String(i.price))
     )
-      fail("草稿商品不存在、重复或输入过长。");
+      fail("模板商品无效，请填写正整数数量和最多两位小数的非负单价。");
+    cents(Number(i.price));
     seen.add(i.product_id);
   }
 }
@@ -236,61 +240,62 @@ export function installCommerce(app, db, { route, mutation }) {
     ),
   );
   app.get(
-    "/api/drafts",
+    "/api/templates",
     route((req) =>
       db
         .prepare(
-          "SELECT * FROM drafts WHERE status='active' AND warehouse_id=? AND (?='admin' OR created_by=?) ORDER BY updated_at DESC,id DESC",
+          "SELECT * FROM templates WHERE warehouse_id=? AND (?='admin' OR created_by=?) ORDER BY updated_at DESC,id DESC",
         )
         .all(req.warehouse.id, req.user.role, req.user.id)
         .map((d) => ({ ...d, items: JSON.parse(d.items) })),
     ),
   );
   app.post(
-    "/api/drafts",
+    "/api/templates",
     route((req) =>
       mutation(req, () => {
         const b = req.body;
-        validateDraft(db, b);
+        validateTemplate(db, b);
         const fields = [
+          b.name.trim(),
           b.type,
           b.partner,
           b.partner_id ?? null,
           b.note,
-          JSON.stringify(b.items),
+          JSON.stringify(b.items.map(i => ({ product_id: i.product_id, quantity: Number(i.quantity), price: Number(i.price) }))),
           new Date().toISOString(),
         ];
         let id = b.id;
         if (id) {
-          const d = db.prepare("SELECT * FROM drafts WHERE id=?").get(id);
-          if (!d || d.status !== "active" || d.version !== b.version)
-            fail("草稿已被修改或提交，请刷新后重新打开。");
+          const d = db.prepare("SELECT * FROM templates WHERE id=?").get(id);
+          if (!d || d.version !== b.version)
+            fail("模板已被修改或删除，请重新选择模板。");
           db.prepare(
-            "UPDATE drafts SET type=?,partner=?,partner_id=?,note=?,items=?,updated_at=?,version=version+1 WHERE id=?",
+            "UPDATE templates SET name=?,type=?,partner=?,partner_id=?,note=?,items=?,updated_at=?,version=version+1 WHERE id=?",
           ).run(...fields, id);
         } else
           id = Number(
             db
               .prepare(
-                "INSERT INTO drafts(type,partner,partner_id,note,items,updated_at,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO templates(name,type,partner,partner_id,note,items,updated_at,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?,?,?)",
               )
               .run(...fields, req.warehouse.id, req.user.id, req.user.username).lastInsertRowid,
           );
-        const d = db.prepare("SELECT * FROM drafts WHERE id=?").get(id);
+        const d = db.prepare("SELECT * FROM templates WHERE id=?").get(id);
         return { ...d, items: JSON.parse(d.items) };
       }),
     ),
   );
   app.post(
-    "/api/drafts/:id/discard",
+    "/api/templates/:id/delete",
     route((req) =>
       mutation(req, () => {
         const d = db
-          .prepare("SELECT * FROM drafts WHERE id=?")
+          .prepare("SELECT * FROM templates WHERE id=?")
           .get(req.params.id);
-        if (!d || d.status !== "active" || d.version !== req.body.version)
-          fail("草稿已变化，请刷新。");
-        db.prepare("DELETE FROM drafts WHERE id=?").run(d.id);
+        if (!d || d.version !== req.body.version)
+          fail("模板已变化，请刷新。");
+        db.prepare("DELETE FROM templates WHERE id=?").run(d.id);
         return { ok: true };
       }),
     ),

@@ -3,6 +3,7 @@ import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
 import { ProductConflict } from './ProductConflict';
+import { TemplateList } from "./commerce";
 import { UpdateCard } from "./UpdateCard";
 import { api, device, getWarehouseId, scanBarcode, uploadProductImage } from "./native";
 import { ImagebedSettings } from './ImagebedSettings';
@@ -12,7 +13,7 @@ import {
   flattenCategories,
   addLine,
   Contact,
-  Draft,
+  Template,
   Line,
   matchesProduct,
   money,
@@ -277,7 +278,7 @@ export function OrderEditor({
   type,
   products,
   initialProduct,
-  initialDraft,
+  initialTemplate,
   contacts = [],
   warehouseId,
   sourceId,
@@ -287,21 +288,26 @@ export function OrderEditor({
   type: "in" | "out";
   products: Product[];
   initialProduct?: Product;
-  initialDraft?: Draft;
+  initialTemplate?: Template;
   contacts?: Contact[];
   warehouseId?: number;
   sourceId?: string;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
-  const [partner, setPartner] = useState(initialDraft?.partner ?? (type === "out" ? "零售客户" : ""));
-  const [partnerId, setPartnerId] = useState<number|null>(initialDraft?.partner_id ?? null);
-  const [note, setNote] = useState(initialDraft?.note || "");
-  const draftRequest = useRef({key:"",id:""});
+  const [template, setTemplate] = useState(initialTemplate);
+  const [templateName, setTemplateName] = useState(initialTemplate?.name || "");
+  const [templateMessage, setTemplateMessage] = useState("");
+  const [templatePicker, setTemplatePicker] = useState(false);
+  const [templateRevision, setTemplateRevision] = useState(0);
+  const [partner, setPartner] = useState(initialTemplate?.partner ?? (type === "out" ? "零售客户" : ""));
+  const [partnerId, setPartnerId] = useState<number|null>(initialTemplate?.partner_id ?? null);
+  const [note, setNote] = useState(initialTemplate?.note || "");
+  const templateRequest = useRef({key:"",id:""});
   const orderRequest = useRef({key:"",id:""});
-  const missingDraftProduct = initialDraft?.items.some(i => !products.some(p => p.id === i.product_id));
+  const missingTemplateProduct = template?.items.some(i => !products.some(p => p.id === i.product_id));
   const [lines, setLines] = useState<Line[]>(() =>
-    initialDraft ? initialDraft.items.flatMap(i => { const product=products.find(p=>p.id===i.product_id);return product ? [{product,quantity:String(i.quantity),price:String(i.price)}] : []; }) : initialProduct ? addLine([], initialProduct, type) : [],
+    initialTemplate ? initialTemplate.items.flatMap(i => { const product=products.find(p=>p.id===i.product_id);return product ? [{product,quantity:String(i.quantity),price:String(i.price)}] : []; }) : initialProduct ? addLine([], initialProduct, type) : [],
   );
   const [query, setQuery] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -346,8 +352,8 @@ export function OrderEditor({
     setBusy(true);
     setError("");
     try {
-      if (missingDraftProduct) throw new Error("草稿商品已变化，请刷新后重新打开。");
-      const payload = {...orderPayload(type, partner, note, lines), ...(partnerId ? {partner_id:partnerId} : {}), ...(initialDraft ? {draft_id:initialDraft.id,draft_version:initialDraft.version} : {})};
+      if (missingTemplateProduct) throw new Error("模板商品已变化，请刷新后重新打开。");
+      const payload = {...orderPayload(type, partner, note, lines), ...(partnerId ? {partner_id:partnerId} : {})};
       const key = JSON.stringify(payload);
       if (orderRequest.current.key !== key) orderRequest.current = { key, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
       const result = await api<{ number: string }>("/orders", "POST", { ...payload, request_id: orderRequest.current.id });
@@ -360,19 +366,34 @@ export function OrderEditor({
       lock.leave();
     }
   };
-  const saveDraft = async () => {
+  const saveTemplate = async (overwrite = false) => {
     if (!lock.enter()) return;
-    setBusy(true);setError("");
+    setBusy(true); setError(""); setTemplateMessage("");
     try {
-      if (missingDraftProduct) throw new Error("草稿商品已变化，请刷新后重新打开。");
-      const body={...(initialDraft ? {id:initialDraft.id,version:initialDraft.version}:{}),type,partner,partner_id:partnerId,note,items:lines.map(i=>({product_id:i.product.id,quantity:i.quantity,price:i.price}))};
-      const key=JSON.stringify(body);if(draftRequest.current.key!==key)draftRequest.current={key,id:`${Date.now()}-${Math.random().toString(36).slice(2)}`};
-      await api("/drafts","POST",{...body,request_id:draftRequest.current.id});onSaved("草稿已保存，库存未变化");
-    } catch(e) { setError((e as Error).message); } finally { setBusy(false);lock.leave(); }
+      if (missingTemplateProduct) throw new Error("模板商品已变化，请刷新后重新打开。");
+      const body = { ...(overwrite && template ? { id: template.id, version: template.version } : {}), name: templateName, type, partner, partner_id: partnerId, note, items: lines.map(i => ({ product_id: i.product.id, quantity: i.quantity, price: i.price })) };
+      const key = JSON.stringify(body);
+      if (templateRequest.current.key !== key) templateRequest.current = { key, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
+      const result = await api<Template>("/templates", "POST", { ...body, request_id: templateRequest.current.id });
+      templateRequest.current = { key: "", id: "" };
+      setTemplate(result); setTemplateName(result.name); setTemplateRevision(value => value + 1);
+      setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); lock.leave(); }
+  };
+  const useTemplate = (selected: Template) => {
+    const apply = () => {
+      if (selected.items.some(i => !products.some(p => p.id === i.product_id))) { setError("模板商品已变化，请刷新后重新选择。"); return; }
+      setTemplate(selected); setTemplateName(selected.name); setTemplateMessage("");
+      setPartner(selected.partner); setPartnerId(selected.partner_id); setNote(selected.note);
+      setLines(selected.items.map(i => ({ product: products.find(p => p.id === i.product_id)!, quantity: String(i.quantity), price: String(i.price) })));
+      setTemplatePicker(false); setError("");
+    };
+    if (lines.length || note || (partner && partner !== "零售客户")) Alert.alert("套用模板？", "将替换当前编辑内容。", [{ text: "取消", style: "cancel" }, { text: "确认套用", onPress: apply }]);
+    else apply();
   };
   const confirm = () => {
     try {
-      if (missingDraftProduct) throw new Error("草稿商品已变化，请刷新后重新打开。");
+      if (missingTemplateProduct) throw new Error("模板商品已变化，请刷新后重新打开。");
       orderPayload(type, partner, note, lines);
     } catch (e) {
       setError((e as Error).message);
@@ -416,8 +437,15 @@ export function OrderEditor({
         </>
       }
     >
-      {initialDraft && <Text style={s.caption}>正在编辑草稿 #{initialDraft.id} · 版本 {initialDraft.version}</Text>}
-      <Button title="保存草稿并关闭" kind="secondary" disabled={busy || scanning} onPress={() => void saveDraft()} />
+      <Button title="选择单据模板" kind="secondary" disabled={busy || scanning} onPress={() => setTemplatePicker(!templatePicker)} />
+      {templatePicker && <TemplateList type={type} disabled={busy || scanning} refreshKey={templateRevision} onUse={useTemplate} />}
+      {template && <Text style={s.caption}>已套用「{template.name}」，本次修改不会自动更新模板。</Text>}
+      <Card>
+        <Field label="模板名称" placeholder="例如：每周日用品补货" value={templateName} maxLength={100} editable={!busy && !scanning} onChangeText={setTemplateName} />
+        <Button title={template ? "另存为模板" : "保存为模板"} kind="secondary" disabled={busy || scanning || !lines.length} onPress={() => void saveTemplate()} />
+        {template && <Button title="更新模板" kind="secondary" disabled={busy || scanning || !lines.length} onPress={() => void saveTemplate(true)} />}
+        {!!templateMessage && <Text style={s.caption} accessibilityRole="text">{templateMessage}</Text>}
+      </Card>
       <Field
         label={type === "in" ? "供应商" : "客户"}
         placeholder={type === "in" ? "必填：请输入供应商名称" : "必填：请输入客户名称"}
@@ -600,7 +628,7 @@ export function SettingsEditor({
   };
   const confirmReset = () => Alert.alert(
     "确定重置业务数据？",
-    "所有商品、库存、入出库单据、往来单位、草稿及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器地址及已保存的商户和仓库名称会保留。",
+    "所有商品、库存、入出库单据、往来单位、模板及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器地址及已保存的商户和仓库名称会保留。",
     [
       { text: "取消", style: "cancel" },
       { text: "确认清空", style: "destructive", onPress: reset },
@@ -673,7 +701,7 @@ export function SettingsEditor({
       </Card>
       <Card>
         <Text style={s.subtitle}>仓库管理</Text>
-        <Text style={s.caption}>在顶部点击仓库名称切换。各仓库库存、单据和草稿独立。</Text>
+        <Text style={s.caption}>在顶部点击仓库名称切换。各仓库库存、单据和模板独立。</Text>
         <Field label="新仓库名称" value={newWarehouse} onChangeText={setNewWarehouse} maxLength={60} editable={!busy} />
         <Button title="新增仓库" kind="secondary" disabled={busy || !newWarehouse.trim()} onPress={() => void saveWarehouse(null, newWarehouse)} />
         {warehouses.map(w => <View key={w.id}>
@@ -689,7 +717,7 @@ export function SettingsEditor({
           <Button title="打开网页数据管理" kind="secondary" disabled={busy} onPress={() => void Linking.openURL(`${server}/?manage=data&warehouse_id=${getWarehouseId()}`).catch(() => setError("无法打开浏览器，请手动访问服务器网页。"))} />
         </>}
         <Text style={s.subtitle}>重置业务数据</Text>
-        <Text style={s.caption}>永久清空所有商品、库存、单据、往来单位、草稿及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器地址及已保存的商户和仓库名称。</Text>
+        <Text style={s.caption}>永久清空所有商品、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器地址及已保存的商户和仓库名称。</Text>
         <Button title="重置业务数据" kind="danger" icon={Trash2} onPress={confirmReset} disabled={busy} />
       </Card>
     </ScreenModal>

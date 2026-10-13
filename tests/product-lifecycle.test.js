@@ -49,7 +49,7 @@ test('listing changes preserve stock and history, remain local to a warehouse, a
   assert.equal((await f.request('/products/999999/status', 'POST', {active: 0})).status, 404);
 });
 
-test('deletion rejects stock, valuation, stock adjustments and draft references, and deletes only an unused local product', async t => {
+test('deletion rejects stock, valuation, stock adjustments and template references, and deletes only an unused local product', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓');
   const id = (await f.request('/products', 'POST', {...product, sync_warehouse_ids: [w]})).data.id;
   f.db.prepare('UPDATE products SET stock=1 WHERE id=?').run(id);
@@ -57,10 +57,10 @@ test('deletion rejects stock, valuation, stock adjustments and draft references,
   f.db.prepare('UPDATE products SET stock=0,inventory_value_cents=1 WHERE id=?').run(id);
   assert.equal((await f.request(`/products/${id}`, 'DELETE')).status, 400);
   f.db.prepare('UPDATE products SET inventory_value_cents=0 WHERE id=?').run(id);
-  const draft = await f.command('/drafts', {type: 'in', partner: '供应商', note: '', items: [{product_id: id, quantity: 1, price: 10}]});
-  assert.equal(draft.status, 200);
+  const template = await f.command('/templates', { name: '常用模板',type: 'in', partner: '供应商', note: '', items: [{product_id: id, quantity: 1, price: 10}]});
+  assert.equal(template.status, 200);
   assert.equal((await f.request(`/products/${id}`, 'DELETE')).status, 400);
-  assert.equal((await f.command(`/drafts/${draft.data.id}/discard`, {version: draft.data.version})).status, 200);
+  assert.equal((await f.command(`/templates/${template.data.id}/delete`, {version: template.data.version})).status, 200);
   assert.equal((await f.request(`/products/${id}`, 'DELETE')).status, 200);
   assert.equal((await f.request('/data')).data.products.length, 0);
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.products.length, 1);

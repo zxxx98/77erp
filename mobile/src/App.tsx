@@ -23,7 +23,7 @@ import {
   Warehouse,
 } from "lucide-react-native";
 import { api, device, getWarehouseId, setWarehouseId, onUnauthorized } from "./native";
-import { AuthState, Draft, Order, Product, Workspace } from "./model";
+import { AuthState, Template, Order, Product, Workspace } from "./model";
 import { PasswordEditor } from "./account";
 import { CategoryEditor } from "./catalog";
 import { CommerceScreen } from "./commerce";
@@ -57,7 +57,7 @@ type ModalState =
   | { kind: "product"; product: Product }
   | { kind: "categories" }
   | { kind: "productEditor"; product?: Product }
-  | { kind: "orderEditor"; type: "in" | "out"; product?: Product; draft?: Draft }
+  | { kind: "orderEditor"; type: "in" | "out"; product?: Product; template?: Template }
   | { kind: "order"; order: Order }
   | { kind: "scanner" }
   | { kind: "stockQr"; product?: Product }
@@ -534,7 +534,7 @@ export function AppContent() {
           <OrderEditor
             type={modal.type}
             initialProduct={modal.product}
-            initialDraft={modal.draft}
+            initialTemplate={modal.template}
             contacts={data.contacts || []}
             products={data.products}
             warehouseId={data.warehouse_id || 1}
@@ -559,7 +559,7 @@ export function AppContent() {
             openOrder={openOrder}
           />
         )}
-        {modal?.kind === "commerce" && <CommerceScreen isAdmin={isAdmin} onClose={() => setModal(null)} onRefresh={() => void refresh()} onResume={draft => setModal({kind:"orderEditor",type:draft.type,draft})} />}
+        {modal?.kind === "commerce" && <CommerceScreen isAdmin={isAdmin} onClose={() => setModal(null)} onRefresh={() => void refresh()} onUse={template => setModal({kind:"orderEditor",type:template.type,template})} />}
         {isAdmin && modal?.kind === "stocktake" && <StocktakeEditor products={data.products} onClose={() => setModal(null)} onSaved={saved} />}
         {modal?.kind === "password" && <PasswordEditor onClose={() => setModal(null)} onChanged={logout} />}
         {modal?.kind === "warehouses" && <ScreenModal title="选择仓库" onClose={() => setModal(null)} busy={refreshing} error={error}>

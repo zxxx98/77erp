@@ -442,8 +442,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (db.prepare("SELECT 1 FROM order_items WHERE product_id=? LIMIT 1").get(product.id) ||
           db.prepare("SELECT 1 FROM stock_adjustments WHERE product_id=? LIMIT 1").get(product.id))
         throw new Error("商品已有单据或盘点记录，不能删除，请使用下架。");
-      if (db.prepare("SELECT 1 FROM drafts d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
-        throw new Error("商品被草稿引用，不能删除，请先移除草稿中的商品或使用下架。");
+      if (db.prepare("SELECT 1 FROM templates d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
+        throw new Error("商品被模板引用，不能删除，请先移除模板中的商品或使用下架。");
       if (db.prepare("SELECT 1 FROM stock_qr_items WHERE product_id=? LIMIT 1").get(product.id))
         throw new Error("商品被出入库二维码引用，请先从二维码明细移除或使用下架。");
       db.prepare("DELETE FROM products WHERE id=?").run(product.id);
@@ -478,20 +478,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         db.exec('COMMIT'); inTransaction = false;
         return res.json(request.previous);
       }
-      let draft;
-      if (req.body.draft_id != null) {
-        draft = db.prepare("SELECT * FROM drafts WHERE id=?").get(req.body.draft_id);
-        if (!draft) throw new Error("草稿不存在。");
-        if (draft.status === "submitted") {
-          const previous = db.prepare("SELECT id,number FROM orders WHERE id=?").get(draft.order_id);
-          saveOperationRequest(db, request, previous);
-          db.exec("COMMIT"); inTransaction = false;
-          return res.json(previous);
-        }
-        if (draft.version !== req.body.draft_version) throw new Error("草稿已变化，请重新打开。");
-      }
       const response = createOrder(db, req, req.body);
-      if (draft) db.prepare("UPDATE drafts SET status='submitted',order_id=?,version=version+1 WHERE id=?").run(response.id,draft.id);
       saveOperationRequest(db, request, response);
       db.exec("COMMIT");
       inTransaction = false;
@@ -507,7 +494,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     try {
       db.exec("BEGIN IMMEDIATE");
       clearStockQr(db);
-      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
+      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
       db.exec("COMMIT");
       res.json({ ok: true });
     } catch (e) {

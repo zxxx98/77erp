@@ -1,5 +1,5 @@
 export type Contact = { id?:number; role:"supplier"|"customer"; name:string; person:string; phone:string; address:string; note:string; active:number; version?:number };
-export type Draft = { created_by?:number|null; created_by_name?:string; id:number; type:"in"|"out"; partner:string; partner_id:number|null; note:string; version:number; updated_at:string; items:{product_id:number;quantity:string|number;price:string|number}[] };
+export type Template = { name:string; created_by?:number|null; created_by_name?:string; id:number; type:"in"|"out"; partner:string; partner_id:number|null; note:string; version:number; updated_at:string; items:{product_id:number;quantity:string|number;price:string|number}[] };
 export type Warehouse = { id: number; name: string; created_at: string };
 export type Category = { id: number; name: string; parent_id: number | null };
 export type Product = {

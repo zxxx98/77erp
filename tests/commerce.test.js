@@ -212,64 +212,29 @@ test("contacts are selectable, unique per type, version checked, and preserve or
     400,
   );
 });
-test("draft save tolerates incomplete input, rejects stale versions, and submits at most once", async (t) => {
-  const f = await fixture(t),
-    id = await f.product();
-  const draftBody = {
-    type: "in",
-    partner: "",
-    partner_id: null,
-    note: "未完成",
-    items: [{ product_id: id, quantity: "", price: "10" }],
-  };
-  const first = await f.command("/drafts", draftBody);
-  assert.equal(first.status, 200);
-  assert.equal(
-    f.db.prepare("SELECT stock FROM products WHERE id=?").get(id).stock,
-    0,
-  );
-  const saved = await f.command("/drafts", {
-    ...draftBody,
-    id: first.data.id,
-    version: 1,
-    partner: "供应商",
-    items: [{ product_id: id, quantity: "3", price: "10" }],
-  });
-  assert.equal(saved.data.version, 2);
-  assert.equal(
-    (
-      await f.command("/drafts", {
-        ...draftBody,
-        id: first.data.id,
-        version: 1,
-      })
-    ).status,
-    400,
-  );
-  assert.equal(
-    (
-      await f.order(id, "in", 3, 10, {
-        draft_id: first.data.id,
-        draft_version: 1,
-      })
-    ).status,
-    400,
-  );
-  const submitted = await f.order(id, "in", 3, 10, {
-    draft_id: first.data.id,
-    draft_version: 2,
-  });
-  assert.equal(submitted.status, 201);
-  const repeated = await f.order(id, "in", 3, 10, {
-    draft_id: first.data.id,
-    draft_version: 2,
-  });
-  assert.equal(repeated.data.id, submitted.data.id);
-  assert.equal(
-    f.db.prepare("SELECT stock FROM products WHERE id=?").get(id).stock,
-    3,
-  );
-  assert.deepEqual((await f.request("/drafts")).data, []);
+test("templates are named, reusable, independently editable and do not change stock until an order is submitted", async t => {
+  const f = await fixture(t), id = await f.product();
+  const body = { name: "每周补货", type: "in", partner: "供应商", partner_id: null, note: "常用组合", items: [{ product_id: id, quantity: "3", price: "10" }] };
+  for (const invalid of [{ name: "" }, { items: [] }, { items: [{ product_id: id, quantity: "", price: 10 }] }, { items: [{ product_id: id, quantity: 0, price: 10 }] }, { items: [{ product_id: id, quantity: 1, price: -1 }] }, { items: [{ product_id: id, quantity: 1, price: "1.234" }] }]) {
+    assert.equal((await f.command("/templates", { ...body, ...invalid })).status, 400);
+  }
+  const created = await f.command("/templates", body);
+  assert.equal(created.status, 200);
+  assert.equal(created.data.name, "每周补货");
+  assert.equal(f.db.prepare("SELECT stock FROM products WHERE id=?").get(id).stock, 0);
+  const first = await f.order(id, "in", 3, 10);
+  const second = await f.order(id, "in", 5, 12);
+  assert.equal(first.status, 201);
+  assert.equal(second.status, 201);
+  assert.notEqual(first.data.id, second.data.id);
+  assert.equal(f.db.prepare("SELECT stock FROM products WHERE id=?").get(id).stock, 8);
+  assert.deepEqual((await f.request("/templates")).data, [created.data]);
+  const updated = await f.command("/templates", { ...body, id: created.data.id, version: 1, name: "新补货组合", items: [{ product_id: id, quantity: 4, price: 11 }] });
+  assert.equal(updated.data.version, 2);
+  assert.equal((await f.command("/templates", { ...body, id: created.data.id, version: 1 })).status, 400);
+  assert.equal((await f.command(`/templates/${created.data.id}/delete`, { version: 1 })).status, 400);
+  assert.equal((await f.command(`/templates/${created.data.id}/delete`, { version: 2 })).status, 200);
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM orders").get().n, 2);
 });
 test("partial payments, refunds, reversal and void guards keep balances correct and retries do not double pay", async (t) => {
   const f = await fixture(t),
@@ -339,7 +304,7 @@ test("partial payments, refunds, reversal and void guards keep balances correct 
     10000,
   );
 });
-test("unknown historical costs and settlement are explicit, and v7 backup round trips contacts, drafts and payments", async (t) => {
+test("unknown historical costs and settlement are explicit, and v9 backup round trips contacts, templates and payments", async (t) => {
   const f = await fixture(t),
     id = await f.product();
   await f.order(id, "in", 10, 10);
@@ -373,7 +338,7 @@ test("unknown historical costs and settlement are explicit, and v7 backup round 
     ).status,
     200,
   );
-  await f.command("/drafts", {
+  await f.command("/templates", { name: "常用模板",
     type: "out",
     partner: "客户",
     partner_id: null,
@@ -381,9 +346,9 @@ test("unknown historical costs and settlement are explicit, and v7 backup round 
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 8);
+  assert.equal(backup.version, 9);
   assert.equal(backup.data.payments.length, 1);
-  assert.equal(backup.data.drafts.length, 1);
+  assert.equal(backup.data.templates.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
   const preview = (await f.request("/backup/preview", { backup })).data;
   assert.equal(
@@ -400,7 +365,7 @@ test("unknown historical costs and settlement are explicit, and v7 backup round 
   const old = structuredClone(backup);
   old.version = 1;
   delete old.data.contacts;
-  delete old.data.drafts;
+  delete old.data.templates;
   delete old.data.payments;
   old.data.products.forEach((p) => delete p.inventory_value_cents);
   old.data.orders.forEach((o) => {
@@ -412,6 +377,6 @@ test("unknown historical costs and settlement are explicit, and v7 backup round 
     (await f.request("/backup/preview", { backup: old })).status,
     200,
   );
-  for (const path of ["/contacts", "/drafts", "/finance", "/reports/profit"])
+  for (const path of ["/contacts", "/templates", "/finance", "/reports/profit"])
     assert.equal((await f.request(path, undefined, "GET", false)).status, 401);
 });

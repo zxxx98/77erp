@@ -20,6 +20,7 @@ import {
   CircleHelp,
   Download,
   Ellipsis,
+  FilePenLine,
   Grid2X2,
   History,
   ImagePlus,
@@ -54,7 +55,7 @@ import { AuthGate } from "./Auth.jsx";
 import { resolveProductCode } from "./product-scan.js";
 import { ChangePassword, UserManager } from "./Users.jsx";
 import { version as appVersion } from "../package.json";
-import { BusinessTools, Drafts, Payments, useBusiness } from "./Commerce.jsx";
+import { BusinessTools, Templates, Payments, useBusiness } from "./Commerce.jsx";
 import { DataTools, OrderActions, orderLabel, reportOrders, businessType } from "./Operations.jsx";
 
 const money = (v) =>
@@ -729,7 +730,7 @@ function App({ admin, onLogout }) {
           >
             <Settings size={18} />
             <span>系统设置</span>
-          </button> : <button className="nav-item" onClick={() => setModal({ kind: 'drafts' })}><History size={18} /><span>单据草稿</span></button>}
+          </button> : <button className="nav-item" onClick={() => setModal({ kind: 'templates' })}><History size={18} /><span>单据模板</span></button>}
           <button
             className="user-profile"
             onClick={() => setModal({ kind: "account" })}
@@ -933,8 +934,8 @@ function App({ admin, onLogout }) {
         <OrderForm
           type={modal.type}
           initialProduct={modal.product}
-          initialDraft={modal.draft}
-          key={modal.draft?.id || "new-order"}
+          initialTemplate={modal.template}
+          key={modal.template?.id || "new-order"}
           data={data}
           onClose={() => setModal(null)}
           onSaved={saved}
@@ -955,14 +956,14 @@ function App({ admin, onLogout }) {
         />
       )}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
-      {modal?.kind === "drafts" && <Modal title="单据草稿" onClose={() => setModal(null)}><div className="form-body"><Drafts onResume={draft => setModal({ kind: 'order', type: draft.type, draft })} /></div></Modal>}
+      {modal?.kind === "templates" && <Modal title="单据模板" onClose={() => setModal(null)}><div className="form-body"><Templates onUse={template => setModal({ kind: 'order', type: template.type, template })} /></div></Modal>}
       {isAdmin && modal?.kind === "settings" && (
         <SettingsForm
           onPasswordChanged={onLogout}
           settings={data.settings}
           warehouses={data.warehouses || []}
           products={data.products}
-          onResume={draft => setModal({kind:"order",type:draft.type,draft})}
+          onUse={template => setModal({kind:"order",type:template.type,template})}
           onRefresh={reload}
           onClose={() => setModal(null)}
           onSaved={saved}
@@ -1655,7 +1656,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
     if (actionLock.current) return;
     const active = product.active === 0 ? 1 : 0;
     const message = remove
-      ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和草稿关联的商品。仅影响当前仓库。`
+      ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和模板关联的商品。仅影响当前仓库。`
       : `确定${active ? "上架" : "下架"}「${product.name}」？${active ? "上架后恢复普通开单选品。" : "下架后普通开单选品默认隐藏，库存和历史记录保留，可从库存页面开单清库存。"}仅影响当前仓库。`;
     if (!window.confirm(message)) return;
     actionLock.current = true;
@@ -2682,13 +2683,16 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   );
 }
 
-function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved }) {
-  const [draft, setDraft] = useState(initialDraft || null);
-  const [partnerId, setPartnerId] = useState(initialDraft?.partner_id ?? null);
-  const draftAction = useBusiness();
+function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSaved }) {
+  const [template, setTemplate] = useState(initialTemplate || null);
+  const [templateName, setTemplateName] = useState(initialTemplate?.name || "");
+  const [templateMessage, setTemplateMessage] = useState("");
+  const [templateRevision, setTemplateRevision] = useState(0);
+  const [partnerId, setPartnerId] = useState(initialTemplate?.partner_id ?? null);
+  const templateAction = useBusiness();
   const submitLock = useRef(false);
   const [items, setItems] = useState(
-    initialDraft ? initialDraft.items : initialProduct
+    initialTemplate ? initialTemplate.items : initialProduct
       ? [
           {
             product_id: initialProduct.id,
@@ -2698,8 +2702,8 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
         ]
       : [],
   );
-  const [partner, setPartner] = useState(initialDraft?.partner ?? (type === "out" ? "零售客户" : "")),
-    [note, setNote] = useState(initialDraft?.note || ""),
+  const [partner, setPartner] = useState(initialTemplate?.partner ?? (type === "out" ? "零售客户" : "")),
+    [note, setNote] = useState(initialTemplate?.note || ""),
     [barcode, setBarcode] = useState(""),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
@@ -2758,15 +2762,14 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
       setError("请至少添加一件商品。");
       return;
     }
-    if (submitLock.current || draftAction.busy) return;
+    if (submitLock.current || templateAction.busy) return;
     submitLock.current = true;
     setBusy(true);
     setError("");
     try {
-      const r = await draftAction.send('/orders', {
+      const r = await templateAction.send('/orders', {
         type,
         ...(partnerId ? { partner_id: partnerId } : {}),
-        ...(draft ? { draft_id: draft.id, draft_version: draft.version } : {}),
         partner, note,
         items: items.map(i => ({ ...i, quantity: Number(i.quantity), price: Number(i.price) })),
       });
@@ -2778,6 +2781,17 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
       submitLock.current = false;
     }
   };
+  const saveTemplate = (overwrite) => templateAction.run(async () => {
+    setTemplateMessage("");
+    const result = await templateAction.send("/templates", {
+      ...(overwrite && template ? { id: template.id, version: template.version } : {}),
+      name: templateName, type, partner, partner_id: partnerId, note, items,
+    });
+    setTemplate(result);
+    setTemplateName(result.name);
+    setTemplateRevision(value => value + 1);
+    setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
+  });
   const partners = [
     ...new Set(
       [...(data.contacts || []).filter(c => c.active && c.role === (type === "in" ? "supplier" : "customer")).map(c => c.name), ...data.orders.filter((o) => o.type === type).map((o) => o.partner)],
@@ -2795,20 +2809,27 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
     <Modal
       title={type === "in" ? "新建采购入库" : "新建销售出库"}
       subtitle={`确认后将${type === "in" ? "增加" : "扣减"}库存，并生成可追溯的${type === "in" ? "入库" : "出库"}单据`}
-      onClose={busy || draftAction.busy ? () => {} : onClose}
+      onClose={busy || templateAction.busy ? () => {} : onClose}
       wide
     >
       <form onSubmit={submit}>
         <div className="form-body order-form-body">
           <label className="inactive-product-option"><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />包含下架商品（用于清库存等操作）</label>
 
-          <details><summary>打开已有草稿</summary><Drafts type={type} onResume={d => { if ((items.length || note) && !window.confirm("打开草稿将替换当前编辑内容，是否继续？")) return; setDraft(d);setPartner(d.partner);setPartnerId(d.partner_id);setNote(d.note);setItems(d.items); }} /></details>
-          {draft && <p>正在编辑草稿 #{draft.id} · 版本 {draft.version}</p>}
-          <Button type="button" disabled={busy || draftAction.busy} onClick={() => draftAction.run(async () => {
-            const result = await draftAction.send("/drafts", { ...(draft ? {id:draft.id,version:draft.version} : {}), type,partner,partner_id:partnerId,note,items });
-            setDraft(result); await onSaved("草稿已保存，库存未变化");
-          })}>保存草稿并关闭</Button>
-          {draftAction.error && <p role="alert" className="form-error">{draftAction.error}</p>}
+          <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={busy || templateAction.busy} onUse={d => {
+            if ((items.length || note) && !window.confirm("套用模板将替换当前编辑内容，是否继续？")) return false;
+            setTemplate(d); setTemplateName(d.name); setTemplateMessage(""); setPartner(d.partner); setPartnerId(d.partner_id); setNote(d.note); setItems(d.items);
+          }} />
+          {template && <span className="order-template-status"><FilePenLine size={15} aria-hidden="true" />已套用「{template.name}」<small>本次修改不会自动更新模板</small></span>}
+          <div className="template-save-panel">
+            <label>模板名称<input value={templateName} maxLength={100} placeholder="例如：每周日用品补货" disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
+            <div className="order-template-actions">
+              <Button type="button" icon={FilePenLine} disabled={busy || templateAction.busy || !items.length} onClick={() => saveTemplate(false)}>{template ? "另存为模板" : "保存为模板"}</Button>
+              {template && <Button type="button" disabled={busy || templateAction.busy || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}
+            </div>
+            {templateMessage && <p className="template-success" role="status">{templateMessage}</p>}
+          </div>
+          {templateAction.error && <p role="alert" className="form-error">{templateAction.error}</p>}
           <div className="form-grid">
             <label>
               {type === "in" ? "供应商" : "客户 / 往来单位"} <span>*</span>
@@ -3038,7 +3059,7 @@ function OrderForm({ type, initialProduct, initialDraft, data, onClose, onSaved 
               type="submit"
               kind="primary"
               icon={busy ? LoaderCircle : Check}
-              disabled={busy || draftAction.busy || !items.length}
+              disabled={busy || templateAction.busy || !items.length}
             >
               {busy ? "正在提交…" : `确认${type === "in" ? "入库" : "出库"}`}
             </Button>
@@ -3385,7 +3406,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
     </>
   );
 }
-function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResume, onRefresh, onPasswordChanged }) {
+function SettingsForm({ settings, warehouses, products, onClose, onSaved, onUse, onRefresh, onPasswordChanged }) {
   const lock = useRef(false);
   const contentRef = useRef(null);
   const [section, setSection] = useState(() => new URLSearchParams(location.search).get("manage") === "data" ? "data" : "general");
@@ -3410,7 +3431,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
     }
   };
   const reset = async () => {
-    if (lock.current || !window.confirm("确定重置业务数据？所有商品、库存、入出库单据、往来单位、草稿及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器配置及已保存的商户和仓库名称会保留。")) return;
+    if (lock.current || !window.confirm("确定重置业务数据？所有商品、库存、入出库单据、往来单位、模板及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器配置及已保存的商户和仓库名称会保留。")) return;
     lock.current = true;
     setBusy(true);
     setError("");
@@ -3434,7 +3455,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
       <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "商品图片上传与认证"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、草稿与收付"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "商品图片上传与认证"], ["data", "库存与数据", Warehouse, "盘点、导入与备份"], ["business", "往来与财务", History, "往来单位、模板与收付"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
               <button key={id} type="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </button>
@@ -3500,7 +3521,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
           {section === "users" && <div className="settings-section"><UserManager /><ChangePassword onChanged={onPasswordChanged} /></div>}
           <div hidden={section !== 'imagebed'} className="settings-section"><ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} /></div>
           <div hidden={section !== "business"} className="settings-section">
-            <BusinessTools onResume={onResume} onRefresh={onRefresh} />
+            <BusinessTools onUse={onUse} onRefresh={onRefresh} />
           </div>
           <div hidden={section !== "data"} className="settings-section">
           <DataTools products={products} onSaved={onSaved} />
@@ -3508,7 +3529,7 @@ function SettingsForm({ settings, warehouses, products, onClose, onSaved, onResu
           <h3>重置业务数据</h3>
           <div className="info-box">
             <Trash2 size={17} />
-            <p>重置将永久清空所有商品、库存、单据、往来单位、草稿及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器配置及已保存的商户和仓库名称。</p>
+            <p>重置将永久清空所有商品、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器配置及已保存的商户和仓库名称。</p>
           </div>
           <Button type="button" icon={Trash2} onClick={reset} disabled={busy}>
             重置业务数据
