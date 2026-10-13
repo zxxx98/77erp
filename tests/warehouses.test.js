@@ -1,3 +1,4 @@
+import { assertRestoredBusiness } from './backup-assertions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -52,9 +53,9 @@ test('selective product sync preserves independent quantities, valuations and hi
   assert.equal((await f.request('/data', 'GET', undefined, other)).data.products.length, 0);
   assert.equal((await f.order(mainId, 'in', 10)).status, 201);
   assert.equal((await f.order(remote.id, 'in', 3, w, 12)).status, 201);
-  assert.equal((await f.request(`/products/${mainId}`, 'PUT', { ...product, name: '本仓修改', price: 25 })).status, 200);
+  assert.equal((await f.request(`/products/${mainId}`, 'PUT', { ...product, version: f.db.prepare('SELECT version FROM products WHERE id=?').get(mainId).version, name: '本仓修改', price: 25 })).status, 200);
   assert.equal((await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data.name, product.name);
-  assert.equal((await f.request(`/products/${mainId}`, 'PUT', { ...product, name: '同步修改', barcode: 'WH-NEW', cost: 99, sync_warehouse_ids: [w, other] })).status, 200);
+  assert.equal((await f.request(`/products/${mainId}`, 'PUT', { ...product, version: f.db.prepare('SELECT version FROM products WHERE id=?').get(mainId).version, name: '同步修改', barcode: 'WH-NEW', cost: 99, sync_warehouse_ids: [w, other] })).status, 200);
   const updated = (await f.request('/products/barcode/WH-NEW', 'GET', undefined, w)).data;
   assert.equal(updated.id, remote.id);
   assert.equal(updated.name, '同步修改');
@@ -64,7 +65,7 @@ test('selective product sync preserves independent quantities, valuations and hi
   assert.equal((await f.request('/products/barcode/WH-NEW', 'GET', undefined, other)).data.stock, 0);
   const sale = await f.order(remote.id, 'out', 1, w, 20);
   assert.equal(sale.status, 201);
-  assert.equal((await f.request(`/products/${remote.id}`, 'PUT', { ...product, barcode: 'WH-NEW', name: '分仓反向同步', sync_warehouse_ids: [1] }, w)).status, 200);
+  assert.equal((await f.request(`/products/${remote.id}`, 'PUT', { ...product, version: updated.version, barcode: 'WH-NEW', name: '分仓反向同步', sync_warehouse_ids: [1] }, w)).status, 200);
   assert.equal((await f.request('/products/barcode/WH-NEW')).data.name, '分仓反向同步');
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.orders.find(o => o.id === sale.data.id).items[0].name, '同步修改');
   assert.equal((await f.request('/data')).data.orders.length, 1);
@@ -88,7 +89,7 @@ test('sync collisions and invalid targets roll back the source and every target;
   assert.equal((await f.request('/products', 'POST', product, conflict)).status, 400);
   const before = (await f.request('/backup')).data.data;
   for (const targets of [[w, conflict], [w, 9999], [1], [w,w], ['2'], true]) {
-    const r = await f.request(`/products/${id}`, 'PUT', { ...product, name: '不能部分保存', sync_warehouse_ids: targets });
+    const r = await f.request(`/products/${id}`, 'PUT', { ...product, version: before.products.find(p => p.id === id).version, name: '不能部分保存', sync_warehouse_ids: targets });
     assert.equal(r.status, 400, JSON.stringify(r.data));
     assert.deepEqual((await f.request('/backup')).data.data, before);
   }
@@ -162,7 +163,7 @@ test('v7 backups round trip multiple warehouses and sync groups, reject crossed 
   await f.order(remote.id, 'in', 3, w);
   await f.command('/drafts', { type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: '', price: '' }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 7);
+  assert.equal(backup.version, 8);
   for (const corrupt of ['warehouse', 'item', 'draft', 'sync', 'barcode']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;
@@ -179,7 +180,7 @@ test('v7 backups round trip multiple warehouses and sync groups, reject crossed 
   const preview = (await f.request('/backup/preview', 'POST', { backup })).data;
   assert.equal(preview.warehouses, 2);
   assert.equal((await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
-  assert.deepEqual((await f.request('/backup')).data.data, backup.data);
+  assertRestoredBusiness((await f.request('/backup')).data.data, backup.data);
   const legacy = structuredClone(backup);
   legacy.version = 3; delete legacy.data.warehouses;
   legacy.data.products = legacy.data.products.filter(p => p.warehouse_id === 1);

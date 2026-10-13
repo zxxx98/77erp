@@ -48,6 +48,7 @@ import { api, getWarehouseId, setWarehouseId } from "./api.js";
 import { WarehouseManager, ProductSync } from "./Warehouses.jsx";
 import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
 import { ProductImage } from "./ProductImage.jsx";
+import { ProductConflict } from './ProductConflict.jsx';
 import { ImagebedSettings } from './ImagebedSettings.jsx';
 import { AuthGate } from "./Auth.jsx";
 import { resolveProductCode } from "./product-scan.js";
@@ -2435,7 +2436,10 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
 
 function ProductForm({ product, categories, units = ["个"], warehouses, warehouseId, onClose, onSaved }) {
   const [syncTargets, setSyncTargets] = useState([]);
-  const options = flattenCategories(categories);
+  const [currentCategories, setCurrentCategories] = useState(categories);
+  const options = flattenCategories(currentCategories);
+  const [conflict, setConflict] = useState(false);
+  const [latest, setLatest] = useState(null);
   const [form, setForm] = useState(
     product || {
       name: "",
@@ -2458,7 +2462,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   const imageInputRef = useRef(null);
   const submit = async (e) => {
     e.preventDefault();
-    if (busy || readingImage) return;
+    if (busy || readingImage || conflict) return;
     setBusy(true);
     setError("");
     try {
@@ -2480,6 +2484,10 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       );
     } catch (e) {
       setError(e.message);
+      if (e.status === 409 && e.code === 'PRODUCT_VERSION_CONFLICT') {
+        setConflict(true);
+        setLatest(null);
+      }
     } finally {
       setBusy(false);
     }
@@ -2632,6 +2640,29 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               {error}
             </div>
           )}
+          {conflict && <>
+            <ProductConflict form={form} latest={latest?.product} />
+            <Button type="button" disabled={busy || readingImage} onClick={async () => {
+              setBusy(true);
+              setLatest(null);
+              try {
+                const data = await api('/data', { warehouseId });
+                const current = data.products.find(p => p.id === product.id);
+                if (!current) throw new Error('商品已被删除，当前填写内容已保留。');
+                setLatest({ product: current, categories: data.categories });
+              } catch (e) { setError(e.message); }
+              finally { setBusy(false); }
+            }}>{busy ? '正在读取…' : '查看最新信息'}</Button>
+            {latest && <Button type="button" disabled={busy || readingImage} onClick={() => {
+              if (!window.confirm('使用最新信息替换当前填写内容，并清空同步仓库选择？')) return;
+              setForm(latest.product);
+              setCurrentCategories(latest.categories);
+              setSyncTargets([]);
+              setConflict(false);
+              setLatest(null);
+              setError('');
+            }}>使用最新信息重新编辑</Button>}
+          </>}
         </div>
         <div className="modal-footer">
           <Button type="button" onClick={onClose} disabled={busy || readingImage}>
@@ -2641,7 +2672,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             type="submit"
             kind="primary"
             icon={busy ? LoaderCircle : Check}
-            disabled={busy || readingImage}
+            disabled={busy || readingImage || conflict}
           >
             {busy ? "正在保存…" : "保存商品"}
           </Button>

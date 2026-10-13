@@ -1,3 +1,4 @@
+import { assertRestoredBusiness } from './backup-assertions.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -85,6 +86,7 @@ test("moving weighted average fixes sale cost, returns reverse original cost and
   await f.request(
     `/products/${id}`,
     {
+      version: f.db.prepare("SELECT version FROM products WHERE id=?").get(id).version,
       name: "商品",
       barcode: "COST-001",
       category: "日用",
@@ -379,7 +381,7 @@ test("unknown historical costs and settlement are explicit, and v7 backup round 
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 7);
+  assert.equal(backup.version, 8);
   assert.equal(backup.data.payments.length, 1);
   assert.equal(backup.data.drafts.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
@@ -394,7 +396,7 @@ test("unknown historical costs and settlement are explicit, and v7 backup round 
     ).status,
     200,
   );
-  assert.deepEqual((await f.request("/backup")).data.data, backup.data);
+  assertRestoredBusiness((await f.request("/backup")).data.data, backup.data);
   const old = structuredClone(backup);
   old.version = 1;
   delete old.data.contacts;

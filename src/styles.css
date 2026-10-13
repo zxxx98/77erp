@@ -4766,3 +4766,12 @@ table {
   .product-status-filter button { flex: 1; justify-content: center; }
   .product-image-upload { padding: 14px; gap: 12px; }
 }
+/* Keep long notes and image comparisons inside narrow product editors. */
+.product-conflict { margin: 12px 0; font-size: 13px; }
+.product-conflict p { line-height: 1.6; }
+.product-conflict dl > div { padding: 10px 0; border-bottom: 1px solid var(--border, #e9ecf1); }
+.product-conflict dt { font-weight: 600; }
+.product-conflict dd { margin: 6px 0; display: flex; gap: 12px; align-items: flex-start; }
+.product-conflict dd small { flex: 0 0 56px; color: #7e8798; }
+.product-conflict dd span { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.product-conflict img { max-width: 100px; max-height: 100px; object-fit: contain; }

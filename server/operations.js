@@ -361,7 +361,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 7,
+    version: 8,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -369,7 +369,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
@@ -411,6 +411,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     }
     // Backups made before product lifecycle support default to listed products.
     for (const p of data.products || []) if (p && !('active' in p)) p.active = 1;
+    if (value.version < 8) for (const p of data.products || []) if (p && !('version' in p)) p.version = 1;
     for (const table of tables) {
       if (!Array.isArray(data[table]) || data[table].length > 100000)
         fail(`备份中的 ${table} 格式或数量无效。`);
@@ -448,6 +449,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const p of data.products) {
       productValues(p);
       productDetails(p);
+      if (!Number.isSafeInteger(p.version) || p.version < 1) fail('备份商品版本无效。');
       if (![0,1].includes(p.active)) fail("备份商品上架状态无效。");
       if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category) fail("备份商品分类关联无效。");
       if (

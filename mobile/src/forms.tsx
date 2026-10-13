@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Switch, Text, View } from "react-native";
 import { Camera, Check, Minus, Plus, Trash2 } from "lucide-react-native";
 import { ProductImage } from "./ProductImage";
+import { ProductConflict } from './ProductConflict';
 import { UpdateCard } from "./UpdateCard";
 import { api, device, getWarehouseId, scanBarcode, uploadProductImage } from "./native";
 import { ImagebedSettings } from './ImagebedSettings';
@@ -22,6 +23,7 @@ import {
   productPayload,
   Settings,
   Warehouse,
+  Workspace,
 } from "./model";
 import {
   Button,
@@ -55,7 +57,8 @@ export function ProductEditor({
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
-  const options = flattenCategories(categories);
+  const [currentCategories, setCurrentCategories] = useState(categories);
+  const options = flattenCategories(currentCategories);
   const selected = options.find(c => c.id === product?.category_id) || options[0];
   const initial: ProductForm = {
     name: product?.name ?? "",
@@ -71,6 +74,10 @@ export function ProductEditor({
     threshold: String(product?.threshold ?? 5),
   };
   const [form, setForm] = useState(initial);
+  const [baseline, setBaseline] = useState(initial);
+  const [version, setVersion] = useState(product?.version);
+  const [conflict, setConflict] = useState(false);
+  const [latest, setLatest] = useState<{ product: Product; categories: Category[] }>();
   const [syncTargets, setSyncTargets] = useState<number[]>([]);
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
@@ -80,7 +87,7 @@ export function ProductEditor({
   const field = (key: keyof ProductForm) => (value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
   const save = async () => {
-    if (pickingImage || scanning) return;
+    if (pickingImage || scanning || conflict) return;
     if (!lock.enter()) return;
     setBusy(true);
     setError("");
@@ -89,11 +96,16 @@ export function ProductEditor({
       await api(
         product ? `/products/${product.id}` : "/products",
         product ? "PUT" : "POST",
-        { ...payload, sync_warehouse_ids: syncTargets },
+        { ...payload, ...(product ? { version } : {}), sync_warehouse_ids: syncTargets },
       );
       onSaved(product ? "商品已更新" : "商品已创建，初始库存为 0");
     } catch (e) {
       setError((e as Error).message);
+      const failure = e as { status?: number; code?: string };
+      if (failure.status === 409 && failure.code === 'PRODUCT_VERSION_CONFLICT') {
+        setConflict(true);
+        setLatest(undefined);
+      }
     } finally {
       setBusy(false);
       lock.leave();
@@ -118,18 +130,50 @@ export function ProductEditor({
       onClose={onClose}
       error={error}
       errorRevision={errorRevision}
-      dirty={JSON.stringify(form) !== JSON.stringify(initial) || syncTargets.length > 0}
+      dirty={JSON.stringify(form) !== JSON.stringify(baseline) || syncTargets.length > 0}
       busy={busy || scanning || pickingImage}
       footer={
         <Button
           title="保存商品"
           icon={Check}
           busy={busy}
-          disabled={scanning || pickingImage}
+          disabled={scanning || pickingImage || conflict}
           onPress={save}
         />
       }
     >
+      {conflict && <>
+        <ProductConflict form={form} latest={latest?.product} />
+        <Button title="查看最新信息" kind="secondary" disabled={busy || scanning || pickingImage} onPress={async () => {
+          if (!product || !lock.enter()) return;
+          setBusy(true);
+          setLatest(undefined);
+          try {
+            const data = await api<Workspace>('/data', 'GET', undefined, warehouseId);
+            const current = data.products.find(p => p.id === product.id);
+            if (!current) throw new Error('商品已被删除，当前填写内容已保留。');
+            setLatest({ product: current, categories: data.categories || [] });
+          } catch (e) { setError((e as Error).message); }
+          finally { setBusy(false); lock.leave(); }
+        }} />
+        {!!latest && <Button title="使用最新信息重新编辑" kind="secondary" disabled={busy || scanning || pickingImage} onPress={() => {
+          Alert.alert('使用最新商品信息', '使用最新信息替换当前填写内容，并清空同步仓库选择？', [
+            { text: '取消', style: 'cancel' },
+            { text: '重新编辑', onPress: () => {
+              const current = latest.product;
+              const next: ProductForm = {
+                name: current.name, barcode: current.barcode, category: current.category,
+                category_id: String(current.category_id ?? ''), unit: current.unit,
+                cost: String(current.cost), price: String(current.price), threshold: String(current.threshold),
+                image: current.image || '', specification: current.specification || '', note: current.note || '',
+              };
+              setForm(next); setBaseline(next); setVersion(current.version);
+              setCurrentCategories(latest.categories); setSyncTargets([]);
+              setConflict(false); setLatest(undefined); setError('');
+            } },
+          ]);
+        }} />}
+      </>}
       <Card>
         <Field
           label="商品名称"

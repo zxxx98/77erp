@@ -43,7 +43,7 @@ test('employees share warehouses and prices, can edit products and open orders, 
   assert.equal((await f.request(employee.cookie, '/warehouses')).data.length, 2);
   const created = await f.request(employee.cookie, '/products', { ...product, sync_warehouse_ids: [warehouse] });
   assert.equal(created.status, 201);
-  assert.equal((await f.request(employee.cookie, `/products/${created.data.id}`, { ...product, name: '已编辑' }, 'PUT')).status, 200);
+  assert.equal((await f.request(employee.cookie, `/products/${created.data.id}`, { ...product, version: created.data.version, name: '已编辑' }, 'PUT')).status, 200);
   const order = await f.command(employee.cookie, '/orders', { ...draftBody, items: [{ product_id: created.data.id, quantity: 2, price: 10 }] });
   assert.equal(order.status, 201);
   const data = (await f.request(employee.cookie, '/data')).data;
@@ -195,7 +195,7 @@ test('business backups preserve actor names and same-server draft owners, but ne
   await source.command(employee.cookie, '/drafts', draftBody);
   await source.command(employee.cookie, '/orders', draftBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 7);
+  assert.equal(backup.version, 8);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });

@@ -447,3 +447,55 @@ test("native order search hides delisted products until explicitly included", ()
   fireEvent.press(screen.getByRole('button', {name: '包含下架商品（清库存等）'}));
   expect(screen.getByText(`${product.name}（已下架）`)).toBeOnTheScreen();
 });
+
+test('native product conflicts preserve input and require explicit confirmation to adopt the latest version', async () => {
+  const saved = jest.fn();
+  const alert = jest.spyOn(Alert, 'alert');
+  const latest = { ...product, price: 42, version: 2, note: '其他人的备注' };
+  request.mockRejectedValueOnce(Object.assign(new Error('商品信息已被修改，本次未保存。请查看最新信息后重新编辑。'), { status: 409, code: 'PRODUCT_VERSION_CONFLICT' }));
+  render(<ProductEditor product={product} categories={categories} warehouses={[{ id: 1, name: '主仓库', created_at: '' }, { id: 2, name: '分仓', created_at: '' }]} onClose={jest.fn()} onSaved={saved} />);
+  fireEvent.changeText(screen.getByLabelText('商品备注'), '我的填写');
+  fireEvent.changeText(screen.getByLabelText('销售价'), '35');
+  fireEvent(screen.getByLabelText('同步到分仓'), 'valueChange', true);
+  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
+  await screen.findByText('商品信息有冲突');
+  expect(request).toHaveBeenCalledWith(`/products/${product.id}`, 'PUT', expect.objectContaining({ version: product.version, price: 35, note: '我的填写', sync_warehouse_ids: [2] }));
+  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '我的填写');
+  expect(screen.getByRole('button', { name: '保存商品' })).toBeDisabled();
+  expect(saved).not.toHaveBeenCalled();
+  request.mockResolvedValueOnce({ ...workspace, products: [latest] });
+  fireEvent.press(screen.getByRole('button', { name: '查看最新信息' }));
+  await screen.findByText('最新信息：42');
+  expect(screen.getByText('当前填写：35')).toBeOnTheScreen();
+  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '我的填写');
+  fireEvent.press(screen.getByRole('button', { name: '使用最新信息重新编辑' }));
+  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '我的填写');
+  const confirm = alert.mock.calls.at(-1)?.[2]?.find(b => b.text === '重新编辑')?.onPress;
+  await act(async () => { confirm?.(); });
+  expect(screen.getByLabelText('销售价')).toHaveProp('value', '42');
+  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '其他人的备注');
+  expect(screen.getByLabelText('同步到分仓')).toHaveProp('value', false);
+  expect(screen.getByRole('button', { name: '保存商品' })).toBeEnabled();
+  fireEvent.changeText(screen.getByLabelText('商品备注'), '核对后补充');
+  request.mockResolvedValueOnce({ ok: true, version: 3 });
+  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
+  await waitFor(() => expect(saved).toHaveBeenCalledWith('商品已更新'));
+  expect(request).toHaveBeenLastCalledWith(`/products/${product.id}`, 'PUT', expect.objectContaining({ version: 2, price: 42, note: '核对后补充', sync_warehouse_ids: [] }));
+  alert.mockRestore();
+});
+
+test('native latest-information failures preserve edits and keep stale saves blocked', async () => {
+  request.mockRejectedValueOnce(Object.assign(new Error('商品信息已被修改'), { status: 409, code: 'PRODUCT_VERSION_CONFLICT' }));
+  const saved = jest.fn();
+  render(<ProductEditor product={product} categories={categories} onClose={jest.fn()} onSaved={saved} />);
+  fireEvent.changeText(screen.getByLabelText('商品名称'), '我的商品名称');
+  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
+  await screen.findByText('商品信息有冲突');
+  request.mockRejectedValueOnce(new Error('无法连接服务器'));
+  fireEvent.press(screen.getByRole('button', { name: '查看最新信息' }));
+  await screen.findByText('无法连接服务器');
+  expect(screen.getByLabelText('商品名称')).toHaveProp('value', '我的商品名称');
+  expect(screen.getByRole('button', { name: '保存商品' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: '使用最新信息重新编辑' })).toBeNull();
+  expect(saved).not.toHaveBeenCalled();
+});

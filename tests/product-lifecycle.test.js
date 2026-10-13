@@ -32,9 +32,9 @@ test('listing changes preserve stock and history, remain local to a warehouse, a
   assert.equal((await f.request(`/products/${id}/status`, 'POST', {active: 0})).status, 200);
   const after = (await f.request('/data')).data;
   assert.deepEqual(after.orders, before.orders);
-  assert.deepEqual(after.products[0], {...before.products[0], active: 0});
+  assert.deepEqual(after.products[0], {...before.products[0], active: 0, version: after.products[0].version});
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.products[0].active, 1);
-  assert.equal((await f.request(`/products/${id}`, 'PUT', {...product, name: '编辑后'})).status, 200);
+  assert.equal((await f.request(`/products/${id}`, 'PUT', {...product, version: after.products[0].version, name: '编辑后'})).status, 200);
   assert.equal((await f.request('/data')).data.products[0].active, 0);
   const outgoing = await f.order(id, 'out', 2);
   assert.equal(outgoing.status, 201);

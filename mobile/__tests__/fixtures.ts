@@ -1,6 +1,7 @@
 import { Category, Product, Workspace } from "../src/model";
 export const categories: Category[] = [{ id: 1, name: "日用百货", parent_id: null }, { id: 2, name: "杯具", parent_id: 1 }];
 export const product: Product = {
+  version: 1,
   id: 1,
   category_id: 1,
   name: "陶瓷杯",

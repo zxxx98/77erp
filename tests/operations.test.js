@@ -1,3 +1,4 @@
+import { assertRestoredBusiness } from './backup-assertions.js';
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -297,7 +298,7 @@ test("backup round trip restores business data without replacing credentials or 
     (await f.request("/data")).data.settings.business_name,
     "保留设置",
   );
-  assert.deepEqual((await f.request("/backup")).data.data, backup.data);
+  assertRestoredBusiness((await f.request("/backup")).data.data, backup.data);
   assert.equal((await f.request("/backup", undefined, false)).status, 401);
   for (const path of [
     "/stocktakes",

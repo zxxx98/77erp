@@ -133,6 +133,7 @@ test("editing with a blank barcode retains the existing barcode", async () => {
   const created = await request("/products", "POST", automaticProduct);
   const edited = await request(`/products/${created.data.id}`, "PUT", {
     ...automaticProduct,
+    version: created.data.version,
     name: "修改商品名称",
     barcode: "",
   });

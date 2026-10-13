@@ -1,4 +1,5 @@
 import { createOrder } from './orders.js';
+import { migrateProductVersions } from './product-version.js';
 import { migrateStockQr, installStockQr, clearStockQr } from './stock-qr.js';
 import express from "express";
 import { randomUUID } from "node:crypto";
@@ -251,6 +252,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateUnits(db);
   migrateImagebed(db);
   migrateStockQr(db);
+  migrateProductVersions(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
@@ -357,11 +359,12 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         )
         .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids);
+      const saved = db.prepare('SELECT version FROM products WHERE id=?').get(result.lastInsertRowid);
       db.exec("COMMIT");
       inTransaction = false;
       res
         .status(201)
-        .json({ id: Number(result.lastInsertRowid), barcode: v[1] });
+        .json({ id: Number(result.lastInsertRowid), barcode: v[1], version: saved.version });
     } catch (e) {
       if (inTransaction) db.exec("ROLLBACK");
       res.status(400).json({
@@ -385,16 +388,27 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         inTransaction = false;
         return res.status(404).json({ error: "商品不存在。" });
       }
+      if (!Number.isSafeInteger(req.body.version) || req.body.version < 1 || req.body.version !== existing.version) {
+        db.exec('ROLLBACK');
+        inTransaction = false;
+        return res.status(409).json({
+          code: 'PRODUCT_VERSION_CONFLICT',
+          error: req.body.version == null
+            ? '缺少商品版本，请刷新页面或更新安卓客户端后重新编辑。'
+            : '商品信息已被修改，本次未保存。请查看最新信息后重新编辑。',
+        });
+      }
       const catalog = catalogValues(req.body, existing);
       v[2] = catalog.path;
       if (!v[1]) v[1] = existing.barcode;
       db.prepare(
-        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=? WHERE id=?",
-      ).run(...v, ...catalog.values, req.params.id);
+        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=? WHERE id=? AND version=?",
+      ).run(...v, ...catalog.values, req.params.id, existing.version);
       syncProduct(db, existing.id, req.body.sync_warehouse_ids);
+      const saved = db.prepare('SELECT version FROM products WHERE id=?').get(existing.id);
       db.exec("COMMIT");
       inTransaction = false;
-      res.json({ ok: true, barcode: v[1] });
+      res.json({ ok: true, barcode: v[1], version: saved.version });
     } catch (e) {
       if (inTransaction) db.exec("ROLLBACK");
       res.status(400).json({
