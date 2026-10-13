@@ -51,9 +51,10 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
     await page
       .getByRole("button", { name: "保存往来单位", exact: true })
       .click();
-    await expect(
-      page.getByRole("button", { name: "供应商 · 常用供应商", exact: true }),
-    ).toBeVisible();
+    const contacts = page.getByRole("combobox", { name: "搜索往来单位", exact: true });
+    await expect(contacts).toHaveAttribute("aria-expanded", "false");
+    await contacts.click();
+    await expect(page.getByRole("option").filter({ hasText: "常用供应商" })).toBeVisible();
     await page.getByRole("button", { name: "取消", exact: true }).click();
     await page.getByRole("link", { name: "采购入库", exact: true }).click();
     await page.getByRole("button", { name: "新建入库", exact: true }).click();
@@ -139,6 +140,59 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
       ),
     ).toBe(true);
     expect(errors).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("contact search stays collapsed, filters in a dropdown and selects without submitting the form", async ({ page }) => {
+  const f = await fixture(page);
+  try {
+    for (const [role, name, person, phone, active] of [["supplier", "常用供应商", "王先生", "13812345678", 1], ["customer", "城南门店", "李女士", "13987654321", 1], ["supplier", "停用供应商", "", "", 0]]) {
+      await page.request.post(f.base + "/api/contacts", { data: { request_id: `contact-${name}`, role, name, person, phone, address: "", note: "", active } });
+    }
+    await page.goto(f.base + "/?manage=data");
+    await page.getByRole("button", { name: "往来与财务", exact: false }).click();
+    const search = page.getByRole("combobox", { name: "搜索往来单位", exact: true });
+    const list = page.getByRole("listbox", { name: "往来单位" });
+    await expect(search).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("listbox", { name: "往来单位" })).toHaveCount(0);
+    await search.click();
+    await expect(list.getByRole("option")).toHaveCount(3);
+    await expect(list.getByRole("option").filter({ hasText: "停用供应商" })).toContainText("已停用");
+    await search.fill("8765");
+    await expect(list.getByRole("option")).toHaveCount(1);
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect(search).toHaveAttribute("aria-expanded", "false");
+    await expect(search).toHaveValue("城南门店");
+    await expect(page.getByLabel("单位名称", { exact: true })).toHaveValue("城南门店");
+    await expect(page.getByLabel("联系人", { exact: true })).toHaveValue("李女士");
+    expect(f.db.prepare("SELECT COUNT(*) AS n FROM contacts").get().n).toBe(3);
+    await search.click();
+    await page.getByText("同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。", { exact: true }).click();
+    await expect(search).toHaveAttribute("aria-expanded", "false");
+    await search.click();
+    await page.keyboard.press("Escape");
+    await expect(search).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await search.click();
+    await search.fill("找不到的单位");
+    await expect(page.getByText("没有匹配的往来单位", { exact: true })).toBeVisible();
+    await page.getByLabel("单位名称", { exact: true }).click();
+    await expect(search).toHaveAttribute("aria-expanded", "false");
+    await search.click();
+    await search.fill("王先生");
+    await page.setViewportSize({ width: 390, height: 844 });
+    const bounds = await page.getByRole("listbox", { name: "往来单位" }).boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+    await list.getByRole("option").filter({ hasText: "常用供应商" }).click();
+    await expect(search).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByLabel("单位名称", { exact: true })).toHaveValue("常用供应商");
+    await page.getByRole("button", { name: "新增往来单位", exact: true }).click();
+    await expect(search).toHaveValue("");
+    await expect(page.getByLabel("单位名称", { exact: true })).toHaveValue("");
   } finally {
     await f.close();
   }

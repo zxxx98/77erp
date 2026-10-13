@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, ChevronDown, Clock3, FilePenLine, LoaderCircle, Package, Trash2, UserRound } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Clock3, FilePenLine, LoaderCircle, Package, Search, Trash2, UserRound } from "lucide-react";
 import { api } from "./api.js";
 import { orderLabel } from "./Operations.jsx";
 import "./commerce.css";
@@ -91,45 +91,121 @@ function Contacts({ onRefresh }) {
   const [contacts, setContacts] = useState([]),
     [form, setForm] = useState(empty),
     [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const searchId = useId();
+  const listId = `${searchId}-options`;
+  const picker = useRef(null);
+  const searchInput = useRef(null);
   const { busy, error, setError, run, send } = useBusiness();
   const load = async () => setContacts(await api("/contacts"));
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load().catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, []);
+  const matches = contacts.filter(c => `${c.name} ${c.person} ${c.phone}`.toLowerCase().includes(query.trim().toLowerCase()));
+  useEffect(() => {
+    if (open) document.getElementById(`${listId}-${highlighted}`)?.scrollIntoView({ block: "nearest" });
+  }, [open, highlighted, listId]);
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = event => {
+      if (!picker.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
+  const selectContact = contact => {
+    setForm(contact);
+    setQuery("");
+    searchInput.current?.focus();
+    setOpen(false);
+  };
   return (
     <div>
       <p>
         同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。
       </p>
-      <label>
-        搜索往来单位
-        <input value={query} onChange={(e) => setQuery(e.target.value)} />
-      </label>
-      <div className="operation-scroll">
-        {contacts
-          .filter((c) => `${c.name} ${c.person} ${c.phone}`.includes(query))
-          .map((c) => (
-            <div className="operation-row" key={c.id}>
+      <div ref={picker} className="contact-picker" onBlur={e => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}>
+        <label htmlFor={searchId}>搜索往来单位</label>
+        <div className="contact-search">
+          <Search size={16} aria-hidden="true" />
+          <input
+            ref={searchInput}
+            id={searchId}
+            className="contact-input"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={open && !busy}
+            aria-controls={listId}
+            aria-activedescendant={open && !busy && matches[highlighted] ? `${listId}-${highlighted}` : undefined}
+            autoComplete="off"
+            placeholder="选择往来单位，或输入名称、联系人、电话搜索"
+            value={open ? query : form.id ? form.name : query}
+            disabled={busy}
+            onFocus={() => { setOpen(true); setHighlighted(0); }}
+            onClick={() => setOpen(true)}
+            onChange={e => { setQuery(e.target.value); setHighlighted(0); setOpen(true); }}
+            onKeyDown={e => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                setOpen(true);
+                if (matches.length) setHighlighted(current => !open ? (e.key === "ArrowDown" ? 0 : matches.length - 1) : (current + (e.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                if (open && matches[highlighted]) selectContact(matches[highlighted]);
+                else setOpen(true);
+              } else if (e.key === "Escape" && open) {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(false);
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="contact-toggle"
+            aria-label={open ? "收起往来单位列表" : "展开往来单位列表"}
+            aria-expanded={open && !busy}
+            aria-controls={listId}
+            disabled={busy}
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { searchInput.current?.focus(); setHighlighted(0); setOpen(!open); }}
+          ><ChevronDown size={17} aria-hidden="true" /></button>
+        </div>
+        {open && !busy && <div className="contact-dropdown">
+          <div id={listId} className="contact-options" role="listbox" aria-label="往来单位" aria-busy={loading}>
+            {!loading && matches.map((c, index) => (
               <button
+                id={`${listId}-${index}`}
                 type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => setForm(c)}
+                key={c.id}
+                className={`contact-option${index === highlighted ? " is-highlighted" : ""}`}
+                role="option"
+                aria-selected={form.id === c.id}
+                tabIndex={-1}
+                onMouseDown={e => e.preventDefault()}
+                onMouseEnter={() => setHighlighted(index)}
+                onClick={() => selectContact(c)}
               >
-                {c.role === "supplier" ? "供应商" : "客户"} · {c.name}
-                {!c.active ? "（已停用）" : ""}
+                <span className={`contact-role contact-role-${c.role}`}>{c.role === "supplier" ? "供应商" : "客户"}</span>
+                <span className="contact-option-copy"><strong>{c.name}{!c.active && <small>已停用</small>}</strong>{(c.person || c.phone) && <span>{[c.person, c.phone].filter(Boolean).join(" · ")}</span>}</span>
+                {form.id === c.id && <Check size={16} className="contact-selected" aria-hidden="true" />}
               </button>
-              <small>
-                {c.person} {c.phone} {c.address}
-              </small>
-            </div>
-          ))}
+            ))}
+          </div>
+          {loading && <p className="contact-empty" role="status">正在加载往来单位…</p>}
+          {!loading && !matches.length && <p className="contact-empty" role="status">{query.trim() ? "没有匹配的往来单位" : "暂无往来单位，可点击下方按钮新增"}</p>}
+        </div>}
       </div>
       <button
         type="button"
         className="btn"
         disabled={busy}
-        onClick={() => setForm(empty)}
+        onClick={() => { setForm(empty); setQuery(""); setOpen(false); }}
       >
         新增往来单位
       </button>
@@ -180,6 +256,8 @@ function Contacts({ onRefresh }) {
           run(async () => {
             await send("/contacts", form);
             setForm(empty);
+            setQuery("");
+            setOpen(false);
             await load();
             await onRefresh?.();
           })
