@@ -1,3 +1,5 @@
+import { StockQrManager, StockQrExecution } from './StockQr.jsx';
+import { stockQrLabel } from './stock-qr-client.js';
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -20,6 +22,7 @@ import {
   Ellipsis,
   Grid2X2,
   History,
+  ImagePlus,
   LayoutDashboard,
   List,
   LoaderCircle,
@@ -347,7 +350,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
     </div>
   );
 }
-function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify }) {
+function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, manageStockQr }) {
   const [format, setFormat] = useState("barcode");
   const [qr, setQr] = useState(null);
   const codeRef = useRef(null);
@@ -401,6 +404,7 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify }) {
         <p>{format === "qr" ? "包含商品编码、名称、单位和仓库信息" : `CODE 128 · ${product.category}`}</p>
       </div>
       <div className="modal-footer">
+        {manageStockQr && <Button onClick={manageStockQr}>出入库二维码</Button>}
         <Button onClick={onClose}>关闭</Button>
         <Button kind="primary" icon={Download} disabled={format === "qr" && (!qr || !!qr.error)} onClick={download}>下载标签</Button>
       </div>
@@ -415,7 +419,7 @@ function CameraScanner({ onResult }) {
     [ready, setReady] = useState(false);
   callback.current = onResult;
   useEffect(() => {
-    let alive = true;
+    let alive = true, delivered = false;
     if (!window.isSecureContext || !navigator.mediaDevices) {
       setError("手机摄像头扫码需要 HTTPS，请通过 HTTPS 地址打开此页面。");
       return;
@@ -427,7 +431,8 @@ function CameraScanner({ onResult }) {
           { video: { facingMode: { ideal: "environment" } } },
           video.current,
           (result) => {
-            if (result && alive) {
+            if (result && alive && !delivered) {
+              delivered = true;
               controls.current?.stop();
               callback.current(result.getText());
             }
@@ -898,7 +903,7 @@ function App({ admin, onLogout }) {
                 />
               )}
               {page === "scanner" && (
-                <Scanner data={data} openOrder={openOrder} notify={notify} />
+                <Scanner data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={isAdmin} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({kind:"stockQr"})} />
               )}
               <footer className="page-footer">
                 <span>
@@ -937,11 +942,13 @@ function App({ admin, onLogout }) {
       {modal?.kind === "detail" && (
         <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
+      {isAdmin && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}
           warehouseId={data.warehouse_id || 1}
           sourceId={data.instance_id}
+          manageStockQr={isAdmin ? () => setModal({kind:"stockQr",product:modal.product}) : undefined}
           onClose={() => setModal(null)}
           notify={notify}
         />
@@ -1701,10 +1708,12 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
       <section className="panel products-panel">
         <div className="table-toolbar">
           {isAdmin && <Button onClick={() => setManaging(true)}>管理分类</Button>}
-          <div className="toolbar-right">
-            <select aria-label="商品上架状态" value={status} onChange={e => setStatus(e.target.value)}>
-              <option value="all">全部状态</option><option value="active">已上架</option><option value="inactive">已下架</option>
-            </select>
+          <div className="toolbar-right product-toolbar-actions">
+            <div className="filter-tabs product-status-filter" role="group" aria-label="商品上架状态">
+              {[["all", "全部状态"], ["active", "已上架"], ["inactive", "已下架"]].map(([value, label]) => (
+                <button key={value} type="button" className={status === value ? "active" : ""} aria-pressed={status === value} onClick={() => setStatus(value)}>{label}</button>
+              ))}
+            </div>
             <div className="table-search">
               <Search size={16} />
               <input
@@ -2446,6 +2455,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
     [busy, setBusy] = useState(false);
   const change = (key, value) => setForm(current => ({ ...current, [key]: value }));
   const [readingImage, setReadingImage] = useState(false);
+  const imageInputRef = useRef(null);
   const submit = async (e) => {
     e.preventDefault();
     if (busy || readingImage) return;
@@ -2567,10 +2577,9 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               />
             </label>
           </div>
-          <div className="product-image-editor">
-            <label>
-              商品图片
-              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传商品图片"
+          <div className="product-image-editor" role="group" aria-label="商品图片">
+            <div className="product-image-label">商品图片</div>
+            <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传商品图片"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
@@ -2580,8 +2589,15 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                   catch (e) { setError(e.message); }
                   finally { setReadingImage(false); }
                 }} />
-              <small>{readingImage ? '正在压缩并上传图片…' : '支持 JPEG、PNG、WebP，自动压缩并转为 WebP 上传图床。'}</small>
-            </label>
+            <button type="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
+              <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoaderCircle size={22} className="spin" /> : <ImagePlus size={22} />}</span>
+              <span className="product-image-upload-copy">
+                <strong>{readingImage ? '正在上传图片…' : form.image ? '更换商品图片' : '上传商品图片'}</strong>
+                <span>{readingImage ? '正在压缩并上传，请稍候' : '点击选择图片，支持 JPEG、PNG、WebP'}</span>
+              </span>
+              {!readingImage && <Plus size={18} aria-hidden="true" />}
+            </button>
+            <small className="product-image-hint">单张图片不超过 10 MB，上传时自动压缩。</small>
             {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="商品图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
           </div>
           <label>商品规格
@@ -3078,7 +3094,8 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
   );
 }
 
-function Scanner({ data, openOrder, notify }) {
+function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onSaved }) {
+  const [stockLabel, setStockLabel] = useState(null), [stockBusy, setStockBusy] = useState(false);
   const [mode, setMode] = useState("query"),
     [barcode, setBarcode] = useState(""),
     [camera, setCamera] = useState(false),
@@ -3092,7 +3109,10 @@ function Scanner({ data, openOrder, notify }) {
     if (manual) input.current?.focus();
   }, [manual]);
   const scan = (code) => {
+    if (stockBusy) return;
     setCamera(false);
+    const operation = stockQrLabel(code);
+    if (operation) { setSelected(null); setError(""); setStockLabel(operation); setBarcode(""); return; }
     let p = null;
     try {
       p = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id || 1, sourceId: data.instance_id });
@@ -3120,6 +3140,7 @@ function Scanner({ data, openOrder, notify }) {
         title="扫码工作台"
         description="使用手机摄像头识别商品条码或二维码标签，进行商品查询、入库或出库。"
       >
+        {isAdmin && <Button onClick={manageStockQr}>管理出入库二维码</Button>}
         <span className="scanner-ready">
           <i />
           手机摄像头扫码
@@ -3135,6 +3156,7 @@ function Scanner({ data, openOrder, notify }) {
             ].map(([id, name, Icon]) => (
               <button
                 key={id}
+                disabled={stockBusy}
                 className={mode === id ? "active" : ""}
                 onClick={() => {
                   setMode(id);
@@ -3159,10 +3181,12 @@ function Scanner({ data, openOrder, notify }) {
                   : "扫描出库商品"}
             </h2>
             <p>打开手机摄像头，将商品条码或二维码放入取景框</p>
+            {mode !== "query" && <p>免确认出入库二维码将直接执行全部商品。</p>}
             <Button
               kind="primary"
               icon={Camera}
               className="mobile-scan-button"
+              disabled={stockBusy}
               onClick={() => {
                 setCamera(!camera);
                 setError("");
@@ -3194,7 +3218,7 @@ function Scanner({ data, openOrder, notify }) {
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
-                <button type="submit" disabled={!barcode}>
+                <button type="submit" disabled={!barcode || stockBusy}>
                   识别
                   <ArrowRight size={16} />
                 </button>
@@ -3207,6 +3231,7 @@ function Scanner({ data, openOrder, notify }) {
               </div>
             )}
           </div>
+          <StockQrExecution label={stockLabel} onLabelDone={() => setStockLabel(null)} mode={mode} userKey={userKey} data={data} Modal={Modal} onSaved={onSaved} onBusy={setStockBusy} />
           {product && (
             <div className="scan-result">
               <div className="scan-result-label">
@@ -3283,7 +3308,7 @@ function Scanner({ data, openOrder, notify }) {
                 [
                   "03",
                   "扫描并确认",
-                  "识别商品后确认数量，库存随单据自动更新。",
+                  "商品标签确认开单；业务二维码按配置确认整单。",
                 ],
               ].map(([n, title, desc]) => (
                 <div key={n}>
@@ -3297,7 +3322,7 @@ function Scanner({ data, openOrder, notify }) {
             </div>
             <div className="scan-guide-note">
               <ShieldCheck size={16} />
-              <p>扫码只识别商品，确认单据后才会改变库存。</p>
+              <p>商品标签只识别商品；免确认出入库二维码会直接更新全部商品库存。</p>
             </div>
           </Panel>
           <Panel

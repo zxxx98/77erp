@@ -15,9 +15,14 @@ test('delist, filter, explicitly choose for clearance, relist, and delete an unu
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', {name: '下架 生命周期测试商品', exact: true}).click();
   await expect(page.getByRole('button', {name: '上架 生命周期测试商品', exact: true})).toBeVisible();
-  await page.getByRole('combobox', {name: '商品上架状态'}).selectOption('active');
+  const statusFilter = page.getByRole('group', {name: '商品上架状态'});
+  await expect(statusFilter.getByRole('button', {name: '全部状态', exact: true})).toHaveAttribute('aria-pressed', 'true');
+  await statusFilter.getByRole('button', {name: '已上架', exact: true}).focus();
+  await page.keyboard.press('Enter');
+  await expect(statusFilter.getByRole('button', {name: '已上架', exact: true})).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('没有找到商品', {exact: true})).toBeVisible();
-  await page.getByRole('combobox', {name: '商品上架状态'}).selectOption('inactive');
+  await statusFilter.getByRole('button', {name: '已下架', exact: true}).click();
+  await expect(statusFilter.getByRole('button', {name: '已下架', exact: true})).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', {name: '上架 生命周期测试商品', exact: true})).toBeVisible();
   await page.goto('/#sales');
   await page.getByRole('button', {name: '新建出库', exact: true}).click();

@@ -127,6 +127,22 @@ public class ErpModule extends ReactContextBaseJavaModule {
         });
     }
 
+    @ReactMethod public void getStockQrPending(String key, Promise promise) {
+        requests.execute(() -> promise.resolve(preferences.getString("stock_qr_pending:" + key, null)));
+    }
+    @ReactMethod public void setStockQrPending(String key, String value, Promise promise) {
+        requests.execute(() -> {
+            if (key.length() > 512 || (value != null && value.length() > 250000)) {
+                promise.reject("PENDING", "扫码请求数据过大。"); return;
+            }
+            SharedPreferences.Editor edit = preferences.edit();
+            if (value == null) edit.remove("stock_qr_pending:" + key);
+            else edit.putString("stock_qr_pending:" + key, value);
+            if (edit.commit()) promise.resolve(null);
+            else promise.reject("PENDING", "无法保存扫码重试请求，请重试。");
+        });
+    }
+
     private SecretKey sessionKey() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);

@@ -1,3 +1,4 @@
+import { StockQrExecution, stockQrLabel } from './stock-qr';
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, FlatList, Linking, StyleSheet, Text, View } from "react-native";
 import {
@@ -481,7 +482,9 @@ export function ProductDetail({
   openOrder,
   onSaved,
   isAdmin = false,
+  manageStockQr,
 }: {
+  manageStockQr?: () => void;
   onSaved: (message: string) => void;
   isAdmin?: boolean;
   product: Product;
@@ -563,6 +566,7 @@ export function ProductDetail({
       </Card>
       <Button title="编辑商品" kind="secondary" disabled={busy} onPress={edit} />
       {isAdmin && <>
+        {manageStockQr && <Button title="出入库二维码" kind="secondary" disabled={busy} onPress={manageStockQr} />}
         <Button title={product.active === 0 ? "上架商品" : "下架商品"} kind="secondary" disabled={busy} onPress={() => change()} />
         <Button title="删除商品" kind="danger" disabled={busy} onPress={() => change(true)} />
       </>}
@@ -745,19 +749,30 @@ export function ScannerScreen({
   openOrder,
   warehouseId,
   sourceId,
+  storageKey = "stock-qr",
+  onSaved = () => {},
+  manageStockQr,
 }: {
+  storageKey?: string;
+  onSaved?: (message: string) => void;
+  manageStockQr?: () => void;
   products: Product[];
   onClose: () => void;
   openOrder: (type: "in" | "out", product: Product) => void;
   warehouseId?: number;
   sourceId?: string;
 }) {
+  const [stockLabel,setStockLabel]=useState<object|null>(null),[stockBusy,setStockBusy]=useState(false);
+  const scanLock=useRef(false);
   const [mode, setMode] = useState<"query" | "in" | "out">("query");
   const [barcode, setBarcode] = useState("");
   const [selected, setSelected] = useState<Product>();
   const [busy, setBusy] = useState(false);
   const { error, errorRevision, setError } = useFormError();
   const lookup = (code: string) => {
+    if(stockBusy)return;
+    const label=stockQrLabel(code);
+    if(label){setStockLabel(label);setSelected(undefined);setBarcode("");setError("");return;}
     let product: Product | null = null;
     try {
       product = resolveProductCode(code, { products, warehouseId, sourceId });
@@ -777,6 +792,7 @@ export function ScannerScreen({
     if (mode !== "query") openOrder(mode, product);
   };
   const scan = async () => {
+    if(scanLock.current||stockBusy)return;scanLock.current=true;
     setBusy(true);
     setError("");
     try {
@@ -785,6 +801,7 @@ export function ScannerScreen({
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      scanLock.current=false;
       setBusy(false);
     }
   };
@@ -792,30 +809,31 @@ export function ScannerScreen({
     <ScreenModal
       title="扫码工作台"
       onClose={onClose}
-      busy={busy}
+      busy={busy || stockBusy}
       error={error}
       errorRevision={errorRevision}
     >
       <Chips
         value={mode}
-        onChange={setMode}
+        onChange={value=>{if(!busy&&!stockBusy)setMode(value);}}
         options={[
           { id: "query", label: "查找商品" },
           { id: "in", label: "扫码入库" },
           { id: "out", label: "扫码出库" },
         ]}
       />
+      {manageStockQr && <Button title="管理出入库二维码" kind="secondary" disabled={busy||stockBusy} onPress={manageStockQr} />}
       <Card>
         <View style={{ alignItems: "center", padding: 24, gap: 14 }}>
           <ScanLine size={64} color={colors.blue} />
           <Text style={s.subtitle}>扫描商品条码</Text>
-          <Text style={s.caption}>扫码识别后，确认单据才会更新库存。</Text>
+          <Text style={s.caption}>商品标签需确认开单；免确认出入库二维码将直接执行全部商品。</Text>
         </View>
         <Button
           title="打开摄像头扫码"
           icon={Camera}
           onPress={scan}
-          busy={busy}
+          busy={busy || stockBusy}
         />
         {error.includes("权限") && (
           <Button
@@ -836,16 +854,17 @@ export function ScannerScreen({
           onChangeText={setBarcode}
           autoCapitalize="none"
           onSubmitEditing={() => {
-            if (barcode.trim()) lookup(barcode);
+            if (barcode.trim() && !busy && !stockBusy) lookup(barcode);
           }}
         />
         <Button
           title="查询商品"
           kind="secondary"
           onPress={() => lookup(barcode)}
-          disabled={!barcode.trim() || busy}
+          disabled={!barcode.trim() || busy || stockBusy}
         />
       </Card>
+      <StockQrExecution label={stockLabel} onLabelDone={()=>setStockLabel(null)} mode={mode} storageKey={storageKey} warehouseId={warehouseId||1} onSaved={onSaved} onBusy={setStockBusy}/>
       {selected && (
         <Card>
           <View style={s.row}>

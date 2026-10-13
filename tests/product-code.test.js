@@ -68,3 +68,12 @@ test('QR source identity survives database restarts and differs between independ
   assert.notEqual(db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value, original);
   db.close();
 });
+
+test('operation QR encodes a server reference without trusting printed quantity or confirmation fields', async () => {
+  const { stockQrPayload } = await import('../src/stock-qr-client.js');
+  const qr = { qr_id: 'a08f04e0-6420-4c84-9c07-189e70c95539', warehouse_id: 2, quantity: 99, require_confirmation: false };
+  const source = '708528e6-7d1e-4d1b-8ba3-f4f769931c49';
+  const payload = stockQrPayload(qr, source);
+  assert.equal(decodeSymbol(qrSymbol(payload)), payload);
+  assert.deepEqual(JSON.parse(payload), {format:'77erp',version:1,type:'stock_operation',source_id:source,warehouse_id:2,qr_id:qr.qr_id});
+});

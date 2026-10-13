@@ -59,7 +59,7 @@ public class ScannerActivity extends ComponentActivity {
         cancel.setOnClickListener(v -> finish());
         controls.addView(cancel);
         TextView instruction = new TextView(this);
-        instruction.setText("将商品条码置于取景框内\n识别后自动返回，确认单据后才会变更库存。");
+        instruction.setText("将商品条码或二维码置于取景框内\n识别后自动返回；免确认出入库二维码会直接更新库存。");
         instruction.setTextColor(Color.WHITE);
         instruction.setTextSize(17);
         instruction.setGravity(Gravity.CENTER);

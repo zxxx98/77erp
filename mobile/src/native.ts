@@ -12,6 +12,8 @@ export interface Device {
   ): Promise<{ status: number; body: string }>;
   clearSession(): Promise<void>;
   scan(): Promise<string | null>;
+  getStockQrPending(key: string): Promise<string | null>;
+  setStockQrPending(key: string, value: string | null): Promise<void>;
   pickImage(): Promise<string | null>;
   uploadImage(uri: string, warehouseId: number): Promise<{ status: number; body: string }>;
 }
@@ -30,6 +32,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status = 0,
+    public code?: string,
   ) {
     super(message);
   }
@@ -74,7 +77,7 @@ function decodeResponse<T>(response: { status: number; body: string }, path: str
     );
   }
   if (response.status < 200 || response.status >= 300)
-    throw new ApiError(data.error || "请求失败，请重试。", response.status);
+    throw new ApiError(data.error || "请求失败，请重试。", response.status, data.code);
   return data as T;
 }
 export async function uploadProductImage(uri: string): Promise<string> {
@@ -90,7 +93,7 @@ export async function scanBarcode(): Promise<string | null> {
     PermissionsAndroid.PERMISSIONS.CAMERA,
     {
       title: "允许扫描商品条码",
-      message: "使用手机摄像头识别商品条码，扫码不会自动改变库存。",
+      message: "识别商品或出入库二维码；免确认出入库二维码会直接生成单据并更新库存。",
       buttonPositive: "继续",
       buttonNegative: "取消",
     },

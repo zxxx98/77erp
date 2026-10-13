@@ -1,3 +1,5 @@
+import { createOrder } from './orders.js';
+import { migrateStockQr, installStockQr, clearStockQr } from './stock-qr.js';
 import express from "express";
 import { randomUUID } from "node:crypto";
 import { migrateWarehouses, installWarehouses, syncProduct } from "./warehouses.js";
@@ -248,6 +250,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateWarehouses(db);
   migrateUnits(db);
   migrateImagebed(db);
+  migrateStockQr(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
@@ -427,6 +430,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         throw new Error("商品已有单据或盘点记录，不能删除，请使用下架。");
       if (db.prepare("SELECT 1 FROM drafts d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
         throw new Error("商品被草稿引用，不能删除，请先移除草稿中的商品或使用下架。");
+      if (db.prepare("SELECT 1 FROM stock_qr_items WHERE product_id=? LIMIT 1").get(product.id))
+        throw new Error("商品被出入库二维码引用，请先从二维码明细移除或使用下架。");
       db.prepare("DELETE FROM products WHERE id=?").run(product.id);
       db.exec("COMMIT");
       inTransaction = false;
@@ -452,7 +457,6 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         items.length > 100
       )
         throw new Error("请填写往来单位并至少添加一件商品。");
-      const seen = new Set();
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
       const request = operationRequest(db, req, true);
@@ -472,63 +476,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         }
         if (draft.version !== req.body.draft_version) throw new Error("草稿已变化，请重新打开。");
       }
-      let total = 0;
-      const normalized = items.map((item) => {
-        if (
-          !validInteger(item.product_id) ||
-          !validInteger(item.quantity) ||
-          item.quantity < 1 ||
-          !validMoney(item.price)
-        )
-          throw new Error(
-            "商品数量必须为正整数，单价最多两位小数且不能为负数。",
-          );
-        if (seen.has(item.product_id))
-          throw new Error("同一商品不能重复添加，请合并数量。");
-        seen.add(item.product_id);
-        const p = db
-          .prepare("SELECT * FROM products WHERE id=?")
-          .get(item.product_id);
-        if (!p) throw new Error("商品不存在。");
-        if (type === "out" && p.stock < item.quantity)
-          throw new Error(`${p.name} 库存不足（当前 ${p.stock} ${p.unit}）。`);
-        if (type === "in" && !validInteger(p.stock + item.quantity))
-          throw new Error(`${p.name} 入库后库存超出上限。`);
-        total += Math.round(item.quantity * item.price * 100);
-        return { ...item, product: p };
-      });
-      if (!Number.isSafeInteger(total))
-        throw new Error("单据金额过大，请减少数量或拆分单据。");
-      const at = new Date().toISOString();
-      const prefix = `${type === "in" ? "RK" : "CK"}${at.slice(0, 10).replaceAll("-", "")}`;
-      const last = db
-        .prepare(
-          "SELECT MAX(CAST(substr(number, ?) AS INTEGER)) AS sequence FROM orders WHERE number LIKE ?",
-        )
-        .get(prefix.length + 1, `${prefix}%`);
-      const number = prefix + String((last.sequence || 0) + 1).padStart(6, "0");
-      const contact = resolveContact(db, type, partner, req.body.partner_id);
-      const result = db
-        .prepare(
-          "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)",
-        )
-        .run(number, type, contact.name, note, total / 100, at, contact.id, req.warehouse.id, req.user.id, req.user.username);
-      normalized.forEach((i) => {
-        const cost = moveInventory(db, i.product_id, type === "in" ? i.quantity : -i.quantity, type === "in" ? Math.round(i.quantity * i.price * 100) : undefined);
-        db.prepare(
-          "INSERT INTO order_items (order_id,product_id,name,barcode,quantity,price,cost_cents) VALUES (?,?,?,?,?,?,?)",
-        ).run(
-          result.lastInsertRowid,
-          i.product_id,
-          i.product.name,
-          i.product.barcode,
-          i.quantity,
-          i.price,
-          cost,
-        );
-      });
-      if (draft) db.prepare("UPDATE drafts SET status='submitted',order_id=?,version=version+1 WHERE id=?").run(result.lastInsertRowid,draft.id);
-      const response = { id: Number(result.lastInsertRowid), number };
+      const response = createOrder(db, req, req.body);
+      if (draft) db.prepare("UPDATE drafts SET status='submitted',order_id=?,version=version+1 WHERE id=?").run(response.id,draft.id);
       saveOperationRequest(db, request, response);
       db.exec("COMMIT");
       inTransaction = false;
@@ -543,6 +492,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return res.status(400).json({ error: "请先确认清空全部业务数据。" });
     try {
       db.exec("BEGIN IMMEDIATE");
+      clearStockQr(db);
       db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
       db.exec("COMMIT");
       res.json({ ok: true });
@@ -580,6 +530,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       res.status(400).json({ error: "仓库名称已存在。" });
     }
   });
+  installStockQr(app, db);
   installOperations(app, db, { productValues, generateBarcode, catalogValues });
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));
   app.use((error, req, res, next) => {

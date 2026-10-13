@@ -1,3 +1,4 @@
+import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.js';
 import { installCommerce, moveInventory, allocate } from "./commerce.js";
 import { createHash, randomUUID } from "node:crypto";
 import { categoryPaths, productDetails } from "./catalog.js";
@@ -341,7 +342,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "drafts", "payments"];
+  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "drafts", "payments", ...stockQrTables];
   const columns = Object.fromEntries(
     tables.map((table) => [
       table,
@@ -360,7 +361,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 6,
+    version: 7,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -368,11 +369,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6].includes(value.version) ||
+      ![1,2,3,4,5,6,7].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 7) for (const table of stockQrTables) data[table] = [];
     if (value.version === 1) {
       data.contacts = []; data.drafts = []; data.payments = [];
       for (const p of data.products || []) p.inventory_value_cents = Math.round(p.stock*p.cost*100);
@@ -562,6 +564,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       const items = JSON.parse(d.items);
       if (!Array.isArray(items) || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !['string','number'].includes(typeof i.quantity) || !['string','number'].includes(typeof i.price) || String(i.quantity).length > 30 || String(i.price).length > 30)) fail('备份草稿明细无效。');
     }
+    validateStockQrBackup(data);
     return data;
   }
   app.get(
@@ -579,7 +582,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         products: data.products.length,
         orders: data.orders.length,
         adjustments: data.stock_adjustments.length,
-        contacts: data.contacts.length, drafts: data.drafts.filter(d => d.status === "active").length, payments: data.payments.length,
+        contacts: data.contacts.length, drafts: data.drafts.filter(d => d.status === "active").length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
       };
     }),
   );
@@ -596,6 +599,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           fail("业务数据已变化，请重新预览后恢复。");
         const data = validateBackup(req.body.backup);
         // Deferred references allow return records to refer to original orders regardless of array order.
+        clearStockQr(db);
         db.exec(
           "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM drafts; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
         );
@@ -609,6 +613,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             if (['orders','drafts'].includes(table) && row.created_by !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
                  !db.prepare('SELECT 1 FROM users WHERE id=?').get(row.created_by))) row.created_by = null;
+            if (table === 'stock_qr_codes') { row.qr_id = randomUUID(); row.enabled = 0; }
+            if (stockQrTables.includes(table)) for (const owner of ['created_by','updated_by']) {
+              if (owner in row && row[owner] !== null &&
+                  (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
+                   !db.prepare('SELECT 1 FROM users WHERE id=?').get(row[owner]))) row[owner] = null;
+            }
             insert.run(...fields.map((c) => row[c]));
           }
         }

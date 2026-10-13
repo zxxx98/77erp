@@ -15,6 +15,7 @@ export function parseProductCode(raw: string): ProductCode {
   const fields = label as { format?: unknown; version?: unknown; type?: unknown; source_id?: unknown; warehouse_id?: unknown; product?: unknown };
   if (fields.format !== "77erp") return { kind: "barcode", barcode: text };
   if (fields.version !== 1) throw new Error("不支持的二维码版本，请更新应用后重试。");
+  if (fields.type === "stock_operation") throw new Error("该二维码用于整单出入库，请到扫码工作台的对应模式执行。");
   if (fields.type !== "product") throw new Error("该二维码不是商品标签，无法识别商品。");
   const product = fields.product as { id?: unknown; barcode?: unknown } | null | undefined;
   if (typeof fields.source_id !== "string" || !Number.isSafeInteger(fields.warehouse_id) || !product ||

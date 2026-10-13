@@ -1,3 +1,4 @@
+import { StockQrManager } from './stock-qr';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -59,6 +60,7 @@ type ModalState =
   | { kind: "orderEditor"; type: "in" | "out"; product?: Product; draft?: Draft }
   | { kind: "order"; order: Order }
   | { kind: "scanner" }
+  | { kind: "stockQr"; product?: Product }
   | { kind: "commerce" }
   | { kind: "stocktake" }
   | { kind: "settings" }
@@ -502,6 +504,7 @@ export function AppContent() {
         {modal?.kind === "product" && (
           <ProductDetail
             isAdmin={isAdmin}
+            manageStockQr={isAdmin ? () => setModal({kind:"stockQr",product:modal.product}) : undefined}
             onSaved={saved}
             product={
               data.products.find(
@@ -543,8 +546,12 @@ export function AppContent() {
         {modal?.kind === "order" && (
           <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
         )}
+        {isAdmin && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} onClose={() => setModal(null)} />}
         {modal?.kind === "scanner" && (
           <ScannerScreen
+            storageKey={`${server}:${data.instance_id}:${auth?.id || auth?.username}:${data.warehouse_id || 1}`}
+            onSaved={message => {setToast(message);void refresh();}}
+            manageStockQr={isAdmin ? () => setModal({kind:"stockQr"}) : undefined}
             products={data.products}
             warehouseId={data.warehouse_id || 1}
             sourceId={data.instance_id}

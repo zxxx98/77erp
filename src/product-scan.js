@@ -7,6 +7,7 @@ export function parseProductCode(raw) {
   try { label = JSON.parse(text); } catch { return { kind: "barcode", barcode: text }; }
   if (!label || typeof label !== "object" || label.format !== "77erp") return { kind: "barcode", barcode: text };
   if (label.version !== 1) throw new Error("不支持的二维码版本，请更新应用后重试。");
+  if (label.type === "stock_operation") throw new Error("该二维码用于整单出入库，请到扫码工作台的对应模式执行。");
   if (label.type !== "product") throw new Error("该二维码不是商品标签，无法识别商品。");
   const product = label.product;
   if (typeof label.source_id !== "string" || !Number.isSafeInteger(label.warehouse_id) || !product ||

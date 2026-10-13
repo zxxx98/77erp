@@ -195,7 +195,7 @@ test('business backups preserve actor names and same-server draft owners, but ne
   await source.command(employee.cookie, '/drafts', draftBody);
   await source.command(employee.cookie, '/orders', draftBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 6);
+  assert.equal(backup.version, 7);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -242,6 +242,9 @@ const routeRoles = new Map(Object.entries({
   'post /api/orders/:id/void': 'admin', 'post /api/orders/:id/returns': 'admin',
   'get /api/stocktakes': 'admin', 'post /api/stocktakes': 'admin',
   'post /api/products/import/preview': 'admin', 'post /api/products/import': 'admin',
+  'get /api/stock-qrs': 'admin', 'post /api/stock-qrs': 'admin', 'get /api/stock-qrs/:qr_id': 'admin', 'put /api/stock-qrs/:qr_id': 'admin',
+  'get /api/stock-qrs/:qr_id/usages': 'admin', 'get /api/stock-qrs/:qr_id/revisions': 'admin',
+  'post /api/stock-qrs/preview': 'employee', 'post /api/stock-qrs/:qr_id/execute': 'employee',
   'get /api/backup': 'admin', 'post /api/backup/preview': 'admin', 'post /api/backup/restore': 'admin',
 }));
 
@@ -261,7 +264,7 @@ test('every API route declares its role, and employee access matches that declar
     // Logout ends the session under test, so it is asserted separately below.
     if (key === 'post /api/auth/logout') continue;
     const [method, path] = key.split(' ');
-    const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':barcode', 'TEAM-001');
+    const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
     const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
     assert.equal(response.status === 403, role === 'admin', `${key} 返回 ${response.status}`);
   }

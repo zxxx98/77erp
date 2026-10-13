@@ -40,8 +40,12 @@ test('manage a category tree, upload product details, filter descendants, rename
     const ctx = canvas.getContext('2d'); ctx.fillStyle = 'red'; ctx.fillRect(0, 0, 4, 4);
     return canvas.toDataURL('image/png').split(',')[1];
   });
-  await page.getByLabel('上传商品图片').setInputFiles({ name: 'cup.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await expect(page.getByLabel('上传商品图片')).toBeHidden();
+  const fileChooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: /^上传商品图片/ }).click();
+  await (await fileChooser).setFiles({ name: 'cup.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
   await expect(page.getByRole('img', { name: '商品图片预览' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^更换商品图片/ })).toBeEnabled();
   await page.getByRole('button', { name: '保存商品', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('navigation', { name: '商品分类树' }).getByRole('button', { name: /^自动化餐厨/ }).click();
@@ -67,6 +71,7 @@ test('manage a category tree, upload product details, filter descendants, rename
   await expect(page.getByRole('textbox', { name: '商品备注' })).toHaveValue('防摔包装\n易碎品');
   await expect(page.getByRole('img', { name: '商品图片预览' })).toBeVisible();
   await page.getByRole('button', { name: '移除图片' }).click();
+  await expect(page.getByRole('button', { name: /^上传商品图片/ })).toBeEnabled();
   await page.getByRole('textbox', { name: '商品备注' }).fill('更换包装');
   await page.getByRole('button', { name: '保存商品', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

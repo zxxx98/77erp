@@ -1,6 +1,6 @@
 {
   "name": "77erp-mobile",
-  "version": "1.4.6",
+  "version": "1.5.0",
   "private": true,
   "scripts": {
     "start": "react-native start",
@@ -8,11 +8,12 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@zxing/library": "^0.21.3",
+    "lucide-react-native": "0.544.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "5.6.1",
-    "react-native-svg": "15.12.1",
-    "lucide-react-native": "0.544.0"
+    "react-native-svg": "15.12.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

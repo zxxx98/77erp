@@ -1,0 +1,100 @@
+.stock-qr-manager fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+.stock-qr-manager label {
+  display: grid;
+  gap: 7px;
+  font-weight: 500;
+}
+.stock-qr-manager input,
+.stock-qr-manager select,
+.stock-qr-manager textarea,
+.stock-qr-actions select,
+.stock-qr-actions input {
+  padding: 9px;
+  border: 1px solid #e9ecf1;
+  border-radius: 7px;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+}
+.stock-qr-manager .stock-qr-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stock-qr-check input {
+  width: auto;
+}
+.stock-qr-edit-line,
+.stock-qr-record {
+  border: 1px solid #e9ecf1;
+  padding: 16px;
+  border-radius: 12px;
+  margin: 12px 0;
+  display: grid;
+  gap: 10px;
+}
+.stock-qr-edit-line {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.stock-qr-edit-line > strong,
+.stock-qr-edit-line > .stock-qr-actions {
+  grid-column: 1/-1;
+}
+.stock-qr-actions,
+.stock-qr-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.stock-qr-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e9ecf1;
+}
+.stock-qr-line small,
+.stock-qr-edit-line small {
+  display: block;
+  color: #7e8798;
+  font-size: 12px;
+  margin-top: 4px;
+}
+.stock-qr-label {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px auto;
+}
+.stock-qr-record p {
+  margin: 0;
+  color: #647084;
+}
+.stock-qr-manager h3 {
+  margin: 8px 0;
+}
+.stock-qr-lines {
+  overflow-wrap: anywhere;
+}
+.stock-qr-options {
+  max-height: 180px;
+  overflow: auto;
+}
+@media (max-width: 600px) {
+  .stock-qr-edit-line {
+    grid-template-columns: 1fr;
+  }
+  .stock-qr-manager .stock-qr-actions > * {
+    max-width: 100%;
+  }
+  .stock-qr-label {
+    width: 100%;
+  }
+}

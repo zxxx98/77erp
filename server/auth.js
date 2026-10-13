@@ -220,7 +220,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       /^\/products\/barcode\/[^/]+$/.test(path))) ||
       (req.method === 'POST' && ['/products','/orders','/drafts','/uploads/product-image'].includes(path)) ||
       (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
-      (req.method === 'POST' && /^\/drafts\/\d+\/discard$/.test(path));
+      (req.method === 'POST' && /^\/drafts\/\d+\/discard$/.test(path)) ||
+      (req.method === 'POST' && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path)));
     if (!allowed) return res.status(403).json({ error: '此操作仅限管理员。' });
     next();
   });

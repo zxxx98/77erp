@@ -529,8 +529,8 @@ function Backup({ onSaved }) {
       {preview && (
         <>
           <p>
-            备份时间：{backup.created_at}；仓库 {preview.warehouses ?? 1} 个，商品 {preview.products} 件，单据{" "}
-            {preview.orders} 张，库存调整 {preview.adjustments} 条。往来单位 {preview.contacts ?? 0} 个，草稿 {preview.drafts ?? 0} 张，收付款 {preview.payments ?? 0} 条。
+            恢复后出入库二维码将停用，旧标签失效，需核对、启用并重新打印。备份时间：{backup.created_at}；仓库 {preview.warehouses ?? 1} 个，商品 {preview.products} 件，单据{" "}
+            {preview.orders} 张，库存调整 {preview.adjustments} 条。往来单位 {preview.contacts ?? 0} 个，草稿 {preview.drafts ?? 0} 张，收付款 {preview.payments ?? 0} 条，出入库二维码 {preview.stock_qrs ?? 0} 个。
           </p>
           <button
             type="button"

@@ -30,6 +30,8 @@ export async function api(path, options) {
     }
     const error = new Error(data.error || "请求失败，请重试。");
     error.status = res.status;
+    error.code = data.code;
+    error.details = data.details;
     throw error;
   }
   return data;
