@@ -1,17 +1,5 @@
 .account-fields label.imagebed-clear-secret {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
   margin: 0;
   line-height: 1.5;
-}
-.account-fields .imagebed-clear-secret > input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  min-height: 16px;
-  flex: 0 0 16px;
-  padding: 0;
-  margin: 2px 0 0;
-  accent-color: #2563eb;
 }
 .account-fields .imagebed-clear-secret > span { min-width: 0; color: inherit; }
