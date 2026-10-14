@@ -2,6 +2,12 @@
 
 仓库：[zxxx98/77erp](https://github.com/zxxx98/77erp) · [构建记录](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml) · [安装包下载](https://github.com/zxxx98/77erp/releases)
 
+## 维护范围
+
+项目当前以桌面 Web 和移动 Web（含 PWA）为主要开发方向。**只有用户明确要求更新安卓时，才同步原生功能、修改安卓版本号、构建或发布新版 APK / AAB。** 普通 Web 迭代不要求更新安卓，现有客户端及发布能力保留。
+
+本文记录既有安卓能力，以及明确需要安卓更新时使用的操作流程；下文的版本同步、构建和发布步骤不是 Web 发布的默认步骤。完整约定见 [AGENTS.md](../AGENTS.md)。
+
 ## 使用方式
 
 - 仅支持 Android 12（API 31）及以上，系统必须支持 **ARM 64 位 `arm64-v8a`**。不支持 Android 11 及以下、ARM 32 位、x86 和 x86_64。
@@ -65,9 +71,11 @@ keytool -genkeypair -v -keystore 77erp-release.jks -storetype JKS \
 
 ## 通过版本号发布
 
+**本节仅适用于明确要求安卓更新的任务。** 当前版本钩子会自动同步原生版本，`v*` 标签会触发安卓发布；普通 Web 版本更新不得直接套用以下流程，应先确保版本同步及发布触发条件与安卓解耦。
+
 根目录 `package.json` 是版本号来源。`npm version` 会通过版本钩子自动同步 `mobile/package.json` 及两个 lock 文件并一起提交。`versionName` 等于项目版本；`versionCode = major × 1,000,000 + minor × 1,000 + patch`。只支持 `x.y.z` 正式版本，major 不超过 2099，minor / patch 不超过 999，最低版本为 `0.0.1`。例如 `1.2.3` 对应 `1002003`。
 
-后续发布只需：
+明确需要发布安卓新版本时：
 
 ```bash
 # 在最新 main 上，确保工作区干净

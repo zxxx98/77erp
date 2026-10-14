@@ -2,6 +2,12 @@
 
 中文、支持多仓库的本地进销存系统。React + Vite，Express + SQLite，Node.js 22.13 或更新版本。
 
+## 开发与维护重点
+
+当前开发重心是 **桌面 Web 和移动 Web（含 PWA）**。新功能、体验优化和问题修复默认围绕这两端展开；没有明确指定时，「移动端」指移动 Web。
+
+**除非明确要求更新安卓，否则不需要同步原生安卓功能、提高安卓版本号或构建、发布 APK / AAB。** 现有安卓客户端及源码保留，按明确需求维护。普通版本更新和发布默认面向 Web，执行时需避免现有版本钩子及标签工作流连带更新安卓。具体协作与发布范围见 [仓库协作约定](AGENTS.md)。
+
 ## 移动网页版 / PWA
 
 手机和平板使用与安卓端对应的移动界面：顶栏切换仓库、工作台 / 物料 / 库存 / 单据 / 更多五项底部导航、物料卡片和全屏开单，采购与销售保留二次确认。PC 浏览器继续使用桌面界面，共享账号、权限、仓库与业务 API。
@@ -26,7 +32,7 @@ Android Chrome 菜单中的 **Install（安装）** 与 **Create shortcut（创�
 
 安卓「更多」及「商户与仓库设置」支持「检查更新」；发现新版本后点击「立即更新」，直接从 GitHub 下载最新正式版 ARM64 APK 并打开系统安装界面。首次需要允许 77 ERP 安装应用，再按系统提示确认覆盖安装。
 
-推送与 `package.json` 版本一致的 `v1.0.0` 类标签后，由 GitHub Actions 编译并发布签名 APK / AAB，本地无需安卓编译环境。配置签名、版本号规则和发布步骤见 [安卓发布文档](docs/android.md)。[下载 APK](https://github.com/zxxx98/77erp/releases) · [查看流水线](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml)。
+现有安卓发布工作流会在推送与 `package.json` 版本一致的 `v1.0.0` 类标签后，由 GitHub Actions 编译并发布签名 APK / AAB。本流程仅在明确要求安卓更新时使用；普通 Web 发布需先避开版本同步和标签触发的连带安卓更新。配置签名、版本号规则和发布步骤见 [安卓发布文档](docs/android.md)。[下载 APK](https://github.com/zxxx98/77erp/releases) · [查看流水线](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml)。
 
 ## 启动
 
