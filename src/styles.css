@@ -1732,6 +1732,53 @@ table {
   align-items: center;
   gap: 12px;
 }
+.product-name-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.product-name-link:hover {
+  color: var(--blue, #2563eb);
+  text-decoration: underline;
+}
+.product-name-link:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.product-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.product-detail-heading h3 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.product-detail-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin: 24px 0 0;
+}
+.product-detail-fields dt {
+  color: #6d788b;
+  font-size: 12px;
+  margin-bottom: 7px;
+}
+.product-detail-fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.product-detail-full {
+  grid-column: 1 / -1;
+}
 .product-info strong {
   display: block;
   font-size: 11px;

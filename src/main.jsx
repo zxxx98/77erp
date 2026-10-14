@@ -909,6 +909,7 @@ function App({ admin, onLogout }) {
                   onSaved={saved}
                   search={search}
                   setSearch={setSearch}
+                  showProduct={(product) => setModal({ kind: "productDetail", product })}
                   edit={(product) => setModal({ kind: "product", product })}
                   barcode={(product) => setModal({ kind: "barcode", product })}
                 />
@@ -920,6 +921,7 @@ function App({ admin, onLogout }) {
                   setFilter={setInventoryFilter}
                   openOrder={openOrder}
                   reduceStock={reduceStock}
+                  showProduct={(product) => setModal({ kind: "productDetail", product })}
                   showBarcode={(product) =>
                     setModal({ kind: "barcode", product })
                   }
@@ -982,6 +984,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
+      {modal?.kind === "productDetail" && <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onClose={() => setModal(null)} />}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}
@@ -1688,7 +1691,7 @@ function CategoryManager({ categories, onClose, onChanged }) {
   </Modal>;
 }
 
-function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged, onSaved, isAdmin }) {
+function Products({ data, search, setSearch, edit, showProduct, barcode, onCategoriesChanged, onSaved, isAdmin }) {
   const { can } = usePermissions();
   const [status, setStatus] = useState("all");
   const [busy, setBusy] = useState(false);
@@ -1811,7 +1814,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                         <div className="product-info">
                           <ProductArt product={p} />
                           <div>
-                            <strong>{p.name}</strong>
+                            <strong><ProductName product={p} onView={showProduct} /></strong>
                             {p.active === 0 && <Badge tone="orange">已下架</Badge>}
                             <small>{p.barcode}</small>
                             {p.specification && <small className="product-spec">{p.specification}</small>}
@@ -1888,7 +1891,7 @@ function Products({ data, search, setSearch, edit, barcode, onCategoriesChanged,
                       {stockStatus(p)}
                     </Badge>
                   </div>
-                  <h3>{p.name} {p.active === 0 && <Badge tone="orange">已下架</Badge>}</h3>
+                  <h3><ProductName product={p} onView={showProduct} /> {p.active === 0 && <Badge tone="orange">已下架</Badge>}</h3>
                   <p>{p.barcode}</p>
                   <p>{p.category}</p>
                   {p.specification && <p className="product-spec">{p.specification}</p>}
@@ -1984,7 +1987,7 @@ function Pagination({ total, page, setPage }) {
     </div>
   );
 }
-function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcode }) {
+function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcode, showProduct }) {
   const { can, costs } = usePermissions();
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
@@ -2117,7 +2120,7 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
                     <div className="product-info">
                       <ProductArt product={p} />
                       <div>
-                        <strong>{p.name}</strong>
+                        <strong><ProductName product={p} onView={showProduct} /></strong>
                         <button
                           className="barcode-link"
                           onClick={() => showBarcode(p)}
@@ -2494,6 +2497,40 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
       </section>
     </>
   );
+}
+
+function ProductName({ product, onView }) {
+  return <button type="button" className="product-name-link" aria-label={`查看 ${product.name} 商品详情`} onClick={() => onView(product)}>{product.name}</button>;
+}
+
+function ProductDetail({ product, warehouseName, onClose }) {
+  const { costs } = usePermissions();
+  const fields = [
+    ["商品条码", product.barcode],
+    ["商品分类", product.category],
+    ["计量单位", product.unit],
+    ["所属仓库", warehouseName],
+    ["售价", `¥ ${money(product.price)}`],
+    ...(costs ? [["采购价", `¥ ${money(product.cost)}`]] : []),
+    ["当前库存", `${count(product.stock)} ${product.unit}`],
+    ["安全库存", `${count(product.threshold)} ${product.unit}`],
+    ["库存状态", stockStatus(product)],
+    ["上架状态", product.active === 0 ? "已下架" : "已上架"],
+  ];
+  return <Modal title="商品详情" subtitle="查看商品档案与当前库存" onClose={onClose}>
+    <div className="form-body product-detail">
+      <div className="product-detail-heading">
+        <ProductArt product={product} size="large" />
+        <h3>{product.name}</h3>
+      </div>
+      <dl className="product-detail-fields">
+        {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}
+        <div className="product-detail-full"><dt>规格</dt><dd>{product.specification || "—"}</dd></div>
+        <div className="product-detail-full"><dt>备注</dt><dd>{product.note || "—"}</dd></div>
+      </dl>
+    </div>
+    <div className="modal-footer"><Button onClick={onClose}>关闭</Button></div>
+  </Modal>;
 }
 
 function ProductForm({ product, categories, units = ["个"], warehouses, warehouseId, onClose, onSaved }) {
