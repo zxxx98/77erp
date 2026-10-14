@@ -38,6 +38,7 @@ import {
   businessType,
   reportOrders,
   Product,
+  OtherWarehouseStock,
   Workspace,
 } from "./model";
 import {
@@ -496,8 +497,19 @@ export function ProductDetail({
   openOrder: (type: "in" | "out", product: Product) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [others, setOthers] = useState<OtherWarehouseStock[] | null>(null);
+  const [otherError, setOtherError] = useState("");
   const {error, errorRevision, setError} = useFormError();
   const lock = useRef(false);
+  useEffect(() => {
+    let active = true;
+    setOthers(null);
+    setOtherError("");
+    api<{ warehouses: OtherWarehouseStock[] }>(`/products/${product.id}/other-warehouses`)
+      .then((result) => { if (active) setOthers(result.warehouses || []); })
+      .catch((e) => { if (active) setOtherError((e as Error).message); });
+    return () => { active = false; };
+  }, [product.id]);
   const change = (remove = false) => {
     if (lock.current) return;
     const active = product.active === 0 ? 1 : 0;
@@ -566,6 +578,19 @@ export function ProductDetail({
       <Card>
         <DetailRow label="采购价" value={money(product.cost)} />
         <DetailRow label="销售价" value={money(product.price)} />
+      </Card>
+      <Card>
+        <Text style={s.rowTitle}>其他仓库库存</Text>
+        {otherError ? <ErrorNotice message={otherError} />
+          : others === null ? <Text style={s.caption}>读取中…</Text>
+          : others.length === 0 ? <Text style={s.caption}>其他仓库暂无同一商品</Text>
+          : others.map((row) => (
+            <DetailRow
+              key={row.product_id}
+              label={row.warehouse_name}
+              value={`${row.stock} ${row.unit || product.unit}`}
+            />
+          ))}
       </Card>
       <Button permission="products" title="编辑商品" kind="secondary" disabled={busy} onPress={edit} />
       {manageStockQr && <Button title="出入库二维码" kind="secondary" disabled={busy} onPress={manageStockQr} />}

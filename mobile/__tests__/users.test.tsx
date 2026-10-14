@@ -83,14 +83,19 @@ test('configured employee has one business entry while retaining password access
   expect(screen.queryByRole('button', { name: '商户与仓库设置' })).toBeNull();
 });
 
-test('read-only employee sees product details without edit, lifecycle, or transaction buttons', () => {
+test('read-only employee sees product details without edit, lifecycle, or transaction buttons', async () => {
   const { PermissionContext } = require('../src/permissions');
   const { ProductDetail } = require('../src/screens');
+  request.mockResolvedValueOnce({ warehouses: [
+    { warehouse_id: 2, warehouse_name: '分仓', product_id: 2, stock: 12, unit: '个' },
+  ] });
   render(<PermissionContext.Provider value={{ role: 'employee', permissions: [] }}>
     <ProductDetail product={product} isAdmin={false} onClose={jest.fn()} onSaved={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />
   </PermissionContext.Provider>);
   for (const name of ['编辑商品', '采购入库', '销售出库', '下架商品', '删除商品'])
     expect(screen.queryByRole('button', { name })).toBeNull();
+  expect(await screen.findByText('12 个')).toBeOnTheScreen();
+  expect(screen.getByText('分仓')).toBeOnTheScreen();
 });
 
 

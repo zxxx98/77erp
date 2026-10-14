@@ -355,12 +355,14 @@ test("native product editor selects a descendant category and persists picked im
   expect(request).toHaveBeenCalledWith('/products', 'POST', expect.objectContaining({ category_id: 2, category: '日用百货 / 杯具', image, specification: '350ml', note: '小心轻放' }));
 });
 
-test("native product details display its image, specification and notes", () => {
+test("native product details display its image, specification and notes", async () => {
+  request.mockResolvedValueOnce({ warehouses: [] });
   const image = 'https://img.example.com/file/cup.jpg';
   render(<ProductDetail onSaved={jest.fn()} product={{ ...product, image, specification: '350ml', note: '小心轻放' }} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
   expect(screen.getByLabelText('商品图片')).toBeOnTheScreen();
   expect(screen.getByText('350ml')).toBeOnTheScreen();
   expect(screen.getByText('小心轻放')).toBeOnTheScreen();
+  await screen.findByText('其他仓库暂无同一商品');
 });
 
 test("native parent category filtering includes descendant products", () => {
@@ -441,7 +443,9 @@ test("native scanner recognizes the product QR label and explains labels from an
 test("native lifecycle controls require admin and show server deletion errors", async () => {
   const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
   const saved = jest.fn();
+  request.mockResolvedValueOnce({ warehouses: [] });
   const detail = render(<ProductDetail product={{...product, active: 0}} isAdmin onSaved={saved} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
+  await screen.findByText('其他仓库暂无同一商品');
   expect(screen.getByText('已下架')).toBeOnTheScreen();
   request.mockResolvedValueOnce({ok: true});
   fireEvent.press(screen.getByRole('button', {name: '上架商品'}));

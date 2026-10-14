@@ -118,8 +118,9 @@ test.each([
   [1024, 600, 1.3],
 ])(
   "form actions stay in scroll content at %s × %s, font scale %s",
-  (width, height, scale) => {
+  async (width, height, scale) => {
     viewport(width, height, scale);
+    request.mockResolvedValueOnce({ warehouses: [] });
     render(
       <ProductDetail
         onSaved={jest.fn()}
@@ -133,6 +134,7 @@ test.each([
     expect(screen.queryByTestId("fixed-form-actions")).toBeNull();
     expect(screen.getByRole("button", { name: "采购入库" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "销售出库" })).toBeEnabled();
+    expect(await screen.findByText("其他仓库暂无同一商品")).toBeOnTheScreen();
   },
 );
 
