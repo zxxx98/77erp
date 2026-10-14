@@ -182,6 +182,56 @@ test('PWA caches the application shell, excludes API responses and shows an offl
   await context.close();
 });
 
+test('install guidance separates browser shortcuts, accepted requests and reported installation', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  await page.locator('.mw-tabs').getByRole('button', { name: '更多', exact: true }).click();
+  await page.getByRole('button', { name: '安装应用', exact: true }).click();
+  await expect(page.getByRole('status', { name: '应用状态' })).toContainText('Create shortcut');
+  await expect(page.getByRole('status', { name: '应用状态' })).toContainText('保留浏览器地址栏');
+  await page.getByRole('button', { name: '关闭应用提示' }).click();
+  await page.evaluate(() => {
+    const event = new Event('beforeinstallprompt', { cancelable: true });
+    event.prompt = async () => { window.installPromptCalls = (window.installPromptCalls || 0) + 1; };
+    event.userChoice = new Promise(resolve => { window.finishInstallChoice = resolve; });
+    window.dispatchEvent(event);
+  });
+  await page.getByRole('button', { name: '安装应用', exact: true }).click();
+  await expect(page.getByRole('button', { name: '正在请求安装…', exact: true })).toBeDisabled();
+  await page.evaluate(() => window.finishInstallChoice({ outcome: 'accepted' }));
+  await expect(page.getByRole('status', { name: '应用状态' })).toContainText('当前尚未确认安装完成');
+  expect(await page.evaluate(() => window.installPromptCalls)).toBe(1);
+  await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+  await expect(page.getByRole('status', { name: '应用状态' })).toContainText('浏览器已报告');
+  await expect(page.getByRole('status', { name: '应用状态' })).toContainText('无法确认桌面图标');
+  await page.getByRole('button', { name: '查看安装说明', exact: true }).click();
+  await expect(page.getByRole('status', { name: '应用状态' })).toContainText('应用管理');
+  await context.close();
+});
+
+test('canceling installation does not report success and changing to an app window hides installation', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  await context.addInitScript(() => {
+    const original = window.matchMedia.bind(window);
+    const query = new EventTarget();
+    query.matches = false;
+    window.appDisplayQuery = query;
+    window.matchMedia = value => value === '(display-mode: standalone)' ? query : original(value);
+  });
+  await page.reload();
+  await page.locator('.mw-tabs').getByRole('button', { name: '更多', exact: true }).click();
+  await page.evaluate(() => {
+    const event = new Event('beforeinstallprompt', { cancelable: true });
+    event.prompt = async () => {};
+    event.userChoice = Promise.resolve({ outcome: 'dismissed' });
+    window.dispatchEvent(event);
+  });
+  await page.getByRole('button', { name: '安装应用', exact: true }).click();
+  await expect(page.getByRole('status', { name: '应用状态' })).toHaveText(/已取消安装/);
+  await page.evaluate(() => { window.appDisplayQuery.matches = true; window.appDisplayQuery.dispatchEvent(new Event('change')); });
+  await expect(page.getByRole('button', { name: '安装应用', exact: true })).toHaveCount(0);
+  await context.close();
+});
+
 test('session replacement isolates drafts by account and hides read-only employee actions and costs', async ({ browser }) => {
   const { context, page } = await mobile(browser);
   const username = `pwa-reader-${Date.now()}`;
