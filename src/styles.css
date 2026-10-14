@@ -1779,6 +1779,49 @@ table {
 .product-detail-full {
   grid-column: 1 / -1;
 }
+.product-other-stock {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid #e7ecf3;
+}
+.product-other-stock h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #17243c;
+}
+.product-other-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.product-other-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  background: #f6f8fb;
+  border-radius: 8px;
+}
+.product-other-list li span {
+  color: #60728e;
+  overflow-wrap: anywhere;
+}
+.product-other-list li strong {
+  white-space: nowrap;
+  color: #17243c;
+}
+.product-other-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #8593a8;
+  font-size: 13px;
+}
 .product-info strong {
   display: block;
   font-size: 11px;

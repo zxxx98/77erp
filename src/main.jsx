@@ -2505,6 +2505,16 @@ function ProductName({ product, onView }) {
 
 function ProductDetail({ product, warehouseName, onClose }) {
   const { costs } = usePermissions();
+  const [others, setOthers] = useState(null);
+  const [otherError, setOtherError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setOthers(null); setOtherError("");
+    api(`/products/${product.id}/other-warehouses`)
+      .then((result) => { if (active) setOthers(result.warehouses || []); })
+      .catch((e) => { if (active) setOtherError(e.message); });
+    return () => { active = false; };
+  }, [product.id]);
   const fields = [
     ["商品条码", product.barcode],
     ["商品分类", product.category],
@@ -2528,6 +2538,18 @@ function ProductDetail({ product, warehouseName, onClose }) {
         <div className="product-detail-full"><dt>规格</dt><dd>{product.specification || "—"}</dd></div>
         <div className="product-detail-full"><dt>备注</dt><dd>{product.note || "—"}</dd></div>
       </dl>
+      <section className="product-other-stock">
+        <h4>其他仓库库存</h4>
+        {otherError ? <p className="form-error" role="alert">{otherError}</p>
+          : others === null ? <p className="product-other-empty"><LoaderCircle className="spin" size={14} /> 读取中…</p>
+          : others.length === 0 ? <p className="product-other-empty">其他仓库暂无同一商品</p>
+          : <ul className="product-other-list">
+            {others.map((row) => <li key={row.warehouse_id}>
+              <span>{row.warehouse_name}</span>
+              <strong>{count(row.stock)} {row.unit || product.unit}</strong>
+            </li>)}
+          </ul>}
+      </section>
     </div>
     <div className="modal-footer"><Button onClick={onClose}>关闭</Button></div>
   </Modal>;

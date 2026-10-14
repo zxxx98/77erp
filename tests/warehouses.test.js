@@ -108,6 +108,23 @@ test('explicit product synchronization reuses the target category path and leave
   assert.equal((await f.request('/categories', 'GET', undefined, w)).data.find(c => c.id === targetRoot).name, '餐厨');
 });
 
+test('other-warehouse stock lists matched warehouses by sync key or barcode', async t => {
+  const f = await fixture(t), w = await f.warehouse('分仓'), other = await f.warehouse('第三仓');
+  const mainId = (await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] })).data.id;
+  assert.equal((await f.order(mainId, 'in', 10)).status, 201);
+  const remote = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
+  assert.equal((await f.order(remote.id, 'in', 3, w, 12)).status, 201);
+  const listed = (await f.request(`/products/${mainId}/other-warehouses`)).data.warehouses;
+  assert.deepEqual(listed, [{ warehouse_id: w, warehouse_name: '分仓', product_id: remote.id, stock: 3, unit: '件' }]);
+  const fromRemote = (await f.request(`/products/${remote.id}/other-warehouses`, 'GET', undefined, w)).data.warehouses;
+  assert.deepEqual(fromRemote, [{ warehouse_id: 1, warehouse_name: '主仓库', product_id: mainId, stock: 10, unit: '件' }]);
+  assert.equal((await f.request(`/products/${mainId}/other-warehouses`)).status, 200);
+  assert.equal((await f.request(`/products/${remote.id}/other-warehouses`)).status, 400);
+  assert.equal((await f.request(`/products/${mainId}/other-warehouses`, 'GET', undefined, other)).status, 400);
+  assert.equal((await f.request('/products/999999/other-warehouses')).status, 404);
+  assert.equal((await f.request(`/products/${mainId}/other-warehouses`, 'GET', undefined, 1, false)).status, 401);
+});
+
 test('selective product sync preserves independent quantities, valuations and histories; unselected saves stay local', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓'), other = await f.warehouse('第三仓');
   const created = await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] });

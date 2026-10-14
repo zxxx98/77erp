@@ -230,7 +230,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const post = req.method === 'POST';
     const legacyAllowed = (read && (
       ['/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export'].includes(path) ||
-      /^\/products\/barcode\/[^/]+$/.test(path))) ||
+      /^\/products\/barcode\/[^/]+$/.test(path) ||
+      /^\/products\/\d+\/other-warehouses$/.test(path))) ||
       (post && ['/products','/orders','/templates','/uploads/product-image'].includes(path)) ||
       (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
       (post && /^\/templates\/\d+\/delete$/.test(path)) ||
@@ -240,7 +241,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     } else {
       const basicRead = read && (
         ['/data','/style','/warehouses','/categories','/contacts','/templates'].includes(path) ||
-        /^\/products\/barcode\/[^/]+$/.test(path));
+        /^\/products\/barcode\/[^/]+$/.test(path) ||
+        /^\/products\/\d+\/other-warehouses$/.test(path));
       if (basicRead) return next();
       let permission;
       if ((post && ['/products','/uploads/product-image'].includes(path)) ||

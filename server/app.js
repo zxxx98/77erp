@@ -301,6 +301,32 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     if (!hasPermission(req.user, 'finance') && !req.user.legacy_permissions) delete product.inventory_value_cents;
     res.json(product);
   });
+  app.get("/api/products/:id/other-warehouses", (req, res) => {
+    const product = db
+      .prepare("SELECT * FROM products WHERE id=? AND warehouse_id=?")
+      .get(Number(req.params.id), req.warehouse.id);
+    if (!product)
+      return res
+        .status(404)
+        .json({ error: "未找到该商品，请刷新后重试。" });
+    const rows = db
+      .prepare(
+        `SELECT p.warehouse_id, w.name AS warehouse_name, p.id, p.stock, p.unit
+           FROM products p JOIN warehouses w ON w.id=p.warehouse_id
+          WHERE p.warehouse_id<>? AND (p.sync_key=? OR p.barcode=?)
+          ORDER BY w.id`,
+      )
+      .all(req.warehouse.id, product.sync_key, product.barcode);
+    res.json({
+      warehouses: rows.map((row) => ({
+        warehouse_id: row.warehouse_id,
+        warehouse_name: row.warehouse_name,
+        product_id: row.id,
+        stock: row.stock,
+        unit: row.unit,
+      })),
+    });
+  });
   const validNumber = (n) =>
     typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 99999999;
   const validMoney = (n) =>
