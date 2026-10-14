@@ -472,6 +472,7 @@ test("existing order schema upgrades without changing stock and marks only seede
   first.db.prepare("INSERT INTO orders(number,type,partner,note,total,created_at) VALUES ('LEGACY-001','in','供应商','正常单据',10,'2026-10-04T10:00:00Z')").run();
   first.db.close();
   const legacy = new DatabaseSync(path);
+  legacy.exec("DROP INDEX orders_source_status");
   for (const column of ["source_order_id", "kind", "status", "stock_applied", "void_reason", "voided_at"]) legacy.exec(`ALTER TABLE orders DROP COLUMN ${column}`);
   legacy.close();
   const migrated = createApp(path);

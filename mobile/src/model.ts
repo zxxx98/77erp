@@ -22,6 +22,7 @@ export type Product = {
   threshold: number;
 };
 export type OrderItem = {
+  amount_cents?: number | null;
   returned_quantity?: number;
   cost_cents?: number | null;
   product_id: number;

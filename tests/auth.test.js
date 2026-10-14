@@ -124,7 +124,7 @@ test("cross-site mutations and non-JSON submissions are blocked and failed login
 });
 
 test("domain requests pass through a TLS-terminating proxy, configured origins included", async (t) => {
-  const { proxied } = await fixture(t);
+  const { proxied } = await fixture(t, ":memory:", { trustProxy: ["loopback"] });
   const domain = { Host: "erp.example.com", Origin: "https://erp.example.com",
     "X-Forwarded-Proto": "https", "Sec-Fetch-Site": "same-origin" };
   const setup = await proxied("/auth/setup", { method: "POST", body: credentials, headers: domain });
@@ -210,4 +210,47 @@ test("business reset requires login and confirmation, preserves account/settings
   assert.equal((await second.request("/auth/login", { method: "POST", body: credentials })).status, 200);
   assert.equal((await second.request("/products", { method: "POST", cookie, body: { name: "正式商品", category: "日用", unit: "件", cost: 1, price: 2, threshold: 0 } })).status, 201);
   await second.close();
+});
+
+test('untrusted forwarding headers cannot reset IP limits or select secure cookies', async t => {
+  const { request } = await fixture(t);
+  const setup = await request('/auth/setup', { method: 'POST', body: credentials,
+    headers: { 'X-Forwarded-For': '203.0.113.1', 'X-Forwarded-Proto': 'https' } });
+  assert.equal(setup.status, 201);
+  assert.doesNotMatch(setup.headers.get('set-cookie'), /Secure/);
+  // Vary both account and forwarding headers so only the real peer's bucket can stop these.
+  for (let n = 0; n < 10; n++) assert.equal((await request('/auth/login', {
+    method: 'POST', body: { username: `unknown${n}`, password: 'incorrect' },
+    headers: { 'X-Forwarded-For': `203.0.113.${n + 2}` },
+  })).status, 401);
+  assert.equal((await request('/auth/login', { method: 'POST', body: credentials,
+    headers: { 'X-Forwarded-For': '198.51.100.1' } })).status, 429);
+});
+
+test('trusted proxy chains stop at the real client and account limits survive client IP changes', async t => {
+  const { request } = await fixture(t, ':memory:', { trustProxy: ['loopback'] });
+  await request('/auth/setup', { method: 'POST', body: credentials });
+  for (let n = 0; n < 10; n++) assert.equal((await request('/auth/login', {
+    method: 'POST', body: { ...credentials, username: ` ${credentials.username} `, password: 'incorrect' },
+    headers: { 'X-Forwarded-For': `192.0.2.1, 203.0.113.${n + 1}` },
+  })).status, 401);
+  const limited = await request('/auth/login', { method: 'POST', body: credentials,
+    headers: { 'X-Forwarded-For': '198.51.100.1' } });
+  assert.equal(limited.status, 429);
+  assert.ok(Number(limited.headers.get('retry-after')) > 0);
+  // A different account on a new client is unaffected by the account-specific limit.
+  assert.equal((await request('/auth/login', { method: 'POST', body: { username: 'other', password: 'incorrect' },
+    headers: { 'X-Forwarded-For': '198.51.100.1' } })).status, 401);
+});
+
+
+test('a trusted proxy ignores spoofed addresses to the left of an untrusted client', async t => {
+  const { request } = await fixture(t, ':memory:', { trustProxy: ['loopback'] });
+  await request('/auth/setup', { method: 'POST', body: credentials });
+  for (let n = 0; n < 10; n++) assert.equal((await request('/auth/login', {
+    method: 'POST', body: { username: `other${n}`, password: 'incorrect' },
+    headers: { 'X-Forwarded-For': `192.0.2.${n + 1}, 203.0.113.200` },
+  })).status, 401);
+  assert.equal((await request('/auth/login', { method: 'POST', body: credentials,
+    headers: { 'X-Forwarded-For': '198.51.100.1, 203.0.113.200' } })).status, 429);
 });

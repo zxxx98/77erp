@@ -194,3 +194,30 @@ test("Excel xlsx first worksheet imports through preview", async ({ page }) => {
     await f.close();
   }
 });
+
+test('a fully returned fractional sale displays its zero-cent tail instead of recomputing price times quantity', async ({ page }) => {
+  const f = await fixture(page);
+  try {
+    const product = await (await page.request.post(f.base + '/api/products', { data: {
+      name: '尾差商品', barcode: 'TAIL-001', category: '日用', unit: '件', cost: 0.01, price: 0.01, threshold: 0,
+    } })).json();
+    for (const type of ['in', 'out']) await page.request.post(f.base + '/api/orders', { data: {
+      type, partner: type === 'in' ? '供应商' : '客户', items: [{ product_id: product.id, quantity: 1, price: 0.01 }],
+    } });
+    const sale = f.db.prepare("SELECT * FROM orders WHERE type='out'").get();
+    let tail;
+    for (let n = 0; n < 2; n++) tail = await (await page.request.post(`${f.base}/api/orders/${sale.id}/returns`, {
+      data: { request_id: `tail-${n}`, reason: '分批退货', items: [{ product_id: product.id, quantity: 0.5 }] },
+    })).json();
+    await page.goto(f.base + '/#history');
+    await page.getByText(tail.number, { exact: true }).click();
+    const row = page.getByRole('dialog').getByRole('row').filter({ hasText: '尾差商品' });
+    await expect(row.getByRole('cell').last()).toHaveText('¥ 0.00');
+    await page.getByRole('button', { name: '关闭详情', exact: true }).click();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /导出/ }).click();
+    const csv = await readFile(await (await download).path(), 'utf8');
+    expect(csv).toContain('明细金额');
+    expect(csv.split('\n').find(line => line.includes(tail.number))).toContain('"0.00"');
+  } finally { await f.close(); }
+});

@@ -1,3 +1,4 @@
+import { orderLineAmount } from "../shared/money.js";
 import { validQuantity, quantityUnits, addQuantity } from "../shared/quantity.js";
 
 const fail = (message) => {
@@ -39,6 +40,8 @@ export function migrateCommerce(db) {
   if (add("products", "inventory_value_cents", "INTEGER NOT NULL DEFAULT 0"))
     db.exec("UPDATE products SET inventory_value_cents=ROUND(stock*cost*100)");
   add("order_items", "cost_cents", "INTEGER");
+  // NULL distinguishes historical independent rounding without rewriting settled books.
+  add("order_items", "amount_cents", "INTEGER CHECK(amount_cents >= 0)");
   add("orders", "settlement_tracked", "INTEGER NOT NULL DEFAULT 0");
   if (add("orders", "partner_id", "INTEGER REFERENCES contacts(id)")) {
     for (const o of db.prepare("SELECT * FROM orders").all()) {
@@ -116,6 +119,9 @@ export function settlement(db, order) {
       "SELECT COALESCE(SUM(amount_cents),0) AS n FROM payments WHERE order_id=? AND reversed_at IS NULL",
     )
     .get(order.id).n;
+  return settlementFromPaid(order, paid);
+}
+export function settlementFromPaid(order, paid) {
   const total = Math.round(order.total * 100);
   return {
     paid_cents: paid,
@@ -460,7 +466,7 @@ export function installCommerce(app, db, { route, mutation }) {
             unknown_lines: 0,
           });
         const g = groups.get(i.product_id),
-          revenue = sign * Math.round(i.quantity * i.price * 100);
+          revenue = sign * orderLineAmount(i);
         g.quantity = addQuantity(g.quantity, sign * i.quantity);
         g.revenue_cents += revenue;
         if (i.cost_cents == null) {

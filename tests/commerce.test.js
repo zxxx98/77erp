@@ -304,7 +304,7 @@ test("partial payments, refunds, reversal and void guards keep balances correct 
     10000,
   );
 });
-test("unknown historical costs and settlement are explicit, and v10 backup round trips contacts, templates and payments", async (t) => {
+test("unknown historical costs and settlement are explicit, and v11 backup round trips contacts, templates and payments", async (t) => {
   const f = await fixture(t),
     id = await f.product();
   await f.order(id, "in", 10, 10);
@@ -346,7 +346,7 @@ test("unknown historical costs and settlement are explicit, and v10 backup round
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 10);
+  assert.equal(backup.version, 11);
   assert.equal(backup.data.payments.length, 1);
   assert.equal(backup.data.templates.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
@@ -379,4 +379,87 @@ test("unknown historical costs and settlement are explicit, and v10 backup round
   );
   for (const path of ["/contacts", "/templates", "/finance", "/reports/profit"])
     assert.equal((await f.request(path, undefined, "GET", false)).status, 401);
+});
+
+test('fractional returns conserve cents through split refunds, voids, profit and backup restore', async t => {
+  const f = await fixture(t), id = await f.product();
+  await f.order(id, 'in', 1, 0.01);
+  const sale = (await f.order(id, 'out', 1, 0.01)).data;
+  const refund = async quantity => {
+    const r = await f.command(`/orders/${sale.id}/returns`, { reason: '分批退货', items: [{ product_id: id, quantity }] });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    return r.data.id;
+  };
+  const first = await refund(0.5), second = await refund(0.5);
+  const line = orderId => f.db.prepare('SELECT * FROM order_items WHERE order_id=?').get(orderId);
+  assert.equal(line(first).amount_cents, 1);
+  assert.equal(line(second).amount_cents, 0);
+  assert.equal((await f.request(`/orders/${second}/payments`)).data.payment_status, 'paid');
+  assert.equal((await f.command(`/orders/${second}/payments`, { amount: 0.01, method: '现金', note: '' })).status, 400);
+  assert.equal((await f.request('/reports/profit')).data.totals.revenue_cents, 0);
+  assert.equal((await f.request('/reports/profit')).data.totals.gross_profit_cents, 0);
+  assert.equal((await f.command(`/orders/${first}/void`, { reason: '重退' })).status, 200);
+  const replacement = await refund(0.5);
+  assert.equal(line(replacement).amount_cents, 1);
+  const workspace = (await f.request('/data')).data;
+  assert.equal(workspace.orders.find(o => o.id === second).items[0].amount_cents, 0);
+  assert.equal(workspace.orders.find(o => o.id === sale.id).items[0].returned_quantity, 1);
+  const balance = (await f.request('/finance')).data.balances.find(b => b.role === 'customer');
+  assert.equal(balance.payable_cents, 1);
+  const backup = (await f.request('/backup')).data;
+  const preview = await f.request('/backup/preview', { backup });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal((await f.command('/backup/restore', { backup, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
+  assert.equal((await f.request('/reports/profit')).data.totals.revenue_cents, 0);
+  assert.equal(line(second).amount_cents, 0);
+  const corrupt = structuredClone(backup);
+  corrupt.data.order_items.find(i => i.order_id === second).amount_cents = 1;
+  corrupt.data.orders.find(o => o.id === second).total = 0.01;
+  assert.equal((await f.request('/backup/preview', { backup: corrupt })).status, 400);
+});
+
+test('purchase return tails and legacy v10 refunds retain their financial history', async t => {
+  const f = await fixture(t), id = await f.product();
+  const purchase = (await f.order(id, 'in', 1, 0.01)).data;
+  for (const quantity of [0.5, 0.5]) assert.equal((await f.command(`/orders/${purchase.id}/returns`, {
+    reason: '分批采购退货', items: [{ product_id: id, quantity }],
+  })).status, 200);
+  assert.equal(f.db.prepare("SELECT SUM(total) n FROM orders WHERE kind='return'").get().n, 0.01);
+  const legacy = (await f.request('/backup')).data;
+  legacy.version = 10;
+  for (const item of legacy.data.order_items) delete item.amount_cents;
+  // Real v10 files rounded each half independently; preserve those already-booked refunds.
+  for (const order of legacy.data.orders) if (order.kind === 'return') order.total = 0.01;
+  const preview = await f.request('/backup/preview', { backup: legacy });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal((await f.command('/backup/restore', { backup: legacy, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
+  assert.equal(f.db.prepare("SELECT SUM(total) n FROM orders WHERE kind='return'").get().n, 0.02);
+  // A new backup of historical data must remain restorable.
+  const upgraded = (await f.request('/backup')).data;
+  assert.equal(upgraded.version, 11);
+  assert.equal((await f.request('/backup/preview', { backup: upgraded })).status, 200);
+});
+
+test('return allocation also carries sub-cent remainders forward until the final fractional return', async t => {
+  const f = await fixture(t), id = await f.product();
+  await f.order(id, 'in', 1, 0.01);
+  const sale = (await f.order(id, 'out', 1, 0.01)).data;
+  const amounts = [];
+  for (const quantity of [0.333333, 0.333333, 0.333334]) {
+    const returned = await f.command(`/orders/${sale.id}/returns`, { reason: '三次退完', items: [{ product_id: id, quantity }] });
+    assert.equal(returned.status, 200, JSON.stringify(returned.data));
+    amounts.push(f.db.prepare('SELECT amount_cents FROM order_items WHERE order_id=?').get(returned.data.id).amount_cents);
+  }
+  assert.deepEqual(amounts, [0, 0, 1]);
+  const report = (await f.request('/reports/profit')).data;
+  assert.equal(report.totals.revenue_cents, 0);
+  assert.equal(report.totals.cost_cents, 0);
+  assert.equal(report.totals.gross_profit_cents, 0);
+  const backup = (await f.request('/backup')).data;
+  assert.equal((await f.request('/backup/preview', { backup })).status, 200);
+  for (const amount of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const corrupt = structuredClone(backup);
+    corrupt.data.order_items[0].amount_cents = amount;
+    assert.equal((await f.request('/backup/preview', { backup: corrupt })).status, 400);
+  }
 });

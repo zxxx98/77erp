@@ -46,7 +46,7 @@ export function createOrder(db, req, body) {
     if (!Number.isSafeInteger(lineTotal))
       throw new Error("商品金额过大，请减少数量。");
     total += lineTotal;
-    return { ...item, product: p };
+    return { ...item, product: p, amount_cents: lineTotal };
   });
   if (!Number.isSafeInteger(total))
     throw new Error("单据金额过大，请减少数量或拆分单据。");
@@ -80,10 +80,10 @@ export function createOrder(db, req, body) {
       db,
       i.product_id,
       type === "in" ? i.quantity : -i.quantity,
-      type === "in" ? Math.round(i.quantity * i.price * 100) : undefined,
+      type === "in" ? i.amount_cents : undefined,
     );
     db.prepare(
-      "INSERT INTO order_items (order_id,product_id,name,barcode,quantity,price,cost_cents) VALUES (?,?,?,?,?,?,?)",
+      "INSERT INTO order_items (order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents) VALUES (?,?,?,?,?,?,?,?)",
     ).run(
       result.lastInsertRowid,
       i.product_id,
@@ -92,6 +92,7 @@ export function createOrder(db, req, body) {
       i.quantity,
       i.price,
       cost,
+      i.amount_cents,
     );
   });
   return { id: Number(result.lastInsertRowid), number };

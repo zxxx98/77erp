@@ -1,3 +1,4 @@
+import { orderLineAmount } from "../../shared/money";
 import { usePermissions } from './permissions';
 import { StockQrExecution, stockQrLabel } from './stock-qr';
 import React, { useEffect, useRef, useState } from "react";
@@ -730,7 +731,7 @@ export function OrderDetail({
             <Text style={s.body}>
               {item.quantity} × {money(item.price)}
             </Text>
-            <Text style={s.rowTitle}>{money(item.quantity * item.price)}</Text>
+            <Text style={s.rowTitle}>{money(orderLineAmount(item) / 100)}</Text>
           </View>
         </Card>
       ))}

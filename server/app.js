@@ -1,4 +1,5 @@
-import { validQuantity, addQuantity } from '../shared/quantity.js';
+import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
+import { validQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
 import { migrateProductVersions } from './product-version.js';
@@ -10,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { migrateCommerce, resolveContact, moveInventory, settlement } from "./commerce.js";
+import { migrateCommerce } from "./commerce.js";
 import { installAuth } from "./auth.js";
 import { migrateImagebed, installImagebed } from './imagebed.js';
 import { migrateOperations, installOperations, operationRequest, saveOperationRequest } from "./operations.js";
@@ -247,7 +248,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   db.prepare("INSERT OR IGNORE INTO app_metadata (key,value) VALUES ('instance_id',?)").run(randomUUID());
 
   const app = express();
-  app.set("trust proxy", true);
+  app.set("trust proxy", options.trustProxy ?? false);
   migrateOperations(db);
   migrateCommerce(db);
   migrateCatalog(db);
@@ -257,6 +258,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateImagebed(db);
   migrateStockQr(db);
   migrateProductVersions(db);
+  migrateOrderIndexes(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
@@ -269,17 +271,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     const hideCosts = !financial && !req.user.legacy_permissions;
     const products = db.prepare("SELECT * FROM products WHERE warehouse_id=? ORDER BY id").all(req.warehouse.id)
       .map(p => { if (hideCosts) delete p.inventory_value_cents; return p; });
-    const orders = db
-      .prepare("SELECT * FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC")
-      .all(req.warehouse.id)
-      .map((o) => ({
-        ...o,
-        // Payment state is financial data: employees receive the order without it.
-        ...(financial ? settlement(db, o) : {}),
-        items: db
-          .prepare("SELECT * FROM order_items WHERE order_id=?")
-          .all(o.id).map(item => { if (hideCosts) delete item.cost_cents; return ({ ...item, returned_quantity: addQuantity(0, db.prepare(`SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders r ON r.id=i.order_id WHERE r.source_order_id=? AND r.status='active' AND i.product_id=?`).get(o.id, item.product_id).quantity) }); }),
-      }));
+    const orders = warehouseOrders(db, req.warehouse.id, { financial, hideCosts });
     res.json({
       user: req.user,
       products,
@@ -465,7 +457,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   });
   app.get('/api/orders/export', (req, res) => {
     res.json(db.prepare('SELECT id,number,type,kind,status,partner,total,created_at,note FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC')
-      .all(req.warehouse.id).map(o => ({ ...o, items: db.prepare('SELECT name,quantity,price FROM order_items WHERE order_id=? ORDER BY id').all(o.id) })));
+      .all(req.warehouse.id).map(o => ({ ...o, items: db.prepare('SELECT name,quantity,price,amount_cents FROM order_items WHERE order_id=? ORDER BY id').all(o.id) })));
   });
   app.post("/api/orders", (req, res) => {
     let inTransaction = false;

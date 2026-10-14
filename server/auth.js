@@ -59,12 +59,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     return [salt, (await deriveKey(password, salt, 64)).toString('hex')];
   };
   // A TLS-terminating proxy hides the real scheme, so compare origins by host.
-  const forwardedProto = (req) => {
-    const value = (req.get("x-forwarded-proto") || "").split(",")[0].trim().toLowerCase();
-    return value === "http" || value === "https" ? value : null;
-  };
   const cookieOptions = (req) => ({
-    httpOnly: true, sameSite: "strict", secure: req.secure || forwardedProto(req) === "https", path: "/",
+    httpOnly: true, sameSite: "strict", secure: req.secure, path: "/",
   });
   const sameOrigin = (req) => {
     const origin = req.get("origin");
@@ -110,25 +106,33 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     next();
   });
 
-  // Bound attempts per client without relying on user-controlled proxy headers.
+  // Bound attempts by trusted client IP and account, including distributed attempts.
   const attempts = new Map();
+  const clearAttempts = req => {
+    for (const key of req.authLimitKeys || []) attempts.delete(key);
+  };
   const authLimit = (req, res, next) => {
     const now = Date.now();
-    for (const [ip, attempt] of attempts) {
-      if (attempt.until <= now) attempts.delete(ip);
+    for (const [key, attempt] of attempts) {
+      if (attempt.until <= now) attempts.delete(key);
     }
-    const ip = req.ip;
-    let attempt = attempts.get(ip);
-    if (!attempt) {
-      if (attempts.size >= 10000) return res.status(429).json({ error: "请求过于频繁，请稍后重试。" });
-      attempt = { count: 0, until: now + 15 * 60 * 1000 };
-      attempts.set(ip, attempt);
-    }
-    if (attempt.count >= 10) {
-      res.set("Retry-After", String(Math.ceil((attempt.until - now) / 1000)));
+    const username = req.user?.username ?? req.body?.username;
+    const keys = [`ip:${req.ip}`];
+    if (typeof username === 'string' && username.trim().length <= 32)
+      keys.push(`account:${username.trim()}`);
+    const blocked = keys.map(key => attempts.get(key)).find(attempt => attempt?.count >= 10);
+    if (blocked) {
+      res.set("Retry-After", String(Math.ceil((blocked.until - now) / 1000)));
       return res.status(429).json({ error: "尝试次数过多，请在 15 分钟后重试。" });
     }
-    attempt.count++;
+    if (attempts.size + keys.filter(key => !attempts.has(key)).length > 10000)
+      return res.status(429).json({ error: "请求过于频繁，请稍后重试。" });
+    for (const key of keys) {
+      const attempt = attempts.get(key) || { count: 0, until: now + 15 * 60 * 1000 };
+      attempt.count++;
+      attempts.set(key, attempt);
+    }
+    req.authLimitKeys = keys;
     next();
   };
 
@@ -158,7 +162,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
         .run(username.trim(), salt, hash, new Date().toISOString());
       const state = issueSession(req, res, { id: 1, username: username.trim(), role: 'admin' });
       db.exec("COMMIT");
-      attempts.delete(req.ip);
+      clearAttempts(req);
       res.status(201).json(state);
     } catch (error) {
       db.exec("ROLLBACK");
@@ -180,7 +184,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
         !timingSafeEqual(hash, Buffer.from(current.password_hash, "hex"))) {
       return res.status(401).json({ error: "账号或密码错误。" });
     }
-    attempts.delete(req.ip);
+    clearAttempts(req);
     res.json(issueSession(req, res, current));
   });
   app.post("/api/auth/logout", (req, res) => {
@@ -215,7 +219,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       db.exec('COMMIT');
     } catch (error) { db.exec('ROLLBACK'); throw error; }
     res.clearCookie(cookieName, cookieOptions(req));
-    attempts.delete(req.ip);
+    clearAttempts(req);
     res.json({ ok: true });
   });
   // Unmapped routes stay administrator-only, including account and system settings.

@@ -220,14 +220,14 @@ test('imports, stocktakes, template submissions, and resets respect warehouse in
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.orders.length, 0);
 });
 
-test('v10 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
+test('v11 backups round trip multiple warehouses and sync groups, reject crossed references, and migrate genuine v3 backups', async t => {
   const f = await fixture(t), w = await f.warehouse('分仓');
   await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] });
   const remote = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data;
   await f.order(remote.id, 'in', 3, w);
   await f.command('/templates', { name: '常用模板', type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: 1, price: 10 }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 10);
+  assert.equal(backup.version, 11);
   for (const corrupt of ['warehouse', 'item', 'template', 'sync', 'barcode', 'category-owner', 'category-parent', 'category-warehouse']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;
@@ -289,7 +289,7 @@ test('legacy backups v3 through v9 migrate shared trees into independent warehou
     const restore = await f.command('/backup/restore', { backup: legacy, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' });
     assert.equal(restore.status, 200, `v${version}: ${JSON.stringify(restore.data)}`);
     const restored = (await f.request('/backup')).data;
-    assert.equal(restored.version, 10);
+    assert.equal(restored.version, 11);
     for (const warehouseId of [1, w, empty]) {
       const rows = (await f.request('/categories', 'GET', undefined, warehouseId)).data;
       assert.equal(rows.length, 3);

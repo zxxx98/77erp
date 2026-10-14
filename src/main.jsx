@@ -1,3 +1,4 @@
+import { orderLineAmount } from "../shared/money.js";
 import { Select } from "./Dropdown.jsx";
 import { PermissionContext, usePermissions } from './permissions.jsx';
 import { hasPermission, canManage } from '../shared/permissions.js';
@@ -2229,6 +2230,7 @@ async function exportOrders(orders, notify) {
       "商品",
       "数量",
       "单价",
+      "明细金额",
       "备注",
     ],
     ...orders.flatMap((o) =>
@@ -2241,6 +2243,7 @@ async function exportOrders(orders, notify) {
         i.name,
         i.quantity,
         i.price,
+        (orderLineAmount(i) / 100).toFixed(2),
         o.note,
       ]),
     ),
@@ -3247,7 +3250,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
                   <td className="number-cell">{i.quantity}</td>
                   <td className="number-cell">¥ {money(i.price)}</td>
                   <td className="number-cell">
-                    ¥ {money(i.price * i.quantity)}
+                    ¥ {money(orderLineAmount(i) / 100)}
                   </td>
                 </tr>
               ))}

@@ -1,3 +1,4 @@
+import { orderLineAmount } from "../shared/money.js";
 import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.js';
 import { installCommerce, moveInventory, allocate } from "./commerce.js";
@@ -176,13 +177,19 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             const prior = db.prepare("SELECT COALESCE(SUM(i.cost_cents),0) AS n FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.source_order_id=? AND o.status='active' AND i.product_id=?").get(source.id,item.product_id).n;
             cost = allocate(original.cost_cents - prior, item.quantity, addQuantity(original.quantity, -returned));
           }
-          return { ...original, quantity: item.quantity, return_cost: cost };
+          const priorAmount = db.prepare(`SELECT i.* FROM order_items i JOIN orders o ON o.id=i.order_id
+            WHERE o.source_order_id=? AND o.status='active' AND i.product_id=?`).all(source.id, item.product_id)
+            .reduce((sum, line) => sum + orderLineAmount(line), 0);
+          const remainingAmount = orderLineAmount(original) - priorAmount;
+          if (remainingAmount < 0) fail('历史退货金额已超过原单，请先核对并作废错误退货单。');
+          const amount = allocate(remainingAmount, item.quantity, addQuantity(original.quantity, -returned));
+          return { ...original, quantity: item.quantity, return_cost: cost, amount_cents: amount };
         });
         const type = source.type === "in" ? "out" : "in",
           at = new Date().toISOString();
         const number = `TH${at.slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8)}`;
         const total = items.reduce(
-          (sum, i) => sum + Math.round(i.price * i.quantity * 100),
+          (sum, i) => sum + i.amount_cents,
           0,
         );
         if (!Number.isSafeInteger(total)) fail("退货金额过大。");
@@ -205,7 +212,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         for (const i of items) {
           const movedCost = changeStock(i.product_id, (type === "in" ? 1 : -1) * i.quantity, i.return_cost);
           db.prepare(
-            "INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents) VALUES (?,?,?,?,?,?,?,?)",
           ).run(
             result.lastInsertRowid,
             i.product_id,
@@ -214,6 +221,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             i.quantity,
             i.price,
             source.type === "out" ? i.return_cost : movedCost,
+            i.amount_cents,
           );
         }
         return { id: Number(result.lastInsertRowid), number };
@@ -385,7 +393,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 10,
+    version: 11,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -393,11 +401,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 11) for (const item of data.order_items || []) {
+      if (item && !('amount_cents' in item)) item.amount_cents = null;
+    }
     if (value.version < 9) data.templates = [];
     if (value.version < 7) for (const table of stockQrTables) data[table] = [];
     if (value.version === 1) {
@@ -539,6 +550,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const i of data.order_items) {
       const key = `${i.order_id}:${i.product_id}`;
       if (
+        (i.amount_cents !== null && (!Number.isSafeInteger(i.amount_cents) || i.amount_cents < 0)) ||
         (i.cost_cents !== null && (!Number.isSafeInteger(i.cost_cents) || i.cost_cents < 0)) ||
         !orders.has(i.order_id) ||
         !products.has(i.product_id) ||
@@ -553,17 +565,19 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         Math.abs(i.price * 100 - Math.round(i.price * 100)) > 0.00001
       )
         fail("备份单据明细无效。");
+      if (orders.get(i.order_id).kind === 'normal' && orderLineAmount(i) !== Math.round(i.quantity * i.price * 100))
+        fail('备份原单明细金额无效。');
       keys.add(key);
       originalItems.set(key, i);
       totals.set(
         i.order_id,
-        (totals.get(i.order_id) || 0) + Math.round(i.quantity * i.price * 100),
+        (totals.get(i.order_id) || 0) + orderLineAmount(i),
       );
     }
     for (const o of data.orders)
       if (!totals.has(o.id) || totals.get(o.id) !== Math.round(o.total * 100))
         fail("备份单据合计与明细不一致。");
-    const returned = new Map();
+    const returned = new Map(), returnedAmounts = new Map();
     for (const i of data.order_items) {
       const order = orders.get(i.order_id);
       if (order.kind !== "return") continue;
@@ -572,6 +586,11 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!original || original.price !== i.price)
         fail("备份退货明细与原单不一致。");
       if (order.status === "active") {
+        const amount = returnedAmounts.get(key) || { cents: 0, allocated: false };
+        amount.cents += orderLineAmount(i);
+        amount.allocated ||= i.amount_cents !== null;
+        returnedAmounts.set(key, amount);
+        if (amount.allocated && amount.cents > orderLineAmount(original)) fail('备份退货金额超过原单。');
         returned.set(key, addQuantity(returned.get(key) || 0, i.quantity));
         if (returned.get(key) > original.quantity)
           fail("备份退货数量超过原单。");
