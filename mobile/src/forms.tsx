@@ -10,6 +10,7 @@ import { TemplateList } from "./commerce";
 import { UpdateCard } from "./UpdateCard";
 import { api, device, getWarehouseId, scanBarcode, uploadProductImage } from "./native";
 import { ImagebedSettings } from './ImagebedSettings';
+import { NotificationSettings } from './NotificationSettings';
 import { parseProductCode, resolveProductCode } from "./product-scan";
 import {
   Category,
@@ -102,7 +103,7 @@ export function ProductEditor({
         product ? "PUT" : "POST",
         { ...payload, ...(product ? { version } : {}), sync_warehouse_ids: syncTargets },
       );
-      onSaved(product ? "商品已更新" : "商品已创建，初始库存为 0");
+      onSaved(product ? "物料已更新" : "物料已创建，初始库存为 0");
     } catch (e) {
       setError((e as Error).message);
       const failure = e as { status?: number; code?: string };
@@ -130,7 +131,7 @@ export function ProductEditor({
   };
   return (
     <ScreenModal
-      title={product ? "编辑商品" : "新增商品"}
+      title={product ? "编辑物料" : "新增物料"}
       onClose={onClose}
       error={error}
       errorRevision={errorRevision}
@@ -138,7 +139,7 @@ export function ProductEditor({
       busy={busy || scanning || pickingImage}
       footer={
         <Button
-          title="保存商品"
+          title="保存物料"
           icon={Check}
           busy={busy}
           disabled={scanning || pickingImage || conflict}
@@ -155,13 +156,13 @@ export function ProductEditor({
           try {
             const data = await api<Workspace>('/data', 'GET', undefined, warehouseId);
             const current = data.products.find(p => p.id === product.id);
-            if (!current) throw new Error('商品已被删除，当前填写内容已保留。');
+            if (!current) throw new Error('物料已被删除，当前填写内容已保留。');
             setLatest({ product: current, categories: data.categories || [] });
           } catch (e) { setError((e as Error).message); }
           finally { setBusy(false); lock.leave(); }
         }} />
         {!!latest && <Button title="使用最新信息重新编辑" kind="secondary" disabled={busy || scanning || pickingImage} onPress={() => {
-          Alert.alert('使用最新商品信息', '使用最新信息替换当前填写内容，并清空同步仓库选择？', [
+          Alert.alert('使用最新物料信息', '使用最新信息替换当前填写内容，并清空同步仓库选择？', [
             { text: '取消', style: 'cancel' },
             { text: '重新编辑', onPress: () => {
               const current = latest.product;
@@ -180,15 +181,15 @@ export function ProductEditor({
       </>}
       <Card>
         <Field
-          label="商品名称"
+          label="物料名称"
           value={form.name}
           onChangeText={field("name")}
           maxLength={100}
           editable={!busy}
-          placeholder="例如：马克杯"
+          placeholder="例如：RVV 护套电线"
         />
         <Field
-          label="商品条码（选填）"
+          label="物料条码（选填）"
           value={form.barcode}
           onChangeText={field("barcode")}
           maxLength={64}
@@ -197,7 +198,7 @@ export function ProductEditor({
           placeholder="留空自动生成"
         />
         <Button
-          title="扫描商品条码"
+          title="扫描物料条码"
           icon={Camera}
           kind="secondary"
           onPress={scan}
@@ -207,14 +208,14 @@ export function ProductEditor({
         <Text style={s.caption}>
           {product
             ? "编辑时留空将保留原条码。"
-            : "商品库存从 0 开始，通过采购入库增加库存。"}
+            : "物料库存从 0 开始，通过采购入库增加库存。"}
         </Text>
-        <Text style={s.label}>商品分类</Text>
+        <Text style={s.label}>物料分类</Text>
         <Chips value={form.category_id || ''} options={options.map(c => ({ id: String(c.id), label: c.path }))} onChange={value => {
           const c = options.find(c => String(c.id) === value);
           setForm(current => ({ ...current, category_id: value, category: c?.path || '' }));
         }} />
-        {!options.length && <Text style={s.caption}>请先在商品页面的「管理分类」中添加分类。</Text>}
+        {!options.length && <Text style={s.caption}>请先在物料页面的「管理分类」中添加分类。</Text>}
         <Columns>
           <Field
             label="单位"
@@ -228,9 +229,9 @@ export function ProductEditor({
         <Text style={s.caption}>可选择已配置的单位，也可输入。常用单位在「设置 → 计量单位」中管理。</Text>
       </Card>
       <Card>
-        <Text style={s.label}>商品图片</Text>
-        {!!form.image && <ProductImage uri={form.image} label="商品图片预览" style={{ width: '100%', height: 180, borderRadius: 8 }} />}
-        <Button title="选择商品图片" kind="secondary" busy={pickingImage} disabled={busy || scanning} onPress={async () => {
+        <Text style={s.label}>物料图片</Text>
+        {!!form.image && <ProductImage uri={form.image} label="物料图片预览" style={{ width: '100%', height: 180, borderRadius: 8 }} />}
+        <Button title="选择物料图片" kind="secondary" busy={pickingImage} disabled={busy || scanning} onPress={async () => {
           setPickingImage(true); setError('');
           try { const uri = await device.pickImage(); if (uri) field('image')(await uploadProductImage(uri)); }
           catch (e) { setError((e as Error).message); }
@@ -238,19 +239,19 @@ export function ProductEditor({
         }} />
         {!!form.image && <Button title="移除图片" kind="secondary" disabled={busy || pickingImage} onPress={() => field('image')('')} />}
         <Text style={s.caption}>自动压缩并转为 WebP 上传图床。</Text>
-        <Field label="商品规格" value={form.specification} onChangeText={field('specification')} maxLength={500} editable={!busy} placeholder="例如：白色 / 350ml / 12个装" />
-        <Field label="商品备注" value={form.note} onChangeText={field('note')} maxLength={2000} multiline numberOfLines={3} editable={!busy} placeholder="填写商品补充说明" />
+        <Field label="规格型号" value={form.specification} onChangeText={field('specification')} maxLength={500} editable={!busy} placeholder="例如：3 芯 / 1.5 mm² / 额定电压 300/500V" />
+        <Field label="物料备注" value={form.note} onChangeText={field('note')} maxLength={2000} multiline numberOfLines={3} editable={!busy} placeholder="填写物料补充说明" />
       </Card>
       <Card>
         <Field
-          label="采购价"
+          label="参考采购价"
           value={form.cost}
           onChangeText={field("cost")}
           keyboardType="decimal-pad"
           editable={!busy}
         />
         <Field
-          label="销售价"
+          label="参考销售价"
           value={form.price}
           onChangeText={field("price")}
           keyboardType="decimal-pad"
@@ -266,7 +267,7 @@ export function ProductEditor({
       </Card>
       <Card>
         <Text style={s.subtitle}>同步到其他仓库（选填）</Text>
-        <Text style={s.caption}>本次保存同步商品档案和参考价格，并在目标仓库匹配或创建对应分类路径。已有库存和成本保留，新商品库存为 0。未选择的仓库保留原档案。</Text>
+        <Text style={s.caption}>本次保存同步物料档案和参考价格，并在目标仓库匹配或创建对应分类路径。已有库存和成本保留，新物料库存为 0。未选择的仓库保留原档案。</Text>
         {warehouses.filter(w => w.id !== warehouseId).map(w => <View key={w.id} style={s.row}>
           <Text style={[s.label, s.grow]}>{w.name}</Text>
           <Switch accessibilityLabel={`同步到${w.name}`} value={syncTargets.includes(w.id)} disabled={busy || scanning || pickingImage} onValueChange={checked => setSyncTargets(current => checked ? [...current, w.id] : current.filter(id => id !== w.id))} />
@@ -342,7 +343,7 @@ export function OrderEditor({
       if (code) {
         const product = resolveProductCode(code, { products, warehouseId, sourceId });
         if (!product)
-          throw new Error(`未找到条码「${code.trim()}」，请先建立商品档案。`);
+          throw new Error(`未找到条码「${code.trim()}」，请先建立物料档案。`);
         add(product);
       }
     } catch (e) {
@@ -356,7 +357,7 @@ export function OrderEditor({
     setBusy(true);
     setError("");
     try {
-      if (missingTemplateProduct) throw new Error("模板商品已变化，请刷新后重新打开。");
+      if (missingTemplateProduct) throw new Error("模板物料已变化，请刷新后重新打开。");
       const payload = {...orderPayload(type, partner, note, lines), ...(partnerId ? {partner_id:partnerId} : {})};
       const key = JSON.stringify(payload);
       if (orderRequest.current.key !== key) orderRequest.current = { key, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
@@ -374,7 +375,7 @@ export function OrderEditor({
     if (!lock.enter()) return;
     setBusy(true); setError(""); setTemplateMessage("");
     try {
-      if (missingTemplateProduct) throw new Error("模板商品已变化，请刷新后重新打开。");
+      if (missingTemplateProduct) throw new Error("模板物料已变化，请刷新后重新打开。");
       const body = { ...(overwrite && template ? { id: template.id, version: template.version } : {}), name: templateName, type, partner, partner_id: partnerId, note, items: lines.map(i => ({ product_id: i.product.id, quantity: i.quantity, price: i.price })) };
       const key = JSON.stringify(body);
       if (templateRequest.current.key !== key) templateRequest.current = { key, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
@@ -386,7 +387,7 @@ export function OrderEditor({
   };
   const useTemplate = (selected: Template) => {
     const apply = () => {
-      if (selected.items.some(i => !products.some(p => p.id === i.product_id))) { setError("模板商品已变化，请刷新后重新选择。"); return; }
+      if (selected.items.some(i => !products.some(p => p.id === i.product_id))) { setError("模板物料已变化，请刷新后重新选择。"); return; }
       setTemplate(selected); setTemplateName(selected.name); setTemplateMessage("");
       setPartner(selected.partner); setPartnerId(selected.partner_id); setNote(selected.note);
       setLines(selected.items.map(i => ({ product: products.find(p => p.id === i.product_id)!, quantity: String(i.quantity), price: String(i.price) })));
@@ -397,7 +398,7 @@ export function OrderEditor({
   };
   const confirm = () => {
     try {
-      if (missingTemplateProduct) throw new Error("模板商品已变化，请刷新后重新打开。");
+      if (missingTemplateProduct) throw new Error("模板物料已变化，请刷新后重新打开。");
       orderPayload(type, partner, note, lines);
     } catch (e) {
       setError((e as Error).message);
@@ -405,7 +406,7 @@ export function OrderEditor({
     }
     Alert.alert(
       type === "in" ? "确认采购入库？" : "确认销售出库？",
-      `${lines.length} 种商品，合计 ${money(orderTotal(lines))}。确认后立即更新库存。`,
+      `${lines.length} 种物料，合计 ${money(orderTotal(lines))}。确认后立即更新库存。`,
       [
         { text: "继续编辑", style: "cancel" },
         { text: "确认提交", onPress: submit },
@@ -428,7 +429,7 @@ export function OrderEditor({
       footer={
         <>
           <View style={s.between}>
-            <Text style={s.caption}>{lines.length} 种商品</Text>
+            <Text style={s.caption}>{lines.length} 种物料</Text>
             <Text style={s.subtitle}>{money(orderTotal(lines))}</Text>
           </View>
           <Button
@@ -455,7 +456,7 @@ export function OrderEditor({
         onChange={value => { setPartner(value); setPartnerId(contacts.find(c => c.active && c.role === (type === "in" ? "supplier" : "customer") && c.name === value)?.id ?? null); }}
         onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id ?? null); }} />
       <Button
-        title="扫码添加商品"
+        title="扫码添加物料"
         icon={Camera}
         onPress={scan}
         busy={scanning}
@@ -464,7 +465,7 @@ export function OrderEditor({
       <SearchField
         value={query}
         onChangeText={setQuery}
-        placeholder="搜索要添加的商品或条码"
+        placeholder="搜索要添加的物料或条码"
       />
       {!!query.trim() && (
         <Card>
@@ -479,21 +480,21 @@ export function OrderEditor({
               />
             ))
           ) : (
-            <Text style={s.caption}>未找到商品，请先在商品管理中建档。</Text>
+            <Text style={s.caption}>未找到物料，请先在物料管理中建档。</Text>
           )}
         </Card>
       )}
-      <Button title={includeInactive ? "隐藏下架商品" : "包含下架商品（清库存等）"} kind="secondary" disabled={busy} onPress={() => setIncludeInactive(!includeInactive)} />
+      <Button title={includeInactive ? "隐藏停用物料" : "包含停用物料（清库存等）"} kind="secondary" disabled={busy} onPress={() => setIncludeInactive(!includeInactive)} />
       {!lines.length && (
         <Card>
-          <Text style={s.caption}>扫码或搜索，添加第一件商品。</Text>
+          <Text style={s.caption}>扫码或搜索，添加第一件物料。</Text>
         </Card>
       )}
       {lines.map((line) => (
         <Card key={line.product.id}>
           <View style={s.between}>
             <View style={s.grow}>
-              <Text style={s.rowTitle}>{line.product.name}{line.product.active === 0 ? "（已下架）" : ""}</Text>
+              <Text style={s.rowTitle}>{line.product.name}{line.product.active === 0 ? "（已停用）" : ""}</Text>
               <Text style={s.caption}>
                 可用库存 {line.product.stock} {line.product.unit}
               </Text>
@@ -607,6 +608,8 @@ export function SettingsEditor({
   const [units, setUnits] = useState(settings.units || ["件"]);
   const [imagebedBusy, setImagebedBusy] = useState(false);
   const [imagebedDirty, setImagebedDirty] = useState(false);
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationDirty, setNotificationDirty] = useState(false);
   useEffect(() => setWarehouse(settings.warehouse_name), [settings.warehouse_name]);
   const { error, errorRevision, setError } = useFormError();
   const [busy, setBusy] = useState(false);
@@ -627,7 +630,7 @@ export function SettingsEditor({
   };
   const confirmReset = () => Alert.alert(
     "确定重置业务数据？",
-    "所有商品、库存、入出库单据、往来单位、模板及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器地址及已保存的商户和仓库名称会保留。",
+    "所有物料、库存、入出库单据、往来单位、模板及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器地址及已保存的商户和仓库名称会保留。",
     [
       { text: "取消", style: "cancel" },
       { text: "确认清空", style: "destructive", onPress: reset },
@@ -662,13 +665,14 @@ export function SettingsEditor({
       dirty={
         business !== settings.business_name ||
         warehouse !== settings.warehouse_name ||
-        JSON.stringify(units) !== JSON.stringify(settings.units || ["件"]) || imagebedDirty
+        JSON.stringify(units) !== JSON.stringify(settings.units || ["件"]) || imagebedDirty || notificationDirty
       }
-      busy={busy || imagebedBusy}
-      footer={<Button title="保存设置" onPress={save} busy={busy} disabled={imagebedBusy || imagebedDirty} />}
+      busy={busy || imagebedBusy || notificationBusy}
+      footer={<Button title="保存设置" onPress={save} busy={busy} disabled={imagebedBusy || imagebedDirty || notificationBusy || notificationDirty} />}
     >
       <UpdateCard />
       <ImagebedSettings onBusy={setImagebedBusy} onDirty={setImagebedDirty} />
+      <NotificationSettings warehouses={warehouses} onBusy={setNotificationBusy} onDirty={setNotificationDirty} />
       <Card>
         <Field
           label="商户名称"
@@ -687,7 +691,7 @@ export function SettingsEditor({
       </Card>
       <Card>
         <Text style={s.subtitle}>计量单位</Text>
-        <Text style={s.caption}>各仓库共用，第一项作为新增商品的默认单位。修改列表不会改变已有商品的单位，点击「保存设置」后生效。</Text>
+        <Text style={s.caption}>各仓库共用，第一项作为新增物料的默认单位。修改列表不会改变已有物料的单位，点击「保存设置」后生效。</Text>
         {units.map((unit, index) => (
           <View key={index} style={s.row}>
             <View style={s.grow}>
@@ -712,11 +716,11 @@ export function SettingsEditor({
       </Card>
       <Card>
         {server && <>
-          <Text style={s.caption}>备份恢复在网页系统设置中操作，浏览器需单独登录。商品导入导出请进入业务管理。</Text>
+          <Text style={s.caption}>备份恢复在网页系统设置中操作，浏览器需单独登录。物料导入导出请进入业务管理。</Text>
           <Button title="打开网页备份与恢复" kind="secondary" disabled={busy} onPress={() => void Linking.openURL(`${server}/?manage=backup&warehouse_id=${getWarehouseId()}`).catch(() => setError("无法打开浏览器，请手动访问服务器网页。"))} />
         </>}
         <Text style={s.subtitle}>重置业务数据</Text>
-        <Text style={s.caption}>永久清空所有商品、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器地址及已保存的商户和仓库名称。</Text>
+        <Text style={s.caption}>永久清空所有物料、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器地址及已保存的商户和仓库名称。</Text>
         <Button title="重置业务数据" kind="danger" icon={Trash2} onPress={confirmReset} disabled={busy} />
       </Card>
     </ScreenModal>

@@ -60,7 +60,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
         if (!alive) return;
         stop();
         setError(e.name === 'NotAllowedError'
-          ? '摄像头权限未开启，请在浏览器中授权，或手动输入商品条码。'
+          ? '摄像头权限未开启，请在浏览器中授权，或手动输入物料条码。'
           : '无法访问摄像头，请检查摄像头及浏览器权限，或手动输入条码。');
       }
     };
@@ -116,7 +116,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
     {error ? <div className="camera-error" role="alert"><Camera size={30} /><p>{error}</p></div> : <>
       <div className="camera-crosshair" />
       {!ready && <div className="camera-loading"><LoaderCircle className="spin" size={24} />正在开启摄像头…</div>}
-      <span className="camera-instruction">将商品条码或二维码置于取景框内</span>
+      <span className="camera-instruction">将物料条码或二维码置于取景框内</span>
     </>}
   </div>;
 
@@ -131,7 +131,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
       {!ready && <div className="camera-opening" role="status"><LoaderCircle className="spin" size={24} /><span>正在开启摄像头…</span></div>}
     </>}
     <footer className="camera-overlay-footer">
-      <p className="camera-overlay-instruction">将商品条码或二维码置于取景框内</p>
+      <p className="camera-overlay-instruction">将物料条码或二维码置于取景框内</p>
       <p className="camera-overlay-note">{note}</p>
       <div className="camera-overlay-actions">
         {error && <button type="button" className="camera-action" onClick={() => { overlay.current?.focus({ preventScroll: true }); setAttempt(value => value + 1); }}><RefreshCw size={20} />重新开启扫码</button>}

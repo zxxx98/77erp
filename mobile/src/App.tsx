@@ -71,7 +71,7 @@ type ModalState =
   | { kind: "warehouses" };
 const tabs = [
   { id: "home" as const, title: "工作台", icon: LayoutDashboard },
-  { id: "products" as const, title: "商品", icon: Box },
+  { id: "products" as const, title: "物料", icon: Box },
   { id: "inventory" as const, title: "库存", icon: Warehouse },
   { id: "orders" as const, title: "单据", icon: History },
   { id: "more" as const, title: "更多", icon: Settings },

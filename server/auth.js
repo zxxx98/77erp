@@ -2,6 +2,7 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 
 import { permissionKeys, legacyPermissions, hasPermission } from '../shared/permissions.js';
+import { queueNotification } from './notifications.js';
 
 const deriveKey = promisify(scrypt);
 const cookieName = "77erp_session";
@@ -303,6 +304,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       db.prepare('UPDATE users SET permissions=?,permissions_version=permissions_version+1 WHERE id=?').run(value, user.id);
       db.prepare('INSERT INTO user_permission_changes(user_id,changed_by,before_permissions,after_permissions,created_at) VALUES (?,?,?,?,?)')
         .run(user.id, req.user.id, user.permissions, value, new Date().toISOString());
+      if (user.permissions !== value) queueNotification(db, req, 'admin_action', { action: '修改员工权限', target_user: user.username, before_permissions: user.permissions === null ? null : JSON.parse(user.permissions), after_permissions: JSON.parse(value) }, { global: true });
       db.exec('COMMIT');
       res.json({ ok: true });
     } catch (error) { db.exec('ROLLBACK'); throw error; }
@@ -323,6 +325,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       }
       db.prepare('UPDATE users SET role=?,active=? WHERE id=?').run(role, active, user.id);
       if (!active || role !== user.role) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(user.id);
+      if (role !== user.role || active !== user.active) queueNotification(db, req, 'admin_action', { action: '修改账号角色／状态', target_user: user.username, before_role: user.role, role, before_active: user.active, active }, { global: true });
       db.exec('COMMIT');
       res.json({ ok: true });
     } catch (error) { db.exec('ROLLBACK'); throw error; }

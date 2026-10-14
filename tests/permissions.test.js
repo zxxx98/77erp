@@ -38,7 +38,7 @@ const probes = {
   sale: [['POST', '/orders', { type: 'out' }]],
   corrections: [['POST', '/orders/1/void', {}], ['POST', '/orders/1/returns', {}]],
   stocktake: [['GET', '/stocktakes'], ['POST', '/stocktakes', {}],
-    ['GET', '/stocktakes/multi/products?q=商品'], ['POST', '/stocktakes/multi/compare', {}]],
+    ['GET', '/stocktakes/multi/products?q=物料'], ['POST', '/stocktakes/multi/compare', {}]],
   business: [['POST', '/contacts', {}], ['POST', '/templates', {}], ['POST', '/templates/1/delete', {}],
     ['GET', '/stock-qrs'], ['POST', '/stock-qrs', {}], ['PUT', '/stock-qrs/a08f04e0-6420-4c84-9c07-189e70c95539', {}]],
   finance: [['GET', '/finance'], ['GET', '/reports/profit'], ['GET', '/orders/1/payments'],

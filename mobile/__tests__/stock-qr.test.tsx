@@ -131,7 +131,7 @@ test("manager defaults to confirmation and saves independently configured quanti
   fireEvent.press(await screen.findByRole("button", { name: "新建二维码" }));
   expect(screen.getByLabelText("需要二次确认").props.value).toBe(true);
   for (const p of [product, second]) {
-    fireEvent.changeText(screen.getByLabelText("搜索添加商品"), p.name);
+    fireEvent.changeText(screen.getByLabelText("搜索添加物料"), p.name);
     fireEvent.press(
       screen.getByRole("button", { name: `添加 ${p.name} · ${p.barcode}` }),
     );

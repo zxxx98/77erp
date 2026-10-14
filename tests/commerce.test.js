@@ -47,7 +47,7 @@ async function fixture(t) {
   const product = async () =>
     (
       await request("/products", {
-        name: "商品",
+        name: "物料",
         barcode: "COST-001",
         category: "日用",
         unit: "件",
@@ -87,7 +87,7 @@ test("moving weighted average fixes sale cost, returns reverse original cost and
     `/products/${id}`,
     {
       version: f.db.prepare("SELECT version FROM products WHERE id=?").get(id).version,
-      name: "商品",
+      name: "物料",
       barcode: "COST-001",
       category: "日用",
       unit: "件",

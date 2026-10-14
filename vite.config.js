@@ -7,7 +7,7 @@ export default defineConfig({
     injectRegister: null,
     includeAssets: ['favicon.svg', 'icons/*.png'],
     manifest: {
-      id: '/', name: '77 ERP · 进销存', short_name: '77 ERP', lang: 'zh-CN', description: '商品管理、扫码入出库及库存管理',
+      id: '/', name: '77 ERP · 进销存', short_name: '77 ERP', lang: 'zh-CN', description: '物料管理、扫码入出库及库存管理',
       start_url: '/', scope: '/', display: 'standalone', theme_color: '#2563eb', background_color: '#f7f8fa',
       icons: [
         { src: '/icons/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },

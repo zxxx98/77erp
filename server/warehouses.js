@@ -47,13 +47,13 @@ export function installWarehouses(app, db) {
       for (const item of Array.isArray(req.body?.items) ? req.body.items : []) checks.push(['products', item?.product_id]);
     }
     for (const [table, itemId] of checks) {
-      if (!Number.isSafeInteger(itemId)) return res.status(400).json({ error: '商品或单据编号无效。' });
+      if (!Number.isSafeInteger(itemId)) return res.status(400).json({ error: '物料或单据编号无效。' });
       const row = table === 'payments'
         ? db.prepare('SELECT o.warehouse_id FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.id=?').get(itemId)
         : db.prepare(`SELECT warehouse_id${table === 'templates' ? ',created_by' : ''} FROM ${table} WHERE id=?`).get(itemId);
       if (table === 'templates' && row && req.user.role !== 'admin' && row.created_by !== req.user.id)
         return res.status(404).json({ error: '模板不存在或无权访问。' });
-      if (row && row.warehouse_id !== id) return res.status(400).json({ error: table === 'categories' ? '该分类不属于当前仓库。' : '该商品、单据或模板不属于当前仓库。' });
+      if (row && row.warehouse_id !== id) return res.status(400).json({ error: table === 'categories' ? '该分类不属于当前仓库。' : '该物料、单据或模板不属于当前仓库。' });
     }
     next();
   });
@@ -100,7 +100,7 @@ export function syncProduct(db, id, targets) {
     if (target === product.warehouse_id || !db.prepare('SELECT 1 FROM warehouses WHERE id=?').get(target)) throw new Error('同步目标仓库不存在或与当前仓库相同。');
     const existing = db.prepare('SELECT * FROM products WHERE warehouse_id=? AND sync_key=?').get(target, product.sync_key);
     const collision = db.prepare('SELECT id FROM products WHERE warehouse_id=? AND barcode=?').get(target, product.barcode);
-    if (collision && collision.id !== existing?.id) throw new Error('目标仓库已有同条码的独立商品，请先核对条码，未保存任何修改。');
+    if (collision && collision.id !== existing?.id) throw new Error('目标仓库已有同条码的独立物料，请先核对条码，未保存任何修改。');
     const categoryId = copyCategoryToWarehouse(db, product.category_id, target);
     const values = fields.map(field => field === 'category_id' ? categoryId : product[field]);
     if (existing) db.prepare(`UPDATE products SET ${fields.map(f => `${f}=?`).join(',')} WHERE id=?`).run(...values, existing.id);

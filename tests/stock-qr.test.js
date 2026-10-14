@@ -55,8 +55,8 @@ async function fixture(t) {
   });
   const products = [];
   for (const [name, unit] of [
-    ["商品A", "个"],
-    ["商品B", "箱"],
+    ["物料A", "个"],
+    ["物料B", "箱"],
   ]) {
     const body = {
       name,

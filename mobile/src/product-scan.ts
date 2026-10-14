@@ -16,11 +16,11 @@ export function parseProductCode(raw: string): ProductCode {
   if (fields.format !== "77erp") return { kind: "barcode", barcode: text };
   if (fields.version !== 1) throw new Error("不支持的二维码版本，请更新应用后重试。");
   if (fields.type === "stock_operation") throw new Error("该二维码用于整单出入库，请到扫码工作台的对应模式执行。");
-  if (fields.type !== "product") throw new Error("该二维码不是商品标签，无法识别商品。");
+  if (fields.type !== "product") throw new Error("该二维码不是物料标签，无法识别物料。");
   const product = fields.product as { id?: unknown; barcode?: unknown } | null | undefined;
   if (typeof fields.source_id !== "string" || !Number.isSafeInteger(fields.warehouse_id) || !product ||
       typeof product !== "object" || !Number.isSafeInteger(product.id) || typeof product.barcode !== "string")
-    throw new Error("商品二维码内容不完整，请重新生成标签。");
+    throw new Error("物料二维码内容不完整，请重新生成标签。");
   return { kind: "label", sourceId: fields.source_id, warehouseId: fields.warehouse_id as number, id: product.id as number, barcode: product.barcode };
 }
 
@@ -33,10 +33,10 @@ export function resolveProductCode(
   const code = parseProductCode(raw);
   if (code.kind === "barcode") return products.find((p) => p.barcode === code.barcode) ?? null;
   if (!sourceId) throw new Error("无法核对二维码来源，请刷新后重试。");
-  if (code.sourceId !== sourceId) throw new Error("该二维码来自其他服务器的商品，当前系统无法识别。");
-  if (code.warehouseId !== warehouseId) throw new Error("该二维码属于其他仓库的商品，请切换仓库后再扫描。");
+  if (code.sourceId !== sourceId) throw new Error("该二维码来自其他服务器的物料，当前系统无法识别。");
+  if (code.warehouseId !== warehouseId) throw new Error("该二维码属于其他仓库的物料，请切换仓库后再扫描。");
   const product = products.find((p) => p.id === code.id);
   if (!product || product.barcode !== code.barcode)
-    throw new Error(`二维码中的商品「${code.barcode}」与当前商品档案不一致，请重新生成标签。`);
+    throw new Error(`二维码中的物料「${code.barcode}」与当前物料档案不一致，请重新生成标签。`);
   return product;
 }

@@ -44,7 +44,7 @@ test("order payload matches the existing server contract and totals use cents", 
 });
 test("product creation keeps barcode optional and sends no direct stock mutation", () => {
   const payload = productPayload({
-    name: " 新商品 ",
+    name: " 新物料 ",
     barcode: "",
     category: "文具",
     unit: "件",
@@ -53,7 +53,7 @@ test("product creation keeps barcode optional and sends no direct stock mutation
     threshold: "5",
   });
   expect(payload).toEqual({
-    name: "新商品",
+    name: "新物料",
     barcode: "",
     category: "文具",
     unit: "件",
@@ -82,5 +82,5 @@ test("fractional quantities, thresholds and repeated scans preserve precision", 
   expect(orderPayload("out", "客户", "", lines).items[0]?.quantity).toBe(0.123456);
   expect(orderTotal(lines)).toBe(2.47);
   expect(addLine(lines, product, "out")[0]?.quantity).toBe("1.123456");
-  expect(productPayload({ name: "小数商品", barcode: "", category: "文具", unit: "件", cost: "10", price: "20", threshold: "0.5" }).threshold).toBe(0.5);
+  expect(productPayload({ name: "小数物料", barcode: "", category: "文具", unit: "件", cost: "10", price: "20", threshold: "0.5" }).threshold).toBe(0.5);
 });

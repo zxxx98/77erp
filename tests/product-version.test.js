@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/app.js';
 
-const product = { name: '协作商品', barcode: 'VERSION-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 5 };
+const product = { name: '协作物料', barcode: 'VERSION-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 5 };
 async function fixture(t) {
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1');

@@ -22,5 +22,5 @@ test("labels that do not match the current server, warehouse or product are reje
   expect(() => resolveProductCode(label({ product: { id: product.id, barcode: "SKU-999999" } }), context)).toThrow("不一致");
   expect(() => resolveProductCode(label(), { products: [product], warehouseId: 1 })).toThrow("无法核对");
   expect(() => resolveProductCode(label({ version: 2 }), context)).toThrow("版本");
-  expect(() => resolveProductCode(label({ type: "stock_receipt" }), context)).toThrow("不是商品标签");
+  expect(() => resolveProductCode(label({ type: "stock_receipt" }), context)).toThrow("不是物料标签");
 });

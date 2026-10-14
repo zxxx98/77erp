@@ -30,7 +30,7 @@ export function ImagebedSettings({ onBusy, onDirty }: { onBusy: (busy: boolean) 
   };
   return <Card>
     <Text style={s.subtitle}>图床配置</Text>
-    <Text style={s.caption}>Cloudflare ImgBed · Cloudflare R2（cfr2）。所有仓库共用，商品仅保存图片 URL。</Text>
+    <Text style={s.caption}>Cloudflare ImgBed · Cloudflare R2（cfr2）。所有仓库共用，物料仅保存图片 URL。</Text>
     {config ? <>
       <Field label="图床地址" value={config.base_url} placeholder="https://img.example.com" autoCapitalize="none" autoCorrect={false} maxLength={2048} editable={!busy} onChangeText={value => field('base_url', value)} />
       <Text style={s.caption}>填写 HTTPS 图床域名，不包含 /upload。留空并保存可停用新图片上传。</Text>
@@ -39,7 +39,7 @@ export function ImagebedSettings({ onBusy, onDirty }: { onBusy: (busy: boolean) 
       <Text style={s.label}>认证方式</Text>
       {([['token', 'API Token（推荐）'], ['authCode', '上传认证码（authCode）'], ['none', '无需认证']] as const).map(([value, title]) => <Button key={value} title={`${config.auth_type === value ? '已选：' : ''}${title}`} kind="secondary" disabled={busy} onPress={() => { field('auth_type', value); setSecret(''); }} />)}
       {config.auth_type !== 'none' && <Field label="上传凭据" value={secret} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={4096} editable={!busy} placeholder={config.has_secret ? '已保存，留空保留现有凭据' : '填写有上传权限的凭据'} onChangeText={setSecret} />}
-      <Text style={s.caption}>图床配置通过「保存图床配置」单独保存。凭据仅保存在服务器，不包含在商品数据或业务备份中。改为无需认证或停用上传并选择清除，可移除凭据。</Text>
+      <Text style={s.caption}>图床配置通过「保存图床配置」单独保存。凭据仅保存在服务器，不包含在物料数据或业务备份中。改为无需认证或停用上传并选择清除，可移除凭据。</Text>
       <Button title="保存图床配置" busy={busy} onPress={() => void run(async () => {
         const value = await api<Config>('/settings/imagebed', 'PUT', { ...config, secret });
         setConfig(value); setSaved(JSON.stringify(value)); setSecret(''); setNotice('图床配置已保存。');

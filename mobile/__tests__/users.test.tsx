@@ -92,7 +92,7 @@ test('read-only employee sees product details without edit, lifecycle, or transa
   render(<PermissionContext.Provider value={{ role: 'employee', permissions: [] }}>
     <ProductDetail product={product} isAdmin={false} onClose={jest.fn()} onSaved={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />
   </PermissionContext.Provider>);
-  for (const name of ['编辑商品', '采购入库', '销售出库', '下架商品', '删除商品'])
+  for (const name of ['编辑物料', '采购入库', '销售出库', '停用物料', '删除物料'])
     expect(screen.queryByRole('button', { name })).toBeNull();
   expect(await screen.findByText('12 个')).toBeOnTheScreen();
   expect(screen.getByText('分仓')).toBeOnTheScreen();

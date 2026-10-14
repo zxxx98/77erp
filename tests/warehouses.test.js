@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../server/app.js';
 
-const product = { name: '仓库商品', barcode: 'WH-001', category: '生活日用', unit: '件', cost: 10, price: 20, threshold: 5, specification: '350ml', note: '档案备注' };
+const product = { name: '仓库物料', barcode: 'WH-001', category: '生活日用', unit: '件', cost: 10, price: 20, threshold: 5, specification: '350ml', note: '档案备注' };
 async function fixture(t) {
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1');
@@ -334,9 +334,9 @@ test('an actual legacy database migrates without changing product IDs, stock, va
   old.exec(`CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, barcode TEXT NOT NULL UNIQUE, category TEXT NOT NULL, unit TEXT NOT NULL DEFAULT '件', cost REAL NOT NULL, price REAL NOT NULL, stock INTEGER NOT NULL DEFAULT 0 CHECK(stock>=0), threshold INTEGER NOT NULL DEFAULT 20, color TEXT NOT NULL DEFAULT 'blue', created_at TEXT NOT NULL);
     CREATE TABLE orders (id INTEGER PRIMARY KEY, number TEXT NOT NULL UNIQUE, type TEXT NOT NULL CHECK(type IN ('in','out')), partner TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', total REAL NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id), product_id INTEGER NOT NULL REFERENCES products(id), name TEXT NOT NULL, barcode TEXT NOT NULL, quantity INTEGER NOT NULL, price REAL NOT NULL);
-    INSERT INTO products VALUES (42,'旧商品','LEGACY-001','分类','件',10,20,7,5,'blue','2026-01-01');
+    INSERT INTO products VALUES (42,'旧物料','LEGACY-001','分类','件',10,20,7,5,'blue','2026-01-01');
     INSERT INTO orders VALUES (31,'RK-LEGACY','in','供应商','历史',70,'2026-01-01');
-    INSERT INTO order_items VALUES (12,31,42,'旧商品','LEGACY-001',7,10);`);
+    INSERT INTO order_items VALUES (12,31,42,'旧物料','LEGACY-001',7,10);`);
   old.close();
   let instance = createApp(path);
   const p = instance.db.prepare('SELECT * FROM products').get();

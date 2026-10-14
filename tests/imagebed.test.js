@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 
 const config = { base_url: 'https://img.example.com', auth_type: 'token', secret: 'private-test-token', upload_folder: '77erp/products', channel_name: '主 R2' };
-const product = { name: '图片商品', category: '图片测试', unit: '件', cost: 1, price: 2, threshold: 3 };
+const product = { name: '图片物料', category: '图片测试', unit: '件', cost: 1, price: 2, threshold: 3 };
 const png = await sharp({ create: { width: 24, height: 16, channels: 4, background: '#2563eb' } }).png().toBuffer();
 async function fixture(t) {
   const calls = [];

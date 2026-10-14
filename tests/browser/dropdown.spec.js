@@ -25,7 +25,7 @@ for (const width of [1440, 390]) {
     try {
       await page.setViewportSize({ width, height: 700 });
       await page.goto(f.base + "/#products");
-      await page.getByRole("button", { name: "新增商品", exact: true }).first().click();
+      await page.getByRole("button", { name: "新增物料", exact: true }).first().click();
       const control = page.getByRole("combobox", { name: /计量单位/ });
       await expect(control).toHaveValue("个");
       await control.focus();
@@ -50,9 +50,9 @@ for (const width of [1440, 390]) {
       await control.click();
       await control.press("Tab");
       await expect(menu).toHaveCount(0);
-      await expect(page.getByRole("spinbutton", { name: /采购价/ })).toBeFocused();
+      await expect(page.getByRole("spinbutton", { name: /参考采购价/ })).toBeFocused();
       await control.click();
-      await page.getByPlaceholder("例如：极简陶瓷马克杯").click();
+      await page.getByPlaceholder("例如：RVV 护套电线").click();
       await expect(menu).toHaveCount(0);
       expect(errors).toEqual([]);
       if (width === 390) {
@@ -67,13 +67,13 @@ test("a required dropdown blocks submission and focuses its visible control", as
   const f = await fixture(page);
   try {
     await page.goto(f.base + "/#products");
-    await page.getByRole("button", { name: "新增商品", exact: true }).first().click();
-    await page.getByPlaceholder("例如：极简陶瓷马克杯").fill("缺少分类的商品");
-    await page.getByRole("spinbutton", { name: /采购价/ }).fill("1");
-    await page.getByRole("spinbutton", { name: /销售价/ }).fill("2");
-    await page.getByRole("button", { name: "保存商品", exact: true }).click();
+    await page.getByRole("button", { name: "新增物料", exact: true }).first().click();
+    await page.getByPlaceholder("例如：RVV 护套电线").fill("缺少分类的物料");
+    await page.getByRole("spinbutton", { name: /参考采购价/ }).fill("1");
+    await page.getByRole("spinbutton", { name: /参考销售价/ }).fill("2");
+    await page.getByRole("button", { name: "保存物料", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("请选择一个选项。");
-    await expect(page.getByRole("combobox", { name: /商品分类/ })).toBeFocused();
+    await expect(page.getByRole("combobox", { name: /物料分类/ })).toBeFocused();
     expect(f.db.prepare("SELECT COUNT(*) AS n FROM products").get().n).toBe(0);
   } finally { await f.close(); }
 });

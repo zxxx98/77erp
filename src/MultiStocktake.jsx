@@ -70,7 +70,7 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
   return <div className="multi-stocktake">
     <div className="multi-stocktake-heading"><h3>多仓库盘点</h3><p>当前仓库：{current?.name || '加载中'}</p></div>
     <nav className="multi-stocktake-steps" aria-label="多仓库盘点步骤">
-      {['选择仓库', '添加商品', '盘点结果'].map((label, i) => <React.Fragment key={label}>
+      {['选择仓库', '添加物料', '盘点结果'].map((label, i) => <React.Fragment key={label}>
         {i > 0 && <span className="multi-stocktake-connector" />}
         <button type="button" aria-current={step === i + 1 ? 'step' : undefined}
           className={step > i + 1 ? 'done' : ''} disabled={busy || !current || (i === 2 && !snapshot)} onClick={() => go(i + 1)}>
@@ -93,11 +93,11 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
         <button type="button" className="btn btn-primary" disabled={!current} onClick={() => go(2)}>下一步<ArrowRight size={16} /></button>
       </div>
     </section>}
-    {step === 2 && <section className="multi-stocktake-stage" aria-label="添加待盘点商品">
-      <label className="multi-stocktake-search-label" htmlFor="multi-stocktake-search">搜索商品（{current?.name}）</label>
+    {step === 2 && <section className="multi-stocktake-stage" aria-label="添加待盘点物料">
+      <label className="multi-stocktake-search-label" htmlFor="multi-stocktake-search">搜索物料（{current?.name}）</label>
       <div className="multi-stocktake-search"><Search size={18} aria-hidden="true" />
         <input id="multi-stocktake-search" type="search" value={query} maxLength={100} disabled={busy}
-          placeholder="输入料号或商品名称" autoComplete="off" onChange={e => {
+          placeholder="输入料号或物料名称" autoComplete="off" onChange={e => {
             const value = e.target.value;
             setQuery(value);
             if (value.trim() !== term) {
@@ -105,25 +105,25 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
             }
           }} />
       </div>
-      {term && <div className="multi-stocktake-results" aria-label="商品搜索结果">
+      {term && <div className="multi-stocktake-results" aria-label="物料搜索结果">
         {search.products.map(p => <div className="multi-stocktake-product-row" key={p.id}>
           <ProductName product={p} />
           <button type="button" className="btn btn-secondary" disabled={busy || selected.some(item => item.id === p.id) || selected.length >= 1000}
             onClick={() => { edit(); setSelected(items => items.some(item => item.id === p.id) ? items : [...items, p]); }}>{selected.some(item => item.id === p.id) ? '已添加' : '添加'}</button>
         </div>)}
         {search.loading && <p className="multi-stocktake-status" role="status"><LoaderCircle size={16} className="spin" />正在搜索…</p>}
-        {!search.loading && !search.error && !search.products.length && <p className="multi-stocktake-empty">没有找到匹配的商品</p>}
+        {!search.loading && !search.error && !search.products.length && <p className="multi-stocktake-empty">没有找到匹配的物料</p>}
         {search.error && <div className="multi-stocktake-search-error"><p className="form-error" role="alert">{search.error}</p><button type="button" className="btn btn-secondary" onClick={() => setRetry(n => n + 1)}>重试搜索</button></div>}
-        {!search.loading && !search.error && search.has_more && <button type="button" className="btn btn-secondary" onClick={() => setPage(n => n + 1)}>加载更多匹配商品</button>}
+        {!search.loading && !search.error && search.has_more && <button type="button" className="btn btn-secondary" onClick={() => setPage(n => n + 1)}>加载更多匹配物料</button>}
       </div>}
-      <div className="multi-stocktake-section-bar"><h4>待盘点商品</h4><span aria-live="polite">已添加 {selected.length} 种</span></div>
-      <div className="multi-stocktake-selected" aria-label="待盘点商品列表">
+      <div className="multi-stocktake-section-bar"><h4>待盘点物料</h4><span aria-live="polite">已添加 {selected.length} 种</span></div>
+      <div className="multi-stocktake-selected" aria-label="待盘点物料列表">
         {selected.map(p => <div className="multi-stocktake-product-row" key={p.id}><ProductName product={p} />
           <button type="button" className="btn btn-secondary" disabled={busy} aria-label={`移除${p.name}`} onClick={() => { edit(); setSelected(items => items.filter(item => item.id !== p.id)); }}>移除</button>
         </div>)}
-        {!selected.length && <p className="multi-stocktake-empty">搜索商品后，点击「添加」加入待盘点列表</p>}
+        {!selected.length && <p className="multi-stocktake-empty">搜索物料后，点击「添加」加入待盘点列表</p>}
       </div>
-      {selected.length >= 1000 && <p className="multi-stocktake-status">每次最多选择 1000 种商品。</p>}
+      {selected.length >= 1000 && <p className="multi-stocktake-status">每次最多选择 1000 种物料。</p>}
       <div className="multi-stocktake-footer"><button type="button" className="btn btn-secondary" disabled={busy} onClick={() => go(1)}>上一步</button>
         <button type="button" className="btn btn-primary" disabled={busy || !selected.length} onClick={start}>
           {busy ? <><LoaderCircle size={16} className="spin" />正在读取库存…</> : <>开始盘点<ArrowRight size={16} /></>}
@@ -131,7 +131,7 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
       </div>
     </section>}
     {step === 3 && snapshot && <section className="multi-stocktake-stage" aria-label="各仓库数量对照表">
-      <div className="multi-stocktake-section-bar"><div><h4>盘点结果</h4><span>{snapshot.rows.length} 种商品 · {snapshot.warehouses.length} 个仓库</span></div>
+      <div className="multi-stocktake-section-bar"><div><h4>盘点结果</h4><span>{snapshot.rows.length} 种物料 · {snapshot.warehouses.length} 个仓库</span></div>
         <button type="button" className="btn btn-primary" onClick={exportCSV}><Download size={16} />导出 CSV</button>
       </div>
       <div className="multi-stocktake-table-scroll" tabIndex={0} role="region" aria-label="可横向滚动的仓库盘点表格">
@@ -146,7 +146,7 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
         </table>
       </div>
       <p className="multi-stocktake-note">差值相对{snapshot.warehouses[0].name}；未建档或单位不同时不计算差值。</p>
-      <div className="multi-stocktake-footer"><button type="button" className="btn btn-secondary" onClick={() => go(2)}><ArrowLeft size={16} />返回添加商品</button>
+      <div className="multi-stocktake-footer"><button type="button" className="btn btn-secondary" onClick={() => go(2)}><ArrowLeft size={16} />返回添加物料</button>
         <span>库存读取时间：{new Date(snapshot.captured_at).toLocaleString('zh-CN')}</span></div>
     </section>}
     {error && <p className="form-error" role="alert">{error}</p>}
@@ -156,6 +156,6 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
 
 function ProductName({ product }) {
   return <div className="multi-stocktake-product-name"><strong>{product.name}</strong>
-    <small>{product.barcode} · {product.unit}{product.specification ? ` · ${product.specification}` : ''}{product.active === 0 ? ' · 已下架' : ''}</small>
+    <small>{product.barcode} · {product.unit}{product.specification ? ` · ${product.specification}` : ''}{product.active === 0 ? ' · 已停用' : ''}</small>
   </div>;
 }

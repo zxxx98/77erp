@@ -36,7 +36,7 @@ export function installMultiStocktake(app, db) {
     let reading = false;
     try {
       const warehouseIds = ids(req.body?.warehouse_ids, 100, '请选择 1–100 个仓库，仓库不能重复。');
-      const productIds = ids(req.body?.product_ids, 1000, '请选择 1–1000 种商品，商品不能重复。');
+      const productIds = ids(req.body?.product_ids, 1000, '请选择 1–1000 种物料，物料不能重复。');
       if (!warehouseIds.includes(req.warehouse.id)) fail('请选择当前仓库作为对照基准。');
       db.exec('BEGIN');
       reading = true;
@@ -46,7 +46,7 @@ export function installMultiStocktake(app, db) {
       const orderedWarehouses = orderedIds.map(id => warehouses.find(w => w.id === id));
       const products = db.prepare(`SELECT id,name,barcode,unit,specification,active,sync_key,stock FROM products
         WHERE warehouse_id=? AND id IN (${placeholders(productIds)})`).all(req.warehouse.id, ...productIds);
-      if (products.length !== productIds.length) fail('商品已删除或不属于当前仓库，请重新选择。');
+      if (products.length !== productIds.length) fail('物料已删除或不属于当前仓库，请重新选择。');
       const codes = products.map(p => p.barcode), keys = products.map(p => p.sync_key).filter(Boolean);
       const remote = db.prepare(`SELECT id,warehouse_id,barcode,unit,sync_key,stock FROM products
         WHERE warehouse_id IN (${placeholders(orderedIds)}) AND

@@ -22,7 +22,7 @@ async function fixture(t) {
   await request('/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' });
   const warehouse = async name => (await request('/warehouses', { name })).data.id;
   const product = async (barcode, warehouseId = 1, extra = {}) => {
-    const result = await request('/products', { name: `商品 ${barcode}`, barcode, category: '日用', unit: '个', cost: 1, price: 2, threshold: 0, ...extra }, warehouseId);
+    const result = await request('/products', { name: `物料 ${barcode}`, barcode, category: '日用', unit: '个', cost: 1, price: 2, threshold: 0, ...extra }, warehouseId);
     assert.equal(result.status, 201, JSON.stringify(result.data));
     return result.data.id;
   };
@@ -31,10 +31,10 @@ async function fixture(t) {
 
 test('product search is scoped, empty by default, literal, paginated and includes inactive goods without costs', async t => {
   const f = await fixture(t), other = await f.warehouse('分仓');
-  const special = await f.product('A_001', 1, { name: '特殊%商品' });
+  const special = await f.product('A_001', 1, { name: '特殊%物料' });
   f.db.prepare('UPDATE products SET active=0 WHERE id=?').run(special);
   await f.product('REMOTE', other, { name: '分仓独有' });
-  for (let n = 0; n < 32; n++) await f.product(`P-${String(n).padStart(3, '0')}`, 1, { name: '批量匹配商品' });
+  for (let n = 0; n < 32; n++) await f.product(`P-${String(n).padStart(3, '0')}`, 1, { name: '批量匹配物料' });
   for (const query of ['', '?q=', '?q=%20%20%20']) {
     const result = await f.request('/stocktakes/multi/products' + query);
     assert.deepEqual(result.data, { products: [], has_more: false });
@@ -116,7 +116,7 @@ test('CSV exports the same snapshot, quotes text, preserves fractional and negat
       { quantity: 80.023456, status: 'matched', difference: -20.1 },
       { quantity: null, status: 'missing', difference: null },
     ] },
-    { name: '普通商品', barcode: 'A002', unit: '个', cells: [
+    { name: '普通物料', barcode: 'A002', unit: '个', cells: [
       { quantity: 0, status: 'matched', difference: 0 },
       { quantity: 2, unit: '箱', status: 'unit_mismatch', difference: null },
       { quantity: 0.000001, status: 'matched', difference: 0.000001 },
@@ -125,7 +125,7 @@ test('CSV exports the same snapshot, quotes text, preserves fractional and negat
   const csv = multiStocktakeCSV(snapshot);
   assert.equal(csv[0], '\ufeff');
   const rows = parseCSV(csv);
-  assert.deepEqual(rows[0], ['商品名称', '编号', '单位', '当前仓数量', '其他仓数量', '其他仓差值', '空仓数量', '空仓差值']);
+  assert.deepEqual(rows[0], ['物料名称', '编号', '单位', '当前仓数量', '其他仓数量', '其他仓差值', '空仓数量', '空仓差值']);
   assert.deepEqual(rows[1], ["'=SUM(1,2)", 'A,"001"', '个', '100.123456', '80.023456', '-20.1', '未建档', '']);
-  assert.deepEqual(rows[2], ['普通商品', 'A002', '个', '0', '2 箱（单位不同）', '', '0.000001', '0.000001']);
+  assert.deepEqual(rows[2], ['普通物料', 'A002', '个', '0', '2 箱（单位不同）', '', '0.000001', '0.000001']);
 });

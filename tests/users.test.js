@@ -35,7 +35,7 @@ async function fixture(t, path = ':memory:') {
   const command = (cookie, path, body, warehouse) => request(cookie, path, { request_id: randomUUID(), ...body }, 'POST', warehouse);
   return { db, request, admin, user, command };
 }
-const product = { name: '协作商品', barcode: 'TEAM-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 0 };
+const product = { name: '协作物料', barcode: 'TEAM-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 0 };
 const templateBody = { name: '常用补货', type: 'in', partner: '供应商', note: '', items: [{ product_id: 1, quantity: 2, price: 10 }] };
 
 test('employees share warehouses and prices, can edit products and open orders, but cannot call management APIs', async t => {
@@ -173,7 +173,7 @@ test('legacy administrator migrates with the same password and data, invalidates
   const original = { db: new DatabaseSync(path) };
   const stock = 7;
   original.db.exec(`CREATE TABLE products (id INTEGER PRIMARY KEY,name TEXT NOT NULL,barcode TEXT NOT NULL UNIQUE,category TEXT NOT NULL,unit TEXT NOT NULL DEFAULT '件',cost REAL NOT NULL,price REAL NOT NULL,stock INTEGER NOT NULL DEFAULT 0 CHECK(stock>=0),threshold INTEGER NOT NULL DEFAULT 20,color TEXT NOT NULL DEFAULT 'blue',created_at TEXT NOT NULL);
-    INSERT INTO products VALUES (1,'旧商品','LEGACY-001','日用','件',10,20,7,2,'blue','2026-01-01T00:00:00Z');
+    INSERT INTO products VALUES (1,'旧物料','LEGACY-001','日用','件',10,20,7,2,'blue','2026-01-01T00:00:00Z');
     CREATE TABLE administrator (id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL UNIQUE,password_salt TEXT NOT NULL,password_hash TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE TABLE auth_sessions(token_hash TEXT PRIMARY KEY,admin_id INTEGER NOT NULL REFERENCES administrator(id),expires_at INTEGER NOT NULL);`);
   const salt = randomBytes(16).toString('hex');
@@ -238,6 +238,9 @@ const routeRoles = new Map(Object.entries({
   'post /api/products/:id/status': 'admin', 'delete /api/products/:id': 'admin',
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',
+  'get /api/settings/notifications': 'admin', 'put /api/settings/notifications': 'admin',
+  'get /api/settings/notifications/deliveries': 'admin', 'post /api/settings/notifications/test': 'admin',
+  'post /api/settings/notifications/deliveries/:id/retry': 'admin',
   'get /api/contacts': 'employee', 'post /api/contacts': 'admin',
   'get /api/templates': 'employee', 'post /api/templates': 'employee', 'post /api/templates/:id/delete': 'employee',
   'get /api/orders/:id/payments': 'admin', 'post /api/orders/:id/payments': 'admin', 'post /api/orders/:id/settlement': 'admin',
@@ -296,7 +299,7 @@ test('a conflicting account upgrade fails loudly and leaves the legacy administr
   const path = join(dir, 'erp.sqlite');
   const original = { db: new DatabaseSync(path) };
   original.db.exec(`CREATE TABLE products (id INTEGER PRIMARY KEY,name TEXT NOT NULL,barcode TEXT NOT NULL UNIQUE,category TEXT NOT NULL,unit TEXT NOT NULL DEFAULT '件',cost REAL NOT NULL,price REAL NOT NULL,stock INTEGER NOT NULL DEFAULT 0 CHECK(stock>=0),threshold INTEGER NOT NULL DEFAULT 20,color TEXT NOT NULL DEFAULT 'blue',created_at TEXT NOT NULL);
-    INSERT INTO products VALUES (1,'旧商品','LEGACY-001','日用','件',10,20,7,2,'blue','2026-01-01T00:00:00Z');
+    INSERT INTO products VALUES (1,'旧物料','LEGACY-001','日用','件',10,20,7,2,'blue','2026-01-01T00:00:00Z');
     CREATE TABLE users (id INTEGER PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_salt TEXT NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('admin','employee')),active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),created_at TEXT NOT NULL);
     INSERT INTO users VALUES (1,'other','salt','hash','admin',1,'2026-01-01T00:00:00Z');
     CREATE TABLE administrator (id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL UNIQUE,password_salt TEXT NOT NULL,password_hash TEXT NOT NULL,created_at TEXT NOT NULL);

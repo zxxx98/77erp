@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
-const product = {name: '状态商品', barcode: 'LIFE-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 0};
+const product = {name: '状态物料', barcode: 'LIFE-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 0};
 async function fixture(t) {
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1');

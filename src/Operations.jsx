@@ -88,7 +88,7 @@ export function OrderActions({ order, onSaved }) {
           quantity: Number(quantities[i.product_id]),
         }));
       if (action === "returns" && !items.length)
-        throw new Error("请填写至少一件商品的退货数量。");
+        throw new Error("请填写至少一件物料的退货数量。");
       if (
         !window.confirm(
           action === "void"
@@ -122,7 +122,7 @@ export function OrderActions({ order, onSaved }) {
       </label>
       {order.kind !== "return" && (
         <>
-          <p>退货沿用原单价格；数量留空或为 0 表示不退此商品。</p>
+          <p>退货沿用原单价格；数量留空或为 0 表示不退此物料。</p>
           {order.items.map((i) => (
             <label key={i.product_id}>
               {i.name}（可退 {addQuantity(i.quantity, -(i.returned_quantity || 0))}）
@@ -184,10 +184,10 @@ export function Stocktake({ products, onSaved }) {
   return (
     <div>
       <p>
-        勾选要盘点的商品，填写实盘数量。提交时校验账面库存，库存变化后需刷新重新盘点。
+        勾选要盘点的物料，填写实盘数量。提交时校验账面库存，库存变化后需刷新重新盘点。
       </p>
       <label>
-        搜索盘点商品
+        搜索盘点物料
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -276,7 +276,7 @@ export function Stocktake({ products, onSaved }) {
             items.forEach(i => parseQuantity(i.counted));
             if (
               !window.confirm(
-                `确认提交 ${items.length} 种商品的盘点，按实盘数量调整库存？`,
+                `确认提交 ${items.length} 种物料的盘点，按实盘数量调整库存？`,
               )
             )
               return;
@@ -325,7 +325,7 @@ export function ProductImport({ onSaved }) {
   const fileInput = useRef(null);
   const readFile = async (file) => {
     if (file.size > 5 * 1024 * 1024)
-      throw new Error("商品文件不能超过 5 MB。");
+      throw new Error("物料文件不能超过 5 MB。");
     let table;
     if (/\.xlsx$/i.test(file.name)) {
       const { readSheet } = await import("read-excel-file/browser");
@@ -346,7 +346,7 @@ export function ProductImport({ onSaved }) {
     <div>
       <p>
         支持 UTF-8 CSV 和 Excel .xlsx 的第一张工作表，每次最多 1000
-        行。仅新增商品，不覆盖已有条码；期初库存会记录来源。条码请使用文本格式保留前导零。
+        行。仅新增物料，不覆盖已有条码；期初库存会记录来源。条码请使用文本格式保留前导零。
       </p>
       <button
         type="button"
@@ -354,22 +354,22 @@ export function ProductImport({ onSaved }) {
         onClick={() =>
           download(
             importTemplate,
-            "77ERP-商品导入模板.csv",
+            "77ERP-物料导入模板.csv",
             "text/csv;charset=utf-8",
           )
         }
       >
-        下载商品模板
+        下载物料模板
       </button>
       <div className="file-upload-field" role="group">
-        <div className="file-upload-label">选择商品文件</div>
+        <div className="file-upload-label">选择物料文件</div>
         <input
           ref={fileInput}
           hidden
           type="file"
           accept=".csv,.xlsx"
           disabled={busy}
-          aria-label="选择商品文件"
+          aria-label="选择物料文件"
           onChange={(e) => {
             const file = e.target.files?.[0];
             e.target.value = "";
@@ -394,7 +394,7 @@ export function ProductImport({ onSaved }) {
             {busy ? <LoaderCircle size={22} className="spin" /> : <FileSpreadsheet size={22} />}
           </span>
           <span className="file-upload-copy">
-            <strong>{busy ? "正在读取文件…" : fileName || "选择商品文件"}</strong>
+            <strong>{busy ? "正在读取文件…" : fileName || "选择物料文件"}</strong>
             <span>
               {busy
                 ? "正在解析并生成预览，请稍候"
@@ -409,12 +409,12 @@ export function ProductImport({ onSaved }) {
           <table className="data-table">
             <thead>
               <tr>
-                <th>商品</th>
+                <th>物料</th>
                 <th>条码</th>
                 <th>分类</th>
                 <th>单位</th>
-                <th>采购价</th>
-                <th>销售价</th>
+                <th>参考采购价</th>
+                <th>参考销售价</th>
                 <th>安全库存</th>
                 <th>期初库存</th>
               </tr>
@@ -455,12 +455,12 @@ export function ProductImport({ onSaved }) {
               run(async () => {
                 if (
                   !window.confirm(
-                    `确认新增 ${rows.length} 件商品并登记期初库存？`,
+                    `确认新增 ${rows.length} 件物料并登记期初库存？`,
                   )
                 )
                   return;
                 await send("/products/import", { rows, token: preview.token });
-                await onSaved("商品已批量导入");
+                await onSaved("物料已批量导入");
               })
             }
           >
@@ -483,7 +483,7 @@ export function Backup({ onSaved }) {
   return (
     <div>
       <p>
-        备份包含全部仓库、商品、库存成本、单据、盘点、往来单位、模板、收付款记录及操作人名称，不包含用户账号、密码和图床凭据。商品图片只备份 URL，图片文件需在图床保留。恢复会替换全部业务数据，保留当前账户、登录信息、图床配置、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
+        备份包含全部仓库、物料、库存成本、单据、盘点、往来单位、模板、收付款记录及操作人名称，不包含用户账号、密码和图床凭据。物料图片只备份 URL，图片文件需在图床保留。恢复会替换全部业务数据，保留当前账户、登录信息、图床配置、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
       </p>
       <button
         type="button"
@@ -528,7 +528,7 @@ export function Backup({ onSaved }) {
       {preview && (
         <>
           <p>
-            恢复后出入库二维码将停用，旧标签失效，需核对、启用并重新打印。备份时间：{backup.created_at}；仓库 {preview.warehouses ?? 1} 个，商品 {preview.products} 件，单据{" "}
+            恢复后出入库二维码将停用，旧标签失效，需核对、启用并重新打印。备份时间：{backup.created_at}；仓库 {preview.warehouses ?? 1} 个，物料 {preview.products} 件，单据{" "}
             {preview.orders} 张，库存调整 {preview.adjustments} 条。往来单位 {preview.contacts ?? 0} 个，模板 {preview.templates ?? 0} 张，收付款 {preview.payments ?? 0} 条，出入库二维码 {preview.stock_qrs ?? 0} 个。
           </p>
           <button

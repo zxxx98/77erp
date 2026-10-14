@@ -1,5 +1,6 @@
 import { validQuantity, addQuantity } from "../shared/quantity.js";
 import { resolveContact, moveInventory } from "./commerce.js";
+import { notifyOrder } from './notifications.js';
 const validNumber = (n) =>
   typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 99999999;
 const validInteger = (n) => validNumber(n) && Number.isInteger(n);
@@ -19,7 +20,7 @@ export function createOrder(db, req, body) {
     !items.length ||
     items.length > 100
   )
-    throw new Error("请填写往来单位并至少添加一件商品。");
+    throw new Error("请填写往来单位并至少添加一件物料。");
   const seen = new Set();
   let total = 0;
   const normalized = items.map((item) => {
@@ -28,23 +29,23 @@ export function createOrder(db, req, body) {
       !validQuantity(item.quantity, true) ||
       !validMoney(item.price)
     )
-      throw new Error("商品数量必须为正数且最多 6 位小数，单价最多两位小数且不能为负数。");
+      throw new Error("物料数量必须为正数且最多 6 位小数，单价最多两位小数且不能为负数。");
     if (seen.has(item.product_id))
-      throw new Error("同一商品不能重复添加，请合并数量。");
+      throw new Error("同一物料不能重复添加，请合并数量。");
     seen.add(item.product_id);
     const p = db
       .prepare("SELECT * FROM products WHERE id=?")
       .get(item.product_id);
-    if (!p) throw new Error("商品不存在。");
+    if (!p) throw new Error("物料不存在。");
     if (p.warehouse_id !== req.warehouse.id)
-      throw new Error("商品不属于当前仓库。");
+      throw new Error("物料不属于当前仓库。");
     if (type === "out" && p.stock < item.quantity)
       throw new Error(`${p.name} 库存不足（当前 ${p.stock} ${p.unit}）。`);
     if (type === "in" && !validQuantity(addQuantity(p.stock, item.quantity)))
       throw new Error(`${p.name} 入库后库存超出上限。`);
     const lineTotal = Math.round(item.quantity * item.price * 100);
     if (!Number.isSafeInteger(lineTotal))
-      throw new Error("商品金额过大，请减少数量。");
+      throw new Error("物料金额过大，请减少数量。");
     total += lineTotal;
     return { ...item, product: p, amount_cents: lineTotal };
   });
@@ -95,5 +96,6 @@ export function createOrder(db, req, body) {
       i.amount_cents,
     );
   });
+  notifyOrder(db, req, Number(result.lastInsertRowid), type === 'in' ? 'purchase_in' : 'sale_out', normalized.map(i => i.product));
   return { id: Number(result.lastInsertRowid), number };
 }

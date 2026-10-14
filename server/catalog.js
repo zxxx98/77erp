@@ -5,7 +5,7 @@ export function productDetails(body, existing = {}) {
   for (const [key, max] of [['specification', 500], ['note', 2000]]) {
     const value = body[key] === undefined ? (existing[key] ?? '') : body[key];
     if (typeof value !== 'string' || value.length > max)
-      throw new Error(`${key === 'note' ? '备注' : '规格'}最多 ${max} 字。`);
+      throw new Error(`${key === 'note' ? '备注' : '规格型号'}最多 ${max} 字。`);
     values[key] = value.trim();
   }
   const image = body.image === undefined ? (existing.image ?? '') : body.image;
@@ -71,7 +71,7 @@ export function splitLegacyCategories(categories, warehouses, products) {
   }
   const remapped = products.map(p => {
     const id = mappings.get(p.warehouse_id)?.get(p.category_id);
-    if (!id) throw new Error('商品分类或仓库关联无效。');
+    if (!id) throw new Error('物料分类或仓库关联无效。');
     return { ...p, category_id: id };
   });
   return { categories: copies, products: remapped };
@@ -109,11 +109,11 @@ export function migrateWarehouseCategories(db) {
 export function copyCategoryToWarehouse(db, categoryId, warehouseId) {
   const chain = [];
   let category = db.prepare('SELECT * FROM categories WHERE id=?').get(categoryId);
-  if (!category) throw new Error('商品分类不存在。');
+  if (!category) throw new Error('物料分类不存在。');
   const sourceWarehouse = category.warehouse_id;
   const seen = new Set();
   while (category) {
-    if (category.warehouse_id !== sourceWarehouse || seen.has(category.id)) throw new Error('商品分类树无效。');
+    if (category.warehouse_id !== sourceWarehouse || seen.has(category.id)) throw new Error('物料分类树无效。');
     seen.add(category.id);
     chain.unshift(category.name);
     if (category.parent_id === null) break;
@@ -135,7 +135,7 @@ export function installCatalog(app, db) {
   // Legacy clients and CSV imports may still send a flat category name.
   function resolveCategory(body, warehouseId) {
     if (body.category_id !== undefined && body.category_id !== null && body.category_id !== '') {
-      if (!Number.isSafeInteger(body.category_id) || !paths(warehouseId).has(body.category_id)) throw new Error('请选择当前仓库的有效商品分类。');
+      if (!Number.isSafeInteger(body.category_id) || !paths(warehouseId).has(body.category_id)) throw new Error('请选择当前仓库的有效物料分类。');
       return body.category_id;
     }
     const name = body.category.trim();
@@ -187,7 +187,7 @@ export function installCatalog(app, db) {
     const id = Number(req.params.id);
     if (!categories(req.warehouse.id).some(c => c.id === id)) throw new Error('分类不存在或不属于当前仓库。');
     if (db.prepare('SELECT 1 FROM categories WHERE parent_id=?').get(id) || db.prepare('SELECT 1 FROM products WHERE category_id=?').get(id))
-      throw new Error('请先移走下级分类和商品，再删除分类。');
+      throw new Error('请先移走下级分类和物料，再删除分类。');
     if (!db.prepare('DELETE FROM categories WHERE id=? AND warehouse_id=?').run(id, req.warehouse.id).changes) throw new Error('分类不存在。');
     return { ok: true };
   }));

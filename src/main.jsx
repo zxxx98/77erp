@@ -63,6 +63,7 @@ import { flattenCategories, categoryBranch, readProductImage } from "./catalog.j
 import { ProductImage } from "./ProductImage.jsx";
 import { ProductConflict } from './ProductConflict.jsx';
 import { ImagebedSettings } from './ImagebedSettings.jsx';
+import { NotificationSettings } from './NotificationSettings.jsx';
 import { AuthGate } from "./Auth.jsx";
 import { resolveProductCode } from "./product-scan.js";
 import { ChangePassword, UserManager } from "./Users.jsx";
@@ -93,7 +94,7 @@ const stockStatus = (p) =>
   p.stock === 0 ? "缺货" : p.stock <= p.threshold ? "库存偏低" : "库存充足";
 const navItems = [
   { id: "overview", name: "工作台", icon: LayoutDashboard },
-  { id: "products", name: "商品管理", icon: Box },
+  { id: "products", name: "物料管理", icon: Box },
   { id: "purchases", name: "采购入库", icon: ArrowDownToLine },
   { id: "sales", name: "销售出库", icon: ArrowUpFromLine },
   { id: "inventory", name: "库存管理", icon: Warehouse },
@@ -408,7 +409,7 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
     } catch (error) { notify(error.message); }
   };
   return (
-    <Modal title="商品条码" subtitle="打印或下载商品标签" onClose={onClose} className="product-code-modal" headerActions={
+    <Modal title="物料条码" subtitle="打印或下载物料标签" onClose={onClose} className="product-code-modal" headerActions={
       <div className="code-format-switch" role="group" aria-label="标签类型">
         <button type="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>条形码</button>
         <button type="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>二维码</button>
@@ -431,7 +432,7 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
           )}
         </div>
         {format === "qr" && <p className="product-code-number">{product.barcode}</p>}
-        <p>{format === "qr" ? "包含商品编码、名称、单位和仓库信息" : `CODE 128 · ${product.category}`}</p>
+        <p>{format === "qr" ? "包含物料编码、名称、单位和仓库信息" : `CODE 128 · ${product.category}`}</p>
       </div>
       <div className="modal-footer">
         {manageStockQr && <Button onClick={manageStockQr}>出入库二维码</Button>}
@@ -738,7 +739,7 @@ function App({ admin, onLogout }) {
               <ScanLine size={19} />
             </span>
             <strong>扫码管理</strong>
-            <p>使用手机摄像头识别商品条码。</p>
+            <p>使用手机摄像头识别物料条码。</p>
             <button onClick={() => navigate("scanner")}>
               打开扫码工作台 <ArrowRight size={13} />
             </button>
@@ -787,8 +788,8 @@ function App({ admin, onLogout }) {
               <Search size={16} />
               <input
                 ref={searchRef}
-                aria-label="搜索商品或条码"
-                placeholder="搜索商品、条码…"
+                aria-label="搜索物料或条码"
+                placeholder="搜索物料、条码…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -830,10 +831,10 @@ function App({ admin, onLogout }) {
                       </button>
                     ))
                   ) : (
-                    <p className="popover-empty">所有商品库存充足</p>
+                    <p className="popover-empty">所有物料库存充足</p>
                   )}
                   <div className="popover-footer">
-                    按商品设置的安全库存实时提醒
+                    按物料设置的安全库存实时提醒
                   </div>
                 </div>
               )}
@@ -990,7 +991,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
-      {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与商品导入" wide className="business-modal" onClose={() => setModal(null)}>
+      {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools products={data.products} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
           onUse={template => openOrder(template.type, undefined, template)} onRefresh={reload} /></div>
         <div className="modal-footer"><Button onClick={() => setModal(null)}>取消</Button></div>
@@ -1009,7 +1010,7 @@ function App({ admin, onLogout }) {
       {modal?.kind === "help" && (
         <Modal
           title="使用说明"
-          subtitle="商品建档、条码识别和单据确认"
+          subtitle="物料建档、条码识别和单据确认"
           onClose={() => setModal(null)}
         >
           <div className="help-content">
@@ -1017,14 +1018,14 @@ function App({ admin, onLogout }) {
               [
                 Box,
                 "01",
-                "建立商品档案",
-                "添加名称、进价、售价和安全库存。条码可选填，留空保存时自动生成。",
+                "建立物料档案",
+                "添加名称、参考采购价、参考销售价和安全库存。条码可选填，留空保存时自动生成。",
               ],
               [
                 ScanLine,
                 "02",
-                "扫码，找到商品",
-                "在扫码工作台打开手机摄像头，将商品条码放入取景框。也可手动输入条码查询。",
+                "扫码，找到物料",
+                "在扫码工作台打开手机摄像头，将物料条码放入取景框。也可手动输入条码查询。",
               ],
               [
                 PackageCheck,
@@ -1060,7 +1061,7 @@ function App({ admin, onLogout }) {
                 navigate("products");
               }}
             >
-              前往商品管理 <ArrowRight size={15} />
+              前往物料管理 <ArrowRight size={15} />
             </Button>
           </div>
         </Modal>
@@ -1287,14 +1288,14 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     .slice(0, 5);
   const metrics = [
     {
-      label: "商品总数",
+      label: "物料总数",
       value: count(data.products.length),
       unit: "种",
       icon: Box,
       tone: "blue",
       footer: (
         <>
-          <span className="metric-info">在库商品</span>
+          <span className="metric-info">在库物料</span>
           <strong>{count(totalStock)}</strong>
           <span className="metric-info">件</span>
         </>
@@ -1350,7 +1351,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     <>
       <PageHeading
         title="工作台"
-        description="商品、库存及今日入出库数据概览。"
+        description="物料、库存及今日入出库数据概览。"
       >
         <span className="date-chip">
           <CalendarDays size={15} />
@@ -1435,7 +1436,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           <div className="quick-hero">
             <div>
               <h2>手机扫码</h2>
-              <p>使用手机摄像头查询商品及办理入出库。</p>
+              <p>使用手机摄像头查询物料及办理入出库。</p>
             </div>
             <div className="phone-scan-illustration" aria-hidden="true">
               <div className="phone-scan-frame">
@@ -1568,11 +1569,11 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         <Panel
           title="库存预警"
           className="warning-panel"
-          extra={<span className="warning-counter">{low.length} 件商品</span>}
+          extra={<span className="warning-counter">{low.length} 件物料</span>}
         >
           <div className="warning-description">
             <span className="warning-dot" />
-            当前库存低于或等于安全库存的商品。
+            当前库存低于或等于安全库存的物料。
           </div>
           <div className="warning-list">
             {low.length ? (
@@ -1606,7 +1607,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             ) : (
               <Empty
                 title="暂无库存预警"
-                description="所有商品都在安全库存以上。"
+                description="所有物料都在安全库存以上。"
               />
             )}
           </div>
@@ -1641,8 +1642,8 @@ function CategoryTree({ categories, products, selected, onSelect }) {
       {children && !collapsed.has(c.id) && <ul>{render(c.id, depth + 1)}</ul>}
     </li>;
   });
-  return <nav aria-label="商品分类树" className="category-tree">
-    <button className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部商品</span><small>{products.length}</small></button>
+  return <nav aria-label="物料分类树" className="category-tree">
+    <button className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部物料</span><small>{products.length}</small></button>
     <ul>{render()}</ul>
     {!categories.length && <p className="muted">暂无分类，请添加分类。</p>}
   </nav>;
@@ -1667,13 +1668,13 @@ function CategoryManager({ categories, onClose, onChanged }) {
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
-  return <Modal title="管理商品分类" subtitle="建立多级分类；选择上级分类即可添加子分类。" onClose={busy ? () => {} : onClose}>
+  return <Modal title="管理物料分类" subtitle="建立多级分类；选择上级分类即可添加子分类。" onClose={busy ? () => {} : onClose}>
     <form onSubmit={e => { e.preventDefault(); void run(() => api(id ? `/categories/${id}` : '/categories', { method: id ? 'PUT' : 'POST', body: { name, parent_id: parent ? Number(parent) : null } })); }}>
       <fieldset className="form-body category-form" disabled={busy}>
         <label>编辑分类<Select value={id} onChange={e => choose(e.target.value)}><option value="">新增分类</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
-        <label>分类名称 <span>*</span><input required maxLength={100} value={name} placeholder="例如：杯具" onChange={e => setName(e.target.value)} /></label>
+        <label>分类名称 <span>*</span><input required maxLength={100} value={name} placeholder="例如：电线" onChange={e => setName(e.target.value)} /></label>
         <label>上级分类<Select value={parent} onChange={e => setParent(e.target.value)}><option value="">无（一级分类）</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
-        <small className="muted">选中父分类会包含下级商品。删除前需移走该分类的下级分类及商品。</small>
+        <small className="muted">选中父分类会包含下级物料。删除前需移走该分类的下级分类及物料。</small>
         {error && <div className="form-error" role="alert">{error}</div>}
       </fieldset>
       <div className="modal-footer">
@@ -1695,19 +1696,19 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
     if (actionLock.current) return;
     const active = product.active === 0 ? 1 : 0;
     const message = remove
-      ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和模板关联的商品。仅影响当前仓库。`
-      : `确定${active ? "上架" : "下架"}「${product.name}」？${active ? "上架后恢复普通开单选品。" : "下架后普通开单选品默认隐藏，库存和历史记录保留，可从库存页面开单清库存。"}仅影响当前仓库。`;
+      ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和模板关联的物料。仅影响当前仓库。`
+      : `确定${active ? "启用" : "停用"}「${product.name}」？${active ? "启用后恢复普通开单选品。" : "停用后普通开单选品默认隐藏，库存和历史记录保留，可从库存页面开单清库存。"}仅影响当前仓库。`;
     if (!window.confirm(message)) return;
     actionLock.current = true;
     setBusy(true); setActionError("");
     try {
       await api(`/products/${product.id}${remove ? "" : "/status"}`, { method: remove ? "DELETE" : "POST", body: remove ? {} : { active } });
-      await onSaved(remove ? "商品已删除" : active ? "商品已上架" : "商品已下架");
+      await onSaved(remove ? "物料已删除" : active ? "物料已启用" : "物料已停用");
     } catch (e) { setActionError(e.message); }
     finally { actionLock.current = false; setBusy(false); }
   };
   const lifecycleActions = (p) => isAdmin && <>
-    <button className="text-button" disabled={busy} aria-label={`${p.active === 0 ? "上架" : "下架"} ${p.name}`} onClick={() => changeProduct(p)}>{p.active === 0 ? "上架" : "下架"}</button>
+    <button className="text-button" disabled={busy} aria-label={`${p.active === 0 ? "启用" : "停用"} ${p.name}`} onClick={() => changeProduct(p)}>{p.active === 0 ? "启用" : "停用"}</button>
     <button className="text-button product-delete" disabled={busy} aria-label={`删除 ${p.name}`} onClick={() => changeProduct(p, true)}>删除</button>
   </>;
   const [category, setCategory] = useState(null),
@@ -1732,34 +1733,34 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
   return (
     <>
       <PageHeading
-        eyebrow="PRODUCTS"
-        title="商品管理"
-        description="按分类维护商品图片、规格、价格及备注。"
+        eyebrow="MATERIALS"
+        title="物料管理"
+        description="按分类维护物料图片、规格型号、价格及备注。"
       >
         <Button permission="products" kind="primary" icon={Plus} onClick={() => edit(null)}>
-          新增商品
+          新增物料
         </Button>
       </PageHeading>
       {actionError && <div className="info-box" role="alert">{actionError}</div>}
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
-          <h3>商品分类</h3>
+          <h3>物料分类</h3>
           <CategoryTree categories={categories} products={data.products} selected={category} onSelect={setCategory} />
         </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
           {isAdmin && <Button onClick={() => setManaging(true)}>管理分类</Button>}
           <div className="toolbar-right product-toolbar-actions">
-            <div className="filter-tabs product-status-filter" role="group" aria-label="商品上架状态">
-              {[["all", "全部状态"], ["active", "已上架"], ["inactive", "已下架"]].map(([value, label]) => (
+            <div className="filter-tabs product-status-filter" role="group" aria-label="物料使用状态">
+              {[["all", "全部状态"], ["active", "已启用"], ["inactive", "已停用"]].map(([value, label]) => (
                 <button key={value} type="button" className={status === value ? "active" : ""} aria-pressed={status === value} onClick={() => setStatus(value)}>{label}</button>
               ))}
             </div>
             <div className="table-search">
               <Search size={16} />
               <input
-                aria-label="筛选商品"
-                placeholder="搜索名称、条码或规格"
+                aria-label="筛选物料"
+                placeholder="搜索名称、条码或规格型号"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -1793,9 +1794,9 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
               <table className="data-table product-table">
                 <thead>
                   <tr>
-                    <th>商品信息</th>
+                    <th>物料信息</th>
                     <th>分类</th>
-                    <th className="number-cell">采购价 / 售价</th>
+                    <th className="number-cell">参考采购价 / 参考销售价</th>
                     <th className="number-cell">当前库存</th>
                     <th>库存状态</th>
                     <th className="number-cell">操作</th>
@@ -1809,7 +1810,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                           <ProductArt product={p} />
                           <div>
                             <strong><ProductName product={p} onView={showProduct} /></strong>
-                            {p.active === 0 && <Badge tone="orange">已下架</Badge>}
+                            {p.active === 0 && <Badge tone="orange">已停用</Badge>}
                             <small>{p.barcode}</small>
                             {p.specification && <small className="product-spec">{p.specification}</small>}
                             {p.note && <small className="product-note" title={p.note}>{p.note}</small>}
@@ -1885,7 +1886,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       {stockStatus(p)}
                     </Badge>
                   </div>
-                  <h3><ProductName product={p} onView={showProduct} /> {p.active === 0 && <Badge tone="orange">已下架</Badge>}</h3>
+                  <h3><ProductName product={p} onView={showProduct} /> {p.active === 0 && <Badge tone="orange">已停用</Badge>}</h3>
                   <p>{p.barcode}</p>
                   <p>{p.category}</p>
                   {p.specification && <p className="product-spec">{p.specification}</p>}
@@ -1899,7 +1900,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                   <div className="product-grid-actions">
                     <button onClick={() => barcode(p)}>
                       <ScanLine size={15} />
-                      商品条码
+                      物料条码
                     </button>
                     <button hidden={!can("products")} onClick={() => edit(p)}>
                       编辑
@@ -1913,11 +1914,11 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
           )
         ) : (
           <Empty
-            title="没有找到商品"
-            description="请调整搜索条件，或新增商品。"
+            title="没有找到物料"
+            description="请调整搜索条件，或新增物料。"
             action={
               <Button permission="products" icon={Plus} onClick={() => edit(null)}>
-                新增商品
+                新增物料
               </Button>
             }
           />
@@ -1932,7 +1933,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
       {managing && <CategoryManager categories={categories} onClose={() => setManaging(false)} onChanged={onCategoriesChanged} />}
       <div className="page-hint">
         <ScanLine size={16} />
-        <span>商品条码可自动生成，支持扫码识别及标签下载。</span>
+        <span>物料条码可自动生成，支持扫码识别及标签下载。</span>
       </div>
     </>
   );
@@ -2046,7 +2047,7 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
             <TriangleAlert size={21} />
           </span>
           <span>
-            <small>低库存商品</small>
+            <small>低库存物料</small>
             <strong>
               {low.length}
               <em> 种</em>
@@ -2058,7 +2059,7 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
             <Package size={21} />
           </span>
           <span>
-            <small>缺货商品</small>
+            <small>缺货物料</small>
             <strong>
               {empty.length}
               <em> 种</em>
@@ -2087,8 +2088,8 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
           <div className="table-search">
             <Search size={16} />
             <input
-              aria-label="搜索库存商品"
-              placeholder="搜索商品或条码"
+              aria-label="搜索库存物料"
+              placeholder="搜索物料或条码"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -2098,7 +2099,7 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
           <table className="data-table">
             <thead>
               <tr>
-                <th>商品信息</th>
+                <th>物料信息</th>
                 <th>分类</th>
                 <th className="number-cell">现有库存</th>
                 <th className="number-cell">安全库存</th>
@@ -2182,7 +2183,7 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
           </table>
           {!filtered.length && (
             <Empty
-              title="暂无符合条件的商品"
+              title="暂无符合条件的物料"
               description="调整筛选条件，查看其他库存。"
             />
           )}
@@ -2191,7 +2192,7 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
       </section>
       <div className="page-hint">
         <ShieldCheck size={16} />
-        库存随单据确认自动更新，安全库存可在商品档案中调整。
+        库存随单据确认自动更新，安全库存可在物料档案中调整。
       </div>
     </>
   );
@@ -2224,7 +2225,7 @@ async function exportOrders(orders, notify) {
       "往来单位",
       "金额",
       "时间",
-      "商品",
+      "物料",
       "数量",
       "单价",
       "明细金额",
@@ -2291,10 +2292,10 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
         title={title}
         description={
           type === "in"
-            ? "记录采购商品和成本，确认入库后库存自动增加。"
+            ? "记录采购物料和成本，确认入库后库存自动增加。"
             : type === "out"
-              ? "扫描商品、确认数量，完成销售的同时自动扣减库存。"
-              : "查看全部入出库单据，追溯商品、数量和往来单位。"
+              ? "扫描物料、确认数量，完成销售的同时自动扣减库存。"
+              : "查看全部入出库单据，追溯物料、数量和往来单位。"
         }
       >
         <Button
@@ -2329,7 +2330,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           </strong>
         </div>
         <div>
-          <span>商品流转数量</span>
+          <span>物料流转数量</span>
           <strong>
             {count(
               filtered.filter(o => o.status !== "void").reduce(
@@ -2345,7 +2346,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           <span>
             确认单据后更新库存
             <br />
-            <small>支持查看商品明细与成交金额</small>
+            <small>支持查看物料明细与成交金额</small>
           </span>
         </div>
       </div>
@@ -2380,7 +2381,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               <Search size={16} />
               <input
                 aria-label="搜索单据"
-                placeholder="搜索单号、单位或商品"
+                placeholder="搜索单号、单位或物料"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -2403,7 +2404,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               <tr>
                 <th>单据编号</th>
                 <th>往来单位</th>
-                <th>商品明细</th>
+                <th>物料明细</th>
                 <th className="number-cell">金额</th>
                 <th>创建时间</th>
                 <th>状态</th>
@@ -2441,7 +2442,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                     <div className="order-item-preview">
                       <strong>{o.items[0]?.name}</strong>
                       <small>
-                        {o.items.length} 种商品 ·{" "}
+                        {o.items.length} 种物料 ·{" "}
                         {o.items.reduce((s, i) => addQuantity(s, i.quantity), 0)} 件
                       </small>
                     </div>
@@ -2494,7 +2495,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
 }
 
 function ProductName({ product, onView }) {
-  return <button type="button" className="product-name-link" aria-label={`查看 ${product.name} 商品详情`} onClick={() => onView(product)}>{product.name}</button>;
+  return <button type="button" className="product-name-link" aria-label={`查看 ${product.name} 物料详情`} onClick={() => onView(product)}>{product.name}</button>;
 }
 
 function ProductDetail({ product, warehouseName, onClose }) {
@@ -2510,18 +2511,18 @@ function ProductDetail({ product, warehouseName, onClose }) {
     return () => { active = false; };
   }, [product.id]);
   const fields = [
-    ["商品条码", product.barcode],
-    ["商品分类", product.category],
+    ["物料条码", product.barcode],
+    ["物料分类", product.category],
     ["计量单位", product.unit],
     ["所属仓库", warehouseName],
-    ["售价", `¥ ${money(product.price)}`],
-    ...(costs ? [["采购价", `¥ ${money(product.cost)}`]] : []),
+    ["参考销售价", `¥ ${money(product.price)}`],
+    ...(costs ? [["参考采购价", `¥ ${money(product.cost)}`]] : []),
     ["当前库存", `${count(product.stock)} ${product.unit}`],
     ["安全库存", `${count(product.threshold)} ${product.unit}`],
     ["库存状态", stockStatus(product)],
-    ["上架状态", product.active === 0 ? "已下架" : "已上架"],
+    ["使用状态", product.active === 0 ? "已停用" : "已启用"],
   ];
-  return <Modal title="商品详情" subtitle="查看商品档案与当前库存" onClose={onClose}>
+  return <Modal title="物料详情" subtitle="查看物料档案与当前库存" onClose={onClose}>
     <div className="form-body product-detail">
       <div className="product-detail-heading">
         <ProductArt product={product} size="large" />
@@ -2529,14 +2530,14 @@ function ProductDetail({ product, warehouseName, onClose }) {
       </div>
       <dl className="product-detail-fields">
         {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}
-        <div className="product-detail-full"><dt>规格</dt><dd>{product.specification || "—"}</dd></div>
+        <div className="product-detail-full"><dt>规格型号</dt><dd>{product.specification || "—"}</dd></div>
         <div className="product-detail-full"><dt>备注</dt><dd>{product.note || "—"}</dd></div>
       </dl>
       <section className="product-other-stock">
         <h4>其他仓库库存</h4>
         {otherError ? <p className="form-error" role="alert">{otherError}</p>
           : others === null ? <p className="product-other-empty"><LoaderCircle className="spin" size={14} /> 读取中…</p>
-          : others.length === 0 ? <p className="product-other-empty">其他仓库暂无同一商品</p>
+          : others.length === 0 ? <p className="product-other-empty">其他仓库暂无同一物料</p>
           : <ul className="product-other-list">
             {others.map((row) => <li key={row.warehouse_id}>
               <span>{row.warehouse_name}</span>
@@ -2595,7 +2596,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
         },
       );
       await onSaved(
-        product ? "商品信息已更新" : `商品已创建 · 条码 ${result.barcode}`,
+        product ? "物料信息已更新" : `物料已创建 · 条码 ${result.barcode}`,
       );
     } catch (e) {
       setError(e.message);
@@ -2609,24 +2610,24 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   };
   return (
     <Modal
-      title={product ? "编辑商品" : "新增商品"}
-      subtitle="填写商品信息；条码选填，新增时留空自动生成"
+      title={product ? "编辑物料" : "新增物料"}
+      subtitle="填写物料信息；条码选填，新增时留空自动生成"
       onClose={busy || readingImage ? () => {} : onClose}
     >
       <form onSubmit={submit}>
         <div className="form-body">
           <label>
-            商品名称 <span>*</span>
+            物料名称 <span>*</span>
             <input
               required
               maxLength={100}
-              placeholder="例如：极简陶瓷马克杯"
+              placeholder="例如：RVV 护套电线"
               value={form.name}
               onChange={(e) => change("name", e.target.value)}
             />
           </label>
           <label>
-            商品条码（选填）
+            物料条码（选填）
             <div className="input-with-icon">
               <ScanLine size={17} />
               <input
@@ -2646,7 +2647,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           </label>
           <div className="form-grid">
             <label>
-              商品分类 <span>*</span>
+              物料分类 <span>*</span>
               <Select
                 required
                 value={form.category_id || ''}
@@ -2658,7 +2659,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 <option value="" disabled>请选择分类</option>
                 {options.map(c => <option key={c.id} value={c.id}>{'　'.repeat(c.depth)}{c.path}</option>)}
               </Select>
-              {!options.length && <small>请先在商品管理的「管理分类」中添加分类。</small>}
+              {!options.length && <small>请先在物料管理的「管理分类」中添加分类。</small>}
             </label>
             <label>
               计量单位 <span>*</span>
@@ -2674,7 +2675,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               <small>可在「设置 → 基础设置 → 计量单位」中配置。</small>
             </label>
             <label>
-              采购价（元） <span>*</span>
+              参考采购价（元） <span>*</span>
               <input
                 type="number"
                 required
@@ -2687,7 +2688,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               />
             </label>
             <label>
-              销售价（元） <span>*</span>
+              参考销售价（元） <span>*</span>
               <input
                 type="number"
                 required
@@ -2700,9 +2701,9 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               />
             </label>
           </div>
-          <div className="product-image-editor" role="group" aria-label="商品图片">
-            <div className="product-image-label">商品图片</div>
-            <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传商品图片"
+          <div className="product-image-editor" role="group" aria-label="物料图片">
+            <div className="product-image-label">物料图片</div>
+            <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传物料图片"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   e.target.value = '';
@@ -2715,19 +2716,19 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             <button type="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
               <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoaderCircle size={22} className="spin" /> : <ImagePlus size={22} />}</span>
               <span className="product-image-upload-copy">
-                <strong>{readingImage ? '正在上传图片…' : form.image ? '更换商品图片' : '上传商品图片'}</strong>
+                <strong>{readingImage ? '正在上传图片…' : form.image ? '更换物料图片' : '上传物料图片'}</strong>
                 <span>{readingImage ? '正在压缩并上传，请稍候' : '点击选择图片，支持 JPEG、PNG、WebP'}</span>
               </span>
               {!readingImage && <Plus size={18} aria-hidden="true" />}
             </button>
             <small className="product-image-hint">单张图片不超过 10 MB，上传时自动压缩。</small>
-            {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="商品图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
+            {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="物料图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
           </div>
-          <label>商品规格
-            <input maxLength={500} placeholder="例如：白色 / 350ml / 12个装" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
+          <label>规格型号
+            <input maxLength={500} placeholder="例如：3 芯 / 1.5 mm² / 额定电压 300/500V" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
           </label>
-          <label>商品备注
-            <textarea maxLength={2000} rows={3} placeholder="填写商品补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
+          <label>物料备注
+            <textarea maxLength={2000} rows={3} placeholder="填写物料补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
           </label>
           <label>
             安全库存 <span>*</span>
@@ -2746,7 +2747,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           {!product && (
             <div className="info-box">
               <Package size={17} />
-              <p>新商品初始库存为 0，创建后通过「采购入库」增加库存。</p>
+              <p>新物料初始库存为 0，创建后通过「采购入库」增加库存。</p>
             </div>
           )}
           {error && (
@@ -2763,7 +2764,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               try {
                 const data = await api('/data', { warehouseId });
                 const current = data.products.find(p => p.id === product.id);
-                if (!current) throw new Error('商品已被删除，当前填写内容已保留。');
+                if (!current) throw new Error('物料已被删除，当前填写内容已保留。');
                 setLatest({ product: current, categories: data.categories });
               } catch (e) { setError(e.message); }
               finally { setBusy(false); }
@@ -2789,7 +2790,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             icon={busy ? LoaderCircle : Check}
             disabled={busy || readingImage || conflict}
           >
-            {busy ? "正在保存…" : "保存商品"}
+            {busy ? "正在保存…" : "保存物料"}
           </Button>
         </div>
       </form>
@@ -2929,7 +2930,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           ];
     });
     setQuery("");
-    setScanMessage(`已添加 ${p.name}${p.active === 0 ? "（已下架）" : ""}`);
+    setScanMessage(`已添加 ${p.name}${p.active === 0 ? "（已停用）" : ""}`);
     setError("");
   };
   const scan = (code) => {
@@ -2937,7 +2938,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     try {
       const p = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id || 1, sourceId: data.instance_id });
       if (!p) {
-        setError(`未找到条码「${code.trim()}」，请先在商品管理中建档。`);
+        setError(`未找到条码「${code.trim()}」，请先在物料管理中建档。`);
         return;
       }
       add(p);
@@ -2958,7 +2959,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   const submit = async (e) => {
     e.preventDefault();
     if (!items.length) {
-      setError("请至少添加一件商品。");
+      setError("请至少添加一件物料。");
       return;
     }
     if (submitLock.current || templateAction.busy) return;
@@ -3009,7 +3010,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     >
       <form onSubmit={submit}>
         <div className="form-body order-form-body">
-          <label className="inactive-product-option"><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />包含下架商品（用于清库存等操作）</label>
+          <label className="inactive-product-option"><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />包含停用物料（用于清库存等操作）</label>
 
           <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={busy || templateAction.busy} onUse={d => {
             if ((items.length || note) && !window.confirm("套用模板将替换当前编辑内容，是否继续？")) return false;
@@ -3050,8 +3051,8 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             <div className="input-with-icon">
               <ScanLine size={18} />
               <input
-                aria-label="扫描商品条码"
-                placeholder="手动输入商品条码"
+                aria-label="扫描物料条码"
+                placeholder="手动输入物料条码"
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
                 onKeyDown={(e) => {
@@ -3076,8 +3077,8 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             <div className="table-search">
               <Search size={16} />
               <input
-                aria-label="查找并添加商品"
-                placeholder="或搜索商品名称，点击添加"
+                aria-label="查找并添加物料"
+                placeholder="或搜索物料名称，点击添加"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -3098,7 +3099,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                     <button key={p.id} type="button" onClick={() => add(p)}>
                       <ProductArt product={p} size="small" preview={false} />
                       <span>
-                        <strong>{p.name}{p.active === 0 ? "（已下架）" : ""}</strong>
+                        <strong>{p.name}{p.active === 0 ? "（已停用）" : ""}</strong>
                         <small>
                           {p.barcode} · 库存 {p.stock} {p.unit}
                         </small>
@@ -3107,7 +3108,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                     </button>
                   ))
                 ) : (
-                  <p>未找到商品，请先建立商品档案。</p>
+                  <p>未找到物料，请先建立物料档案。</p>
                 )}
               </div>
             )}
@@ -3120,15 +3121,15 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           )}
           <div className="order-items-title">
             <strong>
-              商品明细 <span>{items.length}</span>
+              物料明细 <span>{items.length}</span>
             </strong>
-            <small>再次扫描同一商品，数量自动加 1</small>
+            <small>再次扫描同一物料，数量自动加 1</small>
           </div>
           <div className="table-scroll form-table-wrap">
             <table className="data-table form-table">
               <thead>
                 <tr>
-                  <th>商品</th>
+                  <th>物料</th>
                   <th style={{ width: 100 }}>数量</th>
                   <th style={{ width: 110 }}>单价（元）</th>
                   <th className="number-cell">小计</th>
@@ -3144,7 +3145,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         <div className="product-info">
                           <ProductArt product={p} size="small" />
                           <div>
-                            <strong>{p.name}{p.active === 0 ? "（已下架）" : ""}</strong>
+                            <strong>{p.name}{p.active === 0 ? "（已停用）" : ""}</strong>
                             <small>
                               库存 {p.stock} {p.unit}
                             </small>
@@ -3206,7 +3207,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             {!items.length && (
               <div className="order-form-empty">
                 <ScanLine size={25} />
-                <span>扫码或搜索，添加第一件商品</span>
+                <span>扫码或搜索，添加第一件物料</span>
               </div>
             )}
           </div>
@@ -3288,7 +3289,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
           <table className="data-table detail-table">
             <thead>
               <tr>
-                <th>商品名称</th>
+                <th>物料名称</th>
                 <th>条码</th>
                 <th className="number-cell">数量</th>
                 <th className="number-cell">单价</th>
@@ -3364,7 +3365,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
       return;
     }
     if (!p) {
-      setError(`未找到「${code.trim()}」对应的商品，请先在商品管理中建档。`);
+      setError(`未找到「${code.trim()}」对应的物料，请先在物料管理中建档。`);
       setSelected(null);
       return;
     }
@@ -3380,7 +3381,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
       <PageHeading
         eyebrow="SCAN WORKSPACE"
         title="扫码工作台"
-        description="使用手机摄像头识别商品条码或二维码标签，进行商品查询、入库或出库。"
+        description="使用手机摄像头识别物料条码或二维码标签，进行物料查询、入库或出库。"
       >
         {isAdmin && <Button onClick={manageStockQr}>管理出入库二维码</Button>}
         <span className="scanner-ready">
@@ -3392,7 +3393,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
         <section className="panel scanner-main">
           <div className="scanner-mode-tabs">
             {[
-              ["query", "查找商品", Search],
+              ["query", "查找物料", Search],
               ["in", "扫码入库", ArrowDownToLine],
               ["out", "扫码出库", ArrowUpFromLine],
             ].map(([id, name, Icon]) => (
@@ -3418,13 +3419,13 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             </div>
             <h2>
               {mode === "query"
-                ? "扫描商品条码"
+                ? "扫描物料条码"
                 : mode === "in"
-                  ? "扫描入库商品"
-                  : "扫描出库商品"}
+                  ? "扫描入库物料"
+                  : "扫描出库物料"}
             </h2>
-            <p>打开手机摄像头，将商品条码或二维码放入取景框</p>
-            {mode !== "query" && <p>免确认出入库二维码将直接执行全部商品。</p>}
+            <p>打开手机摄像头，将物料条码或二维码放入取景框</p>
+            {mode !== "query" && <p>免确认出入库二维码将直接执行全部物料。</p>}
             <Button
               kind="primary"
               icon={Camera}
@@ -3438,8 +3439,8 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
               {camera ? "关闭摄像头" : "手机扫码"}
             </Button>
             {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)}
-              title={mode === 'query' ? '扫一扫 · 查找商品' : mode === 'in' ? '扫一扫 · 入库' : '扫一扫 · 出库'}
-              note={mode === 'query' ? '识别后自动返回查看商品' : '识别后自动返回；免确认出入库二维码会直接更新库存。'}
+              title={mode === 'query' ? '扫一扫 · 查找物料' : mode === 'in' ? '扫一扫 · 入库' : '扫一扫 · 出库'}
+              note={mode === 'query' ? '识别后自动返回查看物料' : '识别后自动返回；免确认出入库二维码会直接更新库存。'}
               onManual={() => { setCamera(false); setManual(true); requestAnimationFrame(() => input.current?.focus()); }} />}
             <button
               className="manual-entry-toggle"
@@ -3459,8 +3460,8 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 <ScanLine size={21} />
                 <input
                   ref={input}
-                  aria-label="商品条码"
-                  placeholder="输入商品条码"
+                  aria-label="物料条码"
+                  placeholder="输入物料条码"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
@@ -3482,7 +3483,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             <div className="scan-result">
               <div className="scan-result-label">
                 <CircleCheck size={16} />
-                商品已识别
+                物料已识别
               </div>
               <div className="scan-result-product">
                 <ProductArt product={product} size="large" />
@@ -3513,10 +3514,10 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
               </div>
               <div className="scan-result-prices">
                 <span>
-                  采购价 <strong>¥ {money(product.cost)}</strong>
+                  参考采购价 <strong>¥ {money(product.cost)}</strong>
                 </span>
                 <span>
-                  销售价 <strong>¥ {money(product.price)}</strong>
+                  参考销售价 <strong>¥ {money(product.price)}</strong>
                 </span>
               </div>
               <div className="scan-result-actions">
@@ -3554,7 +3555,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 [
                   "03",
                   "扫描并确认",
-                  "商品标签确认开单；业务二维码按配置确认整单。",
+                  "物料标签确认开单；业务二维码按配置确认整单。",
                 ],
               ].map(([n, title, desc]) => (
                 <div key={n}>
@@ -3568,7 +3569,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             </div>
             <div className="scan-guide-note">
               <ShieldCheck size={16} />
-              <p>商品标签只识别商品；免确认出入库二维码会直接更新全部商品库存。</p>
+              <p>物料标签只识别物料；免确认出入库二维码会直接更新全部物料库存。</p>
             </div>
           </Panel>
           <Panel
@@ -3591,7 +3592,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             ) : (
               <div className="recent-scans-empty">
                 <ScanLine size={23} />
-                <p>扫过的商品会出现在这里</p>
+                <p>扫过的物料会出现在这里</p>
               </div>
             )}
           </Panel>
@@ -3602,6 +3603,8 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
 }
 function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPasswordChanged, initialSection = "general" }) {
   const lock = useRef(false);
+  const [notificationDirty, setNotificationDirty] = useState(false);
+  const closeSettings = () => { if (!notificationDirty || window.confirm('通知设置尚未保存，确定放弃修改并关闭？')) onClose(); };
   const contentRef = useRef(null);
   const [section, setSection] = useState(initialSection);
   const [form, setForm] = useState(() => ({ ...settings, units: settings.units || ["个"] })),
@@ -3625,7 +3628,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
     }
   };
   const reset = async () => {
-    if (lock.current || !window.confirm("确定重置业务数据？所有商品、库存、入出库单据、往来单位、模板及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器配置及已保存的商户和仓库名称会保留。")) return;
+    if (lock.current || !window.confirm("确定重置业务数据？所有物料、库存、入出库单据、往来单位、模板及收付款/盘点记录（包括正式数据）将永久删除，无法恢复。管理员账户、登录信息、服务器配置及已保存的商户和仓库名称会保留。")) return;
     lock.current = true;
     setBusy(true);
     setError("");
@@ -3644,12 +3647,12 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
       title="工作空间设置"
       subtitle="管理工作空间、账号与业务备份"
       className="settings-modal"
-      onClose={busy ? () => {} : onClose}
+      onClose={busy ? () => {} : closeSettings}
     >
       <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "商品图片上传与认证"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
               <button key={id} type="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </button>
@@ -3683,7 +3686,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           </label>
           </div>
           <section className="unit-manager" aria-label="计量单位管理">
-            <div className="settings-section-heading"><h3>计量单位</h3><p>各仓库共用，第一项作为新增商品的默认单位。修改列表不会改变已有商品的单位。</p></div>
+            <div className="settings-section-heading"><h3>计量单位</h3><p>各仓库共用，第一项作为新增物料的默认单位。修改列表不会改变已有物料的单位。</p></div>
             <div className="unit-list">
               {form.units.map((unit, index) => (
                 <div className="unit-row" key={index}>
@@ -3710,17 +3713,18 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             </div>
             <Badge tone="blue">本地版本</Badge>
           </div>
-          <div className="info-box"><ShieldCheck size={17} /><p>商品和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
+          <div className="info-box"><ShieldCheck size={17} /><p>物料和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
           {section === "users" && <div className="settings-section"><UserManager Modal={Modal} /><ChangePassword onChanged={onPasswordChanged} /></div>}
           <div hidden={section !== 'imagebed'} className="settings-section"><ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} /></div>
+          <div hidden={section !== 'notifications'} className="settings-section"><NotificationSettings warehouses={warehouses} active={section === 'notifications'} onBusy={setBusy} onDirty={setNotificationDirty} /></div>
           <div hidden={section !== "data"} className="settings-section">
           {section === "data" && <Backup onSaved={onSaved} />}
           <section className="settings-danger">
           <h3>重置业务数据</h3>
           <div className="info-box">
             <Trash2 size={17} />
-            <p>重置将永久清空所有商品、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器配置及已保存的商户和仓库名称。</p>
+            <p>重置将永久清空所有物料、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器配置及已保存的商户和仓库名称。</p>
           </div>
           <Button type="button" icon={Trash2} onClick={reset} disabled={busy}>
             重置业务数据
@@ -3736,10 +3740,10 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
         </div>
         <div className="modal-footer">
           <span className="settings-footer-note">{section === "general" ? "修改名称或计量单位后，点击保存设置。" : "各项操作在对应区域单独确认。"}</span>
-          <Button type="button" onClick={onClose} disabled={busy}>
+          <Button type="button" onClick={closeSettings} disabled={busy}>
             取消
           </Button>
-          {section === "general" && <Button kind="primary" type="submit" icon={Check} disabled={busy}>
+          {section === "general" && <Button kind="primary" type="submit" icon={Check} disabled={busy || notificationDirty}>
             {busy ? "保存中…" : "保存设置"}
           </Button>}
         </div>

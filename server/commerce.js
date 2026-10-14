@@ -150,7 +150,7 @@ export function validateTemplate(db, body) {
     !body.items.length ||
     body.items.length > 100
   )
-    fail("请填写模板名称并添加 1–100 种商品。");
+    fail("请填写模板名称并添加 1–100 种物料。");
   if (body.partner_id != null) {
     const c = db
       .prepare("SELECT * FROM contacts WHERE id=?")
@@ -170,7 +170,7 @@ export function validateTemplate(db, body) {
       !validQuantity(Number(i.quantity), true) ||
       !/^\d+(\.\d{1,2})?$/.test(String(i.price))
     )
-      fail("模板商品无效，请填写正数数量（最多 6 位小数）和最多两位小数的非负单价。");
+      fail("模板物料无效，请填写正数数量（最多 6 位小数）和最多两位小数的非负单价。");
     cents(Number(i.price));
     seen.add(i.product_id);
   }

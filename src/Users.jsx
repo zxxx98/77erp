@@ -95,7 +95,7 @@ export function UserManager({ Modal }) {
     </div>
     {permissionUser && <Modal title={`${permissionUser.username} 的权限配置`} className="permission-dialog" onClose={() => { if (!busy) { setPermissionUser(null); setError(''); } }}>
       <div className="form-body">
-        <p className="muted">商品、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。</p>
+        <p className="muted">物料、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。</p>
         {permissionUser.legacy_permissions && <p className="info-box">此账号目前沿用原员工权限。保存后按下面的模块授权，勾选模块包含该模块的全部操作。</p>}
         <div className="permission-options">{permissionOptions.map(option => <label key={option.key}>
           <input type="checkbox" checked={permissions.includes(option.key)} disabled={busy} onChange={e => setPermissions(current => e.target.checked ? [...current, option.key] : current.filter(key => key !== option.key))} />

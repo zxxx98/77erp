@@ -24,7 +24,7 @@ function decodeSymbol(symbol) {
 
 test('QR label from the failed 1.4.2 release decodes without camera-style detection', () => {
   const payload = productQrPayload(
-    { id: 15, barcode: '6901234567001', name: '二维码分仓商品', unit: '套' },
+    { id: 15, barcode: '6901234567001', name: '二维码分仓物料', unit: '套' },
     2, '833b407e-76e9-4d7f-855e-d6c699ec7e8f',
   );
   assert.equal(decodeSymbol(qrSymbol(payload)), payload);
@@ -32,7 +32,7 @@ test('QR label from the failed 1.4.2 release decodes without camera-style detect
 
 test('QR label paths decode to versioned UTF-8 product identity, including maximum-length metadata', () => {
   for (const product of [
-    { id: 1, barcode: 'SKU-000001', name: '中文商品「茶杯」☕', unit: '个', stock: 99, price: 12 },
+    { id: 1, barcode: 'SKU-000001', name: '中文物料「茶杯」☕', unit: '个', stock: 99, price: 12 },
     { id: 2, barcode: 'X'.repeat(64), name: '商'.repeat(100), unit: '件'.repeat(100) },
   ]) {
     const payload = productQrPayload(product, 2, sourceId);
@@ -45,12 +45,12 @@ test('QR label paths decode to versioned UTF-8 product identity, including maxim
 });
 
 test('same barcodes from different warehouses remain distinguishable and missing identity is rejected', () => {
-  const product = { id: 1, barcode: 'SAME-CODE', name: '商品', unit: '套' };
+  const product = { id: 1, barcode: 'SAME-CODE', name: '物料', unit: '套' };
   assert.notEqual(productQrPayload(product, 1, sourceId), productQrPayload({ ...product, id: 2 }, 2, sourceId));
   assert.notEqual(productQrPayload(product, 1, sourceId), productQrPayload(product, 1, '5ed3098f-d9f4-4992-b6ab-6355966dbb43'));
   for (const warehouse of [undefined, 0, -1, '1', 1.5])
-    assert.throws(() => productQrPayload(product, warehouse, sourceId), /商品或仓库信息无效/);
-  assert.throws(() => productQrPayload({ ...product, id: 0 }, 1, sourceId), /商品或仓库信息无效/);
+    assert.throws(() => productQrPayload(product, warehouse, sourceId), /物料或仓库信息无效/);
+  assert.throws(() => productQrPayload({ ...product, id: 0 }, 1, sourceId), /物料或仓库信息无效/);
   assert.throws(() => productQrPayload(product, 1), /二维码来源信息缺失/);
 });
 

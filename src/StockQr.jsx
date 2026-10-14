@@ -58,7 +58,7 @@ function PrintableLabel({ qr, symbol, labelRef }) {
   const qrY = y;
   y += 280;
   add(
-    `${qr.warehouse_name} · ${qr.type === "in" ? "入库" : "出库"} · ${qr.require_confirmation ? "需要确认" : "免确认"} · ${qr.items.length} 种商品`,
+    `${qr.warehouse_name} · ${qr.type === "in" ? "入库" : "出库"} · ${qr.require_confirmation ? "需要确认" : "免确认"} · ${qr.items.length} 种物料`,
   );
   for (const item of qr.items) {
     y += 6;
@@ -211,11 +211,11 @@ export function StockQrManager({
   };
   const add = (p) => {
     if (form.items.some((i) => i.product_id === p.id)) {
-      setError("该商品已在明细中，请编辑已有数量。");
+      setError("该物料已在明细中，请编辑已有数量。");
       return;
     }
     if (form.items.length >= 100) {
-      setError("最多配置 100 种商品。");
+      setError("最多配置 100 种物料。");
       return;
     }
     setForm({
@@ -236,7 +236,7 @@ export function StockQrManager({
         warehouseId: data.warehouse_id,
         sourceId: data.instance_id,
       });
-      if (!p) throw new Error("未找到商品，请先建立商品档案。");
+      if (!p) throw new Error("未找到物料，请先建立物料档案。");
       add(p);
       setBarcode("");
     } catch (e) {
@@ -255,7 +255,7 @@ export function StockQrManager({
       if (
         selected &&
         !window.confirm(
-          "保存后，已打印的二维码将按新的商品明细和配置执行。确认保存？",
+          "保存后，已打印的二维码将按新的物料明细和配置执行。确认保存？",
         )
       )
         return;
@@ -285,7 +285,7 @@ export function StockQrManager({
             ) > 0.00001,
         )
       )
-        throw new Error("各商品成交单价最多两位小数。");
+        throw new Error("各物料成交单价最多两位小数。");
       const q = await send(
         selected ? `/stock-qrs/${selected.qr_id}` : "/stock-qrs",
         selected ? "PUT" : "POST",
@@ -398,9 +398,9 @@ export function StockQrManager({
                   <option value="out">出库</option>
                 </Select>
               </label>
-              <h3>商品明细（{form.items.length}/100）</h3>
+              <h3>物料明细（{form.items.length}/100）</h3>
               <label>
-                搜索添加商品
+                搜索添加物料
                 <input
                   value={query}
                   placeholder="输入名称或编码"
@@ -433,11 +433,11 @@ export function StockQrManager({
                   className={button}
                   onClick={() => setCamera(!camera)}
                 >
-                  {camera ? "关闭摄像头" : "扫描添加商品"}
+                  {camera ? "关闭摄像头" : "扫描添加物料"}
                 </button>
                 <input
                   ref={barcodeInput}
-                  aria-label="添加商品条码"
+                  aria-label="添加物料条码"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
@@ -446,10 +446,10 @@ export function StockQrManager({
                   className={button}
                   onClick={() => scan(barcode)}
                 >
-                  识别商品
+                  识别物料
                 </button>
               </div>
-              {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加商品" note="识别后自动添加到二维码商品明细"
+              {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加物料" note="识别后自动添加到二维码物料明细"
                 onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
               {form.items.map((i, index) => (
                 <div className="stock-qr-edit-line" key={i.product_id}>
@@ -593,7 +593,7 @@ export function StockQrManager({
               </label>
               {!form.require_confirmation && (
                 <p className="info-box">
-                  扫码后将直接生成整张单据并更新全部商品库存。
+                  扫码后将直接生成整张单据并更新全部物料库存。
                 </p>
               )}
               <ContactPicker contacts={(data.contacts || []).filter(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer"))}
@@ -748,12 +748,12 @@ export function StockQrManager({
                 <option value="disabled">已停用</option>
               </Select>
             </div>
-            {!rows.length && <p>暂无出入库二维码，请新建并添加商品明细。</p>}
+            {!rows.length && <p>暂无出入库二维码，请新建并添加物料明细。</p>}
             {rows.map((q) => (
               <section key={q.qr_id} className="stock-qr-record">
                 <h3>{q.name}</h3>
                 <p>
-                  {q.type === "in" ? "入库" : "出库"} · {q.items.length} 种商品
+                  {q.type === "in" ? "入库" : "出库"} · {q.items.length} 种物料
                   · 已用 {q.used_scans}/{q.max_scans ?? "不限"} 次 ·{" "}
                   {q.require_confirmation ? "需要二次确认" : "免确认"} ·{" "}
                   {!q.enabled
@@ -761,7 +761,7 @@ export function StockQrManager({
                     : q.remaining_scans === 0
                       ? "已用完"
                       : q.items.some((i) => i.product_changed)
-                        ? "商品已变化"
+                        ? "物料已变化"
                         : "可用"}
                 </p>
                 <Lines items={q.items} />

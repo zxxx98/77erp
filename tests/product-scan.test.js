@@ -32,6 +32,6 @@ test('labels from another server, warehouse, a reused id or an unsupported versi
   assert.throws(() => resolveProductCode(label({ product: { id: 99, barcode: 'SKU-000012' } }), context), /不一致/);
   assert.throws(() => resolveProductCode(label(), { ...context, sourceId: undefined }), /无法核对/);
   assert.throws(() => resolveProductCode(label({ version: 2 }), context), /版本/);
-  assert.throws(() => resolveProductCode(label({ type: 'stock_receipt' }), context), /不是商品标签/);
+  assert.throws(() => resolveProductCode(label({ type: 'stock_receipt' }), context), /不是物料标签/);
   assert.throws(() => resolveProductCode(label({ product: { id: '12', barcode: 'SKU-000012' } }), context), /不完整/);
 });

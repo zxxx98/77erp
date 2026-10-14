@@ -18,7 +18,7 @@ export function WarehouseManager({ warehouses, onRefresh }) {
   };
   return <section className="operation-panel">
     <h3>仓库管理</h3>
-    <p>新增仓库后可在页面顶部切换。分类、商品、库存、单据和模板按仓库独立管理。新增仓库的分类为空，可自行创建或通过商品同步带入。</p>
+    <p>新增仓库后可在页面顶部切换。分类、物料、库存、单据和模板按仓库独立管理。新增仓库的分类为空，可自行创建或通过物料同步带入。</p>
     <label>新仓库名称<input maxLength={60} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
     <button type="button" className="btn btn-secondary" disabled={busy || !name.trim()} onClick={() => save(null, name)}>新增仓库</button>
     {warehouses.map(w => <div className="warehouse-row" key={w.id}>
@@ -33,10 +33,10 @@ export function WarehouseManager({ warehouses, onRefresh }) {
 
 export function ProductSync({ warehouses, warehouseId, targets, setTargets, disabled }) {
   const others = warehouses.filter(w => w.id !== warehouseId);
-  if (!others.length) return <div className="info-box">在系统设置中新增仓库后，可选择将商品同步到其他仓库。</div>;
+  if (!others.length) return <div className="info-box">在系统设置中新增仓库后，可选择将物料同步到其他仓库。</div>;
   return <fieldset className="product-sync" disabled={disabled}>
     <legend>同步到其他仓库（选填）</legend>
-    <p>本次保存同步商品档案和参考价格，并在目标仓库匹配或创建对应分类路径。目标仓库新商品库存为 0；已有商品保留各自库存和成本。未勾选的仓库保留原档案。</p>
+    <p>本次保存同步物料档案和参考价格，并在目标仓库匹配或创建对应分类路径。目标仓库新物料库存为 0；已有物料保留各自库存和成本。未勾选的仓库保留原档案。</p>
     {others.map(w => <label key={w.id}><input type="checkbox" checked={targets.includes(w.id)} onChange={e => setTargets(e.target.checked ? [...targets, w.id] : targets.filter(id => id !== w.id))} />{w.name}</label>)}
   </fieldset>;
 }

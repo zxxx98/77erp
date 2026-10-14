@@ -205,7 +205,7 @@ export function TemplateList({ onUse, type, disabled = false, refreshKey = 0 }: 
           </Text>
           <Text style={s.caption}>{d.type === "in" ? "采购入库" : "销售出库"} · {d.partner || "未指定往来单位"}</Text>
           <Text style={s.caption}>
-            {d.items.length} 种商品 · {d.updated_at} · {d.created_by_name || "操作人未知"}
+            {d.items.length} 种物料 · {d.updated_at} · {d.created_by_name || "操作人未知"}
           </Text>
           <Button
             title={`使用模板 #${d.id}`}
@@ -521,7 +521,7 @@ function Profit() {
   return (
     <>
       <Text style={s.caption}>
-        移动加权平均成本；旧库存以升级时采购价估算期初成本，旧单据成本未知，不补算毛利。毛利不含税费、运费和经营费用。退货按退货日冲减，日期按
+        移动加权平均成本；旧库存以升级时参考采购价估算期初成本，旧单据成本未知，不补算毛利。毛利不含税费、运费和经营费用。退货按退货日冲减，日期按
         UTC。
       </Text>
       <Field

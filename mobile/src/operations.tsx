@@ -197,12 +197,12 @@ export function StocktakeEditor({
       !lines.length ||
       lines.some((i) => !/^\d+(\.\d{1,6})?$/.test(i.counted) || !validQuantity(Number(i.counted)))
     ) {
-      setError("请添加商品，填写实盘数量和盘点原因。");
+      setError("请添加物料，填写实盘数量和盘点原因。");
       return;
     }
     Alert.alert(
       "确认盘点？",
-      `${lines.length} 种商品将按实盘数量调整库存。库存变化时会拒绝提交，请刷新后重新盘点。`,
+      `${lines.length} 种物料将按实盘数量调整库存。库存变化时会拒绝提交，请刷新后重新盘点。`,
       [
         { text: "取消", style: "cancel" },
         {
@@ -243,7 +243,7 @@ export function StocktakeEditor({
       <SearchField
         value={query}
         onChangeText={setQuery}
-        placeholder="搜索商品或条码"
+        placeholder="搜索物料或条码"
       />
       {query.trim() &&
         products
@@ -274,7 +274,7 @@ export function StocktakeEditor({
             />
           ))}
       {!lines.length && (
-        <Text style={s.caption}>搜索并添加需要盘点的商品。</Text>
+        <Text style={s.caption}>搜索并添加需要盘点的物料。</Text>
       )}
       {lines.map((line) => (
         <Card key={line.product_id}>

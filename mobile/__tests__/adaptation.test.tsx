@@ -134,7 +134,7 @@ test.each([
     expect(screen.queryByTestId("fixed-form-actions")).toBeNull();
     expect(screen.getByRole("button", { name: "采购入库" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "销售出库" })).toBeEnabled();
-    expect(await screen.findByText("其他仓库暂无同一商品")).toBeOnTheScreen();
+    expect(await screen.findByText("其他仓库暂无同一物料")).toBeOnTheScreen();
   },
 );
 
@@ -150,7 +150,7 @@ test("keyboard and rotation move actions without losing edited fields or changin
   const editor = <ProductEditor categories={categories} onClose={jest.fn()} onSaved={saved} />;
   const result = render(editor);
   expect(screen.getByTestId("fixed-form-actions")).toBeOnTheScreen();
-  fireEvent.changeText(screen.getByLabelText("商品名称"), "横屏编辑的商品");
+  fireEvent.changeText(screen.getByLabelText("物料名称"), "横屏编辑的物料");
   fireEvent.press(screen.getByRole("button", { name: "日用百货 / 杯具" }));
   keyboard(true);
   expect(screen.getByTestId("inline-form-actions")).toBeOnTheScreen();
@@ -158,18 +158,18 @@ test("keyboard and rotation move actions without losing edited fields or changin
   viewport(800, 360, 2);
   result.rerender(editor);
   keyboard(false);
-  expect(screen.getByLabelText("商品名称")).toHaveProp(
+  expect(screen.getByLabelText("物料名称")).toHaveProp(
     "value",
-    "横屏编辑的商品",
+    "横屏编辑的物料",
   );
   expect(screen.getByRole("button", { name: "日用百货 / 杯具" })).toHaveProp("accessibilityState", { selected: true });
-  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  fireEvent.press(screen.getByRole("button", { name: "保存物料" }));
   await waitFor(() => expect(saved).toHaveBeenCalled());
   expect(request).toHaveBeenCalledWith(
     "/products",
     "POST",
     expect.objectContaining({
-      name: "横屏编辑的商品",
+      name: "横屏编辑的物料",
       category: "日用百货 / 杯具",
       category_id: 2,
     }),
@@ -248,7 +248,7 @@ test("submitting a product disables both the back button and hardware dismissal"
   render(
     <ProductEditor categories={categories} product={product} onClose={close} onSaved={jest.fn()} />,
   );
-  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  fireEvent.press(screen.getByRole("button", { name: "保存物料" }));
   expect(screen.getByRole("button", { name: "返回" })).toBeDisabled();
   fireEvent.press(screen.getByRole("button", { name: "返回" }));
   fireEvent(screen.UNSAFE_getByType(RN.Modal), "requestClose");
@@ -263,8 +263,8 @@ test("hardware back dismisses a focused editor before offering to discard change
     .mockImplementation(() => {});
   const focus = jest.spyOn(RN.TextInput.State, "currentlyFocusedInput");
   render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={jest.fn()} />);
-  const input = screen.getByLabelText("商品名称");
-  fireEvent.changeText(input, "未保存的商品");
+  const input = screen.getByLabelText("物料名称");
+  fireEvent.changeText(input, "未保存的物料");
   focus.mockReturnValue({} as RN.TextInput);
   fireEvent(screen.UNSAFE_getByType(RN.Modal), "requestClose");
   expect(dismiss).toHaveBeenCalled();
@@ -287,18 +287,18 @@ test("keyboard hides navigation and restores the selected tab with the current s
   );
   render(<AppContent />);
   await screen.findByText("测试商户 · 主仓库");
-  fireEvent.press(screen.getByRole("tab", { name: "商品" }));
+  fireEvent.press(screen.getByRole("tab", { name: "物料" }));
   fireEvent.changeText(
-    screen.getByLabelText("搜索商品名称、条码或分类"),
+    screen.getByLabelText("搜索物料名称、条码或分类"),
     "陶瓷",
   );
   keyboard(true);
   expect(screen.queryAllByRole("tab")).toHaveLength(0);
   keyboard(false);
   expect(
-    screen.getByRole("tab", { name: "商品", selected: true }),
+    screen.getByRole("tab", { name: "物料", selected: true }),
   ).toBeOnTheScreen();
-  expect(screen.getByLabelText("搜索商品名称、条码或分类")).toHaveProp(
+  expect(screen.getByLabelText("搜索物料名称、条码或分类")).toHaveProp(
     "value",
     "陶瓷",
   );
@@ -308,7 +308,7 @@ test("long product details remain complete and order field labels stay distinct"
   viewport(320, 568, 2);
   const longProduct = {
     ...product,
-    name: "超长商品名称".repeat(15),
+    name: "超长物料名称".repeat(15),
     category: "超长分类".repeat(15),
     unit: "整箱包装单位".repeat(10),
   };
@@ -357,7 +357,7 @@ test("unknown barcode does not offer permission settings, permission denial does
     />,
   );
   fireEvent.changeText(screen.getByLabelText("手动输入条码"), "UNKNOWN");
-  fireEvent.press(screen.getByRole("button", { name: "查询商品" }));
+  fireEvent.press(screen.getByRole("button", { name: "查询物料" }));
   expect(screen.queryByRole("button", { name: "打开系统权限设置" })).toBeNull();
   jest
     .mocked(scanBarcode)

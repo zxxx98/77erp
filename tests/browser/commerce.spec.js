@@ -15,7 +15,7 @@ async function fixture(page) {
   const p = await (
     await page.request.post(base + "/api/products", {
       data: {
-        name: "商务商品",
+        name: "商务物料",
         barcode: "BUSINESS-001",
         category: "日用",
         unit: "件",
@@ -75,7 +75,7 @@ for (const width of [1440, 390]) {
         await expect(options).toHaveCount(type === "in" ? 2 : 1);
         await input.press("Escape");
         await expect(page.getByRole("dialog")).toHaveCount(1);
-        await page.getByRole("textbox", { name: "查找并添加商品" }).fill("商务");
+        await page.getByRole("textbox", { name: "查找并添加物料" }).fill("商务");
         await page.locator(".picker-results button").first().click();
         await page.getByRole("button", { name: type === "in" ? "确认入库" : "确认出库", exact: true }).click();
         await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -109,10 +109,10 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
     await page.getByRole("link", { name: "采购入库", exact: true }).click();
     await page.getByRole("button", { name: "新建入库", exact: true }).click();
     await page.getByPlaceholder("选择或输入供应商").fill("常用供应商");
-    await page.getByRole("textbox", { name: "查找并添加商品" }).fill("商务");
+    await page.getByRole("textbox", { name: "查找并添加物料" }).fill("商务");
     await page.locator(".picker-results button").first().click();
     await page
-      .getByRole("spinbutton", { name: "商务商品 数量", exact: true })
+      .getByRole("spinbutton", { name: "商务物料 数量", exact: true })
       .fill("10");
     await page.getByLabel("模板名称", { exact: true }).fill("每周补货");
     await page.getByRole("button", { name: "保存为模板", exact: true }).click();
@@ -130,7 +130,7 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
       .getByRole("button", { name: `使用模板 #${template.id}`, exact: true })
       .click();
     await expect(
-      page.getByRole("spinbutton", { name: "商务商品 数量", exact: true }),
+      page.getByRole("spinbutton", { name: "商务物料 数量", exact: true }),
     ).toHaveValue("10");
     await page.getByRole("button", { name: "确认入库", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -234,9 +234,13 @@ test("contact search stays collapsed, filters in a dropdown and selects without 
     await search.click();
     await search.fill("王先生");
     await page.setViewportSize({ width: 390, height: 844 });
-    const bounds = await page.getByRole("listbox", { name: "往来单位" }).boundingBox();
-    expect(bounds.x).toBeGreaterThanOrEqual(0);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+    // The portaled menu repositions after the browser dispatches its resize event.
+    await expect(async () => {
+      const bounds = await list.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+    }).toPass({ timeout: 5000 });
     await list.getByRole("option").filter({ hasText: "常用供应商" }).click();
     await expect(search).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByLabel("单位名称", { exact: true })).toHaveValue("常用供应商");
@@ -311,8 +315,8 @@ test("one template can create multiple independent orders, with explicit update 
       await page.getByRole("button", { name: "新建入库", exact: true }).click();
       await page.getByRole("button", { name: "选择单据模板", exact: true }).click();
       await page.getByRole("button", { name: `使用模板 #${template.id}`, exact: true }).click();
-      await expect(page.getByRole("spinbutton", { name: "商务商品 数量", exact: true })).toHaveValue("2");
-      await page.getByRole("spinbutton", { name: "商务商品 数量", exact: true }).fill(String(quantity));
+      await expect(page.getByRole("spinbutton", { name: "商务物料 数量", exact: true })).toHaveValue("2");
+      await page.getByRole("spinbutton", { name: "商务物料 数量", exact: true }).fill(String(quantity));
       await page.getByRole("button", { name: "确认入库", exact: true }).click();
       await expect(page.getByRole("dialog")).toHaveCount(0);
       expect(JSON.parse(f.db.prepare("SELECT items FROM templates WHERE id=?").get(template.id).items)[0].quantity).toBe(2);
@@ -322,7 +326,7 @@ test("one template can create multiple independent orders, with explicit update 
     await page.getByRole("button", { name: "新建入库", exact: true }).click();
     await page.getByRole("button", { name: "选择单据模板", exact: true }).click();
     await page.getByRole("button", { name: `使用模板 #${template.id}`, exact: true }).click();
-    await page.getByRole("spinbutton", { name: "商务商品 数量", exact: true }).fill("5");
+    await page.getByRole("spinbutton", { name: "商务物料 数量", exact: true }).fill("5");
     await page.getByLabel("模板名称", { exact: true }).fill("每月采购");
     await page.getByRole("button", { name: "更新模板", exact: true }).click();
     await expect(page.locator(".template-success")).toContainText("每月采购");

@@ -113,7 +113,7 @@ function checkConfig(body, used = 0, editing = false) {
   )
     fail(
       "INVALID_ITEMS",
-      "请选择 1–100 种不同商品，数量必须为正数且最多 6 位小数，单价不能为负数。",
+      "请选择 1–100 种不同物料，数量必须为正数且最多 6 位小数，单价不能为负数。",
       400,
     );
   let total = 0;
@@ -123,7 +123,7 @@ function checkConfig(body, used = 0, editing = false) {
       !Number.isSafeInteger(amount) ||
       !Number.isSafeInteger((total += amount))
     )
-      fail("INVALID_AMOUNT", "商品或单据金额过大。", 400);
+      fail("INVALID_AMOUNT", "物料或单据金额过大。", 400);
   }
   if (Math.round((total / 100) * 100) !== total)
     fail("INVALID_AMOUNT", "单据金额过大，请减少数量。", 400);
@@ -235,7 +235,7 @@ export function installStockQr(app, db) {
         errors.push({
           product_id: i.product_id,
           name: i.name,
-          error: "商品条码或单位已变化，请管理员核对并保存配置。",
+          error: "物料条码或单位已变化，请管理员核对并保存配置。",
         });
       else if (q.type === "out" && i.stock < i.quantity)
         errors.push({
@@ -253,7 +253,7 @@ export function installStockQr(app, db) {
         .prepare("SELECT warehouse_id FROM products WHERE id=?")
         .get(i.product_id);
       if (p.warehouse_id !== q.warehouse_id)
-        fail("WAREHOUSE_MISMATCH", "商品不属于二维码仓库。", 400);
+        fail("WAREHOUSE_MISMATCH", "物料不属于二维码仓库。", 400);
     }
     if (errors.length)
       fail(
@@ -299,7 +299,7 @@ export function installStockQr(app, db) {
       if (req.query.product_id) {
         const productId = Number(req.query.product_id);
         if (!integer(productId, 1))
-          fail("INVALID_FILTER", "商品编号无效。", 400);
+          fail("INVALID_FILTER", "物料编号无效。", 400);
         where.push(
           "EXISTS (SELECT 1 FROM stock_qr_items i WHERE i.stock_qr_id=q.id AND i.product_id=?)",
         );
@@ -391,7 +391,7 @@ export function installStockQr(app, db) {
         .prepare("SELECT * FROM products WHERE id=?")
         .get(i.product_id);
       if (!p || p.warehouse_id !== warehouse)
-        fail("WAREHOUSE_MISMATCH", "商品不存在或不属于当前仓库。", 400);
+        fail("WAREHOUSE_MISMATCH", "物料不存在或不属于当前仓库。", 400);
       insert.run(id, p.id, p.barcode, p.unit, i.quantity, i.price_cents, n);
     });
   }

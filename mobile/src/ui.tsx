@@ -180,7 +180,7 @@ export function DetailRow({ label, value }: { label: string; value: string }) {
 export function SearchField({
   value,
   onChangeText,
-  placeholder = "搜索商品名称、条码或分类",
+  placeholder = "搜索物料名称、条码或分类",
 }: {
   value: string;
   onChangeText: (v: string) => void;
@@ -332,7 +332,7 @@ export function ProductRow({
       >
         <View style={s.row}>
           <View style={s.grow}>
-            <Text numberOfLines={2} style={s.rowTitle}>{product.name}{product.active === 0 ? "（已下架）" : ""}</Text>
+            <Text numberOfLines={2} style={s.rowTitle}>{product.name}{product.active === 0 ? "（已停用）" : ""}</Text>
             <Text numberOfLines={1} style={s.caption}>{product.barcode}</Text>
             {!!product.specification && <Text numberOfLines={2} style={s.caption}>{product.specification}</Text>}
           </View>
@@ -344,7 +344,7 @@ export function ProductRow({
         </View>
         <View style={s.productFacts}>
           <Text style={s.fact}>库存 {product.stock} {product.unit}</Text>
-          <Text style={s.fact}>售价 {money(product.price)}</Text>
+          <Text style={s.fact}>参考销售价 {money(product.price)}</Text>
         </View>
       </Pressable>
     </View>

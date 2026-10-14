@@ -45,7 +45,7 @@ async function fixture(t) {
   const makeProduct = async (barcode = "OP-001") =>
     (
       await request("/products", {
-        name: "测试商品",
+        name: "测试物料",
         barcode,
         category: "日用",
         unit: "件",
@@ -278,7 +278,7 @@ test("imports preview row errors, reject existing codes atomically, and record o
   const f = await fixture(t),
     id = await f.makeProduct();
   const row = {
-    name: "批量商品",
+    name: "批量物料",
     barcode: "BATCH-001",
     category: "日用",
     unit: "件",
@@ -396,7 +396,7 @@ test("CSV and spreadsheet rows preserve barcodes, quoted commas/newlines and rej
   const rows = rowsToProducts(parseCSV(importTemplate));
   assert.equal(rows[0].stock, 20);
   const csv =
-    '商品名称,条码,分类,单位,采购价,销售价,安全库存,期初库存\r\n"杯子,\n大号",001234,日用,件,1.20,2,0,3';
+    '物料名称,条码,分类,单位,参考采购价,参考销售价,安全库存,期初库存\r\n"杯子,\n大号",001234,日用,件,1.20,2,0,3';
   const result = rowsToProducts(parseCSV(csv));
   assert.equal(result[0].name, "杯子,\n大号");
   assert.equal(result[0].barcode, "001234");
@@ -405,7 +405,7 @@ test("CSV and spreadsheet rows preserve barcodes, quoted commas/newlines and rej
   assert.throws(() =>
     rowsToProducts([
       parseCSV(importTemplate)[0],
-      ["商品", "", "日用", "件", "", "2", "0", "0"],
+      ["物料", "", "日用", "件", "", "2", "0", "0"],
     ]),
   );
 });
@@ -437,7 +437,7 @@ test("restore failure rolls back deletes and inserts, preserving current busines
 test("1000-row import accepts a payload larger than the default JSON limit", async (t) => {
   const f = await fixture(t);
   const rows = Array.from({ length: 1000 }, (_, i) => ({
-    name: `批量导入验证商品${i}`,
+    name: `批量导入验证物料${i}`,
     barcode: `LARGE-${i}`,
     category: "日用百货",
     unit: "件",

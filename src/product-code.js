@@ -4,7 +4,7 @@ import { BarcodeFormat, EncodeHintType, QRCodeWriter } from '@zxing/library';
 export function productQrPayload(product, warehouseId, sourceId) {
   if (!Number.isSafeInteger(product.id) || product.id < 1 ||
       !Number.isSafeInteger(warehouseId) || warehouseId < 1)
-    throw new Error('商品或仓库信息无效，请刷新后重试。');
+    throw new Error('物料或仓库信息无效，请刷新后重试。');
   if (typeof sourceId !== 'string' || !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sourceId))
     throw new Error('二维码来源信息缺失，请更新服务器并刷新页面。');
   return JSON.stringify({

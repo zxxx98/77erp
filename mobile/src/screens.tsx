@@ -91,7 +91,7 @@ export function ServerScreen({
       <View style={{ gap: 8 }}>
         <Text style={s.title}>连接工作空间</Text>
         <Text style={s.caption}>
-          填写服务器地址，连接你的商品、库存和单据。
+          填写服务器地址，连接你的物料、库存和单据。
         </Text>
       </View>
       <Card>
@@ -195,7 +195,7 @@ export function AuthScreen({
         <Text style={s.caption}>
           {setup
             ? "首次使用，请创建管理员账号。"
-            : "登录后管理商品、库存与单据。"}
+            : "登录后管理物料、库存与单据。"}
         </Text>
       </View>
       <Card>
@@ -280,7 +280,7 @@ export function Dashboard({
     (product) => product.stock <= product.threshold,
   );
   const stats = [
-    { label: "商品种类", value: String(data.products.length), icon: Box },
+    { label: "物料种类", value: String(data.products.length), icon: Box },
     {
       label: "库存成本",
       value: money(
@@ -333,7 +333,7 @@ export function Dashboard({
       </Columns>
       <Card>
         <Text style={s.subtitle}>快速操作</Text>
-        <Button title="扫描商品条码" icon={ScanLine} onPress={openScanner} />
+        <Button title="扫描物料条码" icon={ScanLine} onPress={openScanner} />
         <Columns>
           <Button permission="purchase"
             title="采购入库"
@@ -352,7 +352,7 @@ export function Dashboard({
       <Card>
         <View style={s.between}>
           <Text style={s.subtitle}>库存预警</Text>
-          <Text style={{ color: colors.orange }}>{low.length} 件商品</Text>
+          <Text style={{ color: colors.orange }}>{low.length} 件物料</Text>
         </View>
         {low.length ? (
           low
@@ -365,7 +365,7 @@ export function Dashboard({
               />
             ))
         ) : (
-          <Text style={s.caption}>所有商品库存充足。</Text>
+          <Text style={s.caption}>所有物料库存充足。</Text>
         )}
       </Card>
       <Card>
@@ -441,18 +441,18 @@ export function ProductsScreen({
           {notice}
           <View style={s.between}>
             <View style={s.grow}>
-              <Text style={s.title}>{inventory ? "库存管理" : "商品管理"}</Text>
+              <Text style={s.title}>{inventory ? "库存管理" : "物料管理"}</Text>
               <Text style={s.caption}>
-                共 {products.length} 种商品 · 筛选 {visible.length} 种
+                共 {products.length} 种物料 · 筛选 {visible.length} 种
               </Text>
             </View>
             {!inventory && (
-              <IconButton permission="products" label="新增商品" icon={Plus} onPress={addProduct} />
+              <IconButton permission="products" label="新增物料" icon={Plus} onPress={addProduct} />
             )}
           </View>
           {!inventory && manageCategories && <Button title="管理分类" kind="secondary" onPress={manageCategories} />}
           <SearchField value={query} onChangeText={setQuery} />
-          {!inventory && <Chips value={status} onChange={setStatus} options={[{id: "all", label: "全部状态"}, {id: "active", label: "已上架"}, {id: "inactive", label: "已下架"}]} />}
+          {!inventory && <Chips value={status} onChange={setStatus} options={[{id: "all", label: "全部状态"}, {id: "active", label: "已启用"}, {id: "inactive", label: "已停用"}]} />}
           {inventory ? (
             <Chips
               value={stock}
@@ -473,7 +473,7 @@ export function ProductsScreen({
         </View>
       }
       ListEmptyComponent={
-        <Empty title="未找到商品" detail="尝试调整筛选条件，或新增商品档案。" />
+        <Empty title="未找到物料" detail="尝试调整筛选条件，或新增物料档案。" />
       }
     />
   );
@@ -513,15 +513,15 @@ export function ProductDetail({
   const change = (remove = false) => {
     if (lock.current) return;
     const active = product.active === 0 ? 1 : 0;
-    Alert.alert(remove ? "删除商品" : active ? "上架商品" : "下架商品",
-      remove ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和模板关联的商品。仅影响当前仓库。`
-        : `确定${active ? "上架" : "下架"}「${product.name}」？${active ? "恢复普通开单选品。" : "保留库存和历史记录，普通开单选品默认隐藏，可从库存页面开单清库存。"}仅影响当前仓库。`,
+    Alert.alert(remove ? "删除物料" : active ? "启用物料" : "停用物料",
+      remove ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和模板关联的物料。仅影响当前仓库。`
+        : `确定${active ? "启用" : "停用"}「${product.name}」？${active ? "恢复普通开单选品。" : "保留库存和历史记录，普通开单选品默认隐藏，可从库存页面开单清库存。"}仅影响当前仓库。`,
       [{text: "取消", style: "cancel"}, {text: "确认", style: remove ? "destructive" : "default", onPress: async () => {
         if (lock.current) return;
         lock.current = true; setBusy(true); setError("");
         try {
           await api(`/products/${product.id}${remove ? "" : "/status"}`, remove ? "DELETE" : "POST", remove ? undefined : {active});
-          onSaved(remove ? "商品已删除" : active ? "商品已上架" : "商品已下架");
+          onSaved(remove ? "物料已删除" : active ? "物料已启用" : "物料已停用");
         } catch (e) { setError((e as Error).message); }
         finally {lock.current = false; setBusy(false);}
       }}]);
@@ -529,7 +529,7 @@ export function ProductDetail({
   return (
     <ScreenModal
       busy={busy} error={error} errorRevision={errorRevision}
-      title="商品详情"
+      title="物料详情"
       onClose={onClose}
       footer={
         <Columns>
@@ -559,8 +559,8 @@ export function ProductDetail({
             </Text>
           </View>
         </View>
-        {!!product.image && <ProductImage uri={product.image} label="商品图片" style={{ width: "100%", height: 200 }} />}
-        <DetailRow label="上架状态" value={product.active === 0 ? "已下架" : "已上架"} />
+        {!!product.image && <ProductImage uri={product.image} label="物料图片" style={{ width: "100%", height: 200 }} />}
+        <DetailRow label="使用状态" value={product.active === 0 ? "已停用" : "已启用"} />
         <StockBadge product={product} />
         <View style={s.divider} />
         <DetailRow
@@ -572,18 +572,18 @@ export function ProductDetail({
           value={`${product.threshold} ${product.unit}`}
         />
         <DetailRow label="分类" value={product.category} />
-        <DetailRow label="规格" value={product.specification || "未填写"} />
+        <DetailRow label="规格型号" value={product.specification || "未填写"} />
         <DetailRow label="备注" value={product.note || "未填写"} />
       </Card>
       <Card>
-        <DetailRow label="采购价" value={money(product.cost)} />
-        <DetailRow label="销售价" value={money(product.price)} />
+        <DetailRow label="参考采购价" value={money(product.cost)} />
+        <DetailRow label="参考销售价" value={money(product.price)} />
       </Card>
       <Card>
         <Text style={s.rowTitle}>其他仓库库存</Text>
         {otherError ? <ErrorNotice message={otherError} />
           : others === null ? <Text style={s.caption}>读取中…</Text>
-          : others.length === 0 ? <Text style={s.caption}>其他仓库暂无同一商品</Text>
+          : others.length === 0 ? <Text style={s.caption}>其他仓库暂无同一物料</Text>
           : others.map((row) => (
             <DetailRow
               key={row.product_id}
@@ -592,11 +592,11 @@ export function ProductDetail({
             />
           ))}
       </Card>
-      <Button permission="products" title="编辑商品" kind="secondary" disabled={busy} onPress={edit} />
+      <Button permission="products" title="编辑物料" kind="secondary" disabled={busy} onPress={edit} />
       {manageStockQr && <Button title="出入库二维码" kind="secondary" disabled={busy} onPress={manageStockQr} />}
       {isAdmin && <>
-        <Button title={product.active === 0 ? "上架商品" : "下架商品"} kind="secondary" disabled={busy} onPress={() => change()} />
-        <Button title="删除商品" kind="danger" disabled={busy} onPress={() => change(true)} />
+        <Button title={product.active === 0 ? "启用物料" : "停用物料"} kind="secondary" disabled={busy} onPress={() => change()} />
+        <Button title="删除物料" kind="danger" disabled={busy} onPress={() => change(true)} />
       </>}
     </ScreenModal>
   );
@@ -680,7 +680,7 @@ export function OrdersScreen({
           <SearchField
             value={query}
             onChangeText={setQuery}
-            placeholder="搜索单据号、往来单位或商品"
+            placeholder="搜索单据号、往来单位或物料"
           />
           <Chips
             value={type}
@@ -817,7 +817,7 @@ export function ScannerScreen({
     }
     if (!product) {
       setSelected(undefined);
-      setError(`未找到条码「${code.trim()}」，请先建立商品档案。`);
+      setError(`未找到条码「${code.trim()}」，请先建立物料档案。`);
       return;
     }
     setError("");
@@ -851,7 +851,7 @@ export function ScannerScreen({
         value={mode}
         onChange={value=>{if(!busy&&!stockBusy && (value === "query" || value === "in" || value === "out"))setMode(value);}}
         options={[
-          { id: "query", label: "查找商品" },
+          { id: "query", label: "查找物料" },
           { id: "in", label: "扫码入库" },
           { id: "out", label: "扫码出库" },
         ].filter(item => item.id === "query" || can(item.id === "in" ? "purchase" : "sale"))}
@@ -860,8 +860,8 @@ export function ScannerScreen({
       <Card>
         <View style={{ alignItems: "center", padding: 24, gap: 14 }}>
           <ScanLine size={64} color={colors.blue} />
-          <Text style={s.subtitle}>扫描商品条码</Text>
-          <Text style={s.caption}>商品标签需确认开单；免确认出入库二维码将直接执行全部商品。</Text>
+          <Text style={s.subtitle}>扫描物料条码</Text>
+          <Text style={s.caption}>物料标签需确认开单；免确认出入库二维码将直接执行全部物料。</Text>
         </View>
         <Button
           title="打开摄像头扫码"
@@ -892,7 +892,7 @@ export function ScannerScreen({
           }}
         />
         <Button
-          title="查询商品"
+          title="查询物料"
           kind="secondary"
           onPress={() => lookup(barcode)}
           disabled={!barcode.trim() || busy || stockBusy}
@@ -903,7 +903,7 @@ export function ScannerScreen({
         <Card>
           <View style={s.row}>
             <Check color={colors.green} size={20} />
-            <Text style={[s.subtitle, s.grow]}>商品已识别</Text>
+            <Text style={[s.subtitle, s.grow]}>物料已识别</Text>
           </View>
           <Text style={s.rowTitle}>{selected.name}</Text>
           <Text style={s.caption}>{selected.barcode}</Text>

@@ -131,14 +131,14 @@ function numberInput(value: string, label: string, quantity = false) {
 }
 export function productPayload(form: ProductForm) {
   for (const [value, label] of [
-    [form.name, "商品名称"],
+    [form.name, "物料名称"],
     [form.unit, "单位"],
   ]) {
     if (!value?.trim() || value.length > 100)
       throw new Error(`请填写 1–100 字的${label}。`);
   }
-  if (!form.category?.trim() || form.category.length > 1100) throw new Error("请选择商品分类。");
-  if ((form.specification?.length || 0) > 500 || (form.note?.length || 0) > 2000) throw new Error("规格最多 500 字，备注最多 2000 字。");
+  if (!form.category?.trim() || form.category.length > 1100) throw new Error("请选择物料分类。");
+  if ((form.specification?.length || 0) > 500 || (form.note?.length || 0) > 2000) throw new Error("规格型号最多 500 字，备注最多 2000 字。");
   if (form.barcode.trim() && !/^[\w.-]{3,64}$/.test(form.barcode.trim()))
     throw new Error("条码需为 3–64 位字母、数字或 ._-，也可留空自动生成。");
   return {
@@ -150,8 +150,8 @@ export function productPayload(form: ProductForm) {
     barcode: form.barcode.trim(),
     category: form.category.trim(),
     unit: form.unit.trim(),
-    cost: numberInput(form.cost, "采购价"),
-    price: numberInput(form.price, "销售价"),
+    cost: numberInput(form.cost, "参考采购价"),
+    price: numberInput(form.price, "参考销售价"),
     threshold: numberInput(form.threshold, "安全库存", true),
   };
 }
@@ -167,7 +167,7 @@ export function addLine(
         ? { ...line, quantity: String(addQuantity(Number(line.quantity) || 0, 1)) }
         : line,
     );
-  if (lines.length >= 100) throw new Error("一张单据最多添加 100 种商品。");
+  if (lines.length >= 100) throw new Error("一张单据最多添加 100 种物料。");
   return [
     ...lines,
     {
@@ -189,7 +189,7 @@ export function orderPayload(
     throw new Error(`${partnerLabel}名称不能超过 100 字。`);
   if (note.length > 500) throw new Error("备注不能超过 500 字。");
   if (!lines.length || lines.length > 100)
-    throw new Error("请添加 1–100 种商品。");
+    throw new Error("请添加 1–100 种物料。");
   const seen = new Set<number>();
   let cents = 0;
   const items = lines.map((line) => {
@@ -199,8 +199,8 @@ export function orderPayload(
       true,
     );
     const price = numberInput(line.price, `${line.product.name}单价`);
-    if (!quantity) throw new Error("商品数量必须大于 0。");
-    if (seen.has(line.product.id)) throw new Error("同一商品不能重复添加。");
+    if (!quantity) throw new Error("物料数量必须大于 0。");
+    if (seen.has(line.product.id)) throw new Error("同一物料不能重复添加。");
     seen.add(line.product.id);
     if (type === "out" && quantity > line.product.stock)
       throw new Error(

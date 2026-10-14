@@ -6,12 +6,12 @@ export const imageLimit = 1024 * 1024;
 const types = new Map([['image/jpeg', 'jpeg'], ['image/png', 'png'], ['image/webp', 'webp']]);
 
 export function validateImageUrl(value) {
-  if (typeof value !== 'string' || value.length > 2048) throw new Error('商品图片 URL 无效。');
+  if (typeof value !== 'string' || value.length > 2048) throw new Error('物料图片 URL 无效。');
   if (!value) return '';
   let url;
-  try { url = new URL(value); } catch { throw new Error('商品图片需为 HTTPS URL。'); }
+  try { url = new URL(value); } catch { throw new Error('物料图片需为 HTTPS URL。'); }
   if (!value.startsWith('https://') || url.protocol !== 'https:' || url.username || url.password || url.hash || /[\x00-\x20\x7f]/.test(value))
-    throw new Error('商品图片需为不含账号、密码或片段的 HTTPS URL。');
+    throw new Error('物料图片需为不含账号、密码或片段的 HTTPS URL。');
   return value;
 }
 
@@ -35,10 +35,10 @@ function publicConfig(db) {
 export function validateProductImage(db, image, existing = '') {
   if (!image || image === existing) return;
   const config = imagebedConfig(db);
-  if (!config.base_url) throw new Error('请先在设置中配置图床，再上传商品图片。');
+  if (!config.base_url) throw new Error('请先在设置中配置图床，再上传物料图片。');
   const url = new URL(image);
   if (url.origin !== config.base_url || !url.pathname.startsWith('/file/') || url.pathname === '/file/' || url.search)
-    throw new Error('请使用当前图床上传返回的商品图片 URL。');
+    throw new Error('请使用当前图床上传返回的物料图片 URL。');
 }
 
 function saveConfig(db, body) {

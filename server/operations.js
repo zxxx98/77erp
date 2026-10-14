@@ -4,6 +4,7 @@ import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.j
 import { installCommerce, moveInventory, allocate } from "./commerce.js";
 import { createHash, randomUUID } from "node:crypto";
 import { categoryPaths, productDetails, splitLegacyCategories } from "./catalog.js";
+import { notificationMutation } from './notifications.js';
 
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -87,13 +88,13 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     transaction(() => {
       const request = operationRequest(db, req);
       if (request.previous) return request.previous;
-      const result = fn();
+      const result = notificationMutation(db, req, fn);
       saveOperationRequest(db, request, result);
       return result;
     });
   const product = (id) =>
     db.prepare("SELECT * FROM products WHERE id=?").get(id) ||
-    fail("商品不存在，请刷新。");
+    fail("物料不存在，请刷新。");
   const changeStock = (id, delta, cost) => moveInventory(db, id, delta, cost);
   installCommerce(app, db, { route, mutation });
   const originalOrder = (id) => {
@@ -146,7 +147,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           !selected.length ||
           selected.length > 100
         )
-          fail("请选择退货商品。");
+          fail("请选择退货物料。");
         const originals = orderItems(source.id),
           seen = new Set();
         const items = selected.map((item) => {
@@ -156,12 +157,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             !item.quantity ||
             seen.has(item.product_id)
           )
-            fail("退货数量需为正数且最多 6 位小数，商品不能重复。");
+            fail("退货数量需为正数且最多 6 位小数，物料不能重复。");
           seen.add(item.product_id);
           const original = originals.find(
             (i) => i.product_id === item.product_id,
           );
-          if (!original) fail("退货商品不在原单中。");
+          if (!original) fail("退货物料不在原单中。");
           const returned = db
             .prepare(
               `SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id
@@ -261,7 +262,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           seen = new Set(),
           batch = randomUUID();
         if (!Array.isArray(items) || !items.length || items.length > 1000)
-          fail("每次盘点请选择 1–1000 种商品。");
+          fail("每次盘点请选择 1–1000 种物料。");
         for (const item of items) {
           if (
             !integer(item.product_id) ||
@@ -269,7 +270,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             !validQuantity(item.expected_stock) ||
             seen.has(item.product_id)
           )
-            fail("实盘数量需为非负数且最多 6 位小数，商品不能重复。");
+            fail("实盘数量需为非负数且最多 6 位小数，物料不能重复。");
           seen.add(item.product_id);
           const p = product(item.product_id);
           if (p.stock !== item.expected_stock)
@@ -288,10 +289,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         const reason = reasonOf(req.body),
           { product_id, quantity, expected_stock } = req.body;
         if (!integer(product_id) || !validQuantity(quantity, true))
-          fail("请填写有效的商品和减少数量（正数，最多 6 位小数）。");
+          fail("请填写有效的物料和减少数量（正数，最多 6 位小数）。");
         const p = product(product_id);
         if (p.warehouse_id !== req.warehouse.id)
-          fail("商品不属于当前仓库。");
+          fail("物料不属于当前仓库。");
         if (expected_stock !== undefined && p.stock !== expected_stock)
           fail(`${p.name} 库存已变化，请刷新后重试。`);
         if (quantity > p.stock)
@@ -307,7 +308,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
 
   function validateRows(rows, warehouseId) {
     if (!Array.isArray(rows) || !rows.length || rows.length > 1000)
-      fail("每次导入 1–1000 行商品。");
+      fail("每次导入 1–1000 行物料。");
     const seen = new Set(),
       errors = [],
       normalized = [];
@@ -320,7 +321,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           (seen.has(values[1]) ||
             db.prepare("SELECT 1 FROM products WHERE barcode=? AND warehouse_id=?").get(values[1], warehouseId))
         )
-          fail("条码重复或已存在，不会覆盖已有商品。");
+          fail("条码重复或已存在，不会覆盖已有物料。");
         if (values[1]) seen.add(values[1]);
         productDetails(row);
         if (row.category_id != null && row.category_id !== '' && (!Number.isSafeInteger(row.category_id) || !db.prepare("SELECT 1 FROM categories WHERE id=? AND warehouse_id=?").get(row.category_id, warehouseId))) fail("分类不存在或不属于当前仓库。");
@@ -480,7 +481,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const syncKeys = new Set();
     for (const p of data.products) {
       const key = JSON.stringify([p.warehouse_id,p.sync_key]);
-      if (!text(p.sync_key,100) || syncKeys.has(key)) fail('备份商品同步关联无效。');
+      if (!text(p.sync_key,100) || syncKeys.has(key)) fail('备份物料同步关联无效。');
       syncKeys.add(key);
     }
     const categoryMap = categoryPaths(data.categories);
@@ -495,9 +496,9 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const p of data.products) {
       productValues(p);
       productDetails(p);
-      if (!Number.isSafeInteger(p.version) || p.version < 1) fail('备份商品版本无效。');
-      if (![0,1].includes(p.active)) fail("备份商品上架状态无效。");
-      if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category || categoryOwners.get(p.category_id) !== p.warehouse_id) fail("备份商品分类关联无效。");
+      if (!Number.isSafeInteger(p.version) || p.version < 1) fail('备份物料版本无效。');
+      if (![0,1].includes(p.active)) fail("备份物料使用状态无效。");
+      if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category || categoryOwners.get(p.category_id) !== p.warehouse_id) fail("备份物料分类关联无效。");
       if (
         !p.barcode ||
         barcodes.has(JSON.stringify([p.warehouse_id,p.barcode])) ||
@@ -506,7 +507,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !text(p.color, 30) ||
         !text(p.created_at, 100)
       )
-        fail("备份商品库存或条码无效。");
+        fail("备份物料库存或条码无效。");
       barcodes.add(JSON.stringify([p.warehouse_id,p.barcode]));
     }
     const numbers = new Set();

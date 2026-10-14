@@ -101,8 +101,8 @@ export async function scanBarcode(): Promise<string | null> {
   const permission = await PermissionsAndroid.request(
     PermissionsAndroid.PERMISSIONS.CAMERA,
     {
-      title: "允许扫描商品条码",
-      message: "识别商品或出入库二维码；免确认出入库二维码会直接生成单据并更新库存。",
+      title: "允许扫描物料条码",
+      message: "识别物料或出入库二维码；免确认出入库二维码会直接生成单据并更新库存。",
       buttonPositive: "继续",
       buttonNegative: "取消",
     },

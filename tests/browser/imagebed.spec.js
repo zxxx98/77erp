@@ -45,17 +45,17 @@ test('settings save redacted cfr2 credentials, preserve them when blank, and upl
 test('a failed image upload preserves the existing product URL and form contents for retry', async ({ page }) => {
   await page.request.put('/api/settings/imagebed', { data: { base_url: 'https://img.77erp.test', auth_type: 'none', upload_folder: '77erp/products' } });
   const image = 'https://img.77erp.test/file/original.jpg';
-  const created = await page.request.post('/api/products', { data: { name: '上传失败测试商品', category: '上传测试', unit: '件', cost: 1, price: 2, threshold: 1, image } });
+  const created = await page.request.post('/api/products', { data: { name: '上传失败测试物料', category: '上传测试', unit: '件', cost: 1, price: 2, threshold: 1, image } });
   expect(created.ok()).toBe(true);
   await page.goto('/#products');
-  await page.getByRole('textbox', { name: '筛选商品' }).fill('上传失败测试商品');
-  await page.locator('.product-table tbody tr').filter({ hasText: '上传失败测试商品' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('textbox', { name: '商品备注' }).fill('待保存备注');
+  await page.getByRole('textbox', { name: '筛选物料' }).fill('上传失败测试物料');
+  await page.locator('.product-table tbody tr').filter({ hasText: '上传失败测试物料' }).getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('textbox', { name: '物料备注' }).fill('待保存备注');
   await page.route('**/api/uploads/product-image', route => route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: '图床认证失败，请检查上传凭据及上传权限。' }) }));
   const png = await page.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 8; return canvas.toDataURL('image/png').split(',')[1]; });
-  await page.getByLabel('上传商品图片').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.getByLabel('上传物料图片').setInputFiles({ name: 'test.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
   await expect(page.getByRole('alert')).toContainText('图床认证失败');
-  await expect(page.getByRole('img', { name: '商品图片预览' })).toHaveAttribute('src', image);
-  await expect(page.getByRole('textbox', { name: '商品备注' })).toHaveValue('待保存备注');
-  await expect(page.getByRole('button', { name: '保存商品', exact: true })).toBeEnabled();
+  await expect(page.getByRole('img', { name: '物料图片预览' })).toHaveAttribute('src', image);
+  await expect(page.getByRole('textbox', { name: '物料备注' })).toHaveValue('待保存备注');
+  await expect(page.getByRole('button', { name: '保存物料', exact: true })).toBeEnabled();
 });

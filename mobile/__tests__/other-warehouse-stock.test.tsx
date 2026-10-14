@@ -33,7 +33,7 @@ test("product details load stock by warehouse, including zero and fractional qua
 test("product details explain when other warehouses have no matching product", async () => {
   request.mockResolvedValueOnce({ warehouses: [] });
   render(detail());
-  expect(await screen.findByText("其他仓库暂无同一商品")).toBeOnTheScreen();
+  expect(await screen.findByText("其他仓库暂无同一物料")).toBeOnTheScreen();
 });
 
 test("stock lookup errors preserve product details and order actions", async () => {
@@ -41,7 +41,7 @@ test("stock lookup errors preserve product details and order actions", async () 
   render(detail());
   expect(await screen.findByText("网络连接失败")).toBeOnTheScreen();
   expect(screen.queryByText("读取中…")).toBeNull();
-  expect(screen.queryByText("其他仓库暂无同一商品")).toBeNull();
+  expect(screen.queryByText("其他仓库暂无同一物料")).toBeNull();
   expect(screen.getByText(product.name)).toBeOnTheScreen();
   expect(screen.getByRole("button", { name: "采购入库" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "销售出库" })).toBeEnabled();
@@ -52,15 +52,15 @@ test("switching products ignores late stock responses from the previous product"
   request.mockImplementationOnce(() => new Promise(resolve => { finishFirst = resolve; }));
   const view = render(detail());
   request.mockResolvedValueOnce({ warehouses: [
-    { warehouse_id: 2, warehouse_name: "新商品分仓", product_id: 4, stock: 9, unit: "件" },
+    { warehouse_id: 2, warehouse_name: "新物料分仓", product_id: 4, stock: 9, unit: "件" },
   ] });
-  view.rerender(detail({ ...product, id: 10, name: "新商品" }));
+  view.rerender(detail({ ...product, id: 10, name: "新物料" }));
   expect(await screen.findByText("9 件")).toBeOnTheScreen();
   expect(request).toHaveBeenLastCalledWith("/products/10/other-warehouses");
   await act(async () => finishFirst({ warehouses: [
-    { warehouse_id: 2, warehouse_name: "旧商品分仓", product_id: 2, stock: 1, unit: "箱" },
+    { warehouse_id: 2, warehouse_name: "旧物料分仓", product_id: 2, stock: 1, unit: "箱" },
   ] }));
-  expect(screen.queryByText("旧商品分仓")).toBeNull();
-  expect(screen.getByText("新商品分仓")).toBeOnTheScreen();
+  expect(screen.queryByText("旧物料分仓")).toBeNull();
+  expect(screen.getByText("新物料分仓")).toBeOnTheScreen();
   expect(screen.getByText("9 件")).toBeOnTheScreen();
 });

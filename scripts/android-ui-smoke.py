@@ -14,7 +14,7 @@ from android_ui_helpers import bounds, scroll_to_action
 reports = pathlib.Path(sys.argv[1])
 package = "com.erp77.app"
 product = {
-    "id": 1, "name": "超长商品名称用于原生界面适配检查陶瓷马克杯礼盒装",
+    "id": 1, "name": "超长物料名称用于原生界面适配检查陶瓷马克杯礼盒装",
     "barcode": "SKU-000001-123456789012345678901234567890",
     "category": "办公用品及日常生活用品礼品组合分类", "category_id": 1, "unit": "整箱礼盒包装",
     "stock": 99999, "threshold": 100000, "price": 999999.99, "cost": 888888.88,
@@ -128,10 +128,10 @@ try:
     _, screen_height = struct.unpack(">II", (reports / "02-dashboard.png").read_bytes()[16:24])
     if screen_height - tab_bottom > screen_height * 0.06:
         raise RuntimeError("Keyboard left unused space below the bottom navigation")
-    tap("商品")
+    tap("物料")
     snapshot("03-products")
     tap(f"{product['name']}，库存 {product['stock']} {product['unit']}")
-    find(label="商品详情")
+    find(label="物料详情")
     snapshot("04-product-detail")
     tap("采购入库")
     find(label="供应商")
@@ -143,10 +143,10 @@ try:
     adb("shell", "settings", "put", "system", "font_scale", "2.0")
     restart()
     snapshot("06-dashboard-small-large-text")
-    tap("商品")
+    tap("物料")
     snapshot("07-products-small-large-text")
-    tap("新增商品")
-    find(label="商品名称")
+    tap("新增物料")
+    find(label="物料名称")
     snapshot("08-form-small-large-text")
     tap_node(find(class_name="android.widget.EditText"))
     adb("shell", "input", "text", "Native-layout-test")
@@ -158,7 +158,7 @@ try:
     if any(n.get("text") == "放弃修改？" for n in tree().iter("node")):
         raise RuntimeError("Back to dismiss the keyboard also opened the discard dialog")
     snapshot("10-form-landscape-large-text")
-    scroll_to("保存商品")
+    scroll_to("保存物料")
     snapshot("11-form-actions-landscape-large-text")
     print("Native navigation and layout scenarios completed.", flush=True)
 except Exception:

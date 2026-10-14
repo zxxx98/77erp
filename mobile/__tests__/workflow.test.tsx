@@ -81,13 +81,13 @@ test("native product editor creates a product with an automatically generated ba
   request.mockResolvedValue({ id: 2, barcode: "SKU-000002" });
   const saved = jest.fn();
   render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={saved} />);
-  fireEvent.changeText(screen.getByLabelText("商品名称"), "原生测试商品");
-  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  fireEvent.changeText(screen.getByLabelText("物料名称"), "原生测试物料");
+  fireEvent.press(screen.getByRole("button", { name: "保存物料" }));
   await waitFor(() => expect(saved).toHaveBeenCalled());
   expect(request).toHaveBeenCalledWith(
     "/products",
     "POST",
-    expect.objectContaining({ name: "原生测试商品", barcode: "" }),
+    expect.objectContaining({ name: "原生测试物料", barcode: "" }),
   );
 });
 test("native unit settings can add, rename and remove choices used by new products", async () => {
@@ -107,8 +107,8 @@ test("native unit settings can add, rename and remove choices used by new produc
   render(<ProductEditor categories={categories} units={["套", "瓶"]} onClose={jest.fn()} onSaved={jest.fn()} />);
   expect(screen.getByLabelText("单位")).toHaveProp("value", "套");
   fireEvent.press(screen.getByRole("button", { name: "瓶" }));
-  fireEvent.changeText(screen.getByLabelText("商品名称"), "自定义单位商品");
-  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  fireEvent.changeText(screen.getByLabelText("物料名称"), "自定义单位物料");
+  fireEvent.press(screen.getByRole("button", { name: "保存物料" }));
   await waitFor(() => expect(request).toHaveBeenCalledWith("/products", "POST", expect.objectContaining({ unit: "瓶" })));
 });
 test("native product edits retain a unit removed from the configured choices", async () => {
@@ -116,7 +116,7 @@ test("native product edits retain a unit removed from the configured choices", a
   render(<ProductEditor product={product} categories={categories} units={["套", "瓶"]} onClose={jest.fn()} onSaved={jest.fn()} />);
   expect(screen.getByLabelText("单位")).toHaveProp("value", "个");
   expect(screen.getByRole("button", { name: "个" })).toBeOnTheScreen();
-  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  fireEvent.press(screen.getByRole("button", { name: "保存物料" }));
   await waitFor(() => expect(request).toHaveBeenCalledWith(`/products/${product.id}`, "PUT", expect.objectContaining({ unit: "个" })));
 });
 test("outbound blocks insufficient stock then requires confirmation and suppresses repeat submissions", async () => {
@@ -186,9 +186,9 @@ test("native scanner finds the product and cancellation leaves the screen usable
       screen.getByRole("button", { name: "打开摄像头扫码" }),
     ).toBeEnabled(),
   );
-  expect(screen.queryByText("商品已识别")).toBeNull();
+  expect(screen.queryByText("物料已识别")).toBeNull();
   fireEvent.press(screen.getByRole("button", { name: "打开摄像头扫码" }));
-  await screen.findByText("商品已识别");
+  await screen.findByText("物料已识别");
   expect(screen.getByText("陶瓷杯")).toBeOnTheScreen();
   fireEvent.press(screen.getByRole("button", { name: "销售出库" }));
   expect(openOrder).toHaveBeenCalledWith("out", product);
@@ -205,7 +205,7 @@ test("native application restores the server, loads API data and navigates witho
   fireEvent.press(screen.getByRole("tab", { name: "库存" }));
   await screen.findByText("库存管理");
   fireEvent.press(screen.getByRole("button", { name: "陶瓷杯，库存 5 个" }));
-  await screen.findByText("商品详情");
+  await screen.findByText("物料详情");
   expect(request).toHaveBeenCalledWith("/data");
 });
 
@@ -255,7 +255,7 @@ test("native stocktake includes expected stock and permits counting zero", async
   const saved = jest.fn();
   render(<StocktakeEditor products={[product]} onSaved={saved} onClose={jest.fn()} />);
   await waitFor(() => expect(request).toHaveBeenCalledWith("/stocktakes"));
-  fireEvent.changeText(screen.getByLabelText("搜索商品或条码"), "陶瓷");
+  fireEvent.changeText(screen.getByLabelText("搜索物料或条码"), "陶瓷");
   fireEvent.press(screen.getByRole("button", { name: "添加 陶瓷杯" }));
   fireEvent.changeText(screen.getByLabelText("陶瓷杯 实盘数量"), "0");
   fireEvent.changeText(screen.getByLabelText("盘点原因"), "全部破损");
@@ -344,13 +344,13 @@ test("native product editor selects a descendant category and persists picked im
   request.mockResolvedValue({ id: 2, barcode: 'SKU-000002' });
   const saved = jest.fn();
   render(<ProductEditor categories={categories} onClose={jest.fn()} onSaved={saved} />);
-  fireEvent.changeText(screen.getByLabelText('商品名称'), '带图片的杯子');
+  fireEvent.changeText(screen.getByLabelText('物料名称'), '带图片的杯子');
   fireEvent.press(screen.getByRole('button', { name: '日用百货 / 杯具' }));
-  fireEvent.changeText(screen.getByLabelText('商品规格'), '350ml');
-  fireEvent.changeText(screen.getByLabelText('商品备注'), '小心轻放');
-  fireEvent.press(screen.getByRole('button', { name: '选择商品图片' }));
-  await waitFor(() => expect(screen.getByLabelText('商品图片预览')).toBeOnTheScreen());
-  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
+  fireEvent.changeText(screen.getByLabelText('规格型号'), '350ml');
+  fireEvent.changeText(screen.getByLabelText('物料备注'), '小心轻放');
+  fireEvent.press(screen.getByRole('button', { name: '选择物料图片' }));
+  await waitFor(() => expect(screen.getByLabelText('物料图片预览')).toBeOnTheScreen());
+  fireEvent.press(screen.getByRole('button', { name: '保存物料' }));
   await waitFor(() => expect(saved).toHaveBeenCalled());
   expect(request).toHaveBeenCalledWith('/products', 'POST', expect.objectContaining({ category_id: 2, category: '日用百货 / 杯具', image, specification: '350ml', note: '小心轻放' }));
 });
@@ -359,21 +359,21 @@ test("native product details display its image, specification and notes", async 
   request.mockResolvedValueOnce({ warehouses: [] });
   const image = 'https://img.example.com/file/cup.jpg';
   render(<ProductDetail onSaved={jest.fn()} product={{ ...product, image, specification: '350ml', note: '小心轻放' }} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
-  expect(screen.getByLabelText('商品图片')).toBeOnTheScreen();
+  expect(screen.getByLabelText('物料图片')).toBeOnTheScreen();
   expect(screen.getByText('350ml')).toBeOnTheScreen();
   expect(screen.getByText('小心轻放')).toBeOnTheScreen();
-  await screen.findByText('其他仓库暂无同一商品');
+  await screen.findByText('其他仓库暂无同一物料');
 });
 
 test("native parent category filtering includes descendant products", () => {
   render(<ProductsScreen categories={categories} products={[
     { ...product, category_id: 2, category: '日用百货 / 杯具' },
-    { ...product, id: 2, name: '无关商品', category_id: 3, category: '其他' },
+    { ...product, id: 2, name: '无关物料', category_id: 3, category: '其他' },
   ]} inventory={false} refreshing={false} onRefresh={jest.fn()} openProduct={jest.fn()} addProduct={jest.fn()} />);
-  expect(screen.getByText('无关商品')).toBeOnTheScreen();
+  expect(screen.getByText('无关物料')).toBeOnTheScreen();
   fireEvent.press(screen.getByRole('button', { name: '日用百货' }));
   expect(screen.getByText('陶瓷杯')).toBeOnTheScreen();
-  expect(screen.queryByText('无关商品')).toBeNull();
+  expect(screen.queryByText('无关物料')).toBeNull();
 });
 
 test("native category editor creates a child with the selected parent", async () => {
@@ -395,7 +395,7 @@ test("native product sync defaults to disabled and sends only chosen warehouses"
   const toggle = screen.getByLabelText("同步到分仓");
   expect(toggle.props.value).toBe(false);
   fireEvent(toggle, "valueChange", true);
-  fireEvent.press(screen.getByRole("button", { name: "保存商品" }));
+  fireEvent.press(screen.getByRole("button", { name: "保存物料" }));
   await waitFor(() => expect(request).toHaveBeenCalledWith(`/products/${product.id}`, "PUT", expect.objectContaining({ sync_warehouse_ids: [2] })));
 });
 
@@ -434,9 +434,9 @@ test("native scanner recognizes the product QR label and explains labels from an
   render(<ScannerScreen products={[product]} warehouseId={1} sourceId={sourceId} onClose={jest.fn()} openOrder={jest.fn()} />);
   fireEvent.press(screen.getByRole("button", { name: "打开摄像头扫码" }));
   await screen.findByText(/其他服务器/);
-  expect(screen.queryByText("商品已识别")).toBeNull();
+  expect(screen.queryByText("物料已识别")).toBeNull();
   fireEvent.press(screen.getByRole("button", { name: "打开摄像头扫码" }));
-  await screen.findByText("商品已识别");
+  await screen.findByText("物料已识别");
   expect(screen.getByText("陶瓷杯")).toBeOnTheScreen();
 });
 
@@ -445,84 +445,84 @@ test("native lifecycle controls require admin and show server deletion errors", 
   const saved = jest.fn();
   request.mockResolvedValueOnce({ warehouses: [] });
   const detail = render(<ProductDetail product={{...product, active: 0}} isAdmin onSaved={saved} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
-  await screen.findByText('其他仓库暂无同一商品');
-  expect(screen.getByText('已下架')).toBeOnTheScreen();
+  await screen.findByText('其他仓库暂无同一物料');
+  expect(screen.getByText('已停用')).toBeOnTheScreen();
   request.mockResolvedValueOnce({ok: true});
-  fireEvent.press(screen.getByRole('button', {name: '上架商品'}));
+  fireEvent.press(screen.getByRole('button', {name: '启用物料'}));
   const confirm = alert.mock.calls.at(-1)?.[2]?.find(b => b.text === '确认')?.onPress;
   await act(async () => { await confirm?.(); });
   expect(request).toHaveBeenCalledWith(`/products/${product.id}/status`, 'POST', {active: 1});
-  expect(saved).toHaveBeenCalledWith('商品已上架');
+  expect(saved).toHaveBeenCalledWith('物料已启用');
   saved.mockClear();
-  request.mockRejectedValueOnce(new Error('商品已有单据或盘点记录，不能删除，请使用下架。'));
-  fireEvent.press(screen.getByRole('button', {name: '删除商品'}));
+  request.mockRejectedValueOnce(new Error('物料已有单据或盘点记录，不能删除，请使用停用。'));
+  fireEvent.press(screen.getByRole('button', {name: '删除物料'}));
   const remove = alert.mock.calls.at(-1)?.[2]?.find(b => b.text === '确认')?.onPress;
   await act(async () => { await remove?.(); });
   expect(request).toHaveBeenCalledWith(`/products/${product.id}`, 'DELETE', undefined);
-  expect(screen.getByText('商品已有单据或盘点记录，不能删除，请使用下架。')).toBeOnTheScreen();
+  expect(screen.getByText('物料已有单据或盘点记录，不能删除，请使用停用。')).toBeOnTheScreen();
   expect(saved).not.toHaveBeenCalled();
   detail.rerender(<ProductDetail product={product} onSaved={saved} onClose={jest.fn()} edit={jest.fn()} openOrder={jest.fn()} />);
-  expect(screen.queryByRole('button', {name: '删除商品'})).toBeNull();
-  expect(screen.queryByRole('button', {name: '下架商品'})).toBeNull();
+  expect(screen.queryByRole('button', {name: '删除物料'})).toBeNull();
+  expect(screen.queryByRole('button', {name: '停用物料'})).toBeNull();
   alert.mockRestore();
 });
 
 test("native order search hides delisted products until explicitly included", () => {
   render(<OrderEditor type="out" products={[{...product, active: 0}]} contacts={[]} onClose={jest.fn()} onSaved={jest.fn()} />);
-  fireEvent.changeText(screen.getByLabelText('搜索要添加的商品或条码'), product.name);
-  expect(screen.queryByText(`${product.name}（已下架）`)).toBeNull();
-  fireEvent.press(screen.getByRole('button', {name: '包含下架商品（清库存等）'}));
-  expect(screen.getByText(`${product.name}（已下架）`)).toBeOnTheScreen();
+  fireEvent.changeText(screen.getByLabelText('搜索要添加的物料或条码'), product.name);
+  expect(screen.queryByText(`${product.name}（已停用）`)).toBeNull();
+  fireEvent.press(screen.getByRole('button', {name: '包含停用物料（清库存等）'}));
+  expect(screen.getByText(`${product.name}（已停用）`)).toBeOnTheScreen();
 });
 
 test('native product conflicts preserve input and require explicit confirmation to adopt the latest version', async () => {
   const saved = jest.fn();
   const alert = jest.spyOn(Alert, 'alert');
   const latest = { ...product, price: 42, version: 2, note: '其他人的备注' };
-  request.mockRejectedValueOnce(Object.assign(new Error('商品信息已被修改，本次未保存。请查看最新信息后重新编辑。'), { status: 409, code: 'PRODUCT_VERSION_CONFLICT' }));
+  request.mockRejectedValueOnce(Object.assign(new Error('物料信息已被修改，本次未保存。请查看最新信息后重新编辑。'), { status: 409, code: 'PRODUCT_VERSION_CONFLICT' }));
   render(<ProductEditor product={product} categories={categories} warehouses={[{ id: 1, name: '主仓库', created_at: '' }, { id: 2, name: '分仓', created_at: '' }]} onClose={jest.fn()} onSaved={saved} />);
-  fireEvent.changeText(screen.getByLabelText('商品备注'), '我的填写');
-  fireEvent.changeText(screen.getByLabelText('销售价'), '35');
+  fireEvent.changeText(screen.getByLabelText('物料备注'), '我的填写');
+  fireEvent.changeText(screen.getByLabelText('参考销售价'), '35');
   fireEvent(screen.getByLabelText('同步到分仓'), 'valueChange', true);
-  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
-  await screen.findByText('商品信息有冲突');
+  fireEvent.press(screen.getByRole('button', { name: '保存物料' }));
+  await screen.findByText('物料信息有冲突');
   expect(request).toHaveBeenCalledWith(`/products/${product.id}`, 'PUT', expect.objectContaining({ version: product.version, price: 35, note: '我的填写', sync_warehouse_ids: [2] }));
-  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '我的填写');
-  expect(screen.getByRole('button', { name: '保存商品' })).toBeDisabled();
+  expect(screen.getByLabelText('物料备注')).toHaveProp('value', '我的填写');
+  expect(screen.getByRole('button', { name: '保存物料' })).toBeDisabled();
   expect(saved).not.toHaveBeenCalled();
   request.mockResolvedValueOnce({ ...workspace, products: [latest] });
   fireEvent.press(screen.getByRole('button', { name: '查看最新信息' }));
   await screen.findByText('最新信息：42');
   expect(screen.getByText('当前填写：35')).toBeOnTheScreen();
-  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '我的填写');
+  expect(screen.getByLabelText('物料备注')).toHaveProp('value', '我的填写');
   fireEvent.press(screen.getByRole('button', { name: '使用最新信息重新编辑' }));
-  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '我的填写');
+  expect(screen.getByLabelText('物料备注')).toHaveProp('value', '我的填写');
   const confirm = alert.mock.calls.at(-1)?.[2]?.find(b => b.text === '重新编辑')?.onPress;
   await act(async () => { confirm?.(); });
-  expect(screen.getByLabelText('销售价')).toHaveProp('value', '42');
-  expect(screen.getByLabelText('商品备注')).toHaveProp('value', '其他人的备注');
+  expect(screen.getByLabelText('参考销售价')).toHaveProp('value', '42');
+  expect(screen.getByLabelText('物料备注')).toHaveProp('value', '其他人的备注');
   expect(screen.getByLabelText('同步到分仓')).toHaveProp('value', false);
-  expect(screen.getByRole('button', { name: '保存商品' })).toBeEnabled();
-  fireEvent.changeText(screen.getByLabelText('商品备注'), '核对后补充');
+  expect(screen.getByRole('button', { name: '保存物料' })).toBeEnabled();
+  fireEvent.changeText(screen.getByLabelText('物料备注'), '核对后补充');
   request.mockResolvedValueOnce({ ok: true, version: 3 });
-  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
-  await waitFor(() => expect(saved).toHaveBeenCalledWith('商品已更新'));
+  fireEvent.press(screen.getByRole('button', { name: '保存物料' }));
+  await waitFor(() => expect(saved).toHaveBeenCalledWith('物料已更新'));
   expect(request).toHaveBeenLastCalledWith(`/products/${product.id}`, 'PUT', expect.objectContaining({ version: 2, price: 42, note: '核对后补充', sync_warehouse_ids: [] }));
   alert.mockRestore();
 });
 
 test('native latest-information failures preserve edits and keep stale saves blocked', async () => {
-  request.mockRejectedValueOnce(Object.assign(new Error('商品信息已被修改'), { status: 409, code: 'PRODUCT_VERSION_CONFLICT' }));
+  request.mockRejectedValueOnce(Object.assign(new Error('物料信息已被修改'), { status: 409, code: 'PRODUCT_VERSION_CONFLICT' }));
   const saved = jest.fn();
   render(<ProductEditor product={product} categories={categories} onClose={jest.fn()} onSaved={saved} />);
-  fireEvent.changeText(screen.getByLabelText('商品名称'), '我的商品名称');
-  fireEvent.press(screen.getByRole('button', { name: '保存商品' }));
-  await screen.findByText('商品信息有冲突');
+  fireEvent.changeText(screen.getByLabelText('物料名称'), '我的物料名称');
+  fireEvent.press(screen.getByRole('button', { name: '保存物料' }));
+  await screen.findByText('物料信息有冲突');
   request.mockRejectedValueOnce(new Error('无法连接服务器'));
   fireEvent.press(screen.getByRole('button', { name: '查看最新信息' }));
   await screen.findByText('无法连接服务器');
-  expect(screen.getByLabelText('商品名称')).toHaveProp('value', '我的商品名称');
-  expect(screen.getByRole('button', { name: '保存商品' })).toBeDisabled();
+  expect(screen.getByLabelText('物料名称')).toHaveProp('value', '我的物料名称');
+  expect(screen.getByRole('button', { name: '保存物料' })).toBeDisabled();
   expect(screen.queryByRole('button', { name: '使用最新信息重新编辑' })).toBeNull();
   expect(saved).not.toHaveBeenCalled();
 });

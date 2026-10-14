@@ -37,7 +37,7 @@ test("shared business management handles import and stocktake while settings ret
     await page.goto(f.base + "/?manage=data");
     await page.getByRole("button", { name: "批量导入", exact: true }).click();
     await page
-      .getByLabel("选择商品文件")
+      .getByLabel("选择物料文件")
       .setInputFiles({
         name: "products.csv",
         mimeType: "text/csv",
@@ -55,9 +55,9 @@ test("shared business management handles import and stocktake while settings ret
     expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(20.25);
     await page.getByRole("button", { name: "业务管理", exact: true }).click();
     await page.getByRole("button", { name: "库存盘点", exact: true }).click();
-    await page.getByRole("checkbox", { name: /示例商品/ }).check();
+    await page.getByRole("checkbox", { name: /示例电线/ }).check();
     await page
-      .getByRole("spinbutton", { name: "示例商品 实盘数量" })
+      .getByRole("spinbutton", { name: "示例电线 实盘数量" })
       .fill("18.125");
     await page.getByLabel("盘点原因").fill("盘点差异");
     accept(page);
@@ -87,7 +87,7 @@ test("shared business management handles import and stocktake while settings ret
         buffer: backup,
       });
     await expect(
-      page.getByText(/商品 1 件，单据 0 张，库存调整 2 条/),
+      page.getByText(/物料 1 件，单据 0 张，库存调整 2 条/),
     ).toBeVisible();
     accept(page);
     await page
@@ -122,7 +122,7 @@ test("order details create partial returns and void return orders with confirmat
     const product = await (
       await page.request.post(f.base + "/api/products", {
         data: {
-          name: "退货商品",
+          name: "退货物料",
           barcode: "RET-001",
           category: "日用",
           unit: "件",
@@ -144,7 +144,7 @@ test("order details create partial returns and void return orders with confirmat
     await page.goto(f.base + "/#history");
     await page.getByText(incoming.number, { exact: true }).click();
     await page.getByLabel("操作原因").fill("退回破损");
-    await page.getByRole("spinbutton", { name: "退货商品 退货数量" }).fill("2");
+    await page.getByRole("spinbutton", { name: "退货物料 退货数量" }).fill("2");
     accept(page);
     await page.getByRole("button", { name: "确认退货", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -179,7 +179,7 @@ test("Excel xlsx first worksheet imports through preview", async ({ page }) => {
     await page.goto(f.base + "/?manage=data");
     await page.getByRole("button", { name: "批量导入", exact: true }).click();
     await page
-      .getByLabel("选择商品文件")
+      .getByLabel("选择物料文件")
       .setInputFiles("tests/fixtures/products.xlsx");
     await expect(
       page.getByText("共 1 行，0 行错误。确认前请核对预览。"),
@@ -199,7 +199,7 @@ test('a fully returned fractional sale displays its zero-cent tail instead of re
   const f = await fixture(page);
   try {
     const product = await (await page.request.post(f.base + '/api/products', { data: {
-      name: '尾差商品', barcode: 'TAIL-001', category: '日用', unit: '件', cost: 0.01, price: 0.01, threshold: 0,
+      name: '尾差物料', barcode: 'TAIL-001', category: '日用', unit: '件', cost: 0.01, price: 0.01, threshold: 0,
     } })).json();
     for (const type of ['in', 'out']) await page.request.post(f.base + '/api/orders', { data: {
       type, partner: type === 'in' ? '供应商' : '客户', items: [{ product_id: product.id, quantity: 1, price: 0.01 }],
@@ -211,7 +211,7 @@ test('a fully returned fractional sale displays its zero-cent tail instead of re
     })).json();
     await page.goto(f.base + '/#history');
     await page.getByText(tail.number, { exact: true }).click();
-    const row = page.getByRole('dialog').getByRole('row').filter({ hasText: '尾差商品' });
+    const row = page.getByRole('dialog').getByRole('row').filter({ hasText: '尾差物料' });
     await expect(row.getByRole('cell').last()).toHaveText('¥ 0.00');
     await page.getByRole('button', { name: '关闭详情', exact: true }).click();
     const download = page.waitForEvent('download');

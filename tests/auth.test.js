@@ -208,7 +208,7 @@ test("business reset requires login and confirmation, preserves account/settings
   assert.equal(result.data.settings.business_name, "保留商户");
   assert.equal(result.data.settings.warehouse_name, "保留仓库");
   assert.equal((await second.request("/auth/login", { method: "POST", body: credentials })).status, 200);
-  assert.equal((await second.request("/products", { method: "POST", cookie, body: { name: "正式商品", category: "日用", unit: "件", cost: 1, price: 2, threshold: 0 } })).status, 201);
+  assert.equal((await second.request("/products", { method: "POST", cookie, body: { name: "正式物料", category: "日用", unit: "件", cost: 1, price: 2, threshold: 0 } })).status, 201);
   await second.close();
 });
 

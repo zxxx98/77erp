@@ -71,10 +71,10 @@ async function fixture(page) {
   };
   const scan = async (q) => {
     await page
-      .getByRole("textbox", { name: "商品条码", exact: true })
+      .getByRole("textbox", { name: "物料条码", exact: true })
       .fill(label(q));
     await page
-      .getByRole("textbox", { name: "商品条码", exact: true })
+      .getByRole("textbox", { name: "物料条码", exact: true })
       .press("Enter");
   };
   const open = async () => {
@@ -100,7 +100,7 @@ test("create and edit a multi-item QR, confirm the entire order, cancel without 
     dialog.getByRole("checkbox", { name: "需要二次确认" }),
   ).toBeChecked();
   for (const p of f.products) {
-    await dialog.getByLabel("搜索添加商品").fill(p.name);
+    await dialog.getByLabel("搜索添加物料").fill(p.name);
     await dialog
       .getByRole("button", { name: `${p.name} · ${p.barcode}`, exact: true })
       .click();

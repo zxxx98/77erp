@@ -1,19 +1,19 @@
 import { parseQuantity } from "../shared/quantity.js";
 
 export const importHeaders = [
-  "商品名称",
+  "物料名称",
   "条码",
   "分类",
   "单位",
-  "采购价",
-  "销售价",
+  "参考采购价",
+  "参考销售价",
   "安全库存",
   "期初库存",
 ];
 export const importTemplate =
   "\ufeff" +
   importHeaders.join(",") +
-  "\r\n示例商品,TEST-001,日用百货,件,10.00,15.00,5,20\r\n";
+  "\r\n示例电线,TEST-001,电线,米,10.00,15.00,5,20\r\n";
 export function parseCSV(input) {
   const rows = [];
   let row = [],
@@ -69,7 +69,7 @@ export function rowsToProducts(table) {
   )
     throw new Error("表头不匹配，请使用导入模板，保持列顺序。");
   if (!rows.length || rows.length > 1000)
-    throw new Error("每次导入 1–1000 行商品。");
+    throw new Error("每次导入 1–1000 行物料。");
   const numeric = (value, quantity, row) => {
     const s = value == null ? "" : String(value).trim();
     if (quantity) {
@@ -84,7 +84,7 @@ export function rowsToProducts(table) {
   };
   return rows.map((cells, i) => {
     if (cells.length > 8 || !cells[0])
-      throw new Error(`第 ${i + 2} 行：商品名称为空或列数错误。`);
+      throw new Error(`第 ${i + 2} 行：物料名称为空或列数错误。`);
     const [name, barcode, category, unit, cost, price, threshold, stock] =
       cells;
     return {

@@ -201,7 +201,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
     <span className="template-heading-icon"><FilePenLine size={20} aria-hidden="true" /></span>
     <span className="template-heading-copy">
       <strong>{collapsible ? "选择单据模板" : "单据模板"}</strong>
-      <span>{collapsible ? "套用常用商品组合，快速开单" : "保存常用开单内容，可反复套用"}</span>
+      <span>{collapsible ? "套用常用物料组合，快速开单" : "保存常用开单内容，可反复套用"}</span>
     </span>
     {!loading && !error && <span className="template-count">{visibleTemplates.length} 份</span>}
   </>;
@@ -224,7 +224,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
         {!loading && !error && !visibleTemplates.length && <div className="template-empty">
           <FilePenLine size={28} aria-hidden="true" />
           <strong>暂无模板</strong>
-          <span>{type ? `当前仓库还没有${type === "in" ? "采购" : "销售"}模板` : "在开单页面保存常用商品组合，即可在这里套用"}</span>
+          <span>{type ? `当前仓库还没有${type === "in" ? "采购" : "销售"}模板` : "在开单页面保存常用物料组合，即可在这里套用"}</span>
         </div>}
         <div className="template-list" aria-busy={loading}>
           {visibleTemplates.map((d) => (
@@ -237,7 +237,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
               <h4>{d.name}</h4>
               <p className="template-partner">{d.partner || "未指定往来单位"}</p>
               <div className="template-meta">
-                <span><Package size={14} aria-hidden="true" />{d.items.length} 种商品</span>
+                <span><Package size={14} aria-hidden="true" />{d.items.length} 种物料</span>
                 <span><UserRound size={14} aria-hidden="true" />{d.created_by_name || "操作人未知"}</span>
                 <span><Clock3 size={14} aria-hidden="true" /><time dateTime={d.updated_at}>{new Date(d.updated_at).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}</time></span>
               </div>
@@ -509,7 +509,7 @@ function Profit() {
   return (
     <div>
       <p>
-        移动加权平均成本，销售时保存成本。旧库存以升级时采购价估算期初成本；旧单据成本未知，单独列出，不计入已知毛利。毛利不含运费、税费和经营费用；退货按退货日冲减，日期按
+        移动加权平均成本，销售时保存成本。旧库存以升级时参考采购价估算期初成本；旧单据成本未知，单独列出，不计入已知毛利。毛利不含运费、税费和经营费用；退货按退货日冲减，日期按
         UTC。
       </p>
       <label>
@@ -541,7 +541,7 @@ function Profit() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>商品</th>
+                  <th>物料</th>
                   <th>净销量</th>
                   <th>销售净额</th>
                   <th>已知成本</th>

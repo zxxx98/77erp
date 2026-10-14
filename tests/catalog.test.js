@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { categoryPaths, migrateWarehouseCategories } from '../server/catalog.js';
 
 const image = 'https://img.example.com/file/77erp/products/cup.jpg';
-const product = { name: '分类商品', unit: '件', cost: 10, price: 20, threshold: 5 };
+const product = { name: '分类物料', unit: '件', cost: 10, price: 20, threshold: 5 };
 async function fixture(t) {
   const { app, db } = createApp(':memory:');
   db.prepare("UPDATE imagebed_settings SET base_url='https://img.example.com',auth_type='none' WHERE id=1").run();

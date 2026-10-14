@@ -33,7 +33,7 @@ export function ImagebedSettings({ onBusy, active }) {
     setConfig(saved); setSecret(''); setClearSecret(false); setNotice('图床配置已保存，所有仓库共用。');
   });
   return <section aria-label="图床配置">
-    <div className="settings-section-heading"><h3>图床配置</h3><p>使用 Cloudflare ImgBed 存储商品图片，商品档案只保存图片 URL。所有仓库共用此配置。</p></div>
+    <div className="settings-section-heading"><h3>图床配置</h3><p>使用 Cloudflare ImgBed 存储物料图片，物料档案只保存图片 URL。所有仓库共用此配置。</p></div>
     {config ? <div className="account-fields">
       <label>图床地址<input type="url" placeholder="https://img.example.com" maxLength={2048} value={config.base_url} disabled={busy || !active} onChange={e => field('base_url', e.target.value)} /></label>
       <small>填写 HTTPS 图床域名，不包含 /upload。留空并保存可停用新图片上传。</small>
@@ -43,7 +43,7 @@ export function ImagebedSettings({ onBusy, active }) {
       <label>认证方式<Select value={config.auth_type} disabled={busy} onChange={e => { field('auth_type', e.target.value); setSecret(''); setClearSecret(false); }}><option value="token">API Token（推荐）</option><option value="authCode">上传认证码（authCode）</option><option value="none">无需认证</option></Select></label>
       {config.auth_type !== 'none' && <>
         <label>上传凭据<input type="password" autoComplete="new-password" maxLength={4096} value={secret} placeholder={config.has_secret ? '已保存，留空保留现有凭据' : '填写有上传权限的 Token 或认证码'} disabled={busy || clearSecret} onChange={e => setSecret(e.target.value)} /></label>
-        <small>凭据仅保存在服务器，不会随商品数据或业务备份返回。</small>
+        <small>凭据仅保存在服务器，不会随物料数据或业务备份返回。</small>
         {config.has_secret && <label className="imagebed-clear-secret"><input type="checkbox" checked={clearSecret} disabled={busy} onChange={e => setClearSecret(e.target.checked)} /><span>清除已保存凭据（需同时停用上传或改为无需认证）</span></label>}
       </>}
       <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? '处理中…' : '保存图床配置'}</button>

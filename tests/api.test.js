@@ -49,7 +49,7 @@ test("barcode lookup returns exact product and unknown codes have actionable err
 });
 test("create product starts at zero and rejects duplicate barcode", async () => {
   const body = {
-    name: "测试商品",
+    name: "测试物料",
     barcode: "TEST-001",
     category: "其他",
     unit: "个",
@@ -70,7 +70,7 @@ test("create product starts at zero and rejects duplicate barcode", async () => 
   assert.match(duplicate.data.error, /条码/);
 });
 const automaticProduct = {
-  name: "自动条码商品",
+  name: "自动条码物料",
   category: "其他",
   unit: "个",
   cost: 10,
@@ -134,7 +134,7 @@ test("editing with a blank barcode retains the existing barcode", async () => {
   const edited = await request(`/products/${created.data.id}`, "PUT", {
     ...automaticProduct,
     version: created.data.version,
-    name: "修改商品名称",
+    name: "修改物料名称",
     barcode: "",
   });
   assert.equal(edited.status, 200);
@@ -189,7 +189,7 @@ test("inbound and outbound update stock and preserve item snapshots", async () =
   assert.notEqual(outgoing.data.number, outgoingAgain.data.number);
   const updated = await request("/products/1", "PUT", {
     ...original,
-    name: "修改后的商品",
+    name: "修改后的物料",
     price: 99,
   });
   assert.equal(updated.status, 200);

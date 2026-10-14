@@ -95,7 +95,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
         </div>
         <div className="auth-intro-content">
           <span className="auth-eyebrow">工作空间</span>
-          <h2>商品、库存与单据<br />集中管理</h2>
+          <h2>物料、库存与单据<br />集中管理</h2>
           <p>记录每一次入库与出库，掌握当前库存。</p>
           <div className="auth-workflow" aria-hidden="true">
             <div className="auth-workflow-heading"><Warehouse size={20} /><span>库存工作空间</span><span className="auth-workflow-dot" /></div>
@@ -143,7 +143,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
           </form>
           <p className="auth-form-note"><ShieldCheck size={15} />{setup ? "管理员可以在设置中添加员工账号。" : "登录后访问此工作空间。"}</p>
         </div>
-        <span className="auth-form-footer">商品管理 · 扫码入出库 · 库存管理</span>
+        <span className="auth-form-footer">物料管理 · 扫码入出库 · 库存管理</span>
       </section>
     </main>
   );

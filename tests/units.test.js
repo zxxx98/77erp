@@ -33,7 +33,7 @@ test('unit settings are shared, normalized and used for products without changin
   assert.equal((await f.request('/settings', 'PUT', { ...f.settings, units: [' 套 ', '瓶'] })).status, 200);
   assert.deepEqual((await f.request('/data', 'GET', undefined, true, warehouse)).data.settings.units, ['套', '瓶']);
   assert.deepEqual(f.db.prepare('SELECT id,unit,stock FROM products ORDER BY id').all(), original);
-  const created = await f.request('/products', 'POST', { name: '成套商品', category: '日用', unit: '套', cost: 1, price: 2, threshold: 0 });
+  const created = await f.request('/products', 'POST', { name: '成套物料', category: '日用', unit: '套', cost: 1, price: 2, threshold: 0 });
   assert.equal(created.status, 201);
   assert.equal((await f.request(`/products/barcode/${created.data.barcode}`)).data.unit, '套');
   // A removed unit remains valid when editing an existing product or using an older client.

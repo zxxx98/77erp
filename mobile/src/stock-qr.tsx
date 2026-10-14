@@ -262,11 +262,11 @@ export function StockQrManager({
   const add = (p: Product) => {
     if (!form) return;
     if (form.items.some((i) => i.product_id === p.id)) {
-      setError("该商品已在明细中，请编辑已有数量。");
+      setError("该物料已在明细中，请编辑已有数量。");
       return;
     }
     if (form.items.length >= 100) {
-      setError("最多配置 100 种商品。");
+      setError("最多配置 100 种物料。");
       return;
     }
     setForm({ ...form, items: [...form.items, line(p, form.type)] });
@@ -279,7 +279,7 @@ export function StockQrManager({
       warehouseId: data.warehouse_id,
       sourceId: data.instance_id,
     });
-    if (!p) throw new Error("未找到商品，请先建立商品档案。");
+    if (!p) throw new Error("未找到物料，请先建立物料档案。");
     add(p);
     setBarcode("");
   };
@@ -296,7 +296,7 @@ export function StockQrManager({
             ) > 0.00001,
         )
       )
-        throw new Error("各商品成交单价最多两位小数。");
+        throw new Error("各物料成交单价最多两位小数。");
       const q = await send<StockQr>(
         selected ? `/stock-qrs/${selected.qr_id}` : "/stock-qrs",
         selected ? "PUT" : "POST",
@@ -392,9 +392,9 @@ export function StockQrManager({
               ]}
             />
           )}
-          <Text style={s.subtitle}>商品明细（{form.items.length}/100）</Text>
+          <Text style={s.subtitle}>物料明细（{form.items.length}/100）</Text>
           <Field
-            label="搜索添加商品"
+            label="搜索添加物料"
             value={query}
             onChangeText={setQuery}
             editable={!busy}
@@ -417,7 +417,7 @@ export function StockQrManager({
                 />
               ))}
           <Button
-            title="扫描添加商品"
+            title="扫描添加物料"
             kind="secondary"
             busy={busy}
             onPress={() =>
@@ -428,13 +428,13 @@ export function StockQrManager({
             }
           />
           <Field
-            label="添加商品条码"
+            label="添加物料条码"
             value={barcode}
             onChangeText={setBarcode}
             editable={!busy}
           />
           <Button
-            title="识别商品"
+            title="识别物料"
             kind="secondary"
             disabled={busy || !barcode}
             onPress={() => void run(async () => lookup(barcode))}
@@ -556,7 +556,7 @@ export function StockQrManager({
           />
           {!form.require_confirmation && (
             <Text style={s.caption}>
-              扫码后将直接生成整张单据并更新全部商品库存。
+              扫码后将直接生成整张单据并更新全部物料库存。
             </Text>
           )}
           <ContactPicker contacts={(data.contacts || []).filter(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer"))}
@@ -587,7 +587,7 @@ export function StockQrManager({
               selected
                 ? Alert.alert(
                     "保存配置",
-                    "已打印的二维码将按新的商品明细和配置执行。",
+                    "已打印的二维码将按新的物料明细和配置执行。",
                     [
                       { text: "取消", style: "cancel" },
                       { text: "保存", onPress: save },
@@ -691,13 +691,13 @@ export function StockQrManager({
             ]}
           />
           {!rows.length && (
-            <Text>暂无出入库二维码，请新建并添加商品明细。</Text>
+            <Text>暂无出入库二维码，请新建并添加物料明细。</Text>
           )}
           {rows.map((q) => (
             <Card key={q.qr_id}>
               <Text style={s.subtitle}>{q.name}</Text>
               <Text>
-                {q.type === "in" ? "入库" : "出库"} · {q.items.length} 种商品 ·
+                {q.type === "in" ? "入库" : "出库"} · {q.items.length} 种物料 ·
                 已用 {q.used_scans}/{q.max_scans ?? "不限"} 次 ·{" "}
                 {q.require_confirmation ? "需要确认" : "免确认"} ·{" "}
                 {!q.enabled

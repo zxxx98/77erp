@@ -66,14 +66,14 @@ test('multi-warehouse flow searches only on demand, shows the current warehouse 
     const bytes = await readFile(await downloaded.path());
     expect([...bytes.slice(0, 3)]).toEqual([239, 187, 191]);
     const rows = parseCSV(bytes.toString('utf8'));
-    expect(rows[0]).toEqual(['商品名称', '编号', '单位', '当前分仓数量', '主仓库数量', '主仓库差值', '未建档仓数量', '未建档仓差值']);
+    expect(rows[0]).toEqual(['物料名称', '编号', '单位', '当前分仓数量', '主仓库数量', '主仓库差值', '未建档仓数量', '未建档仓差值']);
     expect(rows[1]).toEqual(['盘点螺丝', 'MULTI-A001', '个', '10.125', '8.025', '-2.1', '未建档', '']);
     expect(f.db.prepare('SELECT COUNT(*) AS n FROM stock_adjustments').get().n).toBe(0);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const bounds = await panel.locator('.multi-stocktake-table-scroll').evaluate(el => ({ right: el.getBoundingClientRect().right, screen: innerWidth }));
     expect(bounds.right).toBeLessThanOrEqual(bounds.screen);
-    await panel.getByRole('button', { name: '返回添加商品', exact: true }).click();
+    await panel.getByRole('button', { name: '返回添加物料', exact: true }).click();
     await panel.getByRole('button', { name: '移除盘点螺丝', exact: true }).click();
     await expect(panel.getByRole('button', { name: '开始盘点', exact: true })).toBeDisabled();
     expect(errors).toEqual([]);
@@ -83,21 +83,21 @@ test('multi-warehouse flow searches only on demand, shows the current warehouse 
 test('search pagination, failed requests and out-of-order replies keep the pending list accurate', async ({ page }) => {
   const f = await fixture(page);
   try {
-    for (let n = 0; n < 31; n++) await f.post('/products', { name: `匹配商品-${n}`, barcode: `MATCH-${String(n).padStart(3, '0')}`, category: '日用', unit: '个', cost: 1, price: 2, threshold: 0 }, f.current.id);
+    for (let n = 0; n < 31; n++) await f.post('/products', { name: `匹配物料-${n}`, barcode: `MATCH-${String(n).padStart(3, '0')}`, category: '日用', unit: '个', cost: 1, price: 2, threshold: 0 }, f.current.id);
     await page.goto(`${f.base}/?warehouse_id=${f.current.id}&manage=multi-stocktake`);
     const panel = page.locator('.multi-stocktake');
     await panel.getByRole('button', { name: '下一步', exact: true }).click();
     await panel.getByRole('searchbox').fill('MATCH-');
     await expect(panel.locator('.multi-stocktake-results .multi-stocktake-product-row')).toHaveCount(30);
-    await panel.getByRole('button', { name: '加载更多匹配商品', exact: true }).click();
+    await panel.getByRole('button', { name: '加载更多匹配物料', exact: true }).click();
     await expect(panel.locator('.multi-stocktake-results .multi-stocktake-product-row')).toHaveCount(31);
-    await expect(panel.getByRole('button', { name: '加载更多匹配商品', exact: true })).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: '加载更多匹配物料', exact: true })).toHaveCount(0);
     await page.route('**/stocktakes/multi/products?q=fail*', route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: '搜索暂时失败' }) }));
     await panel.getByRole('searchbox').fill('fail');
     await expect(panel.getByRole('alert')).toHaveText('搜索暂时失败');
     await page.unroute('**/stocktakes/multi/products?q=fail*');
     await panel.getByRole('button', { name: '重试搜索', exact: true }).click();
-    await expect(panel.getByText('没有找到匹配的商品', { exact: true })).toBeVisible();
+    await expect(panel.getByText('没有找到匹配的物料', { exact: true })).toBeVisible();
     let release;
     const pause = new Promise(resolve => { release = resolve; });
     let requested;

@@ -18,6 +18,7 @@ import { migrateOperations, installOperations, operationRequest, saveOperationRe
 import { migrateCatalog, migrateWarehouseCategories, installCatalog } from "./catalog.js";
 import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
 import { installMultiStocktake } from './multi-stocktake.js';
+import { migrateNotifications, installNotifications, queueNotification } from './notifications.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const tokens = {
@@ -259,11 +260,13 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateStockQr(db);
   migrateProductVersions(db);
   migrateOrderIndexes(db);
+  migrateNotifications(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
   installAuth(app, db, options);
   const { warehouses } = installWarehouses(app, db);
+  const notifications = installNotifications(app, db, options);
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
   app.get("/api/data", (req, res) => {
@@ -297,7 +300,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     if (!product)
       return res
         .status(404)
-        .json({ error: "未找到该条码对应的商品，请先建立商品档案。" });
+        .json({ error: "未找到该条码对应的物料，请先建立物料档案。" });
     if (!hasPermission(req.user, 'finance') && !req.user.legacy_permissions) delete product.inventory_value_cents;
     res.json(product);
   });
@@ -308,7 +311,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     if (!product)
       return res
         .status(404)
-        .json({ error: "未找到该商品，请刷新后重试。" });
+        .json({ error: "未找到该物料，请刷新后重试。" });
     const rows = db
       .prepare(
         `SELECT p.warehouse_id, w.name AS warehouse_name, p.id, p.stock, p.unit
@@ -347,7 +350,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       !validQuantity(threshold)
     )
       throw new Error(
-        "请填写有效的商品信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，金额最多两位小数且不能为负数，预警值需为非负数且最多 6 位小数。",
+        "请填写有效的物料信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，金额最多两位小数且不能为负数，预警值需为非负数且最多 6 位小数。",
       );
     return [
       name.trim(),
@@ -412,7 +415,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (!existing) {
         db.exec("ROLLBACK");
         inTransaction = false;
-        return res.status(404).json({ error: "商品不存在。" });
+        return res.status(404).json({ error: "物料不存在。" });
       }
       if (!Number.isSafeInteger(req.body.version) || req.body.version < 1 || req.body.version !== existing.version) {
         db.exec('ROLLBACK');
@@ -420,8 +423,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         return res.status(409).json({
           code: 'PRODUCT_VERSION_CONFLICT',
           error: req.body.version == null
-            ? '缺少商品版本，请刷新页面或更新安卓客户端后重新编辑。'
-            : '商品信息已被修改，本次未保存。请查看最新信息后重新编辑。',
+            ? '缺少物料版本，请刷新页面或更新安卓客户端后重新编辑。'
+            : '物料信息已被修改，本次未保存。请查看最新信息后重新编辑。',
         });
       }
       const catalog = catalogValues(req.body, existing);
@@ -447,9 +450,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   // Lifecycle actions affect only the current warehouse, never synchronized copies.
   app.post("/api/products/:id/status", (req, res) => {
     if (![0, 1].includes(req.body?.active))
-      return res.status(400).json({ error: "请选择有效的上架或下架状态。" });
+      return res.status(400).json({ error: "请选择有效的启用或停用状态。" });
     const result = db.prepare("UPDATE products SET active=? WHERE id=?").run(req.body.active, req.params.id);
-    if (!result.changes) return res.status(404).json({ error: "商品不存在。" });
+    if (!result.changes) return res.status(404).json({ error: "物料不存在。" });
     res.json({ ok: true });
   });
   app.delete("/api/products/:id", (req, res) => {
@@ -461,17 +464,17 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (!product) {
         db.exec("ROLLBACK");
         inTransaction = false;
-        return res.status(404).json({ error: "商品不存在。" });
+        return res.status(404).json({ error: "物料不存在。" });
       }
       if (product.stock !== 0 || product.inventory_value_cents !== 0)
-        throw new Error("商品仍有库存或库存价值，不能删除，请使用下架。清库存可从库存页面开单。");
+        throw new Error("物料仍有库存或库存价值，不能删除，请使用停用。清库存可从库存页面开单。");
       if (db.prepare("SELECT 1 FROM order_items WHERE product_id=? LIMIT 1").get(product.id) ||
           db.prepare("SELECT 1 FROM stock_adjustments WHERE product_id=? LIMIT 1").get(product.id))
-        throw new Error("商品已有单据或盘点记录，不能删除，请使用下架。");
+        throw new Error("物料已有单据或盘点记录，不能删除，请使用停用。");
       if (db.prepare("SELECT 1 FROM templates d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
-        throw new Error("商品被模板引用，不能删除，请先移除模板中的商品或使用下架。");
+        throw new Error("物料被模板引用，不能删除，请先移除模板中的物料或使用停用。");
       if (db.prepare("SELECT 1 FROM stock_qr_items WHERE product_id=? LIMIT 1").get(product.id))
-        throw new Error("商品被出入库二维码引用，请先从二维码明细移除或使用下架。");
+        throw new Error("物料被出入库二维码引用，请先从二维码明细移除或使用停用。");
       db.prepare("DELETE FROM products WHERE id=?").run(product.id);
       db.exec("COMMIT");
       inTransaction = false;
@@ -500,7 +503,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         !items.length ||
         items.length > 100
       )
-        throw new Error("请填写往来单位并至少添加一件商品。");
+        throw new Error("请填写往来单位并至少添加一件物料。");
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
       const request = operationRequest(db, req, true);
@@ -523,8 +526,10 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return res.status(400).json({ error: "请先确认清空全部业务数据。" });
     try {
       db.exec("BEGIN IMMEDIATE");
+      const counts = { action: '重置业务数据', products: db.prepare('SELECT COUNT(*) AS n FROM products').get().n, orders: db.prepare('SELECT COUNT(*) AS n FROM orders').get().n };
       clearStockQr(db);
       db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
+      queueNotification(db, req, 'admin_action', counts, { global: true });
       db.exec("COMMIT");
       res.json({ ok: true });
     } catch (e) {
@@ -580,5 +585,5 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         err.status === 400 ? "请求格式错误。" : "服务暂时不可用，请稍后重试。",
     });
   });
-  return { app, db };
+  return { app, db, notifications };
 }

@@ -67,12 +67,12 @@ test('QR switching stays at the top right on a narrow screen and identifies the 
   const warehouse = await (await page.request.post('/api/warehouses', { data: { name: '二维码分仓' } })).json();
   const result = await page.request.post('/api/products', {
     headers: { 'X-Warehouse-ID': String(warehouse.id) },
-    data: { name: '二维码分仓商品', barcode: '6901234567001', unit: '套', category: '二维码测试', cost: 1, price: 2, threshold: 0 },
+    data: { name: '二维码分仓物料', barcode: '6901234567001', unit: '套', category: '二维码测试', cost: 1, price: 2, threshold: 0 },
   });
   expect(result.status()).toBe(201);
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto(`/?warehouse_id=${warehouse.id}#products`);
-  await page.getByRole('button', { name: '查看 二维码分仓商品 条码', exact: true }).click();
+  await page.getByRole('button', { name: '查看 二维码分仓物料 条码', exact: true }).click();
   const qrButton = page.getByRole('button', { name: '二维码', exact: true });
   await qrButton.focus();
   await page.keyboard.press('Enter');
@@ -80,11 +80,11 @@ test('QR switching stays at the top right on a narrow screen and identifies the 
   await expect(qr).toBeVisible();
   const header = page.locator('.product-code-modal .modal-header');
   const switchBox = await page.getByRole('group', { name: '标签类型' }).boundingBox();
-  const titleBox = await header.getByRole('heading', { name: '商品条码', exact: true }).boundingBox();
+  const titleBox = await header.getByRole('heading', { name: '物料条码', exact: true }).boundingBox();
   expect(switchBox.x).toBeGreaterThan(titleBox.x + titleBox.width);
   const svg = await qr.evaluate(el => new XMLSerializer().serializeToString(el));
   const payload = await decodeSvg(page, svg);
   expect(payload.warehouse_id).toBe(warehouse.id);
-  expect(payload.product.name).toBe('二维码分仓商品');
+  expect(payload.product.name).toBe('二维码分仓物料');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

@@ -26,7 +26,7 @@ async function fixtureProduct(context, stock = 0) {
 }
 
 async function addItem(page, product) {
-  await page.getByRole('searchbox', { name: '搜索要添加的商品或条码' }).fill(product.name);
+  await page.getByRole('searchbox', { name: '搜索要添加的物料或条码' }).fill(product.name);
   await page.getByRole('dialog').getByRole('button', { name: new RegExp(`${product.name}，库存`) }).click();
 }
 
@@ -257,12 +257,12 @@ test('session replacement isolates drafts by account and hides read-only employe
   await expect(page.getByRole('button', { name: '采购入库', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '销售出库', exact: true })).toHaveCount(0);
   await expect(page.locator('.mw-stat').filter({ hasText: '库存成本' })).toContainText('—');
-  await page.locator('.mw-tabs').getByRole('button', { name: '商品', exact: true }).click();
-  await expect(page.getByRole('button', { name: '新增商品', exact: true })).toHaveCount(0);
+  await page.locator('.mw-tabs').getByRole('button', { name: '物料', exact: true }).click();
+  await expect(page.getByRole('button', { name: '新增物料', exact: true })).toHaveCount(0);
   await page.getByRole('searchbox').fill(product.name);
   await page.getByRole('button', { name: new RegExp(`${product.name}，库存`) }).click();
-  await expect(page.locator('.mw-detail-row').filter({ hasText: '采购价' })).toContainText('—');
-  await expect(page.getByRole('button', { name: '编辑商品', exact: true })).toHaveCount(0);
+  await expect(page.locator('.mw-detail-row').filter({ hasText: '参考采购价' })).toContainText('—');
+  await expect(page.getByRole('button', { name: '编辑物料', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
   await page.locator('.mw-tabs').getByRole('button', { name: '更多', exact: true }).click();
   await page.getByRole('button', { name: '本地草稿', exact: true }).click();
@@ -325,14 +325,14 @@ test('browser back closes image preview before its mobile product dialog', async
   const saved = workspace.products.find(p => p.id === product.id);
   expect((await context.request.put(`/api/products/${product.id}`, { data: { ...saved, image: 'https://img.77erp.test/file/test.webp' } })).ok()).toBe(true);
   await page.reload();
-  await page.locator('.mw-tabs').getByRole('button', { name: '商品', exact: true }).click();
+  await page.locator('.mw-tabs').getByRole('button', { name: '物料', exact: true }).click();
   await page.getByRole('searchbox').fill(product.name);
   await page.getByRole('button', { name: new RegExp(`${product.name}，库存`) }).click();
   await page.getByRole('dialog').getByRole('button', { name: `放大查看 ${product.name}` }).click();
   await expect(page.getByRole('dialog', { name: `图片预览：${product.name}` })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('dialog', { name: `图片预览：${product.name}` })).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: '商品详情', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '物料详情', exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await context.close();
@@ -352,14 +352,14 @@ test('leaving the foreground stops the scanner stream and preserves manual entry
     };
   });
   await page.getByRole('button', { name: '采购入库', exact: true }).click();
-  await page.getByRole('button', { name: '扫码添加商品', exact: true }).click();
+  await page.getByRole('button', { name: '扫码添加物料', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.scannerTestStream?.getVideoTracks()[0]?.readyState)).toBe('live');
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
   await expect.poll(() => page.evaluate(() => window.scannerTestStream.getVideoTracks()[0].readyState)).toBe('ended');
   await expect(page.locator('.camera-error')).toContainText('摄像头已暂停');
   await page.getByRole('button', { name: '手动输入条码', exact: true }).click();
   await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: '扫描商品条码', exact: true })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: '扫描物料条码', exact: true })).toBeEnabled();
   await context.close();
 });
 
@@ -368,7 +368,7 @@ test('mobile layouts, shared editors and scanner remain usable at phone and tabl
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   for (const viewport of [{ width: 320, height: 700 }, { width: 390, height: 844 }, { width: 900, height: 600 }]) {
     await page.setViewportSize(viewport);
-    for (const label of ['工作台', '商品', '库存', '单据', '更多']) {
+    for (const label of ['工作台', '物料', '库存', '单据', '更多']) {
       await page.locator('.mw-tabs').getByRole('button', { name: label, exact: true }).click();
       const size = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
       expect(size.scroll).toBeLessThanOrEqual(size.width);
@@ -377,14 +377,14 @@ test('mobile layouts, shared editors and scanner remain usable at phone and tabl
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('.mw-tabs').getByRole('button', { name: '工作台', exact: true }).click();
   await page.screenshot({ path: 'output/ui-preview/mobile-web-home.png', fullPage: true });
-  await page.locator('.mw-tabs').getByRole('button', { name: '商品', exact: true }).click();
-  await page.getByRole('button', { name: '新增商品', exact: true }).click();
+  await page.locator('.mw-tabs').getByRole('button', { name: '物料', exact: true }).click();
+  await page.getByRole('button', { name: '新增物料', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   expect((await page.getByRole('dialog').boundingBox()).width).toBe(390);
   await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
   await page.getByRole('button', { name: '打开扫码工作台', exact: true }).click();
   await page.getByRole('button', { name: '手动输入条码', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: '商品条码', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '物料条码', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '手机扫码', exact: true }).click();
   await expect(page.locator('.camera-error')).toBeVisible();
   expect(errors).toEqual([]);
@@ -409,11 +409,11 @@ test('mobile bottom drawers fit their content and keep long forms usable in smal
   await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
 
-  await page.locator('.mw-tabs').getByRole('button', { name: '商品', exact: true }).click();
-  await page.getByRole('button', { name: '新增商品', exact: true }).click();
+  await page.locator('.mw-tabs').getByRole('button', { name: '物料', exact: true }).click();
+  await page.getByRole('button', { name: '新增物料', exact: true }).click();
   await expect(dialog).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(dialog.getByRole('button', { name: '保存商品', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('button', { name: '保存物料', exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: '关闭弹窗', exact: true })).toBeFocused();
   for (const viewport of [{ width: 320, height: 700 }, { width: 390, height: 844 }, { width: 900, height: 600 }, { width: 844, height: 390 }]) {
@@ -423,7 +423,7 @@ test('mobile bottom drawers fit their content and keep long forms usable in smal
       return bounds.x >= 0 && bounds.y > 0 && bounds.x + bounds.width <= viewport.width && Math.abs(bounds.y + bounds.height - viewport.height) < 1;
     }).toBe(true);
     // The bottom action remains reachable even in landscape, where the form scrolls as a whole.
-    const save = dialog.getByRole('button', { name: '保存商品', exact: true });
+    const save = dialog.getByRole('button', { name: '保存物料', exact: true });
     await save.scrollIntoViewIfNeeded();
     const bounds = await save.boundingBox();
     expect(bounds.y).toBeGreaterThan(0);
@@ -432,7 +432,7 @@ test('mobile bottom drawers fit their content and keep long forms usable in smal
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: 'output/ui-preview/mobile-drawer-product.png' });
-  await dialog.getByRole('textbox', { name: /商品名称/ }).fill('移动弹窗验证');
+  await dialog.getByRole('textbox', { name: /物料名称/ }).fill('移动弹窗验证');
   // Chromium desktop emulation has no software keyboard; simulate its visual viewport resize.
   await page.evaluate(() => {
     Object.defineProperty(window.visualViewport, 'height', { configurable: true, value: 380 });
@@ -443,8 +443,8 @@ test('mobile bottom drawers fit their content and keep long forms usable in smal
     const bounds = await dialog.boundingBox();
     return bounds.y > 0 && Math.abs(bounds.y + bounds.height - 380) < 1;
   }).toBe(true);
-  await dialog.getByRole('button', { name: '保存商品', exact: true }).scrollIntoViewIfNeeded();
-  const action = await dialog.getByRole('button', { name: '保存商品', exact: true }).boundingBox();
+  await dialog.getByRole('button', { name: '保存物料', exact: true }).scrollIntoViewIfNeeded();
+  const action = await dialog.getByRole('button', { name: '保存物料', exact: true }).boundingBox();
   expect(action.y + action.height).toBeLessThan(380);
   await page.evaluate(() => {
     delete window.visualViewport.height;

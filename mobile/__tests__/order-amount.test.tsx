@@ -7,7 +7,7 @@ import { PermissionContext } from '../src/permissions';
 test('order detail displays the persisted zero-cent return tail', () => {
   const order: Order = { id: 1, number: 'RETURN-1', type: 'in', kind: 'return', partner: '客户',
     note: '', total: 0, created_at: '2026-10-14T00:00:00Z', items: [{ product_id: 1,
-      name: '尾差商品', barcode: 'TAIL-001', quantity: 0.5, price: 0.01, amount_cents: 0 }] };
+      name: '尾差物料', barcode: 'TAIL-001', quantity: 0.5, price: 0.01, amount_cents: 0 }] };
   render(<PermissionContext.Provider value={{ role: 'employee', permissions: [] }}>
     <OrderDetail isAdmin={false} order={order} onClose={jest.fn()} onSaved={jest.fn()} />
   </PermissionContext.Provider>);
