@@ -129,6 +129,12 @@ table {
   flex-direction: column;
   padding: 27px 16px 0;
   z-index: 30;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+}
+.sidebar > * {
+  flex-shrink: 0;
 }
 .brand {
   display: flex;
@@ -3467,6 +3473,43 @@ table {
   }
   .page-footer {
     font-size: 8px;
+  }
+}
+/* Zoom reduces the available viewport height as well as its width. */
+@media (min-width: 761px) and (max-height: 900px) {
+  .sidebar {
+    padding-top: 16px;
+  }
+  .sidebar .brand {
+    margin-bottom: 16px;
+  }
+  .sidebar .workspace-selector {
+    margin-bottom: 16px;
+  }
+  .sidebar .nav-label {
+    padding-bottom: 8px;
+  }
+  .sidebar .second-label {
+    margin-top: 16px;
+  }
+  .sidebar nav {
+    gap: 3px;
+  }
+  .sidebar .nav-item {
+    min-height: 38px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  .sidebar-bottom {
+    padding-top: 16px;
+  }
+  .sidebar-tip {
+    display: none;
+  }
+  .sidebar .user-profile {
+    margin-top: 8px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 }
 @media (max-width: 760px) {
