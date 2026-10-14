@@ -35,8 +35,15 @@ function ImageViewer({ src, title, onClose }) {
       else closeButton.current?.focus();
     };
     document.addEventListener('keydown', key, true);
+    const back = event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      close.current();
+    };
+    window.addEventListener('erp:back-modal', back, true);
     return () => {
       document.removeEventListener('keydown', key, true);
+      window.removeEventListener('erp:back-modal', back, true);
       document.body.style.overflow = overflow;
       previousFocus?.focus();
     };

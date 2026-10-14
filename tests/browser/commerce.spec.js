@@ -116,7 +116,7 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
       .fill("10");
     await page.getByLabel("模板名称", { exact: true }).fill("每周补货");
     await page.getByRole("button", { name: "保存为模板", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("每周补货");
+    await expect(page.getByRole("dialog").getByRole("status")).toContainText("每周补货");
     await page.getByRole("button", { name: "取消", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     expect(

@@ -1,4 +1,9 @@
 import { orderLineAmount } from "../shared/money.js";
+import { mobileDevice } from './device.js';
+import { PwaProvider } from './pwa/Pwa.jsx';
+import { MobileShell, WarehousePicker, DraftList, MobileProductDetail } from './mobile-web/MobileShell.jsx';
+import { MobileOrderForm } from './mobile-web/MobileOrderForm.jsx';
+import { MobileOrderDetail } from './mobile-web/MobileOrderDetail.jsx';
 import { Select } from "./Dropdown.jsx";
 import { PermissionContext, usePermissions } from './permissions.jsx';
 import { hasPermission, canManage } from '../shared/permissions.js';
@@ -93,6 +98,7 @@ const navItems = [
   { id: "inventory", name: "库存管理", icon: Warehouse },
   { id: "scanner", name: "扫码工作台", icon: ScanLine },
   { id: "history", name: "操作记录", icon: History },
+  ...(mobileDevice ? [{ id: 'more', name: '工作空间', icon: Settings }] : []),
 ];
 function Button({
   children,
@@ -322,9 +328,17 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
       }
     };
     document.addEventListener("keydown", key);
+    const back = event => {
+      if (event.defaultPrevented || document.querySelector('.image-viewer')) return;
+      if ([...document.querySelectorAll('.modal[role="dialog"]')].at(-1) !== ref.current) return;
+      event.preventDefault();
+      closeRef.current();
+    };
+    if (mobileDevice) window.addEventListener('erp:back-modal', back);
     return () => {
       document.body.style.overflow = overflow;
       document.removeEventListener("keydown", key);
+      window.removeEventListener('erp:back-modal', back);
       old?.focus();
     };
   }, []);
@@ -343,6 +357,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
         aria-labelledby={titleId}
       >
         <div className="modal-header">
+          {mobileDevice && <button type="button" className="modal-header-back" aria-label="返回" onClick={onClose}><ChevronLeft size={22} /></button>}
           <div className="modal-header-title">
             <h2 id={titleId}>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
@@ -433,11 +448,26 @@ function CameraScanner({ onResult }) {
   callback.current = onResult;
   useEffect(() => {
     let alive = true, delivered = false;
+    const stop = () => {
+      alive = false;
+      controls.current?.stop();
+      const stream = video.current?.srcObject;
+      stream?.getTracks?.().forEach(track => track.stop());
+    };
+    const suspend = () => {
+      stop();
+      setReady(false);
+      setError("摄像头已暂停，请关闭后重新开启扫码，或手动输入条码。");
+    };
+    const visibility = () => { if (document.visibilityState === 'hidden') suspend(); };
     if (!window.isSecureContext || !navigator.mediaDevices) {
       setError("手机摄像头扫码需要 HTTPS，请通过 HTTPS 地址打开此页面。");
       return;
     }
+    document.addEventListener('visibilitychange', visibility);
+    window.addEventListener('pagehide', suspend);
     import("@zxing/browser").then(async ({ BrowserMultiFormatReader }) => {
+      if (!alive) return;
       try {
         const reader = new BrowserMultiFormatReader();
         const ctrl = await reader.decodeFromConstraints(
@@ -451,7 +481,7 @@ function CameraScanner({ onResult }) {
             }
           },
         );
-        if (!alive) ctrl.stop();
+        if (!alive || delivered) ctrl.stop();
         else {
           controls.current = ctrl;
           setReady(true);
@@ -466,8 +496,9 @@ function CameraScanner({ onResult }) {
       }
     });
     return () => {
-      alive = false;
-      controls.current?.stop();
+      document.removeEventListener('visibilitychange', visibility);
+      window.removeEventListener('pagehide', suspend);
+      stop();
     };
   }, []);
   return (
@@ -559,6 +590,7 @@ function App({ admin, onLogout }) {
   });
   const [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const [modal, setModal] = useState(() => {
     const destination = new URLSearchParams(location.search).get('manage');
     if (destination === 'data') return { kind: 'businessTools', initialTab: 'import' };
@@ -570,6 +602,21 @@ function App({ admin, onLogout }) {
     [search, setSearch] = useState("");
   const [notification, setNotification] = useState(false),
     [inventoryFilter, setInventoryFilter] = useState("all");
+  useEffect(() => {
+    if (!mobileDevice || !modal) return;
+    const marker = `77erp-modal-${Date.now()}`;
+    history.pushState({ ...history.state, erpModal: marker }, '', location.href);
+    const back = () => {
+      const event = new Event('erp:back-modal', { cancelable: true });
+      if (window.dispatchEvent(event)) setModal(null);
+      else history.pushState({ ...history.state, erpModal: marker }, '', location.href);
+    };
+    window.addEventListener('popstate', back);
+    return () => {
+      window.removeEventListener('popstate', back);
+      if (history.state?.erpModal === marker) history.back();
+    };
+  }, [!!modal]);
   const [loggingOut, setLoggingOut] = useState(false);
   const logout = async () => {
     setLoggingOut(true);
@@ -585,6 +632,7 @@ function App({ admin, onLogout }) {
   const [switching, setSwitching] = useState(false);
   const reload = async () => {
     const generation = ++loadGeneration.current;
+    setRefreshing(true);
     try {
       let d;
       try { d = await api("/data"); }
@@ -593,13 +641,17 @@ function App({ admin, onLogout }) {
         d = await api('/data', { warehouseId: 1 });
       }
       if (generation !== loadGeneration.current) return;
+      if (d.user?.id !== admin.id) {
+        window.dispatchEvent(new Event('erp:unauthorized'));
+        return;
+      }
       setWarehouseId(d.warehouse_id);
       setData(d);
       setLoadError("");
     } catch (e) {
       if (generation === loadGeneration.current) setLoadError(e.message);
     } finally {
-      if (generation === loadGeneration.current) setLoading(false);
+      if (generation === loadGeneration.current) { setLoading(false); setRefreshing(false); }
     }
   };
   useEffect(() => {
@@ -624,8 +676,11 @@ function App({ admin, onLogout }) {
   useEffect(() => {
     const refreshPermissions = () => { if (document.visibilityState === 'visible') reload(); };
     window.addEventListener('focus', refreshPermissions);
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshPermissions(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', refreshPermissions);
     const timer = !isAdmin ? setInterval(refreshPermissions, 30000) : null;
-    return () => { window.removeEventListener('focus', refreshPermissions); if (timer) clearInterval(timer); };
+    return () => { window.removeEventListener('focus', refreshPermissions); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('online', refreshPermissions); if (timer) clearInterval(timer); };
   }, [isAdmin]);
   useEffect(() => {
     if (!toast) return;
@@ -641,22 +696,26 @@ function App({ admin, onLogout }) {
   };
   const notify = (message, type = "success") => setToast({ message, type });
   const saved = async (message) => {
-    await reload();
     setModal(null);
     notify(message);
+    await reload();
   };
   const switchWarehouse = async (id) => {
-    if (switching || modal || id === getWarehouseId()) return;
+    if (switching || modal && modal.kind !== 'warehousePicker' || id === getWarehouseId()) return;
     const generation = ++loadGeneration.current;
     setSwitching(true);
     try {
       const workspace = await api('/data', { warehouseId: id });
       if (generation !== loadGeneration.current) return;
+      if (workspace.user?.id !== admin.id) {
+        window.dispatchEvent(new Event('erp:unauthorized'));
+        return;
+      }
       setWarehouseId(id);
       setData(workspace);
       setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
     } catch (e) { notify(e.message, 'error'); }
-    finally { setSwitching(false); }
+    finally { setSwitching(false); setRefreshing(false); }
   };
   const user = data.user || admin;
   const can = key => hasPermission(user, key);
@@ -674,6 +733,12 @@ function App({ admin, onLogout }) {
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
       {switching && <div className="warehouse-switch-loading" role="status"><LoaderCircle className="spin" size={24} />正在切换仓库…</div>}
+      {mobileDevice ? <div inert={!!modal} aria-hidden={modal ? true : undefined}><MobileShell user={user} data={data} page={page} navigate={navigate} openModal={setModal} openOrder={openOrder}
+        showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={order => setModal({ kind: 'detail', order })}
+        switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
+        loggingOut={loggingOut} logout={logout}
+        renderScanner={() => <Scanner data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
+      /></div> : <>
       <aside className="sidebar" inert={switching}>
         <a
           className="brand"
@@ -951,6 +1016,10 @@ function App({ admin, onLogout }) {
           )}
         </main>
       </div>
+      </>}
+      {mobileDevice && modal?.kind === 'warehousePicker' && <WarehousePicker data={data} switchWarehouse={switchWarehouse} onClose={() => setModal(null)} Modal={Modal} />}
+      {mobileDevice && modal?.kind === 'drafts' && <DraftList data={data} userId={user.id} Modal={Modal} onClose={() => setModal(null)} onOpen={draft => setModal({ kind: 'order', type: draft.type, draft })} />}
+      {modal?.kind === 'categories' && manage('products') && <CategoryManager categories={data.categories || []} onChanged={reload} onClose={() => setModal(null)} />}
       {can('products') && modal?.kind === "product" && (
         <ProductForm
           product={modal.product}
@@ -963,7 +1032,8 @@ function App({ admin, onLogout }) {
         />
       )}
       {modal?.kind === "order" && can(modal.type === 'in' ? 'purchase' : 'sale') && (
-        <OrderForm
+        mobileDevice ? <MobileOrderForm type={modal.type} initialProduct={modal.product} initialTemplate={modal.template} initialDraft={modal.draft} data={data} userId={user.id}
+          key={modal.draft?.id || modal.template?.id || 'new-order'} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} onSaved={saved} /> : <OrderForm
           type={modal.type}
           initialProduct={modal.product}
           initialTemplate={modal.template}
@@ -974,7 +1044,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {modal?.kind === "detail" && (
-        <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
+        mobileDevice ? <MobileOrderDetail order={modal.order} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
       {modal?.kind === "reduce" && can('stocktake') && (
         <ReduceStockModal
@@ -984,7 +1054,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
-      {modal?.kind === "productDetail" && <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onClose={() => setModal(null)} />}
+      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onClose={() => setModal(null)} />)}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}
@@ -3751,5 +3821,5 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
   );
 }
 createRoot(document.getElementById("root")).render(
-  <AuthGate>{(admin, onLogout) => <App admin={admin} onLogout={onLogout} />}</AuthGate>,
+  <PwaProvider><AuthGate>{(admin, onLogout) => <App key={admin.id} admin={admin} onLogout={onLogout} />}</AuthGate></PwaProvider>,
 );

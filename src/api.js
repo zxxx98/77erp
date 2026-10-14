@@ -10,6 +10,11 @@ export function setWarehouseId(id) {
   }
 }
 export async function api(path, options) {
+  if (navigator.onLine === false && options?.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
+    const error = new Error('当前离线，请联网后确认操作。');
+    error.code = 'NETWORK_OFFLINE';
+    throw error;
+  }
   const { warehouseId: selected = warehouseId, ...request } = options || {};
   const multipart = options?.body instanceof FormData;
   const res = await fetch("/api" + path, {

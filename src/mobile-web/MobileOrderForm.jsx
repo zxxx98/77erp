@@ -1,0 +1,215 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Camera, Check, FilePenLine, Minus, Plus, Trash2 } from 'lucide-react';
+import { api } from '../api.js';
+import { usePermissions } from '../permissions.jsx';
+import { ContactPicker, Templates, useBusiness } from '../Commerce.jsx';
+import { resolveProductCode } from '../product-scan.js';
+import { addQuantity, parseQuantity } from '../../shared/quantity.js';
+import { draftScope, localId, removeDraft, saveDraft } from '../pwa/drafts.js';
+import { usePwa } from '../pwa/Pwa.jsx';
+import { MobileButton as Button, MobileIcon, Notice, SearchField, ProductRow, money, count } from './ui.jsx';
+
+export function MobileOrderForm({ type, initialProduct, initialTemplate, initialDraft, data, userId, Modal, CameraScanner, onClose, onSaved }) {
+  const { templates: manageTemplates } = usePermissions();
+  const { online } = usePwa();
+  const scope = useMemo(() => draftScope(userId, data.instance_id, data.warehouse_id), [userId, data.instance_id, data.warehouse_id]);
+  const [id] = useState(() => initialDraft?.id || localId());
+  const [template, setTemplate] = useState(initialDraft?.template || initialTemplate || null);
+  const [templateName, setTemplateName] = useState(initialDraft?.templateName || initialTemplate?.name || '');
+  const [templateRevision, setTemplateRevision] = useState(0);
+  const [templateMessage, setTemplateMessage] = useState('');
+  const [partner, setPartner] = useState(initialDraft?.partner ?? initialTemplate?.partner ?? (type === 'out' ? '零售客户' : ''));
+  const [partnerId, setPartnerId] = useState(initialDraft?.partnerId ?? initialTemplate?.partner_id ?? null);
+  const [note, setNote] = useState(initialDraft?.note ?? initialTemplate?.note ?? '');
+  const snapshot = (p, line = {}) => ({ product_id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version, quantity: line.quantity ?? 1, price: line.price ?? (type === 'in' ? p.cost : p.price) });
+  const [items, setItems] = useState(() => initialDraft?.items || (initialTemplate ? initialTemplate.items.map(line => {
+    const p = data.products.find(p => p.id === line.product_id);
+    return p ? snapshot(p, line) : { ...line, name: '商品已不存在' };
+  }) : initialProduct ? [snapshot(initialProduct)] : []));
+  const [pending, setPending] = useState(initialDraft?.pending || null);
+  const [query, setQuery] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [camera, setCamera] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState({ message: '', revision: 0 });
+  const [storageError, setStorageError] = useState('');
+  const [savedAt, setSavedAt] = useState(initialDraft?.updatedAt || null);
+  const [confirming, setConfirming] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [savingClose, setSavingClose] = useState(false);
+  const lock = useRef(false), finished = useRef(false), hasSaved = useRef(!!initialDraft), latest = useRef(null), latestDirty = useRef(false), bodyRef = useRef(null);
+  const templateAction = useBusiness();
+  const reportError = message => setError(value => ({ message, revision: value.revision + 1 }));
+  const total = items.reduce((sum, line) => sum + Math.round(Number(line.quantity) * Number(line.price) * 100), 0) / 100;
+  const dirty = !!(items.length || note || (partner && partner !== (type === 'out' ? '零售客户' : '')) || pending);
+  const disabled = busy || templateAction.busy || !!pending;
+  const draft = { id, type, partner, partnerId, note, items, template: template ? { id: template.id, version: template.version, name: template.name } : null, templateName, pending };
+  latest.current = draft;
+  latestDirty.current = dirty;
+
+  const persist = async value => {
+    if (finished.current) return;
+    const saved = await saveDraft(scope, value);
+    hasSaved.current = true;
+    if (!finished.current) { setSavedAt(saved.updatedAt); setStorageError(''); }
+    return saved;
+  };
+  useEffect(() => {
+    if (!dirty && !hasSaved.current) return;
+    const timer = setTimeout(() => { persist(latest.current).catch(e => { if (!finished.current) setStorageError(e.message); }); }, 350);
+    return () => clearTimeout(timer);
+  }, [partner, partnerId, note, items, template, templateName, pending]);
+  useEffect(() => {
+    const flush = () => { if (!finished.current && (latestDirty.current || hasSaved.current)) saveDraft(scope, latest.current).catch(() => {}); };
+    const visibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    const logout = () => { finished.current = true; };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('erp:logout', logout);
+    document.addEventListener('visibilitychange', visibility);
+    return () => { window.removeEventListener('pagehide', flush); window.removeEventListener('erp:logout', logout); document.removeEventListener('visibilitychange', visibility); flush(); };
+  }, [scope]);
+  useEffect(() => { if (error.message) bodyRef.current?.querySelector('[role="alert"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, [error]);
+  useEffect(() => { if (!online) setCamera(false); }, [online]);
+
+  const add = product => {
+    if (disabled) return;
+    const found = items.find(line => line.product_id === product.id);
+    if (!found && items.length >= 100) { reportError('一张单据最多添加 100 种商品。'); return; }
+    try {
+      setItems(found ? items.map(line => line === found ? { ...line, quantity: addQuantity(parseQuantity(line.quantity), 1) } : line) : [...items, snapshot(product)]);
+      setQuery(''); setBarcode(''); reportError('');
+    } catch (e) { reportError(e.message); }
+  };
+  const scan = code => {
+    setCamera(false);
+    try {
+      const product = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id, sourceId: data.instance_id });
+      if (!product) throw new Error(`未找到条码「${code.trim()}」，请先建立商品档案。`);
+      add(product);
+    } catch (e) { reportError(e.message); }
+  };
+  const update = (productId, key, value) => setItems(current => current.map(line => line.product_id === productId ? { ...line, [key]: value } : line));
+  const stale = items.filter(line => { const p = data.products.find(p => p.id === line.product_id); return p && line.version && line.version !== p.version; });
+  const payload = () => {
+    if (!partner.trim() || partner.length > 100) throw new Error('请填写 1–100 字的往来单位。');
+    if (note.length > 500) throw new Error('备注最多 500 字。');
+    if (!items.length || items.length > 100) throw new Error('请添加 1–100 种商品。');
+    if (stale.length) throw new Error('商品资料已变化，请核对最新档案后继续。');
+    const seen = new Set();
+    return { type, partner: partner.trim(), ...(partnerId ? { partner_id: partnerId } : {}), note, items: items.map(line => {
+      const p = data.products.find(p => p.id === line.product_id);
+      if (!p) throw new Error(`「${line.name || '商品'}」已不存在，请移除后重新选择。`);
+      if (seen.has(p.id)) throw new Error('同一商品不能重复添加。');
+      seen.add(p.id);
+      const quantity = parseQuantity(line.quantity, true), price = Number(line.price);
+      if (!/^\d+(\.\d{1,2})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(`${p.name} 单价需为非负金额，最多两位小数。`);
+      if (type === 'out' && quantity > p.stock) throw new Error(`${p.name} 库存不足（当前 ${count(p.stock)} ${p.unit}）。`);
+      return { product_id: p.id, quantity, price };
+    }) };
+  };
+  const confirm = event => {
+    event?.preventDefault();
+    if (disabled) return;
+    try { payload(); reportError(''); setCamera(false); setConfirming(true); }
+    catch (e) { reportError(e.message); }
+  };
+  const submit = async () => {
+    if (lock.current || templateAction.busy) return;
+    if (!navigator.onLine) { reportError('当前离线，请联网后确认。'); return; }
+    lock.current = true; setBusy(true); setConfirming(false); reportError('');
+    let receipt, request = pending, sent = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      if (!request) request = { body: { ...payload(), request_id: localId() } };
+      // Persist the exact request before sending it; never replace its ID after an ambiguous response.
+      await persist({ ...latest.current, pending: request });
+      setPending(request); latest.current = { ...latest.current, pending: request };
+      sent = true;
+      receipt = await api('/orders', { method: 'POST', warehouseId: scope.warehouseId, body: request.body, signal: controller.signal });
+    } catch (e) {
+      if (e.status === 400 || e.status === 409 || e.status === 422) {
+        setPending(null); latest.current = { ...latest.current, pending: null };
+        await persist(latest.current).catch(storage => setStorageError(storage.message));
+        reportError(e.message);
+      } else if (!sent) {
+        reportError(e.message);
+      } else {
+        // 401/403 can follow an earlier committed request: keep the receipt key until reauthenticated.
+        setPending(request); latest.current = { ...latest.current, pending: request };
+        reportError(`提交结果待确认。${e.status ? e.message : '网络响应未完成，请联网后核对原提交。'}`);
+      }
+    } finally { clearTimeout(timeout); lock.current = false; setBusy(false); }
+    if (receipt) {
+      finished.current = true;
+      let message = `单据 ${receipt.number} 已保存`;
+      try { await removeDraft(scope, id); }
+      catch { message += '；本地草稿清理失败，请在草稿中核对后清理。'; }
+      await onSaved(message);
+    }
+  };
+  const saveTemplate = overwrite => templateAction.run(async () => {
+    if (pending) return;
+    const body = payload();
+    const result = await templateAction.send('/templates', { ...(overwrite && template ? { id: template.id, version: template.version } : {}), name: templateName, type, partner: body.partner, partner_id: partnerId, note, items: body.items });
+    setTemplate(result); setTemplateName(result.name); setTemplateRevision(value => value + 1); setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
+  });
+  const close = () => {
+    if (lock.current || templateAction.busy || savingClose) return;
+    if (dirty || hasSaved.current) setClosing(true);
+    else { finished.current = true; onClose(); }
+  };
+  const leave = async discard => {
+    if (savingClose) return;
+    setSavingClose(true);
+    try {
+      if (discard && pending) throw new Error('请先核对待确认的提交结果。');
+      if (discard) await removeDraft(scope, id);
+      else await persist(latest.current);
+      finished.current = true; onClose();
+    } catch (e) { setClosing(false); reportError(e.message); }
+    finally { setSavingClose(false); }
+  };
+  const partners = (data.contacts || []).filter(c => c.active && c.role === (type === 'in' ? 'supplier' : 'customer'));
+  const matches = query.trim() ? data.products.filter(p => (includeInactive || p.active !== 0) && [p.name, p.barcode, p.category, p.specification || ''].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).slice(0, 20) : [];
+
+  return <>
+    <Modal title={type === 'in' ? '采购入库' : '销售出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
+      <form onSubmit={confirm} className="mw-order-form">
+        <div ref={bodyRef} className="form-body mw-stack mw-order-body">
+          <Notice>{error.message}</Notice><Notice>{storageError}</Notice>
+          <p className="mw-muted" aria-live="polite">{savedAt ? `草稿已保存 · ${new Date(savedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '本地草稿自动保存'}</p>
+          {pending && <section className="mw-card mw-stack"><h2>提交结果待确认</h2><p>保留原单据内容，核对时不会重复开单。</p><Button primary busy={busy} disabled={!online} onClick={submit}>核对并重试原提交</Button></section>}
+          {!!stale.length && !pending && <section className="mw-card mw-stack"><Notice>商品资料已变化：{stale.map(line => line.name).join('、')}。请核对商品与成交单价。</Notice><Button onClick={() => setItems(current => current.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? { ...line, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version } : line; }))}>使用最新档案继续核对</Button></section>}
+          <fieldset disabled={disabled} className="mw-stack mw-fieldset">
+            {online && <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={disabled} onUse={selected => {
+              if (items.length && !window.confirm('套用模板将替换当前编辑内容，是否继续？')) return false;
+              setTemplate(selected); setTemplateName(selected.name); setTemplateMessage(''); setPartner(selected.partner); setPartnerId(selected.partner_id); setNote(selected.note);
+              setItems(selected.items.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? snapshot(p, line) : { ...line, name: '商品已不存在' }; }));
+            }} />}
+            {template && <p className="mw-muted">已套用「{template.name}」，本次修改不会自动更新模板。</p>}
+            {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">模板名称<input maxLength={100} placeholder="例如：每周日用品补货" value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? '另存为模板' : '保存为模板'}</Button>{template && <Button disabled={!online || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
+            <ContactPicker contacts={partners} value={partner} selectedId={partnerId} label={type === 'in' ? '供应商' : '客户 / 往来单位'} required disabled={disabled} onChange={value => { setPartner(value); setPartnerId(partners.find(c => c.name === value)?.id ?? null); }} onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
+            <Button primary icon={Camera} disabled={!online} onClick={() => setCamera(value => !value)}>{camera ? '关闭摄像头' : '扫码添加商品'}</Button>
+            {camera && <CameraScanner onResult={scan} />}
+            <label className="mw-field">手动输入商品条码<div className="mw-manual-row"><input aria-label="扫描商品条码" value={barcode} onChange={e => setBarcode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (barcode.trim()) scan(barcode); } }} /><Button disabled={!online || !barcode.trim()} onClick={() => scan(barcode)}>添加</Button></div></label>
+            <SearchField label="搜索要添加的商品或条码" value={query} onChange={setQuery} />
+            {!!query.trim() && <section className="mw-card">{online ? matches.length ? matches.map(p => <ProductRow key={p.id} product={p} onOpen={add} />) : <p className="mw-muted">未找到商品，请先建立商品档案。</p> : <p className="mw-muted">联网后可以查询并添加商品。</p>}</section>}
+            <Button onClick={() => setIncludeInactive(value => !value)}>{includeInactive ? '隐藏下架商品' : '包含下架商品（清库存等）'}</Button>
+            {!items.length && <section className="mw-card"><p className="mw-muted">扫码或搜索，添加第一件商品。</p></section>}
+            {items.map(line => {
+              const p = data.products.find(p => p.id === line.product_id);
+              const name = p?.name || line.name || '商品已不存在';
+              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已下架）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '商品已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<input type="number" inputMode="decimal" min="0.000001" max="99999999" step="0.000001" required aria-label={`${name} 数量`} value={line.quantity} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></label><label className="mw-field">单价<input type="number" inputMode="decimal" min="0" max="99999999" step="0.01" required aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.000001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{money(Math.round(Number(line.quantity) * Number(line.price) * 100) / 100)}</strong></div></section>;
+            })}
+            <label className="mw-field">备注（选填）<textarea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
+          </fieldset>
+        </div>
+        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种商品</span><h2>{money(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
+      </form>
+    </Modal>
+    {confirming && <Modal title={type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种商品，合计 {money(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
+    {closing && <Modal title={pending ? '保存待核对单据？' : '保存本地草稿？'} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? '提交结果尚未确认，请保留草稿，联网后核对原提交。' : '保存后可从“更多 → 本地草稿”继续编辑。'}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>保存草稿并关闭</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>放弃草稿</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>继续编辑</Button></div></Modal>}
+  </>;
+}

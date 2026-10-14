@@ -1,0 +1,267 @@
+<div id="erp77-pwa-preview">
+  <div class="erp77-preview-label">77 ERP · 与当前安卓端对应的 PWA 方案 · 示例数据</div>
+  <div class="viz-dotted-background" aria-label="安卓 UI 对应的移动网页版">
+    <div class="erp77-stage"><div class="erp77-phone" data-layout="business" aria-label="安卓 UI 对应的手机预览"></div></div>
+  </div>
+</div>
+<style>
+#erp77-pwa-preview { color-scheme: light dark; font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","WenQuanYi Zen Hei",sans-serif; }
+#erp77-pwa-preview .erp77-preview-label { color:light-dark(#626f82,#aab6c9);font-size:12px;text-align:center;padding:8px 0 16px; }
+#erp77-pwa-preview .erp77-stage { display:flex;justify-content:center;min-height:1000px;padding:24px 12px; }
+#erp77-pwa-preview .erp77-phone { --erp-bg:light-dark(#f7f8fa,#101927);--erp-surface:light-dark(#ffffff,#1a2637);--erp-text:light-dark(#17243c,#e8effb);--erp-muted:light-dark(#65738a,#a0afc5);--erp-line:light-dark(#e9ecf1,#2d3c50);--erp-blue:light-dark(#2563eb,#82afff);--erp-soft:light-dark(#eff5ff,#233c61);--erp-on-blue:light-dark(#fff,#10233f);--erp-warning:light-dark(#996114,#ffcb81);--erp-warning-bg:light-dark(#fff6e6,#382b1d); width:390px;max-width:100%;min-height:776px;background:var(--erp-bg);color:var(--erp-text);border:1px solid var(--erp-line);border-radius:28px;box-shadow:0 16px 40px light-dark(#17243c14,#00000036);overflow:hidden;display:flex;flex-direction:column;font-size:14px;line-height:1.5; }
+#erp77-pwa-preview .erp77-phone * {box-sizing:border-box;}
+#erp77-pwa-preview .erp77-phone button,#erp77-pwa-preview .erp77-phone input {font:inherit;color:inherit;}
+#erp77-pwa-preview :where(.erp77-phone button) {border:0;background:transparent;}
+#erp77-pwa-preview .erp77-phone button:disabled {opacity:.45;cursor:not-allowed;}
+#erp77-pwa-preview .erp77-status {padding:12px 22px 0;display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600;}
+#erp77-pwa-preview .erp77-status-icons {display:flex;gap:6px;align-items:center;}
+#erp77-pwa-preview .erp77-phone svg {width:18px;height:18px;flex-shrink:0;}
+#erp77-pwa-preview .erp77-header {display:flex;justify-content:space-between;align-items:center;padding:19px 20px 14px;gap:12px;}
+#erp77-pwa-preview .erp77-brand {display:flex;align-items:center;gap:10px;}
+#erp77-pwa-preview .erp77-mark {width:38px;height:38px;border-radius:11px;background:var(--erp-blue);color:var(--erp-on-blue);display:grid;place-items:center;font-size:22px;font-weight:700;letter-spacing:-2px;padding-right:2px;}
+#erp77-pwa-preview .erp77-brand-title {font-size:17px;font-weight:650;letter-spacing:-.4px;}
+#erp77-pwa-preview .erp77-warehouse {display:flex;gap:4px;align-items:center;padding:2px 0;min-height:25px;font-size:12px;color:var(--erp-muted);}
+#erp77-pwa-preview .erp77-warehouse svg {width:12px;height:12px;}
+#erp77-pwa-preview .erp77-avatar {width:44px;height:44px;border-radius:50%;background:var(--erp-surface);border:1px solid var(--erp-line);font-weight:600;}
+#erp77-pwa-preview .erp77-main {padding:0 20px 18px;flex:1;}
+#erp77-pwa-preview .erp77-page-title {display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0 16px;}
+#erp77-pwa-preview .erp77-page-title h2 {font-size:22px;font-weight:650;margin:0;line-height:1.3;}
+#erp77-pwa-preview .erp77-date {font-size:12px;color:var(--erp-muted);}
+#erp77-pwa-preview .erp77-card {border:1px solid var(--erp-line);border-radius:16px;background:var(--erp-surface);padding:16px;}
+#erp77-pwa-preview .erp77-muted {color:var(--erp-muted);font-size:12px;}
+#erp77-pwa-preview .erp77-summary {display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;}
+#erp77-pwa-preview .erp77-money {font-size:26px;font-weight:650;letter-spacing:-1px;font-variant-numeric:tabular-nums;margin:5px 0 2px;}
+#erp77-pwa-preview .erp77-money small {font-size:14px;letter-spacing:0;margin-right:2px;}
+#erp77-pwa-preview .erp77-card-heading {display:flex;align-items:center;gap:6px;font-size:12px;color:var(--erp-muted);}
+#erp77-pwa-preview .erp77-card-heading svg {width:14px;height:14px;}
+#erp77-pwa-preview .erp77-quick {display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:24px;}
+#erp77-pwa-preview .erp77-quick button {display:flex;flex-direction:column;align-items:center;gap:8px;padding:0;font-size:12px;min-height:72px;}
+#erp77-pwa-preview .erp77-action-icon {width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:var(--erp-surface);border:1px solid var(--erp-line);color:var(--erp-blue);}
+#erp77-pwa-preview .erp77-action-icon svg {width:22px;height:22px;}
+#erp77-pwa-preview .erp77-section-heading {display:flex;justify-content:space-between;align-items:center;margin:0 0 10px;gap:8px;}
+#erp77-pwa-preview .erp77-section-heading h3 {font-size:15px;font-weight:600;margin:0;}
+#erp77-pwa-preview .erp77-link {color:var(--erp-muted);font-size:12px;min-height:32px;padding:0;display:flex;gap:2px;align-items:center;}
+#erp77-pwa-preview .erp77-link svg {width:14px;height:14px;}
+#erp77-pwa-preview .erp77-alert {padding:0 14px;margin-bottom:19px;}
+#erp77-pwa-preview .erp77-alert-title {font-size:12px;color:var(--erp-warning);padding:12px 0;display:flex;align-items:center;gap:7px;}
+#erp77-pwa-preview .erp77-row {display:flex;align-items:center;gap:10px;min-height:66px;border-top:1px solid var(--erp-line);padding:10px 0;width:100%;text-align:left;}
+#erp77-pwa-preview .erp77-row:first-child {border-top:0;}
+#erp77-pwa-preview .erp77-thumb {width:40px;height:40px;background:var(--erp-soft);color:var(--erp-blue);border-radius:10px;display:grid;place-items:center;flex-shrink:0;}
+#erp77-pwa-preview .erp77-row-body {min-width:0;flex:1;}
+#erp77-pwa-preview .erp77-row-name {font-size:14px;font-weight:500;}
+#erp77-pwa-preview .erp77-row-note {font-size:12px;color:var(--erp-muted);margin-top:3px;}
+#erp77-pwa-preview .erp77-row-end {text-align:right;font-variant-numeric:tabular-nums;}
+#erp77-pwa-preview .erp77-badge {display:inline-flex;padding:2px 7px;font-size:11px;border-radius:5px;background:var(--erp-warning-bg);color:var(--erp-warning);}
+#erp77-pwa-preview .erp77-amount {font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;}
+#erp77-pwa-preview .erp77-documents {padding:2px 14px;}
+#erp77-pwa-preview .erp77-bottom {padding:9px 5px 12px;display:grid;grid-template-columns:repeat(5,1fr);background:var(--erp-surface);border-top:1px solid var(--erp-line);gap:2px;}
+#erp77-pwa-preview .erp77-bottom button {min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--erp-muted);border-radius:9px;}
+#erp77-pwa-preview .erp77-bottom button[aria-current=page] {color:var(--erp-blue);background:var(--erp-soft);}
+#erp77-pwa-preview .erp77-bottom svg {width:21px;height:21px;}
+#erp77-pwa-preview .erp77-homebar {height:4px;background:var(--erp-text);border-radius:9px;width:100px;margin:0 auto 8px;opacity:.7;}
+#erp77-pwa-preview .erp77-footer {background:var(--erp-surface);}
+#erp77-pwa-preview .erp77-search {display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--erp-surface);border:1px solid var(--erp-line);border-radius:12px;margin-bottom:14px;}
+#erp77-pwa-preview .erp77-search input {width:100%;min-width:0;border:0;background:transparent;font-size:16px;}
+#erp77-pwa-preview .erp77-search button {padding:0;min-width:28px;min-height:28px;color:var(--erp-blue);}
+#erp77-pwa-preview .erp77-filters {display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap;}
+#erp77-pwa-preview .erp77-filter {font-size:12px;min-height:36px;padding:7px 12px;border-radius:8px;background:var(--erp-surface);border:1px solid var(--erp-line);}
+#erp77-pwa-preview .erp77-filter[aria-pressed=true] {background:var(--erp-blue);color:var(--erp-on-blue);border-color:var(--erp-blue);}
+#erp77-pwa-preview .erp77-product-list {padding:0 14px;}
+#erp77-pwa-preview .erp77-product-list .erp77-row {min-height:86px;}
+#erp77-pwa-preview .erp77-primary {background:var(--erp-blue)!important;color:var(--erp-on-blue)!important;border-radius:10px;padding:12px 16px;min-height:46px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:500;width:100%;}
+#erp77-pwa-preview .erp77-title-action {color:var(--erp-blue);background:var(--erp-soft)!important;border-radius:9px;min-height:38px;padding:8px 11px!important;font-size:12px!important;display:flex;align-items:center;gap:4px;}
+#erp77-pwa-preview .erp77-scan-hero {background:var(--erp-blue);color:var(--erp-on-blue);padding:22px 18px;margin-bottom:14px;border-radius:18px;}
+#erp77-pwa-preview .erp77-scan-hero button {color:var(--erp-on-blue);display:flex;align-items:center;gap:14px;width:100%;padding:0;text-align:left;}
+#erp77-pwa-preview .erp77-scan-symbol {width:54px;height:54px;border-radius:14px;background:light-dark(#ffffff24,#10233f22);display:grid;place-items:center;}
+#erp77-pwa-preview .erp77-scan-symbol svg {width:30px;height:30px;}
+#erp77-pwa-preview .erp77-scan-hero strong {font-size:19px;font-weight:600;display:block;}
+#erp77-pwa-preview .erp77-scan-hero span {font-size:12px;opacity:.9;}
+#erp77-pwa-preview .erp77-work-actions {display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+#erp77-pwa-preview .erp77-work-actions button {background:var(--erp-surface);border:1px solid var(--erp-line);border-radius:14px;display:flex;align-items:center;gap:10px;padding:16px;font-weight:500;}
+#erp77-pwa-preview .erp77-work-actions svg {color:var(--erp-blue);}
+#erp77-pwa-preview .erp77-inline-metrics {display:flex;justify-content:space-around;text-align:center;margin-bottom:22px;padding:15px 8px;}
+#erp77-pwa-preview .erp77-inline-metrics strong {display:block;font-size:23px;font-weight:600;}
+#erp77-pwa-preview .erp77-network {background:var(--erp-warning-bg);color:var(--erp-warning);font-size:12px;padding:9px 20px;display:flex;align-items:center;gap:7px;}
+#erp77-pwa-preview .erp77-form-label {font-size:12px;color:var(--erp-muted);display:block;margin-bottom:6px;}
+#erp77-pwa-preview .erp77-input {border:1px solid var(--erp-line);background:var(--erp-surface);border-radius:8px;font-size:16px!important;width:100%;min-width:0;padding:10px;}
+#erp77-pwa-preview .erp77-form-card {margin-bottom:14px;}
+#erp77-pwa-preview .erp77-form-item {padding:14px 0;border-bottom:1px solid var(--erp-line);}
+#erp77-pwa-preview .erp77-form-item:last-child {border-bottom:0;}
+#erp77-pwa-preview .erp77-form-fields {display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px;}
+#erp77-pwa-preview .erp77-total {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;}
+#erp77-pwa-preview .erp77-total strong {font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;}
+#erp77-pwa-preview .erp77-order-footer {padding:16px 20px;border-top:1px solid var(--erp-line);background:var(--erp-surface);}
+#erp77-pwa-preview .erp77-back {min-width:36px;min-height:38px;padding:0!important;display:grid;place-items:center;background:var(--erp-surface)!important;border:1px solid var(--erp-line)!important;border-radius:10px;}
+#erp77-pwa-preview .erp77-detail-labels {display:flex;justify-content:space-between;padding:9px 0;font-size:13px;border-bottom:1px solid var(--erp-line);gap:12px;}
+#erp77-pwa-preview .erp77-detail-labels:last-child {border:0;}
+#erp77-pwa-preview .erp77-note {font-size:12px;color:var(--erp-muted);margin-top:12px;}
+#erp77-pwa-preview .erp77-empty {text-align:center;padding:28px 0;color:var(--erp-muted);}
+#erp77-pwa-preview .erp77-success {text-align:center;padding:32px 12px 25px;}
+#erp77-pwa-preview .erp77-success svg {color:var(--erp-blue);width:48px;height:48px;margin-bottom:14px;}
+#erp77-pwa-preview .erp77-success h3 {font-size:20px;font-weight:600;margin:0 0 8px;}
+@media(max-width:380px) {#erp77-pwa-preview .erp77-stage{padding:16px 0;min-height:1040px;}#erp77-pwa-preview .erp77-header{padding-left:16px;padding-right:16px;}#erp77-pwa-preview .erp77-main{padding-left:14px;padding-right:14px;}#erp77-pwa-preview .erp77-money{font-size:23px;}#erp77-pwa-preview .erp77-card{padding:13px;}#erp77-pwa-preview .erp77-alert{padding:0 12px;}}
+#erp77-pwa-preview .erp77-stage {min-height:0;padding:20px 10px;}
+#erp77-pwa-preview .erp77-phone {--erp-muted:light-dark(#647084,#a0afc5);--erp-warning:light-dark(#a56b12,#ffcb81);min-height:800px;}
+#erp77-pwa-preview .erp77-status {background:var(--erp-surface);padding-bottom:9px;}
+#erp77-pwa-preview .erp77-header {min-height:60px;padding:6px 12px;border-bottom:1px solid var(--erp-line);background:var(--erp-surface);gap:8px;}
+#erp77-pwa-preview .erp77-native-wordmark {font-size:22px;font-weight:800;letter-spacing:-.5px;white-space:nowrap;}
+#erp77-pwa-preview .erp77-native-wordmark span {color:var(--erp-blue);}
+#erp77-pwa-preview .erp77-warehouse {flex:1;font-size:13px;min-height:48px;text-align:left;}
+#erp77-pwa-preview .erp77-native-icon {width:48px;height:48px;display:grid;place-items:center;flex-shrink:0;}
+#erp77-pwa-preview .erp77-native-icon svg {width:22px;height:22px;}
+#erp77-pwa-preview .erp77-main {padding:20px 20px 24px;}
+#erp77-pwa-preview .erp77-page-title {margin:0 0 16px;}
+#erp77-pwa-preview .erp77-page-title h2 {font-size:27px;font-weight:700;letter-spacing:-.5px;}
+#erp77-pwa-preview .erp77-row-note,#erp77-pwa-preview .erp77-muted {font-size:13px;}
+#erp77-pwa-preview .erp77-card {padding:18px;border-radius:14px;}
+#erp77-pwa-preview .erp77-summary {gap:12px;margin-bottom:16px;}
+#erp77-pwa-preview .erp77-stat {padding:16px;border-radius:12px;}
+#erp77-pwa-preview .erp77-card-heading {justify-content:space-between;font-size:13px;gap:7px;}
+#erp77-pwa-preview .erp77-card-heading svg {width:18px;height:18px;color:var(--erp-blue);}
+#erp77-pwa-preview .erp77-money {font-size:23px;letter-spacing:0;font-weight:700;margin:12px 0 0;}
+#erp77-pwa-preview .erp77-native-section {margin-bottom:16px;}
+#erp77-pwa-preview .erp77-native-section h3 {margin:0;font-size:18px;font-weight:600;}
+#erp77-pwa-preview .erp77-native-section .erp77-primary {margin:14px 0;}
+#erp77-pwa-preview .erp77-native-section .erp77-section-heading {margin:0 0 14px;}
+#erp77-pwa-preview .erp77-warning {color:var(--erp-warning);font-size:14px;}
+#erp77-pwa-preview .erp77-native-columns {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+#erp77-pwa-preview .erp77-secondary {min-height:48px;width:100%;padding:12px 16px;background:var(--erp-surface);border:1px solid var(--erp-line);border-radius:9px;display:flex;gap:8px;justify-content:center;align-items:center;font-size:15px;font-weight:600;text-align:center;}
+#erp77-pwa-preview .erp77-main>.erp77-secondary {margin-bottom:16px;}
+#erp77-pwa-preview .erp77-primary {min-height:48px;border-radius:9px;font-size:15px;font-weight:600;}
+#erp77-pwa-preview .erp77-bottom {padding:8px 4px;}
+#erp77-pwa-preview .erp77-bottom button {min-height:52px;font-size:12px;}
+#erp77-pwa-preview .erp77-bottom button[aria-current=page] {background:transparent;font-weight:600;}
+#erp77-pwa-preview .erp77-bottom svg {width:23px;height:23px;}
+#erp77-pwa-preview .erp77-native-row {display:flex;gap:12px;width:100%;padding:17px 0;align-items:flex-start;text-align:left;border-bottom:1px solid var(--erp-line);background:var(--erp-surface);}
+#erp77-pwa-preview .erp77-native-name {display:flex;justify-content:space-between;gap:8px;font-size:15px;font-weight:600;align-items:center;}
+#erp77-pwa-preview .erp77-native-name svg {width:16px;height:16px;color:var(--erp-muted);}
+#erp77-pwa-preview .erp77-thumb {width:46px;height:46px;border-radius:11px;}
+#erp77-pwa-preview .erp77-native-state {display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0;}
+#erp77-pwa-preview .erp77-native-facts {display:flex;gap:12px;flex-wrap:wrap;font-size:14px;}
+#erp77-pwa-preview .erp77-badge {font-size:12px;padding:4px 8px;border-radius:6px;font-weight:600;}
+#erp77-pwa-preview .erp77-badge-red {color:light-dark(#c63f4a,#ff9aa2);background:light-dark(#fbeef0,#38212b);}
+#erp77-pwa-preview .erp77-badge-green {color:light-dark(#16866d,#79dcc0);background:light-dark(#edf7f4,#18352d);}
+#erp77-pwa-preview .erp77-native-product-list {margin:0 -20px;background:var(--erp-surface);}
+#erp77-pwa-preview .erp77-native-product-list .erp77-native-row {padding:17px 16px;}
+#erp77-pwa-preview .erp77-filter {min-height:48px;font-size:14px;padding:9px 14px;}
+#erp77-pwa-preview .erp77-filter[aria-pressed=true] {color:var(--erp-blue);background:var(--erp-soft);border-color:light-dark(#ceddfc,#4c688e);font-weight:600;}
+#erp77-pwa-preview .erp77-search {min-height:48px;border-radius:10px;margin-bottom:16px;}
+#erp77-pwa-preview .erp77-modal-title {font-size:18px;font-weight:600;flex:1;}
+#erp77-pwa-preview .erp77-form-fields {gap:12px;}
+#erp77-pwa-preview .erp77-form-label {font-size:14px;font-weight:500;color:var(--erp-text);margin-bottom:8px;}
+#erp77-pwa-preview .erp77-input {min-height:48px;border-radius:9px;padding:11px 14px;}
+#erp77-pwa-preview .erp77-quantity-actions {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+#erp77-pwa-preview .erp77-quantity-buttons {display:flex;gap:6px;}
+#erp77-pwa-preview .erp77-order-footer .erp77-total strong {font-size:18px;font-weight:600;}
+#erp77-pwa-preview .erp77-detail-labels {flex-direction:column;align-items:flex-start;gap:6px;}
+#erp77-pwa-preview .erp77-detail-labels>span:last-child {font-size:18px;font-weight:600;}
+#erp77-pwa-preview .erp77-native-more>* {margin-bottom:16px;}
+#erp77-pwa-preview .erp77-native-more h3 {font-size:18px;font-weight:600;margin:0 0 6px;}
+#erp77-pwa-preview .erp77-native-more .erp77-secondary {margin-top:14px;}
+#erp77-pwa-preview .erp77-native-more>.erp77-secondary {margin-top:0;}
+#erp77-pwa-preview .erp77-phone {position:relative;}
+#erp77-pwa-preview .erp77-confirm-backdrop {position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:light-dark(#17243c66,#00000088);z-index:5;}
+#erp77-pwa-preview .erp77-confirm-dialog {width:100%;background:var(--erp-surface);border-radius:18px;padding:22px;box-shadow:0 12px 40px light-dark(#17243c33,#00000055);}
+#erp77-pwa-preview .erp77-confirm-dialog h3 {font-size:20px;margin:0 0 12px;font-weight:600;}
+#erp77-pwa-preview .erp77-confirm-dialog p {font-size:14px;margin:0 0 16px;}
+#erp77-pwa-preview .erp77-confirm-dialog .erp77-primary {margin-top:10px;}
+@media(max-width:380px){#erp77-pwa-preview .erp77-native-columns,#erp77-pwa-preview .erp77-form-fields{grid-template-columns:1fr;}#erp77-pwa-preview .erp77-money{font-size:21px;}#erp77-pwa-preview .erp77-main{padding:16px 14px;}#erp77-pwa-preview .erp77-native-product-list{margin-left:-14px;margin-right:-14px;}#erp77-pwa-preview .erp77-search input{font-size:16px;}}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('erp77-pwa-preview');
+  const tabs = [['home','工作台','layout-dashboard'],['products','商品','box'],['inventory','库存','warehouse'],['orders','单据','history'],['more','更多','settings']];
+  const products = [
+    {name:'不锈钢保温杯',code:'SKU-000002',spec:'500mL · 银色',unit:'个',stock:8,threshold:20,price:59,cost:32,icon:'coffee'},
+    {name:'Type-C 数据线',code:'SKU-000004',spec:'1m · 白色',unit:'条',stock:0,threshold:15,price:25,cost:12,icon:'cable'},
+    {name:'A5 线装笔记本',code:'SKU-000003',spec:'80页 · 绿色',unit:'本',stock:128,threshold:20,price:18,cost:8,icon:'notebook'},
+    {name:'陶瓷马克杯',code:'SKU-000001',spec:'350mL · 米白',unit:'个',stock:64,threshold:10,price:29,cost:16,icon:'cup-soda'}
+  ];
+  const money = v => Number(v).toFixed(2);
+  const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+  const safe = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const saved = window.openai?.widgetState?.privateContent || {};
+  const states = new Map();
+  const design = {offline: typeof saved.offline === 'boolean' ? saved.offline : false};
+  const persist = () => { const snapshots={};for(const [key,s] of states) snapshots[key]={page:s.page,filter:s.filter};window.openai?.setWidgetState?.({modelContent:{offlinePreview:design.offline},privateContent:{offline:design.offline,screens:snapshots}})?.catch(()=>{}); };
+  const alertRows = () => products.slice(0,2).map(p=>`<button type="button" class="erp77-row cursor-interaction" data-action="inventory"><span class="erp77-thumb">${icon(p.icon)}</span><span class="erp77-row-body"><span class="erp77-row-name">${p.name}</span><span class="erp77-row-note" style="display:block">安全库存 ${p.threshold} ${p.unit}</span></span><span class="erp77-row-end"><span class="erp77-amount">${p.stock} <span class="erp77-muted">${p.unit}</span></span><span style="display:block"><span class="erp77-badge">${p.stock===0?'缺货':'库存偏低'}</span></span></span></button>`).join('');
+  const docsRows = () => `<button type="button" class="erp77-row cursor-interaction" data-action="document"><span class="erp77-thumb">${icon('arrow-up-from-line')}</span><span class="erp77-row-body"><span class="erp77-row-name">销售出库 · 恒远商贸</span><span class="erp77-row-note" style="display:block">14:32 · 2 种商品</span></span><span class="erp77-row-end"><span class="erp77-amount">¥ 620.00</span><span class="erp77-row-note" style="display:block">已完成</span></span></button><button type="button" class="erp77-row cursor-interaction" data-action="document"><span class="erp77-thumb">${icon('arrow-down-to-line')}</span><span class="erp77-row-body"><span class="erp77-row-name">采购入库 · 鑫达供应</span><span class="erp77-row-note" style="display:block">11:06 · 3 种商品</span></span><span class="erp77-row-end"><span class="erp77-amount">¥ 1,280.00</span><span class="erp77-row-note" style="display:block">已完成</span></span></button>`;
+  const nativeProductRow = p => `<button type="button" class="erp77-native-row cursor-interaction" data-product="${p.code}"><span class="erp77-thumb">${icon('box')}</span><span class="erp77-row-body"><span class="erp77-native-name">${p.name}${icon('chevron-right')}</span><span class="erp77-row-note" style="display:block">${p.code}</span><span class="erp77-row-note" style="display:block">${p.spec}</span><span class="erp77-native-state"><span class="erp77-muted">日用百货</span><span class="erp77-badge ${p.stock===0?'erp77-badge-red':p.stock>p.threshold?'erp77-badge-green':''}">${p.stock===0?'缺货':p.stock<=p.threshold?'库存偏低':'库存充足'}</span></span><span class="erp77-native-facts"><span>库存 ${p.stock} ${p.unit}</span><span>售价 ¥${money(p.price)}</span></span></span></button>`;
+  const secondary = (action,label,i='') => `<button type="button" class="erp77-secondary cursor-interaction" data-action="${action}">${i?icon(i):''}${label}</button>`;
+  function home() {
+    const stats=[['商品种类','4','box'],['库存成本',`¥${money(products.reduce((sum,p)=>sum+p.stock*p.cost,0))}`,'warehouse'],['今日采购','¥1,280.00','arrow-down-to-line'],['今日销售','¥3,860.00','arrow-up-from-line']];
+    return `<div class="erp77-page-title"><div><h2>工作台</h2><div class="erp77-row-note">七七商贸 · ${states.get('business')?.warehouse||'主仓库'}</div></div></div><div class="erp77-summary">${stats.map(([label,value,i])=>`<div class="erp77-card erp77-stat"><div class="erp77-card-heading"><span>${label}</span>${icon(i)}</div><div class="erp77-money">${value}</div></div>`).join('')}</div><section class="erp77-card erp77-native-section"><h3>快速操作</h3><button type="button" class="erp77-primary cursor-interaction" data-action="scanner">${icon('scan-line')}扫描商品条码</button><div class="erp77-native-columns">${secondary('purchase','采购入库','arrow-down-to-line')}${secondary('sale','销售出库','arrow-up-from-line')}</div></section><section class="erp77-card erp77-native-section"><div class="erp77-section-heading"><h3>库存预警</h3><span class="erp77-warning">2 件商品</span></div>${products.slice(0,2).map(nativeProductRow).join('')}</section><section class="erp77-card erp77-native-section"><h3>最近单据</h3>${docsRows()}${secondary('orders','查看全部单据')}</section>`;
+  }
+  function productList(s,inventory) {
+    let list = products.filter(p=>(s.filter==='all'||(s.filter==='low'?p.stock<=p.threshold:p.stock===0))&&(!s.search||`${p.name}${p.code}${p.spec}`.toLowerCase().includes(s.search.toLowerCase())));
+    const filters=inventory?[['all','全部库存'],['low','库存预警'],['empty','缺货']]:[['all','全部状态'],['active','已上架'],['inactive','已下架']];
+    if(!inventory){list=products.filter(p=>s.filter!=='inactive'&&(!s.search||`${p.name}${p.code}${p.spec}`.includes(s.search)));}
+    return `<div class="erp77-page-title"><div><h2>${inventory?'库存管理':'商品管理'}</h2><div class="erp77-row-note">共 4 种商品 · 筛选 ${list.length} 种</div></div>${inventory?'':`<button type="button" class="erp77-native-icon cursor-interaction" data-action="newproduct" aria-label="新增商品">${icon('plus')}</button>`}</div>${inventory?'':secondary('categories','管理分类')}<div class="erp77-search">${icon('search')}<input aria-label="搜索商品名称、条码或分类" placeholder="搜索商品名称、条码或分类" value="${safe(s.search)}" data-search></div><div class="erp77-filters">${filters.map(([f,l])=>`<button type="button" class="erp77-filter cursor-interaction" data-filter="${f}" aria-pressed="${s.filter===f}">${l}</button>`).join('')}</div>${inventory?'':'<div class="erp77-filters"><span class="erp77-filter" aria-pressed="true">全部分类</span></div>'}<div class="erp77-native-product-list">${list.length?list.map(nativeProductRow).join(''):'<div class="erp77-empty">未找到商品</div>'}</div>`;
+  }
+  function form(s) {
+    const sale = s.type==='sale';
+    return `${secondary('templates','选择单据模板')}<label class="erp77-form-label">${sale?'客户':'供应商'}</label><input class="erp77-input" aria-label="${sale?'客户':'供应商'}" data-partner value="${safe(s.partner)}" style="margin-bottom:16px"><button type="button" class="erp77-primary cursor-interaction" data-action="scanner" style="margin-bottom:16px">${icon('camera')}扫码添加商品</button>${secondary('add','搜索要添加的商品或条码','search')}${secondary('inactive','包含下架商品（清库存等）')}${[products[0],products[2]].map((p,i)=>`<div class="erp77-card erp77-native-section"><div class="erp77-native-name"><span>${p.name}</span><button type="button" class="erp77-native-icon cursor-interaction" data-action="remove-preview" aria-label="移除${p.name}">${icon('trash-2')}</button></div><div class="erp77-row-note">可用库存 ${p.stock} ${p.unit}</div><div class="erp77-form-fields"><label><span class="erp77-form-label">数量</span><input class="erp77-input" inputmode="decimal" aria-label="${p.name}数量" data-quantity="${i}" value="${s.quantities[i]}"></label><label><span class="erp77-form-label">单价</span><input class="erp77-input" inputmode="decimal" aria-label="${p.name}单价" data-price="${i}" value="${s.prices[i]}"></label></div><div class="erp77-quantity-actions"><span class="erp77-quantity-buttons"><button type="button" class="erp77-native-icon cursor-interaction" data-step="-1" data-line="${i}" aria-label="减少${p.name}数量">${icon('minus')}</button><button type="button" class="erp77-native-icon cursor-interaction" data-step="1" data-line="${i}" aria-label="增加${p.name}数量">${icon('plus')}</button></span><strong data-line-total="${i}">¥${money(Number(s.quantities[i])*Number(s.prices[i]))}</strong></div></div>`).join('')}<label class="erp77-form-label">备注（选填）</label><textarea class="erp77-input" aria-label="备注（选填）" rows="2"></textarea><div class="erp77-note" data-form-error role="alert"></div>`;
+  }
+  const total = s => s.quantities.reduce((sum,q,i)=>sum+Number(q)*Number(s.prices[i]),0);
+  function content(s,layout) {
+    if(s.page==='home') return home(layout);
+    if(s.page==='products'||s.page==='inventory') return productList(s,s.page==='inventory');
+    if(s.page==='form') return form(s);
+    if(s.page==='orders') return `<div class="erp77-page-title"><h2>操作记录</h2></div><div class="erp77-native-columns" style="margin-bottom:16px">${secondary('purchase','新建入库','arrow-down-to-line')}<button type="button" class="erp77-primary cursor-interaction" data-action="sale">${icon('arrow-up-from-line')}新建出库</button></div><div class="erp77-search">${icon('search')}<input aria-label="搜索单据" placeholder="搜索单据号、往来单位或商品"></div><div class="erp77-filters"><span class="erp77-filter" aria-pressed="true">全部单据</span><span class="erp77-filter">采购入库</span><span class="erp77-filter">销售出库</span></div><div class="erp77-filters"><span class="erp77-filter" aria-pressed="true">全部时间</span><span class="erp77-filter">近 7 天</span><span class="erp77-filter">近 30 天</span></div><div class="erp77-muted" style="margin-bottom:16px">示例 · 2 张单据 · 合计 ¥1,900.00</div><div class="erp77-card erp77-documents">${docsRows()}</div>`;
+    if(s.page==='more') return `<div class="erp77-page-title"><h2>工作空间</h2></div><div class="erp77-native-more"><div class="erp77-card"><div class="erp77-brand">${icon('shield-check')}<div><h3>管理员</h3><div class="erp77-muted">管理员账号</div></div></div></div><div class="erp77-card"><h3>七七商贸</h3><div class="erp77-muted">${s.warehouse}</div>${secondary('settings','商户与仓库设置','settings')}</div>${secondary('password','修改密码')}${secondary('business','业务管理')}<div class="erp77-card"><label class="erp77-form-label">服务器地址</label><div class="erp77-muted">当前站点 · 同源连接</div></div>${secondary('logout','退出登录','log-out')}<div class="erp77-card"><h3>网页版应用</h3>${secondary('install','安装到桌面','download')}${secondary('update','检查更新','refresh-cw')}${secondary('drafts','本地草稿','file-pen-line')}</div><div class="erp77-muted" style="text-align:center">77 ERP · 数据保存在服务器</div></div>`;
+    if(s.page==='product') { const p=products.find(p=>p.code===s.product)||products[0];return `<div class="erp77-page-title"><h2>${p.name}</h2></div><div class="erp77-card"><div class="erp77-row"><span class="erp77-thumb">${icon(p.icon)}</span><span><div class="erp77-row-name">${p.spec}</div><div class="erp77-row-note">${p.code}</div></span></div>${[['当前仓库',s.warehouse],['现有库存',`${p.stock} ${p.unit}`],['安全库存',`${p.threshold} ${p.unit}`],['销售参考价',`¥ ${money(p.price)}`]].map(([l,v])=>`<div class="erp77-detail-labels"><span class="erp77-muted">${l}</span><span>${v}</span></div>`).join('')}</div><button type="button" class="erp77-primary cursor-interaction" data-action="purchase" style="margin-top:18px">采购补货</button>`; }
+    if(s.page==='review') return form(s);
+    if(s.page==='success') return `<div class="erp77-success">${icon('circle-check')}<h3>单据完成状态</h3><div class="erp77-muted">设计预览 · 未生成实际单据</div></div><div class="erp77-card">${[['仓库',s.warehouse],['往来单位',s.partner],['合计',`¥ ${money(total(s))}`]].map(([l,v])=>`<div class="erp77-detail-labels"><span class="erp77-muted">${l}</span><span>${safe(v)}</span></div>`).join('')}</div><button type="button" class="erp77-primary cursor-interaction" data-action="home" style="margin-top:18px">返回工作台</button>`;
+    if(s.page==='scanner') return `<div class="erp77-page-title"><h2>扫码查询</h2></div><div class="erp77-card"><div class="erp77-success">${icon('camera')}<h3>相机取景区域</h3><div class="erp77-muted">设计预览 · 相机未开启</div></div></div><div class="erp77-note">将商品条码或二维码置于取景框内</div><button type="button" class="erp77-primary cursor-interaction" data-action="products" style="margin-top:18px">改用商品搜索</button>`;
+    if(s.page==='document') return `<div class="erp77-page-title"><h2>销售出库详情</h2><span class="erp77-badge">已完成</span></div><div class="erp77-card">${[['单据号','CK20261014000006'],['仓库',s.warehouse],['客户','恒远商贸'],['开单人','管理员'],['时间','10月14日 14:32'],['成交金额','¥ 620.00']].map(([l,v])=>`<div class="erp77-detail-labels"><span class="erp77-muted">${l}</span><span>${v}</span></div>`).join('')}</div><div class="erp77-note">历史单据保留成交价格与商品名称快照。</div>`;
+    return `<div class="erp77-page-title"><h2>${safe(s.detailTitle||'业务功能')}</h2></div><div class="erp77-card"><div class="erp77-empty">此设计稿展示入口位置</div></div><button type="button" class="erp77-primary cursor-interaction" data-action="home" style="margin-top:18px">返回工作台</button>`;
+  }
+  function render(phone,s) {
+    const editing=['form','review'].includes(s.page), detail=!tabs.some(t=>t[0]===s.page);
+    const title=editing?(s.type==='sale'?'销售出库':'采购入库'):({product:'商品详情',scanner:'扫码工作台',document:'单据详情',success:'单据已保存'})[s.page]||s.detailTitle||'业务功能';
+    const header=detail?`<button type="button" class="erp77-native-icon cursor-interaction" aria-label="返回" data-action="back">${icon('arrow-left')}</button><div class="erp77-modal-title">${safe(title)}</div><button type="button" class="erp77-native-icon cursor-interaction" aria-label="关闭" data-action="back">${icon('x')}</button>`:`<div class="erp77-native-wordmark">77 <span>ERP</span></div><button type="button" class="erp77-warehouse cursor-interaction" data-action="warehouse" aria-label="切换仓库">${s.warehouse} ▾</button><button type="button" class="erp77-native-icon cursor-interaction" data-action="scanner" aria-label="打开扫码工作台">${icon('scan-line')}</button>`;
+    const confirmation=s.page==='review'?`<div class="erp77-confirm-backdrop"><div class="erp77-confirm-dialog" role="dialog" aria-modal="true" aria-label="确认${s.type==='sale'?'销售出库':'采购入库'}"><h3>确认${s.type==='sale'?'销售出库':'采购入库'}？</h3><p>2 种商品，合计 ¥${money(total(s))}。确认后立即更新库存。</p><p class="erp77-muted">${s.warehouse} · ${safe(s.partner)}</p>${secondary('back','继续编辑')}<button type="button" class="erp77-primary cursor-interaction" data-action="confirm" ${design.offline?'disabled':''}>${design.offline?'联网后确认':'确认提交'}</button><div class="erp77-note">设计预览 · 不调整实际库存</div></div></div>`:'';
+    phone.innerHTML=`<div class="erp77-status"><span>9:41</span><span class="erp77-status-icons">${icon('signal')}${icon('wifi')}${icon('battery-full')}</span></div><header class="erp77-header" ${s.page==='review'?'inert':''}>${header}</header>${design.offline?`<div class="erp77-network" role="status">${icon('wifi-off')}离线预览 · 可编辑草稿，联网后确认</div>`:''}<main class="erp77-main" aria-live="polite" ${s.page==='review'?'inert':''}>${content(s,phone.dataset.layout)}</main>${editing?`<div class="erp77-order-footer" ${s.page==='review'?'inert':''}><div class="erp77-total"><span class="erp77-muted">2 种商品</span><strong data-total>¥${money(total(s))}</strong></div><button type="button" class="erp77-primary cursor-interaction" data-action="review">${icon('check')}${s.type==='sale'?'确认出库':'确认入库'}</button></div>`:detail?'':`<nav class="erp77-bottom" aria-label="主导航">${tabs.map(([id,label,i])=>`<button type="button" class="cursor-interaction" data-action="${id}" ${s.page===id?'aria-current="page"':''}>${icon(i)}${label}</button>`).join('')}</nav>`}<div class="erp77-footer"><div class="erp77-homebar"></div></div>${confirmation}`;
+    if(globalThis.lucide) lucide.createIcons({attrs:{width:18,height:18}});
+    if(s.page==='review')phone.querySelector('[role="dialog"] button').focus();
+  }
+  function renderAll(){for(const phone of root.querySelectorAll('.erp77-phone'))render(phone,states.get(phone.dataset.layout));}
+  root.querySelectorAll('.erp77-phone').forEach(phone=>{
+    const key=phone.dataset.layout, prior=saved.screens?.[key];
+    const s={page:tabs.some(t=>t[0]===prior?.page)?prior.page:'home',filter:['all','low','empty','active','inactive'].includes(prior?.filter)?prior.filter:'all',search:'',warehouse:'主仓库',type:'sale',partner:'恒远商贸',quantities:[2,10],prices:[59,18],product:products[0].code,previous:'home'};
+    states.set(key,s);render(phone,s);
+    phone.addEventListener('click',event=>{
+      const button=event.target.closest('button');if(!button||button.disabled)return;
+      if(button.dataset.step){const i=Number(button.dataset.line);s.quantities[i]=Math.max(0.000001,Math.round((Number(s.quantities[i])+Number(button.dataset.step))*1000000)/1000000);render(phone,s);return;}
+      if(button.dataset.filter){s.filter=button.dataset.filter;render(phone,s);persist();return;}
+      if(button.dataset.product){s.previous=s.page;s.product=button.dataset.product;s.page='product';render(phone,s);persist();return;}
+      const a=button.dataset.action;if(!a)return;
+      if(a==='offline'){design.offline=!design.offline;renderAll();persist();return;}
+      if(a==='warehouse'){s.warehouse=s.warehouse==='主仓库'?'门店仓':'主仓库';render(phone,s);persist();return;}
+      if(a==='sale'||a==='purchase'){s.previous=s.page;s.page='form';s.type=a;s.partner=a==='sale'?'恒远商贸':'鑫达供应';s.prices=a==='sale'?[59,18]:[32,8];}
+      else if(a==='review'){
+        const error=!s.partner.trim()?'请填写往来单位。':s.quantities.some(q=>!/^\d+(\.\d{1,6})?$/.test(String(q))||Number(q)<=0)?'数量必须为正数，最多 6 位小数。':s.prices.some(p=>!/^\d+(\.\d{1,2})?$/.test(String(p)))?'单价最多两位小数。':s.type==='sale'&&(Number(s.quantities[0])>8||Number(s.quantities[1])>128)?'出库数量超过当前库存，请修改。':'';
+        if(error){phone.querySelector('[data-form-error]').textContent=error;return;}s.page='review';
+      } else if(a==='confirm'){if(design.offline)return;s.page='success';}
+      else if(a==='back')s.page=s.page==='review'?'form':s.previous;
+      else if(a==='inventory'){s.page='inventory';s.filter='all';s.search='';}
+      else if(tabs.some(t=>t[0]===a)){s.page=a;s.previous=a;if(a==='products'){s.filter='all';s.search='';}}
+      else if(a==='scanner'||a==='document'){s.previous=s.page;s.page=a;}
+      else if(a==='add'){s.page='detail';s.previous='form';s.detailTitle='添加商品 · 搜索或扫码';}
+      else {s.previous=s.page;s.page='detail';s.detailTitle=({stocktake:'库存盘点',newproduct:'新增商品',categories:'管理分类',business:'业务管理',password:'修改密码',logout:'退出登录',update:'检查更新',drafts:'本地草稿',contacts:'往来单位',templates:'单据模板',finance:'财务报表',settings:'商户与仓库设置',install:'安装到桌面'})[a]||'业务功能';}
+      render(phone,s);persist();
+    });
+    phone.addEventListener('input',event=>{
+      const el=event.target;
+      if(el.hasAttribute('data-search')){const start=el.selectionStart,end=el.selectionEnd;s.search=el.value;render(phone,s);const next=phone.querySelector('[data-search]');next.focus();next.setSelectionRange(start,end);}
+      if(el.hasAttribute('data-partner'))s.partner=el.value;
+      if(el.hasAttribute('data-quantity'))s.quantities[Number(el.dataset.quantity)]=el.value;
+      if(el.hasAttribute('data-price'))s.prices[Number(el.dataset.price)]=el.value;
+      const sum=phone.querySelector('[data-total]');if(sum)sum.textContent=`¥ ${money(total(s))}`;
+      phone.querySelectorAll('[data-line-total]').forEach(line=>{const i=Number(line.dataset.lineTotal);line.textContent=`¥ ${money(Number(s.quantities[i])*Number(s.prices[i]))}`;});
+    });
+  });
+  if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>{renderAll();persist();}});tweak.addToggle(design,'offline',{label:'离线状态预览'});}
+  window.addEventListener('openai:set_globals',event=>{const incoming=event.detail?.globals?.widgetState?.privateContent;if(!incoming)return;if(typeof incoming.offline==='boolean')design.offline=incoming.offline;for(const [key,s] of states){const next=incoming.screens?.[key];if(tabs.some(t=>t[0]===next?.page))s.page=next.page;if(['all','low','empty','active','inactive'].includes(next?.filter))s.filter=next.filter;}renderAll();});
+})();
+</script>

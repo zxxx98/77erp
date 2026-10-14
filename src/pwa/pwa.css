@@ -1,0 +1,5 @@
+.pwa-notice { position:fixed;right:20px;bottom:20px;z-index:10000;max-width:min(440px,calc(100vw - 32px));padding:12px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#17243c;color:#fff;border-radius:12px;box-shadow:0 8px 24px #17243c26;font-size:14px; }
+.pwa-notice>span {flex:1;min-width:140px;}
+.pwa-notice button {display:flex;align-items:center;gap:6px;background:#fff;color:#17243c;border:0;border-radius:8px;min-height:44px;padding:8px 12px;}
+.pwa-notice .pwa-notice-close {background:transparent;color:#fff;padding:8px;min-width:44px;}
+.mobile-device .pwa-notice {right:12px;bottom:calc(80px + env(safe-area-inset-bottom));font-size:14px;}

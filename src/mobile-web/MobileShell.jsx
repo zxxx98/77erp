@@ -1,0 +1,228 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, FilePenLine, History, LayoutDashboard, LogOut, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
+import { usePermissions } from '../permissions.jsx';
+import { flattenCategories, categoryBranch } from '../catalog.js';
+import { api } from '../api.js';
+import { orderLabel, businessType, reportOrders } from '../Operations.jsx';
+import { OfflineNotice, PwaActions, usePwa } from '../pwa/Pwa.jsx';
+import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
+import { download } from '../data-files.js';
+import { ProductImage } from '../ProductImage.jsx';
+import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge, matchesProduct } from './ui.jsx';
+import './mobile.css';
+
+const tabs = [['overview', '工作台', LayoutDashboard], ['products', '商品', Box], ['inventory', '库存', Warehouse], ['history', '单据', History], ['more', '更多', Settings]];
+
+export function MobileShell({ user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner }) {
+  const { online } = usePwa();
+  const [updated, setUpdated] = useState(null);
+  const dataRef = useRef(data);
+  useEffect(() => { if (dataRef.current !== data) { setUpdated(new Date()); dataRef.current = data; } }, [data]);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let baseline = viewport.height;
+    const adapt = () => {
+      const editing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
+      if (!editing && viewport.scale === 1) baseline = viewport.height;
+      const keyboard = editing && viewport.scale === 1 && baseline - viewport.height > 150;
+      document.documentElement.classList.toggle('mw-keyboard', keyboard);
+      document.documentElement.style.setProperty('--mw-viewport-height', `${viewport.height}px`);
+      document.documentElement.style.setProperty('--mw-viewport-top', `${viewport.offsetTop}px`);
+    };
+    const rotate = () => { baseline = viewport.height; adapt(); };
+    viewport.addEventListener('resize', adapt);
+    viewport.addEventListener('scroll', adapt);
+    window.addEventListener('orientationchange', rotate);
+    document.addEventListener('focusin', adapt);
+    document.addEventListener('focusout', adapt);
+    adapt();
+    return () => {
+      viewport.removeEventListener('resize', adapt); viewport.removeEventListener('scroll', adapt);
+      window.removeEventListener('orientationchange', rotate);
+      document.removeEventListener('focusin', adapt); document.removeEventListener('focusout', adapt);
+      document.documentElement.classList.remove('mw-keyboard');
+    };
+  }, []);
+  const ready = !!data.warehouse_id;
+  return <div className="mw-shell">
+    <header className="mw-header" inert={switching}>
+      {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label="返回工作台" onClick={() => navigate('overview')} /><strong className="mw-modal-title">扫码工作台</strong></> : <>
+        <strong className="mw-wordmark">77 <span>ERP</span></strong>
+        <button type="button" className="mw-warehouse" disabled={!ready || loading || switching} aria-label="切换仓库" onClick={() => openModal({ kind: 'warehousePicker' })}>{data.settings.warehouse_name} ▾</button>
+        <MobileIcon icon={ScanLine} label="打开扫码工作台" onClick={() => navigate('scanner')} disabled={!ready} />
+      </>}
+    </header>
+    <OfflineNotice />
+    <main className="mw-content" inert={switching}>
+      {loading && !ready ? <div className="mw-empty" role="status"><RefreshCw className="spin" /><p>正在读取库存…</p></div> : <>
+        {loadError && <div className="mw-stack"><Notice>{loadError}{ready ? ' 当前显示上次读取的数据。' : ''}</Notice><Button icon={RefreshCw} busy={refreshing} onClick={reload}>重新同步</Button></div>}
+        {!ready && !loadError && <Empty title="等待连接工作空间" />}
+        {ready && <>
+          {page === 'overview' && <Dashboard data={data} openOrder={openOrder} onScan={() => navigate('scanner')} showProduct={showProduct} showOrder={showOrder} history={() => navigate('history')} />}
+          {['products', 'inventory'].includes(page) && <Products key={`${data.warehouse_id}:${page}`} data={data} inventory={page === 'inventory'} showProduct={showProduct} openModal={openModal} />}
+          {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} />}
+          {page === 'more' && <More user={user} data={data} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
+          {page === 'scanner' && renderScanner()}
+          <div className="mw-refresh"><span className="mw-muted">{updated ? `读取于 ${updated.toLocaleTimeString('zh-CN', { hour12: false })}` : '数据保存在服务器'}</span><button type="button" onClick={reload} disabled={refreshing || !online}>{refreshing ? <RefreshCw size={15} className="spin" /> : <RefreshCw size={15} />}刷新数据</button></div>
+        </>}
+      </>}
+    </main>
+    {page !== 'scanner' && <nav className="mw-tabs" aria-label="移动端主导航" inert={switching}>
+      {tabs.map(([id, label, Icon]) => <button type="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></button>)}
+    </nav>}
+  </div>;
+}
+
+function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history }) {
+  const { costs } = usePermissions();
+  const today = reportOrders(data.orders).filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
+  const low = data.products.filter(p => p.stock <= p.threshold);
+  const stats = [
+    ['商品种类', count(data.products.length), Box],
+    ['库存成本', costs ? money(data.products.reduce((total, p) => total + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)), 0) / 100) : '—', Warehouse],
+    ['今日采购', money(today.filter(o => o.type === 'in').reduce((sum, o) => sum + o.total, 0)), ArrowDownToLine],
+    ['今日销售', money(today.filter(o => o.type === 'out').reduce((sum, o) => sum + o.total, 0)), ArrowUpFromLine],
+  ];
+  return <div className="mw-stack">
+    <div><h1>工作台</h1><p className="mw-muted">{data.settings.business_name} · {data.settings.warehouse_name}</p></div>
+    <div className="mw-stats">{stats.map(([label, value, Icon]) => <section className="mw-stat" key={label}><div><span className="mw-muted">{label}</span><Icon size={18} /></div><strong>{value}</strong></section>)}</div>
+    <section className="mw-card mw-stack"><h2>快速操作</h2><Button primary icon={ScanLine} onClick={onScan}>扫描商品条码</Button><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>采购入库</Button><Button permission="sale" icon={ArrowUpFromLine} onClick={() => openOrder('out')}>销售出库</Button></div></section>
+    <section className="mw-card mw-stack"><div className="mw-between"><h2>库存预警</h2><span className="mw-warning">{low.length} 件商品</span></div>{low.length ? low.slice(0, 5).map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">所有商品库存充足。</p>}</section>
+    <section className="mw-card mw-stack"><h2>最近单据</h2>{data.orders.slice(0, 3).map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{!data.orders.length && <p className="mw-muted">暂无单据，创建第一张入库单开始记录库存。</p>}<Button onClick={history}>查看全部单据</Button></section>
+  </div>;
+}
+
+function Products({ data, inventory, showProduct, openModal }) {
+  const { can, manage } = usePermissions();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('all');
+  const [filter, setFilter] = useState('all');
+  const [limit, setLimit] = useState(30);
+  const categories = flattenCategories(data.categories || []);
+  const branch = categoryBranch(data.categories || [], Number(category));
+  const filtered = data.products.filter(p => matchesProduct(p, query) &&
+    (category === 'all' || branch.has(p.category_id)) &&
+    (inventory ? filter === 'all' || (filter === 'empty' ? p.stock === 0 : p.stock <= p.threshold) : filter === 'all' || (filter === 'active' ? p.active !== 0 : p.active === 0)));
+  useEffect(() => setLimit(30), [query, category, filter]);
+  useEffect(() => { if (category !== 'all' && !categories.some(c => String(c.id) === category)) setCategory('all'); }, [data.categories, category]);
+  return <div className="mw-stack">
+    <div className="mw-between"><div><h1>{inventory ? '库存管理' : '商品管理'}</h1><p className="mw-muted">共 {data.products.length} 种商品 · 筛选 {filtered.length} 种</p></div>{!inventory && can('products') && <MobileIcon icon={Plus} label="新增商品" onClick={() => openModal({ kind: 'product' })} />}</div>
+    {!inventory && manage('products') && <Button onClick={() => openModal({ kind: 'categories' })}>管理分类</Button>}
+    <SearchField value={query} onChange={setQuery} />
+    <Chips label={inventory ? '库存筛选' : '上架状态'} value={filter} onChange={setFilter} options={inventory ? [['all', '全部库存'], ['low', '库存预警'], ['empty', '缺货']] : [['all', '全部状态'], ['active', '已上架'], ['inactive', '已下架']]} />
+    {!inventory && <label className="mw-field"><span>商品分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>}
+    <div className="mw-product-list">{filtered.slice(0, limit).map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />)}</div>
+    {!filtered.length && <Empty title="未找到商品">尝试调整筛选条件，或新增商品档案。</Empty>}
+    {filtered.length > limit && <Button onClick={() => setLimit(value => value + 30)}>加载更多商品</Button>}
+  </div>;
+}
+
+function OrderSummary({ order, onOpen }) {
+  return <button type="button" className="mw-order-summary" onClick={() => onOpen(order)}>
+    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{money(order.total)}</strong>
+  </button>;
+}
+
+function Orders({ data, initial, openOrder, showOrder }) {
+  const { can } = usePermissions();
+  const { online } = usePwa();
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState(initial);
+  const [period, setPeriod] = useState('all');
+  const [limit, setLimit] = useState(30);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState('');
+  const visible = data.orders.filter(o => (type === 'all' || businessType(o) === type) && (period === 'all' || Date.now() - new Date(o.created_at).getTime() <= Number(period) * 86400000) && `${o.number} ${o.partner} ${o.items.map(i => i.name).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()));
+  useEffect(() => setLimit(30), [query, type, period]);
+  const exportOrders = async () => {
+    if (exporting) return;
+    setExporting(true); setError('');
+    try {
+      const rows = await api('/orders/export');
+      const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+      const csv = '\uFEFF' + [['单据号', '类型', '往来单位', '时间', '金额'], ...rows.map(o => [o.number, orderLabel(o), o.partner, o.created_at, Number(o.total).toFixed(2)])].map(row => row.map(cell).join(',')).join('\r\n');
+      await download(csv, '77erp-orders.csv', 'text/csv;charset=utf-8');
+    } catch (e) { setError(e.message); }
+    finally { setExporting(false); }
+  };
+  return <div className="mw-stack">
+    <h1>操作记录</h1><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>新建入库</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>新建出库</Button></div>
+    <SearchField value={query} onChange={setQuery} label="搜索单据号、往来单位或商品" />
+    <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '采购入库'], ['out', '销售出库']] } />
+    <Chips label="单据时间" value={period} onChange={setPeriod} options={ [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天']] } />
+    <p className="mw-muted">共 {visible.length} 张单据 · 合计 {money(visible.reduce((sum, o) => sum + o.total, 0))}</p>
+    <Notice>{error}</Notice>
+    {visible.slice(0, limit).map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}
+    {!visible.length && <Empty title="暂无单据">调整筛选条件，或创建第一张单据。</Empty>}
+    {visible.length > limit && <Button onClick={() => setLimit(value => value + 30)}>加载更多单据</Button>}
+    {can('data_io') && <Button busy={exporting} disabled={!online} onClick={exportOrders}>导出单据</Button>}
+  </div>;
+}
+
+function More({ user, data, openModal, loggingOut, logout }) {
+  const { manage } = usePermissions();
+  return <div className="mw-stack"><h1>工作空间</h1>
+    <section className="mw-card"><div className="mw-account"><ShieldCheck size={30} /><div><h2>{user.username}</h2><p className="mw-muted">{user.role === 'admin' ? '管理员账号' : '员工账号'}</p></div></div></section>
+    <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>商户与仓库设置</Button>}</section>
+    <Button onClick={() => openModal({ kind: 'account' })}>修改密码</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>业务管理</Button>
+    {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>出入库二维码</Button>}
+    <Button icon={FilePenLine} onClick={() => openModal({ kind: 'drafts' })}>本地草稿</Button>
+    <section className="mw-card"><p className="mw-field-label">服务器地址</p><p className="mw-muted mw-break">{location.origin}</p></section>
+    <Button danger icon={LogOut} busy={loggingOut} onClick={() => { if (window.confirm('退出登录？本账号的本地草稿将清除，下次打开需要重新登录。')) logout(); }}>退出登录</Button>
+    <PwaActions /><p className="mw-muted mw-center">77 ERP · 数据保存在服务器</p>
+  </div>;
+}
+
+export function WarehousePicker({ data, switchWarehouse, onClose, Modal }) {
+  const [query, setQuery] = useState('');
+  return <Modal title="切换仓库" onClose={onClose}><div className="form-body mw-stack"><SearchField label="搜索仓库" value={query} onChange={setQuery} />{data.warehouses.filter(w => w.name.toLowerCase().includes(query.toLowerCase())).map(w => <Button key={w.id} primary={w.id === data.warehouse_id} onClick={async () => { onClose(); await switchWarehouse(w.id); }}>{w.name}{w.id === data.warehouse_id ? ' · 当前仓库' : ''}</Button>)}</div></Modal>;
+}
+
+export function DraftList({ data, userId, onOpen, onClose, Modal }) {
+  const [drafts, setDrafts] = useState(null);
+  const [error, setError] = useState('');
+  const { can } = usePermissions();
+  const scope = draftScope(userId, data.instance_id, data.warehouse_id);
+  const load = async () => { try { setDrafts(await listDrafts(scope)); } catch (e) { setError(e.message); } };
+  useEffect(() => { load(); }, [userId, data.warehouse_id, data.instance_id]);
+  return <Modal title="本地草稿" subtitle={data.settings.warehouse_name} onClose={onClose}><div className="form-body mw-stack"><p className="mw-muted">草稿仅保存在当前浏览器，普通草稿保留 7 天；提交结果待确认的草稿保留到核对完成。</p><Notice>{error}</Notice>
+    {!drafts && !error && <p>正在读取草稿…</p>}{drafts?.length === 0 && <Empty title="暂无草稿">编辑入出库单据时自动保存。</Empty>}
+    {drafts?.map(draft => <section key={draft.id} className="mw-card mw-stack"><h2>{draft.type === 'in' ? '采购入库' : '销售出库'}{draft.pending ? ' · 结果待确认' : ''}</h2><p>{draft.partner || '未填写往来单位'}</p><p className="mw-muted">{draft.items.length} 种商品 · {dateTime(draft.updatedAt)}</p><Button primary disabled={!can(draft.type === 'in' ? 'purchase' : 'sale')} onClick={() => onOpen(draft)}>继续{draft.pending ? '核对' : '编辑'}</Button>{!draft.pending && <Button danger onClick={async () => { if (!window.confirm('删除这份本地草稿？')) return; try { await removeDraft(scope, draft.id); await load(); } catch (e) { setError(e.message); } }}>删除草稿</Button>}</section>)}
+  </div></Modal>;
+}
+
+export function MobileProductDetail({ product, data, Modal, openOrder, openModal, onClose, onSaved }) {
+  const { can, manage, costs } = usePermissions();
+  const { online } = usePwa();
+  const [others, setOthers] = useState(null);
+  const [error, setError] = useState('');
+  const [otherError, setOtherError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    api(`/products/${product.id}/other-warehouses`).then(result => { if (alive) setOthers(result.warehouses); }).catch(e => { if (alive) setOtherError(e.message); });
+    return () => { alive = false; };
+  }, [product.id]);
+  const lifecycle = async (remove) => {
+    if (lock.current) return;
+    const active = product.active === 0 ? 1 : 0;
+    if (!window.confirm(remove ? `确定删除「${product.name}」？仅允许删除库存为零且没有业务关联的商品，删除无法恢复。` : `确定${active ? '上架' : '下架'}「${product.name}」？仅影响当前仓库，库存和历史记录保留。`)) return;
+    lock.current = true; setBusy(true); setError('');
+    try { await api(`/products/${product.id}${remove ? '' : '/status'}`, { method: remove ? 'DELETE' : 'POST', body: remove ? {} : { active } }); await onSaved(remove ? '商品已删除' : active ? '商品已上架' : '商品已下架'); }
+    catch (e) { setError(e.message); }
+    finally { lock.current = false; setBusy(false); }
+  };
+  return <Modal title="商品详情" onClose={busy ? () => {} : onClose}><div className="form-body mw-stack">
+    <Notice>{error}</Notice><section className="mw-card mw-stack"><h2>{product.name}</h2><p className="mw-muted">{product.barcode}</p>{product.image && <ProductImage src={product.image} alt={product.name} className="mw-detail-image" />}<StockBadge product={product} />
+      { [['上架状态', product.active === 0 ? '已下架' : '已上架'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
+    <section className="mw-card mw-stack"><DetailRow label="采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="销售价">{money(product.price)}</DetailRow></section>
+    <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted">读取中…</p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一商品</p>}</section>
+    <Button onClick={() => openModal({ kind: 'barcode', product })}>商品条码</Button>
+    {can('products') && <Button disabled={busy} onClick={() => openModal({ kind: 'product', product })}>编辑商品</Button>}
+    {manage('business') && <Button disabled={busy} onClick={() => openModal({ kind: 'stockQr', product })}>出入库二维码</Button>}
+    {can('stocktake') && <Button disabled={busy || !online || product.stock <= 0} onClick={() => openModal({ kind: 'reduce', product })}>减少库存（报损）</Button>}
+    {manage('products') && <><Button disabled={busy || !online} onClick={() => lifecycle(false)}>{product.active === 0 ? '上架商品' : '下架商品'}</Button><Button danger disabled={busy || !online} onClick={() => lifecycle(true)}>删除商品</Button></>}
+  </div><div className="modal-footer mw-columns"><Button permission="purchase" disabled={busy} onClick={() => openOrder('in', product)}>采购入库</Button><Button primary permission="sale" disabled={busy || product.stock <= 0} onClick={() => openOrder('out', product)}>销售出库</Button></div></Modal>;
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Boxes, Eye, EyeOff, LoaderCircle, LockKeyhole, PackageCheck, ShieldCheck, TriangleAlert, UserRound, Warehouse } from "lucide-react";
 import { api } from "./api.js";
 import "./auth.css";
+import { clearUserDrafts } from './pwa/drafts.js';
 
 export function AuthGate({ children }) {
   const [state, setState] = useState(null);
@@ -12,7 +13,7 @@ export function AuthGate({ children }) {
     try {
       setState(await api("/auth/status"));
     } catch (e) {
-      setError(e.message);
+      setError(navigator.onLine === false ? '当前离线，请联网后登录。' : e.message);
     }
   };
   useEffect(() => {
@@ -22,12 +23,17 @@ export function AuthGate({ children }) {
       setNotice("登录已失效，请重新登录。");
     };
     window.addEventListener("erp:unauthorized", unauthorized);
-    return () => window.removeEventListener("erp:unauthorized", unauthorized);
+    window.addEventListener('online', refresh);
+    return () => { window.removeEventListener("erp:unauthorized", unauthorized); window.removeEventListener('online', refresh); };
   }, []);
   const logout = async () => {
     await api("/auth/logout", { method: "POST" });
+    window.dispatchEvent(new Event('erp:logout'));
+    let cleanupNotice = '';
+    try { await clearUserDrafts(state.id); }
+    catch { cleanupNotice = '已退出登录，本地草稿清理失败，请检查浏览器存储设置。'; }
     setState({ initialized: true, authenticated: false });
-    setNotice("");
+    setNotice(cleanupNotice);
   };
   if (!state) {
     return (

@@ -2018,6 +2018,7 @@ table {
 }
 .inventory-stats > div {
   display: flex;
+  min-width: 0;
   gap: 16px;
   align-items: center;
   padding: 0 22px;
@@ -2025,6 +2026,9 @@ table {
 }
 .inventory-stats > div:last-child {
   border: 0;
+}
+.inventory-stats > div > span:last-child {
+  min-width: 0;
 }
 .inventory-stats .metric-icon {
   width: 43px;
@@ -2043,7 +2047,8 @@ table {
   font-weight: 600;
   color: #536b8e;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .inventory-stats em {
   font-size: 11px;

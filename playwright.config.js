@@ -6,6 +6,9 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:3199",
     viewport: { width: 1440, height: 1000 },
+    // Page routing cannot intercept requests handled by a Service Worker.
+    // Dedicated PWA coverage explicitly enables workers in its own context.
+    serviceWorkers: 'block',
     trace: "retain-on-failure",
   },
   webServer: {

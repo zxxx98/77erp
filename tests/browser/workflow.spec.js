@@ -170,11 +170,12 @@ test("camera failure has a useful fallback, mobile pages have no document overfl
   ]) {
     await page.goto("/#" + id);
     await expect(page.locator(".page-heading h1")).toContainText(title);
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
+    const bounds = await page.evaluate(() => ({
+      width: innerWidth,
+      scroll: document.documentElement.scrollWidth,
+      containers: [...document.querySelectorAll('main, .main-shell, .table-scroll, .inventory-toolbar, .pwa-notice')].map(node => ({ name: node.className, width: node.getBoundingClientRect().width, right: node.getBoundingClientRect().right })),
+    }));
+    expect(bounds.scroll, `${id}: ${JSON.stringify(bounds)}`).toBeLessThanOrEqual(bounds.width);
   }
   await page.getByRole("link", { name: "扫码工作台", exact: true }).click();
   await expect(
