@@ -1,0 +1,164 @@
+import { test, expect, devices } from '@playwright/test';
+import { qrSymbol } from '../../src/product-code.js';
+
+test.beforeAll(async ({ request }) => {
+  const response = await request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
+  expect([201, 409]).toContain(response.status());
+});
+
+async function mobile(browser) {
+  const context = await browser.newContext({ ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
+  expect((await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
+  const page = await context.newPage();
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
+  return { context, page };
+}
+
+async function mockCamera(page) {
+  await page.evaluate(() => {
+    window.cameraStreams = [];
+    window.makeCameraStream = () => {
+      const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 800;
+      const drawing = canvas.getContext('2d');
+      let symbol;
+      const paint = () => {
+        drawing.fillStyle = '#333e48'; drawing.fillRect(0, 0, 640, 800);
+        if (symbol) {
+          drawing.save(); drawing.translate(110, 190); drawing.scale(Math.floor(420 / symbol.size), Math.floor(420 / symbol.size));
+          drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, symbol.size, symbol.size);
+          drawing.fillStyle = '#000'; drawing.fill(new Path2D(symbol.path)); drawing.restore();
+        }
+      };
+      window.paintCameraCode = next => { symbol = next; paint(); };
+      paint();
+      const timer = setInterval(paint, 50);
+      const stream = canvas.captureStream(20);
+      const track = stream.getVideoTracks()[0];
+      const stop = track.stop.bind(track);
+      track.stop = () => { clearInterval(timer); stop(); };
+      window.cameraStreams.push(stream);
+      return stream;
+    };
+    navigator.mediaDevices.getUserMedia = async () => window.makeCameraStream();
+  });
+}
+
+async function product(context) {
+  const name = `SCAN-${Date.now()}`;
+  const response = await context.request.post('/api/products', { data: { name, barcode: name, category: '扫码测试', unit: '个', cost: 10, price: 20, threshold: 0 } });
+  expect(response.ok()).toBe(true);
+  return { ...(await response.json()), name };
+}
+
+test('mobile camera fills the viewport and real QR recognition returns once and stops the stream', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  const item = await product(context);
+  await page.reload();
+  await mockCamera(page);
+  await page.getByRole('button', { name: '打开扫码工作台', exact: true }).click();
+  await page.getByRole('button', { name: '手机扫码', exact: true }).click();
+  const scanner = page.locator('.camera-scanner-immersive');
+  await expect(scanner).toBeFocused();
+  await expect(page.locator('#root')).toHaveJSProperty('inert', true);
+  await expect(scanner.locator('video')).toHaveClass(/ready/);
+  await expect(scanner.locator('video')).toHaveCSS('object-fit', 'cover');
+  for (const viewport of [{ width: 320, height: 700 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 900, height: 600 }]) {
+    await page.setViewportSize(viewport);
+    await expect.poll(async () => {
+      const bounds = await scanner.boundingBox();
+      return bounds.x === 0 && bounds.y === 0 && bounds.width === viewport.width && bounds.height === viewport.height;
+    }).toBe(true);
+    const cancel = await scanner.getByRole('button', { name: '取消扫码' }).boundingBox();
+    const manual = await scanner.getByRole('button', { name: '手动输入条码' }).boundingBox();
+    expect(cancel.y).toBeGreaterThanOrEqual(0);
+    expect(manual.y + manual.height).toBeLessThanOrEqual(viewport.height);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'output/ui-preview/mobile-immersive-scanner.png' });
+  await page.evaluate(symbol => window.paintCameraCode(symbol), qrSymbol(item.name));
+  await expect(scanner).toHaveCount(0);
+  await expect(page.locator('.scan-result-product h3')).toHaveText(item.name);
+  expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
+  await expect(page.locator('#root')).toHaveJSProperty('inert', false);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
+  await context.close();
+});
+
+test('back and manual entry leave the order intact; camera recognition adds exactly one item', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  const item = await product(context);
+  await page.reload();
+  await mockCamera(page);
+  await page.getByRole('button', { name: '采购入库', exact: true }).click();
+  await page.getByRole('combobox', { name: /供应商/ }).fill('全屏扫码供应商');
+  await page.getByRole('button', { name: '扫码添加商品', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+  await page.goBack();
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '采购入库', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: /供应商/ })).toHaveValue('全屏扫码供应商');
+  expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
+  await page.getByRole('button', { name: '扫码添加商品', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+  await page.evaluate(symbol => window.paintCameraCode(symbol), qrSymbol(item.name));
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+  await expect(page.getByRole('spinbutton', { name: `${item.name} 数量` })).toHaveValue('1');
+  expect(await page.evaluate(() => window.cameraStreams[1].getVideoTracks()[0].readyState)).toBe('ended');
+  await page.getByRole('button', { name: '扫码添加商品', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+  await page.getByRole('button', { name: '手动输入条码', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '扫描商品条码', exact: true })).toBeFocused();
+  expect(await page.evaluate(() => window.cameraStreams[2].getVideoTracks()[0].readyState)).toBe('ended');
+  await expect(page.getByRole('spinbutton', { name: `${item.name} 数量` })).toHaveValue('1');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '保存本地草稿？' })).toBeVisible();
+  await context.close();
+});
+
+test('camera failures can retry; canceled permission requests release their late stream', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  await mockCamera(page);
+  await page.evaluate(() => { navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); }; });
+  await page.getByRole('button', { name: '打开扫码工作台', exact: true }).click();
+  await page.getByRole('button', { name: '手机扫码', exact: true }).click();
+  await expect(page.locator('.camera-error')).toContainText('摄像头权限未开启');
+  await page.evaluate(() => { navigator.mediaDevices.getUserMedia = async () => window.makeCameraStream(); });
+  await page.getByRole('button', { name: '重新开启扫码' }).click();
+  await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+  await page.getByRole('button', { name: '取消扫码' }).click();
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+  expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
+  await page.evaluate(() => { navigator.mediaDevices.getUserMedia = () => new Promise(resolve => { window.grantCamera = () => resolve(window.makeCameraStream()); }); });
+  await page.getByRole('button', { name: '手机扫码', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.grantCamera)).toBe('function');
+  await page.getByRole('button', { name: '取消扫码' }).click();
+  await page.evaluate(() => window.grantCamera());
+  await expect.poll(() => page.evaluate(() => window.cameraStreams[1].getVideoTracks()[0].readyState)).toBe('ended');
+  await expect(page.locator('#root')).toHaveJSProperty('inert', false);
+  await context.close();
+});
+
+test('QR configuration uses the same immersive camera and preserves its unsaved fields', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  const item = await product(context);
+  await page.reload();
+  await mockCamera(page);
+  await page.getByRole('button', { name: '打开扫码工作台', exact: true }).click();
+  await page.getByRole('button', { name: '管理出入库二维码', exact: true }).click();
+  await page.getByRole('button', { name: '新建二维码', exact: true }).click();
+  await page.getByLabel('二维码名称', { exact: true }).fill('未保存的扫码配置');
+  await page.getByRole('button', { name: '扫描添加商品', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+  await expect(page.getByLabel('二维码名称', { exact: true })).toHaveValue('未保存的扫码配置');
+  await page.getByRole('button', { name: '扫描添加商品', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+  await page.evaluate(symbol => window.paintCameraCode(symbol), qrSymbol(item.name));
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+  await expect(page.locator('.stock-qr-edit-line')).toHaveCount(1);
+  await expect(page.locator('.stock-qr-edit-line')).toContainText(item.name);
+  expect(await page.evaluate(() => window.cameraStreams.every(stream => stream.getVideoTracks()[0].readyState === 'ended'))).toBe(true);
+  await context.close();
+});

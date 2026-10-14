@@ -69,6 +69,14 @@ test('mobile purchase and sale preserve quantity precision and the Android confi
   await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('10.123456');
   await page.getByRole('button', { name: '确认入库', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '确认采购入库？' })).toBeVisible();
+  const confirmation = await page.getByRole('dialog', { name: '确认采购入库？' }).boundingBox();
+  const viewport = page.viewportSize();
+  expect(confirmation.width).toBe(viewport.width);
+  expect(confirmation.height).toBeLessThan(viewport.height / 2);
+  await expect.poll(async () => {
+    const bounds = await page.getByRole('dialog', { name: '确认采购入库？' }).boundingBox();
+    return Math.abs(bounds.y + bounds.height - viewport.height);
+  }).toBeLessThan(2);
   await page.getByRole('button', { name: '继续编辑', exact: true }).click();
   await expect(page.getByRole('spinbutton', { name: `${product.name} 数量` })).toHaveValue('10.123456');
   await page.getByRole('button', { name: '确认入库', exact: true }).click();
@@ -349,6 +357,8 @@ test('leaving the foreground stops the scanner stream and preserves manual entry
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
   await expect.poll(() => page.evaluate(() => window.scannerTestStream.getVideoTracks()[0].readyState)).toBe('ended');
   await expect(page.locator('.camera-error')).toContainText('摄像头已暂停');
+  await page.getByRole('button', { name: '手动输入条码', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: '扫描商品条码', exact: true })).toBeEnabled();
   await context.close();
 });
@@ -378,5 +388,68 @@ test('mobile layouts, shared editors and scanner remain usable at phone and tabl
   await page.getByRole('button', { name: '手机扫码', exact: true }).click();
   await expect(page.locator('.camera-error')).toBeVisible();
   expect(errors).toEqual([]);
+  await context.close();
+});
+
+test('mobile bottom drawers fit their content and keep long forms usable in small and keyboard viewports', async ({ browser }) => {
+  const { context, page } = await mobile(browser, { reducedMotion: 'reduce' });
+  await page.getByRole('button', { name: '切换仓库', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeFocused();
+  await expect(dialog).toHaveCSS('border-top-left-radius', '22px');
+  await expect(dialog).toHaveCSS('border-bottom-left-radius', '0px');
+  // A short picker leaves the underlying page visible and doesn't open the keyboard.
+  const picker = await dialog.boundingBox();
+  expect(picker.height).toBeLessThan(page.viewportSize().height / 2);
+  expect(picker.x).toBe(0);
+  expect(picker.y).toBeGreaterThan(0);
+  expect(picker.y + picker.height).toBe(page.viewportSize().height);
+  await page.screenshot({ path: 'output/ui-preview/mobile-drawer-warehouse.png' });
+  await page.mouse.click(4, 4);
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
+
+  await page.locator('.mw-tabs').getByRole('button', { name: '商品', exact: true }).click();
+  await page.getByRole('button', { name: '新增商品', exact: true }).click();
+  await expect(dialog).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.getByRole('button', { name: '保存商品', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: '关闭弹窗', exact: true })).toBeFocused();
+  for (const viewport of [{ width: 320, height: 700 }, { width: 390, height: 844 }, { width: 900, height: 600 }, { width: 844, height: 390 }]) {
+    await page.setViewportSize(viewport);
+    await expect.poll(async () => {
+      const bounds = await dialog.boundingBox();
+      return bounds.x >= 0 && bounds.y > 0 && bounds.x + bounds.width <= viewport.width && Math.abs(bounds.y + bounds.height - viewport.height) < 1;
+    }).toBe(true);
+    // The bottom action remains reachable even in landscape, where the form scrolls as a whole.
+    const save = dialog.getByRole('button', { name: '保存商品', exact: true });
+    await save.scrollIntoViewIfNeeded();
+    const bounds = await save.boundingBox();
+    expect(bounds.y).toBeGreaterThan(0);
+    expect(bounds.y + bounds.height).toBeLessThan(viewport.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'output/ui-preview/mobile-drawer-product.png' });
+  await dialog.getByRole('textbox', { name: /商品名称/ }).fill('移动弹窗验证');
+  // Chromium desktop emulation has no software keyboard; simulate its visual viewport resize.
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport, 'height', { configurable: true, value: 380 });
+    window.visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await expect(page.locator('html')).toHaveClass(/mw-keyboard/);
+  await expect.poll(async () => {
+    const bounds = await dialog.boundingBox();
+    return bounds.y > 0 && Math.abs(bounds.y + bounds.height - 380) < 1;
+  }).toBe(true);
+  await dialog.getByRole('button', { name: '保存商品', exact: true }).scrollIntoViewIfNeeded();
+  const action = await dialog.getByRole('button', { name: '保存商品', exact: true }).boundingBox();
+  expect(action.y + action.height).toBeLessThan(380);
+  await page.evaluate(() => {
+    delete window.visualViewport.height;
+    window.visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
   await context.close();
 });

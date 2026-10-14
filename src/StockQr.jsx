@@ -123,7 +123,7 @@ export function StockQrManager({
     [error, setError] = useState("");
   const lock = useRef(false),
     request = useRef({}),
-    labelRef = useRef();
+    labelRef = useRef(), barcodeInput = useRef();
   const load = async () => {
     const r = await api(
       `/stock-qrs?page=${page}&type=${type}&status=${status}${initialProduct ? `&product_id=${initialProduct.id}` : ""}`,
@@ -436,6 +436,7 @@ export function StockQrManager({
                   {camera ? "关闭摄像头" : "扫描添加商品"}
                 </button>
                 <input
+                  ref={barcodeInput}
                   aria-label="添加商品条码"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
@@ -448,7 +449,8 @@ export function StockQrManager({
                   识别商品
                 </button>
               </div>
-              {camera && <CameraScanner onResult={scan} />}
+              {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加商品" note="识别后自动添加到二维码商品明细"
+                onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
               {form.items.map((i, index) => (
                 <div className="stock-qr-edit-line" key={i.product_id}>
                   <strong>

@@ -1,4 +1,5 @@
 import { orderLineAmount } from "../shared/money.js";
+import { CameraScanner } from './CameraScanner.jsx';
 import { mobileDevice } from './device.js';
 import { PwaProvider } from './pwa/Pwa.jsx';
 import { MobileShell, WarehousePicker, DraftList, MobileProductDetail } from './mobile-web/MobileShell.jsx';
@@ -302,11 +303,12 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
     const old = document.activeElement;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const first =
+    // Focusing the dialog keeps mobile keyboards closed until a field is tapped.
+    const first = mobileDevice ? ref.current :
       ref.current.querySelector("[data-autofocus]") ||
       [...ref.current.querySelectorAll("input:not(:disabled)")].find((el) => el.offsetParent !== null) ||
       ref.current.querySelector("button:not(:disabled)");
-    first?.focus();
+    first?.focus({ preventScroll: mobileDevice });
     const key = (e) => {
       if ([...document.querySelectorAll('.modal[role="dialog"]')].at(-1) !== ref.current) return;
       if (e.key === "Escape") closeRef.current();
@@ -318,7 +320,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
         ].filter((el) => !el.matches(":disabled") && el.tabIndex >= 0 && el.offsetParent !== null);
         const first = targets[0],
           last = targets.at(-1);
-        if (e.shiftKey && document.activeElement === first) {
+        if (e.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) {
           e.preventDefault();
           last?.focus();
         } else if (!e.shiftKey && document.activeElement === last) {
@@ -329,7 +331,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
     };
     document.addEventListener("keydown", key);
     const back = event => {
-      if (event.defaultPrevented || document.querySelector('.image-viewer')) return;
+      if (event.defaultPrevented || document.querySelector('.image-viewer, .camera-scanner-immersive')) return;
       if ([...document.querySelectorAll('.modal[role="dialog"]')].at(-1) !== ref.current) return;
       event.preventDefault();
       closeRef.current();
@@ -353,11 +355,11 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
         ref={ref}
         className={`modal ${wide ? "modal-wide" : ""} ${className}`}
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby={titleId}
       >
         <div className="modal-header">
-          {mobileDevice && <button type="button" className="modal-header-back" aria-label="返回" onClick={onClose}><ChevronLeft size={22} /></button>}
           <div className="modal-header-title">
             <h2 id={titleId}>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
@@ -439,91 +441,6 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
     </Modal>
   );
 }
-function CameraScanner({ onResult }) {
-  const video = useRef(),
-    controls = useRef(),
-    callback = useRef(onResult);
-  const [error, setError] = useState(""),
-    [ready, setReady] = useState(false);
-  callback.current = onResult;
-  useEffect(() => {
-    let alive = true, delivered = false;
-    const stop = () => {
-      alive = false;
-      controls.current?.stop();
-      const stream = video.current?.srcObject;
-      stream?.getTracks?.().forEach(track => track.stop());
-    };
-    const suspend = () => {
-      stop();
-      setReady(false);
-      setError("摄像头已暂停，请关闭后重新开启扫码，或手动输入条码。");
-    };
-    const visibility = () => { if (document.visibilityState === 'hidden') suspend(); };
-    if (!window.isSecureContext || !navigator.mediaDevices) {
-      setError("手机摄像头扫码需要 HTTPS，请通过 HTTPS 地址打开此页面。");
-      return;
-    }
-    document.addEventListener('visibilitychange', visibility);
-    window.addEventListener('pagehide', suspend);
-    import("@zxing/browser").then(async ({ BrowserMultiFormatReader }) => {
-      if (!alive) return;
-      try {
-        const reader = new BrowserMultiFormatReader();
-        const ctrl = await reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: "environment" } } },
-          video.current,
-          (result) => {
-            if (result && alive && !delivered) {
-              delivered = true;
-              controls.current?.stop();
-              callback.current(result.getText());
-            }
-          },
-        );
-        if (!alive || delivered) ctrl.stop();
-        else {
-          controls.current = ctrl;
-          setReady(true);
-        }
-      } catch (e) {
-        if (alive)
-          setError(
-            e.name === "NotAllowedError"
-              ? "摄像头权限未开启，请在浏览器中授权，或输入商品条码。"
-              : "无法访问摄像头，请检查手机摄像头及浏览器权限，或手动输入条码。",
-          );
-      }
-    });
-    return () => {
-      document.removeEventListener('visibilitychange', visibility);
-      window.removeEventListener('pagehide', suspend);
-      stop();
-    };
-  }, []);
-  return (
-    <div className="camera-scanner">
-      {error ? (
-        <div className="camera-error">
-          <Camera size={30} />
-          <p>{error}</p>
-        </div>
-      ) : (
-        <>
-          <video ref={video} muted playsInline />
-          <div className="camera-crosshair" />
-          {!ready && (
-            <div className="camera-loading">
-              <LoaderCircle className="spin" size={24} />
-              正在开启摄像头…
-            </div>
-          )}
-          <span className="camera-instruction">将商品条码或二维码置于取景框内</span>
-        </>
-      )}
-    </div>
-  );
-}
 function Empty({
   title = "暂无记录",
   description = "新的记录会出现在这里。",
@@ -602,8 +519,15 @@ function App({ admin, onLogout }) {
     [search, setSearch] = useState("");
   const [notification, setNotification] = useState(false),
     [inventoryFilter, setInventoryFilter] = useState("all");
+  const [cameraActive, setCameraActive] = useState(false);
   useEffect(() => {
-    if (!mobileDevice || !modal) return;
+    const changed = event => setCameraActive(event.detail);
+    window.addEventListener('erp:camera-active', changed);
+    return () => window.removeEventListener('erp:camera-active', changed);
+  }, []);
+  const mobileOverlayOpen = !!modal || cameraActive;
+  useEffect(() => {
+    if (!mobileDevice || !mobileOverlayOpen) return;
     const marker = `77erp-modal-${Date.now()}`;
     history.pushState({ ...history.state, erpModal: marker }, '', location.href);
     const back = () => {
@@ -616,7 +540,7 @@ function App({ admin, onLogout }) {
       window.removeEventListener('popstate', back);
       if (history.state?.erpModal === marker) history.back();
     };
-  }, [!!modal]);
+  }, [mobileOverlayOpen]);
   const [loggingOut, setLoggingOut] = useState(false);
   const logout = async () => {
     setLoggingOut(true);
@@ -3147,7 +3071,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               添加
             </Button>
           </div>
-          {camera && <CameraScanner onResult={scan} />}
+          {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} />}
           <div className="product-picker">
             <div className="table-search">
               <Search size={16} />
@@ -3513,7 +3437,10 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             >
               {camera ? "关闭摄像头" : "手机扫码"}
             </Button>
-            {camera && <CameraScanner onResult={scan} />}
+            {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)}
+              title={mode === 'query' ? '扫一扫 · 查找商品' : mode === 'in' ? '扫一扫 · 入库' : '扫一扫 · 出库'}
+              note={mode === 'query' ? '识别后自动返回查看商品' : '识别后自动返回；免确认出入库二维码会直接更新库存。'}
+              onManual={() => { setCamera(false); setManual(true); requestAnimationFrame(() => input.current?.focus()); }} />}
             <button
               className="manual-entry-toggle"
               onClick={() => setManual(!manual)}

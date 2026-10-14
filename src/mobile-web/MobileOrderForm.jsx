@@ -38,7 +38,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const [confirming, setConfirming] = useState(false);
   const [closing, setClosing] = useState(false);
   const [savingClose, setSavingClose] = useState(false);
-  const lock = useRef(false), finished = useRef(false), hasSaved = useRef(!!initialDraft), latest = useRef(null), latestDirty = useRef(false), bodyRef = useRef(null);
+  const lock = useRef(false), finished = useRef(false), hasSaved = useRef(!!initialDraft), latest = useRef(null), latestDirty = useRef(false), bodyRef = useRef(null), barcodeInput = useRef(null);
   const templateAction = useBusiness();
   const reportError = message => setError(value => ({ message, revision: value.revision + 1 }));
   const total = items.reduce((sum, line) => sum + Math.round(Number(line.quantity) * Number(line.price) * 100), 0) / 100;
@@ -192,8 +192,9 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">模板名称<input maxLength={100} placeholder="例如：每周日用品补货" value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? '另存为模板' : '保存为模板'}</Button>{template && <Button disabled={!online || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
             <ContactPicker contacts={partners} value={partner} selectedId={partnerId} label={type === 'in' ? '供应商' : '客户 / 往来单位'} required disabled={disabled} onChange={value => { setPartner(value); setPartnerId(partners.find(c => c.name === value)?.id ?? null); }} onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
             <Button primary icon={Camera} disabled={!online} onClick={() => setCamera(value => !value)}>{camera ? '关闭摄像头' : '扫码添加商品'}</Button>
-            {camera && <CameraScanner onResult={scan} />}
-            <label className="mw-field">手动输入商品条码<div className="mw-manual-row"><input aria-label="扫描商品条码" value={barcode} onChange={e => setBarcode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (barcode.trim()) scan(barcode); } }} /><Button disabled={!online || !barcode.trim()} onClick={() => scan(barcode)}>添加</Button></div></label>
+            {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加商品" note="识别后自动添加到当前单据"
+              onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
+            <label className="mw-field">手动输入商品条码<div className="mw-manual-row"><input ref={barcodeInput} aria-label="扫描商品条码" value={barcode} onChange={e => setBarcode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (barcode.trim()) scan(barcode); } }} /><Button disabled={!online || !barcode.trim()} onClick={() => scan(barcode)}>添加</Button></div></label>
             <SearchField label="搜索要添加的商品或条码" value={query} onChange={setQuery} />
             {!!query.trim() && <section className="mw-card">{online ? matches.length ? matches.map(p => <ProductRow key={p.id} product={p} onOpen={add} />) : <p className="mw-muted">未找到商品，请先建立商品档案。</p> : <p className="mw-muted">联网后可以查询并添加商品。</p>}</section>}
             <Button onClick={() => setIncludeInactive(value => !value)}>{includeInactive ? '隐藏下架商品' : '包含下架商品（清库存等）'}</Button>
