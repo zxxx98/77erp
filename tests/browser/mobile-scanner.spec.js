@@ -1,5 +1,6 @@
 import { test, expect, devices } from '@playwright/test';
 import { qrSymbol } from '../../src/product-code.js';
+import JsBarcode from 'jsbarcode';
 
 test.beforeAll(async ({ request }) => {
   const response = await request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
@@ -21,16 +22,18 @@ async function mockCamera(page) {
     window.makeCameraStream = () => {
       const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 800;
       const drawing = canvas.getContext('2d');
-      let symbol;
+      let symbol, placement;
       const paint = () => {
-        drawing.fillStyle = '#333e48'; drawing.fillRect(0, 0, 640, 800);
+        // Barcode fixtures represent a printed white label filling the camera scene.
+        drawing.fillStyle = symbol?.height ? '#fff' : '#333e48'; drawing.fillRect(0, 0, 640, 800);
         if (symbol) {
-          drawing.save(); drawing.translate(110, 190); drawing.scale(Math.floor(420 / symbol.size), Math.floor(420 / symbol.size));
-          drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, symbol.size, symbol.size);
+          const { x = 210, y = 235, size = 220 } = placement || {};
+          drawing.save(); drawing.translate(x, y); drawing.scale(Math.floor(size / symbol.size), Math.floor(size / symbol.size));
+          drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, symbol.size, symbol.height || symbol.size);
           drawing.fillStyle = '#000'; drawing.fill(new Path2D(symbol.path)); drawing.restore();
         }
       };
-      window.paintCameraCode = next => { symbol = next; paint(); };
+      window.paintCameraCode = (next, position) => { symbol = next; placement = position; paint(); };
       paint();
       const timer = setInterval(paint, 50);
       const stream = canvas.captureStream(20);
@@ -44,11 +47,11 @@ async function mockCamera(page) {
   });
 }
 
-async function product(context) {
+async function product(context, barcode) {
   const name = `SCAN-${Date.now()}`;
-  const response = await context.request.post('/api/products', { data: { name, barcode: name, category: '扫码测试', unit: '个', cost: 10, price: 20, threshold: 0 } });
+  const response = await context.request.post('/api/products', { data: { name, barcode: barcode || name, category: '扫码测试', unit: '个', cost: 10, price: 20, threshold: 0 } });
   expect(response.ok()).toBe(true);
-  return { ...(await response.json()), name };
+  return { ...(await response.json()), name, barcode: barcode || name };
 }
 
 test('mobile camera fills the viewport and real QR recognition returns once and stops the stream', async ({ browser }) => {
@@ -79,10 +82,135 @@ test('mobile camera fills the viewport and real QR recognition returns once and 
   await page.evaluate(symbol => window.paintCameraCode(symbol), qrSymbol(item.name));
   await expect(scanner).toHaveCount(0);
   await expect(page.locator('.scan-result-product h3')).toHaveText(item.name);
+  const toast = page.locator('.toast');
+  await expect(toast).toContainText(`已识别：${item.name}`);
+  const toastBounds = await toast.boundingBox();
+  const messageBounds = await toast.locator('span').boundingBox();
+  expect(toastBounds.x).toBeGreaterThanOrEqual(0);
+  expect(toastBounds.x + toastBounds.width).toBeLessThanOrEqual(390);
+  expect(messageBounds.x).toBeGreaterThanOrEqual(0);
+  expect(messageBounds.x + messageBounds.width).toBeLessThanOrEqual(390);
   expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
   await expect(page.locator('#root')).toHaveJSProperty('inert', false);
   expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
   await context.close();
+});
+
+test('native scanning receives cropped frames at a higher rate and returns a result once', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  const item = await product(context);
+  await page.reload();
+  await mockCamera(page);
+  await page.evaluate(() => {
+    window.nativeFrames = [];
+    window.BarcodeDetector = class {
+      static async getSupportedFormats() { return ['qr_code', 'unknown']; }
+      constructor(options) { window.nativeFormats = options.formats; }
+      async detect(canvas) {
+        window.nativeFrames.push({ width: canvas.width, height: canvas.height, at: performance.now() });
+        return window.nativeResult ? [{ rawValue: window.nativeResult }] : [];
+      }
+    };
+  });
+  await page.getByRole('button', { name: '打开扫码工作台', exact: true }).click();
+  await page.getByRole('button', { name: '手机扫码', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+  await expect.poll(() => page.evaluate(() => window.nativeFrames.length)).toBeGreaterThanOrEqual(4);
+  const frames = await page.evaluate(() => window.nativeFrames.slice(0, 4));
+  expect((frames[3].at - frames[0].at) / 3).toBeLessThan(300);
+  expect(frames[0].width).toBeLessThan(400);
+  expect(frames[0].height).toBeLessThan(400);
+  expect(await page.evaluate(() => window.nativeFormats)).toEqual(['qr_code']);
+  await page.evaluate(value => { window.nativeResult = value; }, item.name);
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+  await expect(page.locator('.scan-result-product h3')).toHaveText(item.name);
+  expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
+  await context.close();
+});
+
+test('a native miss or platform failure still recognizes a real QR through ZXing', async ({ browser }) => {
+  for (const broken of [false, true]) {
+    const { context, page } = await mobile(browser);
+    const item = await product(context);
+    await page.reload();
+    await mockCamera(page);
+    await page.evaluate(broken => {
+      window.nativeAttempts = 0;
+      window.BarcodeDetector = class {
+        static async getSupportedFormats() { return ['qr_code']; }
+        async detect() {
+          window.nativeAttempts++;
+          if (broken) throw new Error('Native backend unavailable');
+          return [];
+        }
+      };
+    }, broken);
+    await page.getByRole('button', { name: '打开扫码工作台', exact: true }).click();
+    await page.getByRole('button', { name: '手机扫码', exact: true }).click();
+    await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+    await page.evaluate(symbol => window.paintCameraCode(symbol), qrSymbol(item.name));
+    await expect(page.locator('.scan-result-product h3')).toHaveText(item.name);
+    await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+    expect(await page.evaluate(() => window.nativeAttempts)).toBeGreaterThan(0);
+    if (broken) expect(await page.evaluate(() => window.nativeAttempts)).toBe(1);
+    await context.close();
+  }
+});
+
+test('closing a scanner discards a native result that arrives late', async ({ browser }) => {
+  const { context, page } = await mobile(browser);
+  const item = await product(context);
+  await page.reload();
+  await mockCamera(page);
+  await page.evaluate(() => {
+    window.BarcodeDetector = class {
+      static async getSupportedFormats() { return ['qr_code']; }
+      detect() { return new Promise(resolve => { window.finishNativeScan = value => resolve([{ rawValue: value }]); }); }
+    };
+  });
+  await page.getByRole('button', { name: '打开扫码工作台', exact: true }).click();
+  await page.getByRole('button', { name: '手机扫码', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.finishNativeScan)).toBe('function');
+  await page.getByRole('button', { name: '取消扫码', exact: true }).click();
+  await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
+  await page.evaluate(value => window.finishNativeScan(value), item.name);
+  await expect(page.locator('.scan-result-product')).toHaveCount(0);
+  await expect(page.locator('.toast')).toHaveCount(0);
+  expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
+  await context.close();
+});
+
+test('expanded search recognizes off-guide QR and wide Code 128 labels on mobile and desktop', async ({ browser }) => {
+  for (const desktop of [false, true]) {
+    const context = await browser.newContext({ ...(desktop ? {} : devices['Pixel 7']),
+      baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
+    await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
+    const page = await context.newPage();
+    const item = await product(context, String(Date.now()).slice(-8));
+    await page.goto('/');
+    await mockCamera(page);
+    await page.evaluate(() => { window.BarcodeDetector = undefined; });
+    await page.getByRole(desktop ? 'link' : 'button', { name: desktop ? '扫码工作台' : '打开扫码工作台', exact: true }).click();
+    for (const barcode of [false, true]) {
+      await page.getByRole('button', { name: '手机扫码', exact: true }).click();
+      await expect(page.locator(desktop ? '.camera-scanner video' : '.camera-scanner-immersive video')).toBeVisible();
+      await expect.poll(() => page.evaluate(() => document.querySelector('.camera-scanner video, .camera-scanner-immersive video')?.readyState)).toBeGreaterThanOrEqual(2);
+      let symbol = qrSymbol(item.barcode);
+      if (barcode) {
+        const encoded = {};
+        JsBarcode(encoded, item.barcode, { format: 'CODE128' });
+        const bars = encoded.encodings[0].data;
+        symbol = { size: bars.length + 20, height: 80,
+          path: [...bars].map((bit, x) => bit === '1' ? `M${x + 10} 10h1v60h-1z` : '').join('') };
+      }
+      // The QR is below the guide; the barcode is wider than the mobile guide.
+      await page.evaluate(({ symbol, barcode, desktop }) => window.paintCameraCode(symbol,
+        barcode ? { x: 170, y: 350, size: 340 } : { x: 230, y: desktop ? 300 : 490, size: 160 }), { symbol, barcode, desktop });
+      await expect(page.locator('.scan-result-product h3')).toHaveText(item.name);
+      await expect(page.locator('.camera-scanner, .camera-scanner-immersive')).toHaveCount(0);
+    }
+    await context.close();
+  }
 });
 
 test('back and manual entry leave the order intact; camera recognition adds exactly one item', async ({ browser }) => {

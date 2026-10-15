@@ -2,10 +2,11 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Camera, Keyboard, LoaderCircle, RefreshCw } from 'lucide-react';
 import { mobileDevice } from './device.js';
+import { cameraRegion, createCameraDecoder } from './camera-decoder.js';
 import './camera-scanner.css';
 
 export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫', note = '识别后自动返回' }) {
-  const video = useRef(null), overlay = useRef(null);
+  const video = useRef(null), overlay = useRef(null), guide = useRef(null);
   const callbacks = useRef({ onResult, onClose });
   callbacks.current = { onResult, onClose };
   const titleId = useId();
@@ -14,11 +15,11 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    let alive = true, delivered = false, stream, controls;
+    let alive = true, delivered = false, stream, timer;
     const preview = video.current;
     const stop = () => {
       alive = false;
-      controls?.stop();
+      clearTimeout(timer);
       stream?.getTracks().forEach(track => track.stop());
       if (preview) { preview.pause(); preview.srcObject = null; }
     };
@@ -38,31 +39,65 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
     window.addEventListener('pagehide', suspend);
     const start = async () => {
       try {
-        const { BrowserMultiFormatReader } = await import('@zxing/browser');
-        if (!alive) return;
+        const decoderPromise = createCameraDecoder();
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
         });
         // A permission prompt can finish after the user has already canceled.
         if (!alive) { stream.getTracks().forEach(track => track.stop()); return; }
-        const reader = new BrowserMultiFormatReader();
-        const decoding = await reader.decodeFromStream(stream, preview, (result, _error, scanControls) => {
-          if (!result || !alive || delivered) return;
-          delivered = true;
-          scanControls.stop();
-          stop();
-          callbacks.current.onResult(result.getText());
-        });
-        if (!alive || delivered) decoding.stop();
-        else { controls = decoding; setReady(true); }
-      } catch (e) {
+        preview.srcObject = stream;
+        await preview.play();
         if (!alive) return;
-        stop();
-        setError(e.name === 'NotAllowedError'
-          ? '摄像头权限未开启，请在浏览器中授权，或手动输入物料条码。'
-          : '无法访问摄像头，请检查摄像头及浏览器权限，或手动输入条码。');
+        const decode = await decoderPromise;
+        if (!alive) return;
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) throw new Error('Canvas unavailable');
+        let lastExpanded = performance.now();
+        const scan = async () => {
+          if (!alive || delivered) return;
+          const started = performance.now();
+          try {
+            if (preview.readyState >= 2 && preview.videoWidth && preview.videoHeight) {
+              const bounds = preview.getBoundingClientRect();
+              // Occasionally search the visible preview too, for wider or off-center labels.
+              const expanded = started - lastExpanded >= 800;
+              if (expanded) lastExpanded = started;
+              const region = cameraRegion(preview.videoWidth, preview.videoHeight, bounds,
+                expanded ? bounds : guide.current?.getBoundingClientRect() || bounds);
+              if (region.width > 0 && region.height > 0) {
+                const scale = Math.min(1, 960 / Math.max(region.width, region.height));
+                const width = Math.max(1, Math.round(region.width * scale));
+                const height = Math.max(1, Math.round(region.height * scale));
+                if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+                context.drawImage(preview, region.x, region.y, region.width, region.height, 0, 0, width, height);
+                const result = await decode(canvas, expanded);
+                if (!alive || delivered) return;
+                if (result) {
+                  delivered = true;
+                  stop();
+                  callbacks.current.onResult(result);
+                  return;
+                }
+              }
+            }
+            if (alive) timer = setTimeout(scan, Math.max(0, 100 - (performance.now() - started)));
+          } catch (e) { fail(e); }
+        };
+        setReady(true);
+        timer = setTimeout(scan, 0);
+      } catch (e) {
+        fail(e);
       }
+    };
+    const fail = e => {
+      if (!alive) return;
+      stop();
+      setReady(false);
+      setError(e.name === 'NotAllowedError'
+        ? '摄像头权限未开启，请在浏览器中授权，或手动输入物料条码。'
+        : '无法访问摄像头，请检查摄像头及浏览器权限，或手动输入条码。');
     };
     start();
     return () => {
@@ -114,7 +149,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
   if (!mobileDevice) return <div className="camera-scanner">
     <video ref={video} muted playsInline hidden={!!error} />
     {error ? <div className="camera-error" role="alert"><Camera size={30} /><p>{error}</p></div> : <>
-      <div className="camera-crosshair" />
+      <div ref={guide} className="camera-crosshair" />
       {!ready && <div className="camera-loading"><LoaderCircle className="spin" size={24} />正在开启摄像头…</div>}
       <span className="camera-instruction">将物料条码或二维码置于取景框内</span>
     </>}
@@ -127,7 +162,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
       <h2 id={titleId}>{title}</h2>
     </header>
     {error ? <div className="camera-error" role="alert"><Camera size={38} /><h3>暂时无法扫码</h3><p>{error}</p></div> : <>
-      <div className="camera-viewfinder" aria-hidden="true"><i /><i /><i /><i /><span className="camera-scan-line" /></div>
+      <div ref={guide} className="camera-viewfinder" aria-hidden="true"><i /><i /><i /><i /><span className="camera-scan-line" /></div>
       {!ready && <div className="camera-opening" role="status"><LoaderCircle className="spin" size={24} /><span>正在开启摄像头…</span></div>}
     </>}
     <footer className="camera-overlay-footer">
