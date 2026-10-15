@@ -1,5 +1,6 @@
+import { LoadingIndicator } from './Loading.jsx';
 import { useEffect, useState } from "react";
-import { ArrowRight, Boxes, Eye, EyeOff, LoaderCircle, LockKeyhole, PackageCheck, ShieldCheck, TriangleAlert, UserRound, Warehouse } from "lucide-react";
+import { ArrowRight, Boxes, Eye, EyeOff, LockKeyhole, PackageCheck, ShieldCheck, TriangleAlert, UserRound, Warehouse } from "lucide-react";
 import { api } from "./api.js";
 import "./auth.css";
 import { clearUserDrafts } from './pwa/drafts.js';
@@ -41,7 +42,7 @@ export function AuthGate({ children }) {
         {error ? (
           <><p role="alert">{error}</p><button className="btn btn-primary" onClick={refresh}>重新连接</button></>
         ) : (
-          <><LoaderCircle className="spin" size={24} /><p>正在连接工作空间…</p></>
+          <><LoadingIndicator size={64} /><p>正在连接工作空间…</p></>
         )}
       </main>
     );
@@ -138,7 +139,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
             </>}
             {(error || notice) && <div className="form-error auth-error" role="alert"><TriangleAlert size={16} /><span>{error || notice}</span></div>}
             <button className="btn btn-primary auth-submit" type="submit" disabled={busy}>
-              {busy ? <><LoaderCircle size={17} className="spin" />{setup ? "正在创建…" : "正在登录…"}</> : <>{setup ? "创建管理员并进入" : "登录"}<ArrowRight size={17} /></>}
+              {busy ? <><LoadingIndicator size={20} />{setup ? "正在创建…" : "正在登录…"}</> : <>{setup ? "创建管理员并进入" : "登录"}<ArrowRight size={17} /></>}
             </button>
           </form>
           <p className="auth-form-note"><ShieldCheck size={15} />{setup ? "管理员可以在设置中添加员工账号。" : "登录后访问此工作空间。"}</p>

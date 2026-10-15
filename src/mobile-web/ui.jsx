@@ -1,5 +1,6 @@
+import { LoadingIndicator } from '../Loading.jsx';
 import React from 'react';
-import { Box, ChevronRight, LoaderCircle, Search, TriangleAlert, X } from 'lucide-react';
+import { Box, ChevronRight, Search, TriangleAlert, X } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
 import { ProductImage } from '../ProductImage.jsx';
 
@@ -13,7 +14,7 @@ export function MobileButton({ children, icon: Icon, primary = false, danger = f
   const { can } = usePermissions();
   if (permission && !can(permission)) return null;
   return <button type="button" className={`mw-button${primary ? ' mw-primary' : ''}${danger ? ' mw-danger' : ''}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
-    {busy ? <LoaderCircle size={19} className="spin" /> : Icon ? <Icon size={19} /> : null}{children}
+    {busy ? <LoadingIndicator size={20} /> : Icon ? <Icon size={19} /> : null}{children}
   </button>;
 }
 export function MobileIcon({ icon: Icon, label, ...props }) {

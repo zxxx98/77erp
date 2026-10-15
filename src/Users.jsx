@@ -1,3 +1,4 @@
+import { LoadingStatus } from './Loading.jsx';
 import { Select } from "./Dropdown.jsx";
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
@@ -28,7 +29,7 @@ export function ChangePassword({ onChanged }) {
     <label>新密码<input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
     <label>确认新密码<input type="password" autoComplete="new-password" maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="btn btn-primary" type="button" disabled={busy} onClick={save}>{busy ? '正在修改…' : '确认修改密码'}</button>
+    <button className="btn btn-primary" type="button" disabled={busy} onClick={save}>{busy ? <LoadingStatus size={20}>正在修改…</LoadingStatus> : '确认修改密码'}</button>
   </section>;
 }
 
@@ -59,6 +60,7 @@ export function UserManager({ Modal }) {
   }), '账号已更新');
   return <section aria-label="用户管理">
     <h3>用户管理</h3>
+    {busy && <p><LoadingStatus>正在更新账号…</LoadingStatus></p>}
     <p className="muted">所有用户共享全部仓库。新员工默认只读，由管理员配置业务权限；管理员拥有全部权限。</p>
     <div className="account-fields">
       <label>新账号<input autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>

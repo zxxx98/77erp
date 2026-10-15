@@ -1,3 +1,4 @@
+import { LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useState } from 'react';
 import { api } from './api.js';
 import { orderLabel } from './Operations.jsx';
@@ -45,7 +46,7 @@ export function ProductHistory({ product, onViewOrder }) {
         {record.operator && <p>操作人：{record.operator}</p>}
         {record.note && <p>{record.note}</p>}
       </li>)}</ol>
-      {loading && <p role="status">正在读取操作记录…</p>}
+      {loading && <p><LoadingStatus>正在读取操作记录…</LoadingStatus></p>}
       {error && <div role="alert"><p className="form-error">{error}</p><button type="button" className="btn" onClick={() => setAttempt(value => value + 1)}>重新读取记录</button></div>}
       {!loading && !error && !records.length && <p>当前物料暂无操作记录。</p>}
       {hasMore && !error && <button type="button" className="btn" disabled={loading} onClick={() => setOffset(records.length)}>加载更多记录</button>}

@@ -1,5 +1,6 @@
+import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Download, LoaderCircle, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Download, Search } from 'lucide-react';
 import { api } from './api.js';
 import { download } from './data-files.js';
 import { multiStocktakeCSV } from './multi-stocktake-csv.js';
@@ -68,7 +69,7 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
   };
 
   return <div className="multi-stocktake">
-    <div className="multi-stocktake-heading"><h3>多仓库盘点</h3><p>当前仓库：{current?.name || '加载中'}</p></div>
+    <div className="multi-stocktake-heading"><h3>多仓库盘点</h3><p>当前仓库：{current?.name || <LoadingStatus size={20}>加载中</LoadingStatus>}</p></div>
     <nav className="multi-stocktake-steps" aria-label="多仓库盘点步骤">
       {['选择仓库', '添加物料', '盘点结果'].map((label, i) => <React.Fragment key={label}>
         {i > 0 && <span className="multi-stocktake-connector" />}
@@ -111,7 +112,7 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
           <button type="button" className="btn btn-secondary" disabled={busy || selected.some(item => item.id === p.id) || selected.length >= 1000}
             onClick={() => { edit(); setSelected(items => items.some(item => item.id === p.id) ? items : [...items, p]); }}>{selected.some(item => item.id === p.id) ? '已添加' : '添加'}</button>
         </div>)}
-        {search.loading && <p className="multi-stocktake-status" role="status"><LoaderCircle size={16} className="spin" />正在搜索…</p>}
+        {search.loading && <p className="multi-stocktake-status" role="status"><LoadingIndicator size={20} />正在搜索…</p>}
         {!search.loading && !search.error && !search.products.length && <p className="multi-stocktake-empty">没有找到匹配的物料</p>}
         {search.error && <div className="multi-stocktake-search-error"><p className="form-error" role="alert">{search.error}</p><button type="button" className="btn btn-secondary" onClick={() => setRetry(n => n + 1)}>重试搜索</button></div>}
         {!search.loading && !search.error && search.has_more && <button type="button" className="btn btn-secondary" onClick={() => setPage(n => n + 1)}>加载更多匹配物料</button>}
@@ -126,7 +127,7 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
       {selected.length >= 1000 && <p className="multi-stocktake-status">每次最多选择 1000 种物料。</p>}
       <div className="multi-stocktake-footer"><button type="button" className="btn btn-secondary" disabled={busy} onClick={() => go(1)}>上一步</button>
         <button type="button" className="btn btn-primary" disabled={busy || !selected.length} onClick={start}>
-          {busy ? <><LoaderCircle size={16} className="spin" />正在读取库存…</> : <>开始盘点<ArrowRight size={16} /></>}
+          {busy ? <><LoadingIndicator size={20} />正在读取库存…</> : <>开始盘点<ArrowRight size={16} /></>}
         </button>
       </div>
     </section>}

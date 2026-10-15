@@ -1,3 +1,4 @@
+import { LoadingIndicator } from './Loading.jsx';
 import React, { Children, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
@@ -141,7 +142,7 @@ export function Dropdown({ options, value, displayValue, onSelect, onChange, lab
               </button>
             ))}
           </div>
-          {(loading || !matches.length) && <p className="dropdown-empty" role="status">{loading ? loadingText : query.trim() ? noMatchesText : emptyText}</p>}
+          {(loading || !matches.length) && <p className="dropdown-empty" role="status">{loading ? <span className="loading-status"><LoadingIndicator />{loadingText}</span> : query.trim() ? noMatchesText : emptyText}</p>}
         </div>, document.body,
       )}
     </div>

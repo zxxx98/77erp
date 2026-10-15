@@ -1,3 +1,4 @@
+import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { orderLineAmount } from "../shared/money.js";
 import { CameraScanner } from './CameraScanner.jsx';
 import { mobileDevice } from './device.js';
@@ -37,7 +38,6 @@ import {
   ImagePlus,
   LayoutDashboard,
   List,
-  LoaderCircle,
   Minus,
   Package,
   PackageCheck,
@@ -109,13 +109,14 @@ function Button({
   kind = "secondary",
   className = "",
   permission,
+  busy = false,
   ...props
 }) {
   const { can } = usePermissions();
   if (permission && !can(permission)) return null;
   return (
-    <button className={`btn btn-${kind} ${className}`} {...props}>
-      {Icon && <Icon size={16} strokeWidth={1.8} />}
+    <button className={`btn btn-${kind} ${className}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
+      {busy ? <LoadingIndicator size={20} /> : Icon && <Icon size={16} strokeWidth={1.8} />}
       {children}
     </button>
   );
@@ -421,7 +422,7 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
         <h3>{product.name}</h3>
         <div ref={codeRef} className="product-code-symbol">
           {format === "barcode" ? <Barcode value={product.barcode} height={70} /> : !qr ? (
-            <div className="product-qr-loading" role="status"><LoaderCircle size={22} className="spin" />正在生成二维码…</div>
+            <div className="product-qr-loading" role="status"><LoadingIndicator size={64} />正在生成二维码…</div>
           ) : qr.error ? (
             <div className="form-error" role="alert">{qr.error}</div>
           ) : (
@@ -658,7 +659,7 @@ function App({ admin, onLogout }) {
   const currentNav = navItems.find((n) => n.id === page);
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
-      {switching && <div className="warehouse-switch-loading" role="status"><LoaderCircle className="spin" size={24} />正在切换仓库…</div>}
+      {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />正在切换仓库…</div>}
       {mobileDevice ? <div inert={!!modal} aria-hidden={modal ? true : undefined}><MobileShell user={user} data={data} page={page} navigate={navigate} openModal={setModal} openOrder={openOrder}
         showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={order => setModal({ kind: 'detail', order })}
         switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
@@ -861,15 +862,16 @@ function App({ admin, onLogout }) {
               title="退出登录"
               onClick={logout}
               disabled={loggingOut}
+              aria-busy={loggingOut}
             >
-              {loggingOut ? <LoaderCircle size={18} className="spin" /> : <LogOut size={18} />}
+              {loggingOut ? <LoadingIndicator size={20} /> : <LogOut size={18} />}
             </button>
           </div>
         </header>
         <main key={data.warehouse_id || 1} className="main-content" inert={switching}>
           {loading ? (
-            <div className="loading-page">
-              <LoaderCircle className="spin" />
+            <div className="loading-page" role="status">
+              <LoadingIndicator size={64} />
               <p>正在加载数据…</p>
             </div>
           ) : loadError ? (
@@ -1681,7 +1683,7 @@ function CategoryManager({ categories, onClose, onChanged }) {
       <div className="modal-footer">
         {id && <Button type="button" disabled={busy} onClick={() => { if (window.confirm(`确定删除分类「${name}」？`)) void run(() => api(`/categories/${id}/delete`, { method: 'POST', body: {} })); }}>删除分类</Button>}
         <Button type="button" disabled={busy} onClick={onClose}>完成</Button>
-        <Button type="submit" kind="primary" disabled={busy}>{busy ? '正在保存…' : '保存分类'}</Button>
+        <Button type="submit" kind="primary" busy={busy}>{busy ? '正在保存…' : '保存分类'}</Button>
       </div>
     </form>
   </Modal>;
@@ -1742,6 +1744,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
           新增物料
         </Button>
       </PageHeading>
+      {busy && <p><LoadingStatus>正在更新物料…</LoadingStatus></p>}
       {actionError && <div className="info-box" role="alert">{actionError}</div>}
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
@@ -2538,7 +2541,7 @@ function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
       <section className="product-other-stock">
         <h4>其他仓库库存</h4>
         {otherError ? <p className="form-error" role="alert">{otherError}</p>
-          : others === null ? <p className="product-other-empty"><LoaderCircle className="spin" size={14} /> 读取中…</p>
+          : others === null ? <p className="product-other-empty"><LoadingIndicator size={20} /> 读取中…</p>
           : others.length === 0 ? <p className="product-other-empty">其他仓库暂无同一物料</p>
           : <ul className="product-other-list">
             {others.map((row) => <li key={row.warehouse_id}>
@@ -2716,7 +2719,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                   finally { setReadingImage(false); }
                 }} />
             <button type="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
-              <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoaderCircle size={22} className="spin" /> : <ImagePlus size={22} />}</span>
+              <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoadingIndicator size={22} /> : <ImagePlus size={22} />}</span>
               <span className="product-image-upload-copy">
                 <strong>{readingImage ? '正在上传图片…' : form.image ? '更换物料图片' : '上传物料图片'}</strong>
                 <span>{readingImage ? '正在压缩并上传，请稍候' : '点击选择图片，支持 JPEG、PNG、WebP'}</span>
@@ -2770,7 +2773,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 setLatest({ product: current, categories: data.categories });
               } catch (e) { setError(e.message); }
               finally { setBusy(false); }
-            }}>{busy ? '正在读取…' : '查看最新信息'}</Button>
+            }} busy={busy}>{busy ? '正在读取…' : '查看最新信息'}</Button>
             {latest && <Button type="button" disabled={busy || readingImage} onClick={() => {
               if (!window.confirm('使用最新信息替换当前填写内容，并清空同步仓库选择？')) return;
               setForm(latest.product);
@@ -2789,7 +2792,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           <Button
             type="submit"
             kind="primary"
-            icon={busy ? LoaderCircle : Check}
+            icon={Check} busy={busy}
             disabled={busy || readingImage || conflict}
           >
             {busy ? "正在保存…" : "保存物料"}
@@ -2875,7 +2878,7 @@ function ReduceStockModal({ product, onClose, onSaved }) {
           <Button type="button" onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button type="submit" kind="primary" icon={Minus} disabled={busy}>
+          <Button type="submit" kind="primary" icon={Minus} busy={busy}>
             {busy ? "处理中…" : "确认减少"}
           </Button>
         </div>
@@ -3022,8 +3025,8 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           {templates && <div className="template-save-panel">
             <label>模板名称<input value={templateName} maxLength={100} placeholder="例如：每周日用品补货" disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
             <div className="order-template-actions">
-              <Button type="button" icon={FilePenLine} disabled={busy || templateAction.busy || !items.length} onClick={() => saveTemplate(false)}>{template ? "另存为模板" : "保存为模板"}</Button>
-              {template && <Button type="button" disabled={busy || templateAction.busy || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}
+              <Button type="button" icon={FilePenLine} busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(false)}>{template ? "另存为模板" : "保存为模板"}</Button>
+              {template && <Button type="button" busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}
             </div>
             {templateMessage && <p className="template-success" role="status">{templateMessage}</p>}
           </div>
@@ -3245,7 +3248,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             <Button
               type="submit"
               kind="primary"
-              icon={busy ? LoaderCircle : Check}
+              icon={Check} busy={busy}
               disabled={busy || templateAction.busy || !items.length}
             >
               {busy ? "正在提交…" : `确认${type === "in" ? "入库" : "出库"}`}
@@ -3728,7 +3731,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             <Trash2 size={17} />
             <p>重置将永久清空所有物料、库存、单据、往来单位、模板及收付款/盘点记录，包括正式数据。保留账户、登录信息、服务器配置及已保存的商户和仓库名称。</p>
           </div>
-          <Button type="button" icon={Trash2} onClick={reset} disabled={busy}>
+          <Button type="button" icon={Trash2} onClick={reset} busy={busy}>
             重置业务数据
           </Button>
           </section>
@@ -3745,7 +3748,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           <Button type="button" onClick={closeSettings} disabled={busy}>
             取消
           </Button>
-          {section === "general" && <Button kind="primary" type="submit" icon={Check} disabled={busy || notificationDirty}>
+          {section === "general" && <Button kind="primary" type="submit" icon={Check} busy={busy} disabled={notificationDirty}>
             {busy ? "保存中…" : "保存设置"}
           </Button>}
         </div>

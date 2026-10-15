@@ -1,6 +1,7 @@
+import { LoadingIndicator } from './Loading.jsx';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Camera, Keyboard, LoaderCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Camera, Keyboard, RefreshCw } from 'lucide-react';
 import { mobileDevice } from './device.js';
 import { cameraRegion, createCameraDecoder } from './camera-decoder.js';
 import './camera-scanner.css';
@@ -150,7 +151,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
     <video ref={video} muted playsInline hidden={!!error} />
     {error ? <div className="camera-error" role="alert"><Camera size={30} /><p>{error}</p></div> : <>
       <div ref={guide} className="camera-crosshair" />
-      {!ready && <div className="camera-loading"><LoaderCircle className="spin" size={24} />正在开启摄像头…</div>}
+      {!ready && <div className="camera-loading"><LoadingIndicator size={48} />正在开启摄像头…</div>}
       <span className="camera-instruction">将物料条码或二维码置于取景框内</span>
     </>}
   </div>;
@@ -163,7 +164,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
     </header>
     {error ? <div className="camera-error" role="alert"><Camera size={38} /><h3>暂时无法扫码</h3><p>{error}</p></div> : <>
       <div ref={guide} className="camera-viewfinder" aria-hidden="true"><i /><i /><i /><i /><span className="camera-scan-line" /></div>
-      {!ready && <div className="camera-opening" role="status"><LoaderCircle className="spin" size={24} /><span>正在开启摄像头…</span></div>}
+      {!ready && <div className="camera-opening" role="status"><LoadingIndicator size={48} /><span>正在开启摄像头…</span></div>}
     </>}
     <footer className="camera-overlay-footer">
       <p className="camera-overlay-instruction">将物料条码或二维码置于取景框内</p>

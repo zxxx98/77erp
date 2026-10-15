@@ -1,8 +1,9 @@
+import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { Select, ContactPicker } from "./Dropdown.jsx";
 export { ContactPicker } from "./Dropdown.jsx";
 import { usePermissions } from './permissions.jsx';
 import React, { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, ChevronDown, Clock3, FilePenLine, LoaderCircle, Package, Trash2, UserRound } from "lucide-react";
+import { ArrowRight, ChevronDown, Clock3, FilePenLine, Package, Trash2, UserRound } from "lucide-react";
 import { api } from "./api.js";
 import { orderLabel, Stocktake, ProductImport } from "./Operations.jsx";
 import "./commerce.css";
@@ -102,6 +103,7 @@ function Contacts({ onRefresh }) {
   }, []);
   return (
     <div>
+      {busy && <p><LoadingStatus>正在保存往来单位…</LoadingStatus></p>}
       <p>
         同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。
       </p>
@@ -220,7 +222,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
         : <div className="template-heading">{header}</div>}
       <div id={listId} className="template-content" hidden={collapsible && !expanded}>
         {collapsible && <p className="template-hint">套用后可修改本次单据，提交后模板仍会保留。</p>}
-        {loading && <div className="template-empty" role="status"><LoaderCircle size={22} className="spin" aria-hidden="true" /><span>正在加载模板…</span></div>}
+        {(loading || busy) && <div className="template-empty" role="status"><LoadingIndicator size={24} /><span>{loading ? "正在加载模板…" : "正在处理模板…"}</span></div>}
         {!loading && !error && !visibleTemplates.length && <div className="template-empty">
           <FilePenLine size={28} aria-hidden="true" />
           <strong>暂无模板</strong>
@@ -305,6 +307,8 @@ export function Payments({ order, onChanged }) {
   return (
     <section className="operation-panel">
       <h3>收付款记录</h3>
+      {!data && !busy && !error && <p><LoadingStatus>正在读取收付款记录…</LoadingStatus></p>}
+      {busy && <p><LoadingStatus>正在保存收付款…</LoadingStatus></p>}
       {data && (
         <>
           <p>
@@ -440,6 +444,7 @@ function Finance() {
       <p>
         欠款按原单和退货单分别登记；历史待核对单据暂不计入。金额为业务应收应付，不是银行余额。
       </p>
+      {!data && !error && <p><LoadingStatus>正在读取财务数据…</LoadingStatus></p>}
       {data && (
         <>
           <div className="operation-scroll">
@@ -508,6 +513,7 @@ function Profit() {
   }, []);
   return (
     <div>
+      {busy && <p><LoadingStatus>正在读取毛利报表…</LoadingStatus></p>}
       <p>
         移动加权平均成本，销售时保存成本。旧库存以升级时参考采购价估算期初成本；旧单据成本未知，单独列出，不计入已知毛利。毛利不含运费、税费和经营费用；退货按退货日冲减，日期按
         UTC。

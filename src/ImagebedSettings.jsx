@@ -1,3 +1,4 @@
+import { LoadingStatus } from './Loading.jsx';
 import { Select } from "./Dropdown.jsx";
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
@@ -46,14 +47,14 @@ export function ImagebedSettings({ onBusy, active }) {
         <small>凭据仅保存在服务器，不会随物料数据或业务备份返回。</small>
         {config.has_secret && <label className="imagebed-clear-secret"><input type="checkbox" checked={clearSecret} disabled={busy} onChange={e => setClearSecret(e.target.checked)} /><span>清除已保存凭据（需同时停用上传或改为无需认证）</span></label>}
       </>}
-      <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? '处理中…' : '保存图床配置'}</button>
+      <button type="button" className="btn btn-primary" disabled={busy} onClick={save}>{busy ? <LoadingStatus size={20}>处理中…</LoadingStatus> : '保存图床配置'}</button>
       <label>上传测试图片<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || !config.base_url} onChange={e => {
         const file = e.target.files?.[0]; e.target.value = '';
         if (file) void run(async () => { const url = await readProductImage(file); setTestImage(url); setNotice('测试上传成功，图片已写入图床。'); });
       }} /></label>
       <small>先保存配置，再选择图片测试。测试图片会保留在图床中。</small>
       {testImage && <ProductImage src={testImage} alt="图床测试图片" className="product-image-thumbnail" />}
-    </div> : !error && <p role="status">正在读取图床配置…</p>}
+    </div> : !error && <p><LoadingStatus>正在读取图床配置…</LoadingStatus></p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
   </section>;

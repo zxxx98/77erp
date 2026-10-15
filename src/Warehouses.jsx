@@ -1,3 +1,4 @@
+import { LoadingStatus } from './Loading.jsx';
 import React, { useRef, useState } from 'react';
 import { api, getWarehouseId } from './api.js';
 
@@ -33,6 +34,7 @@ export function WarehouseManager({ warehouses, onRefresh, onBusy }) {
   };
   return <section className="operation-panel">
     <h3>仓库管理</h3>
+    {busy && <p><LoadingStatus>正在处理仓库…</LoadingStatus></p>}
     <p>新增仓库后可在页面顶部切换。分类、物料、库存、单据和模板按仓库独立管理。</p>
     <label>新仓库名称<input maxLength={60} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
     <fieldset className="warehouse-reuse" disabled={busy}>

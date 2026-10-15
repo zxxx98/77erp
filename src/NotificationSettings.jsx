@@ -1,3 +1,4 @@
+import { LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { Select } from './Dropdown.jsx';
@@ -62,7 +63,7 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
         <div className="notification-actions"><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
           const value = await api('/settings/notifications', { method: 'PUT', body: { ...config, url, secret, clear_url: clearUrl, clear_secret: clearSecret } });
           setConfig(value); setSaved(JSON.stringify(value)); setUrl(''); setSecret(''); setClearUrl(false); setClearSecret(false); setNotice('通知设置已保存。'); await refreshLogs();
-        })}>{busy ? '处理中…' : '保存通知设置'}</button>
+        })}>{busy ? <LoadingStatus size={20}>处理中…</LoadingStatus> : '保存通知设置'}</button>
         <button type="button" className="btn" disabled={busy || dirty || !config.has_url} onClick={() => void run(async () => { await api('/settings/notifications/test', { method: 'POST', body: { version: config.version } }); setNotice('测试通知已加入发送队列，请查看发送记录。'); await refreshLogs(); })}>发送测试通知</button></div>
         <small>先保存再测试；测试通知不受总开关、类型和仓库筛选限制。机器人关键词可配置为「77 ERP」。</small>
       </div>
@@ -74,7 +75,7 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
         {log.last_error && <p>{log.last_error}</p>}
         {['failed', 'retry'].includes(log.status) && <button type="button" className="btn" disabled={busy} onClick={() => void run(async () => { await api(`/settings/notifications/deliveries/${log.id}/retry`, { method: 'POST', body: {} }); await refreshLogs(); })}>重试发送</button>}
       </article>) : <p>暂无发送记录</p>}</div>
-    </> : !error && <p role="status">正在读取通知设置…</p>}
+    </> : !error && <p><LoadingStatus>正在读取通知设置…</LoadingStatus></p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
   </section>;

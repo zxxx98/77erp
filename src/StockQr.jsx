@@ -1,3 +1,4 @@
+import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { Select, ContactPicker } from "./Dropdown.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
@@ -344,6 +345,7 @@ export function StockQrManager({
   return (
     <Modal title={title} onClose={close} wide>
       <div className="form-body stock-qr-manager" aria-busy={busy}>
+        {busy && <p><LoadingStatus>正在处理出入库二维码…</LoadingStatus></p>}
         {(selected || form) && (
           <button className={button} disabled={busy} onClick={back}>
             返回列表
@@ -945,6 +947,7 @@ export function StockQrExecution({
   };
   return (
     <>
+      {busy && <p><LoadingStatus>正在处理扫码请求…</LoadingStatus></p>}
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -1002,7 +1005,9 @@ export function StockQrExecution({
               className="btn btn-primary"
               disabled={busy}
               onClick={() => submit(preview)}
+              aria-busy={busy}
             >
+              {busy && <LoadingIndicator size={20} />}
               {preview.type === "in" ? "确认入库" : "确认出库"}
             </button>
           </div>

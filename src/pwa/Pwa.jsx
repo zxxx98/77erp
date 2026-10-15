@@ -1,3 +1,4 @@
+import { LoadingIndicator } from '../Loading.jsx';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { Download, RefreshCw, WifiOff, X } from 'lucide-react';
@@ -114,8 +115,8 @@ export function PwaActions() {
   return <section className="mw-card mw-stack">
     <h2>网页版应用</h2>
     <p className="mw-muted">{!online ? '当前离线，联网后确认业务操作。' : registrationError || (offlineReady ? '应用已准备好离线打开。' : '首次使用需要联网。')}</p>
-    {!standalone && <button type="button" className="mw-button" onClick={install} disabled={installing} aria-busy={installing}><Download size={19} />{installing ? '正在请求安装…' : installationReported ? '查看安装说明' : '安装应用'}</button>}
-    <button type="button" className="mw-button" disabled={checking || !online} onClick={needRefresh ? update : checkUpdate}><RefreshCw size={19} />{checking ? '正在检查…' : needRefresh ? '更新应用' : '检查更新'}</button>
+    {!standalone && <button type="button" className="mw-button" onClick={install} disabled={installing} aria-busy={installing}>{installing ? <LoadingIndicator size={20} /> : <Download size={19} />}{installing ? '正在请求安装…' : installationReported ? '查看安装说明' : '安装应用'}</button>}
+    <button type="button" className="mw-button" disabled={checking || !online} aria-busy={checking} onClick={needRefresh ? update : checkUpdate}>{checking ? <LoadingIndicator size={20} /> : <RefreshCw size={19} />}{checking ? '正在检查…' : needRefresh ? '更新应用' : '检查更新'}</button>
   </section>;
 }
 

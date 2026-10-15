@@ -1,6 +1,7 @@
+import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { parseQuantity, addQuantity } from "../shared/quantity.js";
 import React, { useEffect, useRef, useState } from "react";
-import { FileSpreadsheet, LoaderCircle, Upload } from "lucide-react";
+import { FileSpreadsheet, Upload } from "lucide-react";
 import { api } from "./api.js";
 import {
   download,
@@ -110,6 +111,7 @@ export function OrderActions({ order, onSaved }) {
   return (
     <section className="operation-panel">
       <h3>单据纠正</h3>
+      {busy && <p><LoadingStatus>正在处理单据…</LoadingStatus></p>}
       {order.source_order_id && <p>关联原单 ID：{order.source_order_id}</p>}
       <label>
         操作原因
@@ -183,6 +185,7 @@ export function Stocktake({ products, onSaved }) {
   const items = Object.values(selected);
   return (
     <div>
+      {busy && <p><LoadingStatus>正在保存盘点…</LoadingStatus></p>}
       <p>
         勾选要盘点的物料，填写实盘数量。提交时校验账面库存，库存变化后需刷新重新盘点。
       </p>
@@ -391,7 +394,7 @@ export function ProductImport({ onSaved }) {
           onClick={() => fileInput.current?.click()}
         >
           <span className="file-upload-icon" aria-hidden="true">
-            {busy ? <LoaderCircle size={22} className="spin" /> : <FileSpreadsheet size={22} />}
+            {busy ? <LoadingIndicator size={22} /> : <FileSpreadsheet size={22} />}
           </span>
           <span className="file-upload-copy">
             <strong>{busy ? "正在读取文件…" : fileName || "选择物料文件"}</strong>
@@ -482,6 +485,7 @@ export function Backup({ onSaved }) {
     [preview, setPreview] = useState(null);
   return (
     <div>
+      {busy && <p><LoadingStatus>正在处理备份…</LoadingStatus></p>}
       <p>
         备份包含全部仓库、物料、库存成本、单据、盘点、往来单位、模板、收付款记录及操作人名称，不包含用户账号、密码和图床凭据。物料图片只备份 URL，图片文件需在图床保留。恢复会替换全部业务数据，保留当前账户、登录信息、图床配置、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
       </p>

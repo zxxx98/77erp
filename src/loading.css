@@ -1,0 +1,12 @@
+.loading-indicator {
+  display: inline-block;
+  flex: none;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.loading-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

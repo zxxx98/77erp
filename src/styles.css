@@ -105,16 +105,8 @@ table {
 .orange-text {
   color: var(--orange);
 }
-.spin {
-  animation: spin 1s linear infinite;
-}
 .rotate {
   transform: rotate(180deg);
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 .app-shell {
   min-height: 100vh;
