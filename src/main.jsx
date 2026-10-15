@@ -647,7 +647,7 @@ function App({ admin, onLogout }) {
   const user = data.user || admin;
   const can = key => hasPermission(user, key);
   const manage = key => canManage(user, key);
-  const low = data.products.filter((p) => p.stock <= p.threshold);
+  const low = data.products.filter((p) => p.active !== 0 && p.stock <= p.threshold);
   const openOrder = (type, product, template) => {
     if (!can(type === 'in' ? 'purchase' : 'sale')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
     setModal({ kind: 'order', type, product, template });

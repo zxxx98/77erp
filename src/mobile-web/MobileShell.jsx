@@ -79,7 +79,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
 function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history }) {
   const { costs } = usePermissions();
   const today = reportOrders(data.orders).filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
-  const low = data.products.filter(p => p.stock <= p.threshold);
+  const low = data.products.filter(p => p.active !== 0 && p.stock <= p.threshold);
   const stats = [
     ['物料种类', count(data.products.length), Box],
     ['库存成本', costs ? money(data.products.reduce((total, p) => total + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)), 0) / 100) : '—', Warehouse],
