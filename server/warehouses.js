@@ -29,6 +29,8 @@ export function migrateWarehouses(db) {
 }
 
 export function installWarehouses(app, db) {
+  db.exec(`INSERT INTO app_metadata(key,value) VALUES ('warehouse_sequence',(SELECT MAX(id) FROM warehouses))
+    ON CONFLICT(key) DO UPDATE SET value=MAX(CAST(value AS INTEGER),CAST(excluded.value AS INTEGER));`);
   const warehouses = () => db.prepare('SELECT * FROM warehouses ORDER BY id').all();
   app.use('/api', (req, res, next) => {
     // Express accepts case variants and trailing slashes for these routes.
@@ -61,9 +63,27 @@ export function installWarehouses(app, db) {
   app.post('/api/warehouses', (req, res) => {
     try {
       const name = warehouseName(req.body?.name);
-      const result = db.prepare('INSERT INTO warehouses(name,created_at) VALUES (?,?)').run(name, new Date().toISOString());
-      res.status(201).json({ id: Number(result.lastInsertRowid), name });
-    } catch (e) { res.status(400).json({ error: e.message.includes('UNIQUE') ? '仓库名称已存在。' : e.message }); }
+      const reuse = req.body?.reuse_catalog ?? false;
+      if (typeof reuse !== 'boolean') throw new Error('请选择是否复用当前仓库的分类和物料。');
+      db.exec('BEGIN IMMEDIATE');
+      // A deleted warehouse ID must not later select an unrelated warehouse in an older browser tab.
+      db.exec("UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT MAX(id) FROM warehouses))+1 WHERE key='warehouse_sequence'");
+      const id = Number(db.prepare("SELECT value FROM app_metadata WHERE key='warehouse_sequence'").get().value);
+      db.prepare('INSERT INTO warehouses(id,name,created_at) VALUES (?,?,?)').run(id, name, new Date().toISOString());
+      if (reuse) {
+        for (const category of db.prepare('SELECT id FROM categories WHERE warehouse_id=? ORDER BY id').all(req.warehouse.id))
+          copyCategoryToWarehouse(db, category.id, id);
+        for (const product of db.prepare('SELECT id,active FROM products WHERE warehouse_id=? ORDER BY id').all(req.warehouse.id)) {
+          syncProduct(db, product.id, [id]);
+          db.prepare('UPDATE products SET active=? WHERE warehouse_id=? AND sync_key=(SELECT sync_key FROM products WHERE id=?)').run(product.active, id, product.id);
+        }
+      }
+      db.exec('COMMIT');
+      res.status(201).json({ id, name });
+    } catch (e) {
+      if (db.isTransaction) db.exec('ROLLBACK');
+      res.status(400).json({ error: e.message.includes('UNIQUE') ? '仓库名称已存在。' : e.message });
+    }
   });
   app.put('/api/warehouses/:id', (req, res) => {
     try {
@@ -76,6 +96,43 @@ export function installWarehouses(app, db) {
     } catch (e) {
       if (db.isTransaction) db.exec('ROLLBACK');
       res.status(400).json({ error: e.message.includes('UNIQUE') ? '仓库名称已存在。' : e.message });
+    }
+  });
+  app.delete('/api/warehouses/:id', (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id < 1) throw new Error('仓库编号无效。');
+      if (id === 1) throw new Error('主仓库是系统默认仓库，不能删除。');
+      db.exec('BEGIN IMMEDIATE');
+      if (!db.prepare('SELECT 1 FROM warehouses WHERE id=?').get(id)) throw new Error('仓库不存在。');
+      if (db.prepare('SELECT 1 FROM products WHERE warehouse_id=? AND stock!=0 LIMIT 1').get(id))
+        throw new Error('仓库仍有库存，不能删除，请先清空所有物料库存。');
+      for (const table of ['stock_qr_previews', 'stock_qr_usages', 'stock_qr_revisions', 'stock_qr_items'])
+        db.prepare(`DELETE FROM ${table} WHERE stock_qr_id IN (SELECT id FROM stock_qr_codes WHERE warehouse_id=?)`).run(id);
+      db.prepare('DELETE FROM stock_qr_codes WHERE warehouse_id=?').run(id);
+      db.prepare('DELETE FROM templates WHERE warehouse_id=?').run(id);
+      db.prepare('DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE warehouse_id=?)').run(id);
+      db.prepare('DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE warehouse_id=?)').run(id);
+      // Original orders and their returns belong to the same warehouse and are removed together.
+      db.prepare('DELETE FROM orders WHERE warehouse_id=?').run(id);
+      db.prepare('DELETE FROM stock_adjustments WHERE product_id IN (SELECT id FROM products WHERE warehouse_id=?)').run(id);
+      db.prepare('DELETE FROM products WHERE warehouse_id=?').run(id);
+      // Delete the category tree in one statement so parent references are checked together.
+      db.prepare('DELETE FROM categories WHERE warehouse_id=?').run(id);
+      db.prepare('DELETE FROM warehouses WHERE id=?').run(id);
+      const config = db.prepare('SELECT warehouse_ids FROM notification_settings WHERE id=1').get();
+      const selected = JSON.parse(config.warehouse_ids);
+      if (selected.includes(id)) {
+        const remaining = selected.filter(value => value !== id);
+        // An empty selection means all warehouses, so disable when the sole selected warehouse is removed.
+        db.prepare('UPDATE notification_settings SET warehouse_ids=?,enabled=CASE WHEN ?=0 THEN 0 ELSE enabled END,version=version+1 WHERE id=1')
+          .run(JSON.stringify(remaining), remaining.length);
+      }
+      db.exec('COMMIT');
+      res.json({ ok: true });
+    } catch (e) {
+      if (db.isTransaction) db.exec('ROLLBACK');
+      res.status(400).json({ error: e.message });
     }
   });
   return { warehouses };

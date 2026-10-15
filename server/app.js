@@ -1,4 +1,5 @@
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
+import { installProductHistory } from './product-history.js';
 import { validQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
@@ -266,6 +267,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   app.use(express.json({ limit: "100kb" }));
   installAuth(app, db, options);
   const { warehouses } = installWarehouses(app, db);
+  installProductHistory(app, db);
   const notifications = installNotifications(app, db, options);
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);

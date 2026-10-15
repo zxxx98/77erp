@@ -146,9 +146,10 @@
 .mobile-device .mw-shell .scanner-mode-tabs {flex-wrap:wrap;}
 .mobile-device .mw-shell .scanner-mode-tabs button {min-height:48px;}
 .mobile-device .mw-shell .scan-focus-area {padding:20px 12px;}
-.mobile-device .mw-shell .scanner-input {max-width:100%;flex-wrap:wrap;}
-.mobile-device .mw-shell .scanner-input input {min-width:0;font-size:16px;}
-.mobile-device .mw-shell .scanner-input button {min-height:48px;}
+.mobile-device .mw-shell .scanner-input {max-width:100%;height:auto;min-height:62px;padding:6px 6px 6px 10px;gap:8px;flex-wrap:nowrap;}
+.mobile-device .mw-shell .scanner-input>svg {flex-shrink:0;}
+.mobile-device .mw-shell .scanner-input input {min-width:0;height:48px;padding:0;font-size:16px;}
+.mobile-device .mw-shell .scanner-input button {flex-shrink:0;min-width:64px;height:48px;min-height:48px;padding:0 12px;font-size:14px;white-space:nowrap;}
 .mobile-device .mw-shell .scan-result-actions {flex-wrap:wrap;}
 .mobile-device .mw-shell .scan-result-actions button {min-height:48px;}
 .mobile-device .mw-shell .scanner-ready {display:none;}

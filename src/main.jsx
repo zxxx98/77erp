@@ -59,6 +59,7 @@ import JsBarcode from "jsbarcode";
 import "./styles.css";
 import { api, getWarehouseId, setWarehouseId } from "./api.js";
 import { WarehouseManager, ProductSync } from "./Warehouses.jsx";
+import { ProductHistory } from './ProductHistory.jsx';
 import { flattenCategories, categoryBranch, readProductImage } from "./catalog.js";
 import { ProductImage } from "./ProductImage.jsx";
 import { ProductConflict } from './ProductConflict.jsx';
@@ -979,7 +980,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
-      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onClose={() => setModal(null)} />)}
+      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onViewOrder={id => setModal({ kind: 'detail', order: data.orders.find(o => o.id === id) })} onClose={() => setModal(null)} />)}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}
@@ -1688,7 +1689,7 @@ function CategoryManager({ categories, onClose, onChanged }) {
 
 function Products({ data, search, setSearch, edit, showProduct, barcode, onCategoriesChanged, onSaved, isAdmin }) {
   const { can } = usePermissions();
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState("active");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const actionLock = useRef(false);
@@ -2498,7 +2499,7 @@ function ProductName({ product, onView }) {
   return <button type="button" className="product-name-link" aria-label={`查看 ${product.name} 物料详情`} onClick={() => onView(product)}>{product.name}</button>;
 }
 
-function ProductDetail({ product, warehouseName, onClose }) {
+function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
   const { costs } = usePermissions();
   const [others, setOthers] = useState(null);
   const [otherError, setOtherError] = useState("");
@@ -2533,6 +2534,7 @@ function ProductDetail({ product, warehouseName, onClose }) {
         <div className="product-detail-full"><dt>规格型号</dt><dd>{product.specification || "—"}</dd></div>
         <div className="product-detail-full"><dt>备注</dt><dd>{product.note || "—"}</dd></div>
       </dl>
+      <ProductHistory key={product.id} product={product} onViewOrder={onViewOrder} />
       <section className="product-other-stock">
         <h4>其他仓库库存</h4>
         {otherError ? <p className="form-error" role="alert">{otherError}</p>
@@ -3700,7 +3702,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             </div>
             <Button type="button" icon={Plus} disabled={busy || form.units.length >= 100} onClick={() => setForm(current => ({ ...current, units: [...current.units, ""] }))}>新增单位</Button>
           </section>
-          <WarehouseManager warehouses={warehouses} onRefresh={onRefresh} />
+          <WarehouseManager warehouses={warehouses} onRefresh={onRefresh} onBusy={setBusy} />
           <div className="settings-version">
             <span className="brand-mark">
               <svg viewBox="0 0 40 40">

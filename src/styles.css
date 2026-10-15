@@ -4896,6 +4896,11 @@ table {
 .warehouse-select { width: 160px; max-width: 160px; min-width: 90px; }
 .warehouse-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 8px 0; }
 .warehouse-row input { min-width: 0; flex: 1; }
+.warehouse-reuse { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.warehouse-reuse legend { font-size: 13px; }
+.warehouse-reuse label { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.warehouse-reuse input[type="radio"] { width: auto; margin: 0; }
+.warehouse-reuse p { margin-bottom: 0; font-size: 12px; }
 .product-sync { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 0; }
 .product-sync legend { font-weight: 600; }
 .product-sync p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 10px; }

@@ -14,9 +14,9 @@ test('delist, filter, explicitly choose for clearance, relist, and delete an unu
   await expect(page.locator('.product-table').getByText('已停用', {exact: true})).toHaveCount(0);
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', {name: '停用 生命周期测试物料', exact: true}).click();
-  await expect(page.getByRole('button', {name: '启用 生命周期测试物料', exact: true})).toBeVisible();
+  await expect(page.getByText('没有找到物料', {exact: true})).toBeVisible();
   const statusFilter = page.getByRole('group', {name: '物料使用状态'});
-  await expect(statusFilter.getByRole('button', {name: '全部状态', exact: true})).toHaveAttribute('aria-pressed', 'true');
+  await expect(statusFilter.getByRole('button', {name: '已启用', exact: true})).toHaveAttribute('aria-pressed', 'true');
   await statusFilter.getByRole('button', {name: '已启用', exact: true}).focus();
   await page.keyboard.press('Enter');
   await expect(statusFilter.getByRole('button', {name: '已启用', exact: true})).toHaveAttribute('aria-pressed', 'true');
@@ -35,9 +35,12 @@ test('delist, filter, explicitly choose for clearance, relist, and delete an unu
   await page.getByRole('button', {name: '取消', exact: true}).click();
   await page.goto('/#products');
   await page.getByRole('textbox', {name: '筛选物料'}).fill('生命周期测试物料');
+  await statusFilter.getByRole('button', {name: '已停用', exact: true}).click();
   await page.getByRole('button', {name: '网格视图'}).click();
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', {name: '启用 生命周期测试物料', exact: true}).click();
+  await expect(page.getByText('没有找到物料', {exact: true})).toBeVisible();
+  await statusFilter.getByRole('button', {name: '已启用', exact: true}).click();
   await expect(page.getByRole('button', {name: '停用 生命周期测试物料', exact: true})).toBeVisible();
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', {name: '删除 生命周期测试物料', exact: true}).click();

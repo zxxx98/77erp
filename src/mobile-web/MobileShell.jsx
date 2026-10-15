@@ -8,6 +8,7 @@ import { OfflineNotice, PwaActions, usePwa } from '../pwa/Pwa.jsx';
 import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
 import { download } from '../data-files.js';
 import { ProductImage } from '../ProductImage.jsx';
+import { ProductHistory } from '../ProductHistory.jsx';
 import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge, matchesProduct } from './ui.jsx';
 import './mobile.css';
 
@@ -97,7 +98,7 @@ function Products({ data, inventory, showProduct, openModal }) {
   const { can, manage } = usePermissions();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(inventory ? 'all' : 'active');
   const [limit, setLimit] = useState(30);
   const categories = flattenCategories(data.categories || []);
   const branch = categoryBranch(data.categories || [], Number(category));
@@ -218,6 +219,7 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
     <Notice>{error}</Notice><section className="mw-card mw-stack"><h2>{product.name}</h2><p className="mw-muted">{product.barcode}</p>{product.image && <ProductImage src={product.image} alt={product.name} className="mw-detail-image" />}<StockBadge product={product} />
       { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
     <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{money(product.price)}</DetailRow></section>
+    <ProductHistory key={product.id} product={product} onViewOrder={id => openModal({ kind: 'detail', order: data.orders.find(o => o.id === id) })} />
     <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted">读取中…</p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一物料</p>}</section>
     <Button onClick={() => openModal({ kind: 'barcode', product })}>物料条码</Button>
     {can('products') && <Button disabled={busy} onClick={() => openModal({ kind: 'product', product })}>编辑物料</Button>}

@@ -349,3 +349,122 @@ test('an actual legacy database migrates without changing product IDs, stock, va
   assert.equal(instance.db.prepare('SELECT COUNT(*) AS n FROM warehouses').get().n, 1);
   instance.db.close();
 });
+
+test('new warehouses optionally reuse the current catalog, including unused branches and inactive products, without stock or history', async t => {
+  const f = await fixture(t);
+  const source = await f.warehouse('来源分仓');
+  const root = (await f.request('/categories', 'POST', { name: '完整分类' }, source)).data.id;
+  const child = (await f.request('/categories', 'POST', { name: '子分类', parent_id: root }, source)).data.id;
+  await f.request('/categories', 'POST', { name: '空分类' }, source);
+  const original = (await f.request('/products', 'POST', { ...product, category_id: child }, source)).data.id;
+  await f.order(original, 'in', 3, source);
+  await f.request(`/products/${original}/status`, 'POST', { active: 0 }, source);
+  const created = await f.request('/warehouses', 'POST', { name: '复用分仓', reuse_catalog: true }, source);
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const copied = (await f.request('/data', 'GET', undefined, created.data.id)).data;
+  assert.equal(copied.categories.length, 3);
+  assert.equal(copied.categories.find(c => c.name === '子分类').parent_id, copied.categories.find(c => c.name === '完整分类').id);
+  const sourceProduct = (await f.request('/data', 'GET', undefined, source)).data.products[0];
+  const targetProduct = copied.products[0];
+  for (const field of ['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'specification', 'note', 'image', 'active', 'sync_key'])
+    assert.equal(targetProduct[field], sourceProduct[field], field);
+  assert.notEqual(targetProduct.id, sourceProduct.id);
+  assert.equal(targetProduct.category_id, copied.categories.find(c => c.name === '子分类').id);
+  assert.equal(targetProduct.stock, 0);
+  assert.equal(targetProduct.inventory_value_cents, 0);
+  assert.deepEqual(copied.orders, []);
+  assert.deepEqual((await f.request('/stocktakes', 'GET', undefined, created.data.id)).data, []);
+  const empty = await f.warehouse('不复用');
+  assert.deepEqual((await f.request('/data', 'GET', undefined, empty)).data.categories, []);
+  for (const reuse_catalog of ['true', 1, {}])
+    assert.equal((await f.request('/warehouses', 'POST', { name: '无效复用', reuse_catalog })).status, 400);
+  assert.equal((await f.request('/warehouses', 'POST', { name: '复用分仓', reuse_catalog: true }, source)).status, 400);
+  assert.equal((await f.request('/warehouses')).data.length, 4);
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('warehouse deletion clears local catalogs and zero-stock history, preserves other warehouses, and protects stock', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.request('/warehouses/1', 'DELETE', {})).status, 400);
+  assert.equal((await f.request('/warehouses/9999', 'DELETE', {})).status, 400);
+  const w = await f.warehouse('可删除分仓');
+  const main = (await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] })).data.id;
+  const local = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data.id;
+  for (const parentName of ['父分类一', '父分类二']) {
+    const parent = (await f.request('/categories', 'POST', { name: parentName }, w)).data.id;
+    await f.request('/categories', 'POST', { name: '同名子分类', parent_id: parent }, w);
+  }
+  assert.equal((await f.command('/templates', { name: '待删除模板', type: 'in', partner: '', note: '', items: [{ product_id: local, quantity: 1, price: 10 }] }, w)).status, 200);
+  assert.equal((await f.command('/stock-qrs', { name: '待删除二维码', type: 'in', partner: '供应商', require_confirmation: false, max_scans: null, items: [{ product_id: local, quantity: 1, price_cents: 1000 }] }, w)).status, 201);
+  f.db.prepare('UPDATE notification_settings SET warehouse_ids=? WHERE id=1').run(JSON.stringify([w]));
+  f.db.prepare('UPDATE products SET stock=1 WHERE id=?').run(local);
+  assert.equal((await f.request(`/warehouses/${w}`, 'DELETE', {})).status, 400);
+  f.db.prepare('UPDATE products SET stock=0,inventory_value_cents=1 WHERE id=?').run(local);
+  assert.equal((await f.request(`/warehouses/${w}`, 'DELETE', {}, w)).status, 200);
+  assert.equal((await f.request('/data', 'GET', undefined, w)).status, 400);
+  assert.equal((await f.request('/products/barcode/WH-001')).data.id, main);
+  for (const table of ['products', 'categories', 'templates', 'stock_qr_codes'])
+    assert.equal(f.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE warehouse_id=?`).get(w).n, 0, table);
+  assert.equal(f.db.prepare('SELECT warehouse_ids FROM notification_settings WHERE id=1').get().warehouse_ids, '[]');
+  const next = await f.warehouse('新仓库不复用旧编号');
+  assert.ok(next > w);
+  const adjusted = (await f.request('/products', 'POST', { ...product }, next)).data.id;
+  await f.command('/stocktakes', { reason: '零差异盘点', items: [{ product_id: adjusted, expected_stock: 0, counted: 0 }] }, next);
+  assert.equal((await f.request(`/warehouses/${next}`, 'DELETE', {})).status, 200);
+  const history = await f.warehouse('历史分仓');
+  const used = (await f.request('/products', 'POST', product, history)).data.id;
+  const order = await f.order(used, 'in', 1, history);
+  await f.command(`/orders/${order.data.id}/void`, { reason: '作废入库清零' }, history);
+  assert.equal((await f.request(`/warehouses/${history}`, 'DELETE', {})).status, 200);
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('deleting a zero-stock warehouse removes orders, returns, payments, adjustments and QR usage atomically without touching other warehouses', async t => {
+  const f = await fixture(t), w = await f.warehouse('含历史分仓');
+  await f.request('/products', 'POST', { ...product, sync_warehouse_ids: [w] });
+  const local = (await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data.id;
+  const sourceId = f.db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
+  let incoming;
+  for (const warehouse of [1, w]) {
+    const p = (await f.request('/products/barcode/WH-001', 'GET', undefined, warehouse)).data;
+    const qr = await f.command('/stock-qrs', { name: '有使用记录的二维码', type: 'in', partner: '共享供应商', require_confirmation: false, max_scans: null,
+      items: [{ product_id: p.id, quantity: 3, price_cents: 1000 }] }, warehouse);
+    assert.equal(qr.status, 201);
+    const preview = await f.request('/stock-qrs/preview', 'POST', { mode: 'in', label: { format: '77erp', version: 1, type: 'stock_operation', source_id: sourceId, warehouse_id: warehouse, qr_id: qr.data.qr_id } }, warehouse);
+    assert.equal(preview.status, 200);
+    const result = await f.command(`/stock-qrs/${qr.data.qr_id}/execute`, { preview_token: preview.data.preview_token, confirmed: false }, warehouse);
+    assert.equal(result.status, 201);
+    const paid = await f.command(`/orders/${result.data.id}/payments`, { amount: 1, method: '现金', note: '待撤销记录' }, warehouse);
+    assert.equal(paid.status, 200);
+    assert.equal((await f.command(`/payments/${paid.data.id}/reverse`, { reason: '撤销付款' }, warehouse)).status, 200);
+    assert.equal((await f.command(`/orders/${result.data.id}/payments`, { amount: 1, method: '现金', note: '有效付款' }, warehouse)).status, 200);
+    if (warehouse === w) incoming = result.data;
+  }
+  const returned = await f.command(`/orders/${incoming.id}/returns`, { reason: '采购退货', items: [{ product_id: local, quantity: 1 }] }, w);
+  assert.equal(returned.status, 200);
+  assert.equal((await f.command(`/orders/${returned.data.id}/void`, { reason: '作废退货' }, w)).status, 200);
+  assert.equal((await f.order(local, 'out', 1, w)).status, 201);
+  assert.equal((await f.command('/stock/reduce', { product_id: local, quantity: 1, reason: '报损' }, w)).status, 200);
+  const beforeRejected = (await f.request('/backup')).data.data;
+  assert.equal((await f.request(`/warehouses/${w}`, 'DELETE', {})).status, 400);
+  assert.deepEqual((await f.request('/backup')).data.data, beforeRejected);
+  assert.equal((await f.command('/stocktakes', { reason: '盘点清零', items: [{ product_id: local, expected_stock: 1, counted: 0 }] }, w)).status, 200);
+  const before = (await f.request('/backup')).data.data;
+  const productIds = new Set(before.products.filter(p => p.warehouse_id === w).map(p => p.id));
+  const orderIds = new Set(before.orders.filter(o => o.warehouse_id === w).map(o => o.id));
+  const qrIds = new Set(before.stock_qr_codes.filter(q => q.warehouse_id === w).map(q => q.id));
+  assert.equal((await f.request(`/warehouses/${w}`, 'DELETE', {}, w)).status, 200);
+  const after = (await f.request('/backup')).data;
+  for (const [table, rows] of Object.entries(before)) {
+    const expected = rows.filter(row => table === 'warehouses' ? row.id !== w
+      : row.warehouse_id !== undefined ? row.warehouse_id !== w
+      : ['order_items', 'payments'].includes(table) ? !orderIds.has(row.order_id)
+      : table === 'stock_adjustments' ? !productIds.has(row.product_id)
+      : table.startsWith('stock_qr_') ? !qrIds.has(row.stock_qr_id) : true);
+    assert.deepEqual(after.data[table], expected, table);
+  }
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM stock_qr_previews WHERE warehouse_id=?').get(w).n, 0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM stock_qr_previews WHERE warehouse_id=1').get().n, 1);
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+  assert.equal((await f.request('/backup/preview', 'POST', { backup: after })).status, 200);
+});

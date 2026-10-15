@@ -79,7 +79,7 @@ test('the eight modules are independent; full business access never grants syste
   await f.set(permissionKeys);
   for (const [method, path] of [['GET', '/users'], ['POST', '/users'], ['PUT', '/users/1'], ['POST', '/users/1/password'],
     ['GET', '/settings/imagebed'], ['PUT', '/settings/imagebed'], ['PUT', '/settings'], ['POST', '/settings/reset'],
-    ['POST', '/warehouses'], ['PUT', '/warehouses/1'], ['GET', '/backup'], ['POST', '/backup/preview'], ['POST', '/backup/restore'],
+    ['POST', '/warehouses'], ['PUT', '/warehouses/1'], ['DELETE', '/warehouses/2'], ['GET', '/backup'], ['POST', '/backup/preview'], ['POST', '/backup/restore'],
     ['GET', '/unknown-route'], ['POST', '/SETTINGS/RESET/']])
     assert.equal((await f.request(f.cookie, path, method === 'GET' ? undefined : {}, method)).status, 403, path);
   const data = (await f.request(f.cookie, '/data')).data;

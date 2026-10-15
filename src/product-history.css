@@ -1,0 +1,9 @@
+.product-history { margin-top: 16px; min-width: 0; }
+.product-history-body { margin-top: 16px; }
+.product-history-body h4 { margin: 0 0 8px; }
+.product-history-body > p { font-size: 13px; line-height: 1.6; }
+.product-history-list { list-style: none; margin: 12px 0; padding: 0; }
+.product-history-list li { border-top: 1px solid var(--border, #e9ecf1); padding: 12px 0; overflow-wrap: anywhere; }
+.product-history-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.product-history-list time { display: block; color: var(--muted, #7e8798); font-size: 12px; margin: 6px 0; }
+.product-history-list p { margin: 6px 0 0; font-size: 13px; white-space: pre-wrap; }
