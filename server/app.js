@@ -300,6 +300,20 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       .get();
     res.json({ ...style, tokens: JSON.parse(style.tokens) });
   });
+  app.get("/api/products/export", (req, res) => {
+    const financial = hasPermission(req.user, "finance");
+    const hideCosts = !financial && !req.user.legacy_permissions;
+    const products = db
+      .prepare(
+        "SELECT name,barcode,category,unit,cost,price,stock,threshold,specification,note,active FROM products WHERE warehouse_id=? AND active!=0 ORDER BY category,name,id",
+      )
+      .all(req.warehouse.id)
+      .map((p) => {
+        if (hideCosts) p.cost = 0;
+        return p;
+      });
+    res.json({ warehouse: { id: req.warehouse.id, name: req.warehouse.name }, products });
+  });
   app.get("/api/products/barcode/:barcode", (req, res) => {
     const product = db
       .prepare("SELECT * FROM products WHERE barcode=? AND warehouse_id=?")

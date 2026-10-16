@@ -4897,6 +4897,10 @@ table {
 .product-sync legend { font-weight: 600; }
 .product-sync p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 10px; }
 .product-sync label { margin: 4px 12px 4px 0; }
+.export-warehouses { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 0 0 12px; }
+.export-warehouses legend { font-weight: 600; }
+.export-warehouses label { display: inline-flex; align-items: center; gap: 6px; margin: 4px 16px 4px 0; }
+.export-warehouses input[type="checkbox"] { width: auto; margin: 0; }
 @media (max-width: 600px) { .warehouse-select { max-width: 110px; } .warehouse-row { flex-wrap: wrap; } }
 
 .warehouse-switch-loading { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; gap: 12px; background: rgba(247,248,250,.8); color: #17243c; }

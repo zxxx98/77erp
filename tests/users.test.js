@@ -252,7 +252,7 @@ const routeRoles = new Map(Object.entries({
   'get /api/stocktakes': 'admin', 'post /api/stocktakes': 'admin',
   'post /api/stock/reduce': 'admin',
   'get /api/stocktakes/multi/products': 'admin', 'post /api/stocktakes/multi/compare': 'admin',
-  'post /api/products/import/preview': 'admin', 'post /api/products/import': 'admin',
+  'post /api/products/import/preview': 'admin', 'post /api/products/import': 'admin', 'get /api/products/export': 'admin',
   'get /api/stock-qrs': 'admin', 'post /api/stock-qrs': 'admin', 'get /api/stock-qrs/:qr_id': 'admin', 'put /api/stock-qrs/:qr_id': 'admin',
   'get /api/stock-qrs/:qr_id/usages': 'admin', 'get /api/stock-qrs/:qr_id/revisions': 'admin',
   'post /api/stock-qrs/preview': 'employee', 'post /api/stock-qrs/:qr_id/execute': 'employee',

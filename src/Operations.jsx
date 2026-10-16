@@ -13,6 +13,7 @@ import {
   rowsToProducts,
 } from "./data-files.js";
 import "./operations.css";
+import { exportFileName, sheetName, warehouseSheet } from "./product-export.js";
 
 export const orderLabel = (o) =>
   `${o.kind === "transfer" ? (o.type === "in" ? "调拨入库" : "调拨出库") : o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : o.type === "in" ? "采购入库" : "销售出库"}${o.status === "void" ? " · 已作废" : ""}`;
@@ -474,6 +475,77 @@ export function ProductImport({ onSaved }) {
           </button>
         </>
       )}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+export function ProductExport({ warehouses = [], warehouseId }) {
+  const { busy, error, run } = useOperation();
+  const [selected, setSelected] = useState(() =>
+    warehouseId ? [warehouseId] : warehouses.map((w) => w.id),
+  );
+  const [progress, setProgress] = useState("");
+  const [done, setDone] = useState("");
+  const toggle = (id) =>
+    setSelected((ids) =>
+      ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id],
+    );
+  const exportAll = () =>
+    run(async () => {
+      const targets = warehouses.filter((w) => selected.includes(w.id));
+      if (!targets.length) throw new Error("请至少选择一个仓库。");
+      setDone("");
+      setProgress("正在读取仓库物料…");
+      const used = new Set();
+      const sheets = [];
+      let total = 0;
+      for (const w of targets) {
+        setProgress(`正在读取「${w.name}」…`);
+        const data = await api("/products/export", { warehouseId: w.id });
+        total += data.products.length;
+        sheets.push(warehouseSheet({ ...w, name: sheetName(w.name, used) }, data.products));
+      }
+      setProgress("正在生成 Excel 文件…");
+      const { default: writeXlsxFile } = await import("write-excel-file/browser");
+      await writeXlsxFile(sheets).toFile(exportFileName());
+      setProgress("");
+      setDone(`已导出 ${targets.length} 个仓库、共 ${total} 件物料。`);
+    }).catch((e) => {
+      setProgress("");
+      throw e;
+    });
+  return (
+    <div>
+      <p>
+        选择要导出的仓库，将各仓库的物料信息导出为包含多个工作表的 Excel（.xlsx）文件，每个仓库一张工作表。仅导出启用中的物料，列顺序与批量导入模板一致，可直接回导。
+      </p>
+      <fieldset className="export-warehouses" disabled={busy}>
+        <legend>选择导出仓库</legend>
+        {warehouses.map((w) => (
+          <label key={w.id}>
+            <input
+              type="checkbox"
+              checked={selected.includes(w.id)}
+              onChange={() => toggle(w.id)}
+            />
+            {w.name}
+          </label>
+        ))}
+      </fieldset>
+      <button
+        type="button"
+        className="btn btn-primary"
+        disabled={busy || !selected.length}
+        onClick={exportAll}
+      >
+        导出为 Excel
+      </button>
+      {progress && <p><LoadingStatus>{progress}</LoadingStatus></p>}
+      {done && <p className="template-success" role="status">{done}</p>}
       {error && (
         <p className="form-error" role="alert">
           {error}

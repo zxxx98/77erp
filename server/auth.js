@@ -268,7 +268,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if ((read && ['/finance','/reports/profit'].includes(path)) ||
           ((read || post) && /^\/orders\/\d+\/(payments|settlement)$/.test(path)) ||
           (post && /^\/payments\/\d+\/reverse$/.test(path))) permission = 'finance';
-      if ((post && ['/products/import/preview','/products/import'].includes(path)) || (read && path === '/orders/export')) permission = 'data_io';
+      if ((post && ['/products/import/preview','/products/import'].includes(path)) || (read && ['/orders/export','/products/export'].includes(path))) permission = 'data_io';
       // QR direction comes from the persisted configuration, never a client-supplied direction.
       if (post && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path))) {
         const qrId = path === '/stock-qrs/preview' ? req.body?.label?.qr_id : path.split('/')[2];

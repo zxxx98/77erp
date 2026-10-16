@@ -1,6 +1,6 @@
 {
   "name": "77erp",
-  "version": "1.8.7",
+  "version": "1.9.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -23,7 +23,8 @@
     "react-markdown": "^10.1.0",
     "read-excel-file": "^9.3.10",
     "remark-gfm": "^4.0.1",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
