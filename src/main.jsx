@@ -2538,6 +2538,7 @@ function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
       .catch((e) => { if (active) setOtherError(e.message); });
     return () => { active = false; };
   }, [product.id]);
+  const otherTotal = (others ?? []).reduce((sum, row) => sum + (Number(row.stock) || 0), 0);
   const fields = [
     ["物料条码", product.barcode],
     ["物料分类", product.category],
@@ -2567,12 +2568,19 @@ function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
         {otherError ? <p className="form-error" role="alert">{otherError}</p>
           : others === null ? <p className="product-other-empty"><LoadingIndicator size={20} /> 读取中…</p>
           : others.length === 0 ? <p className="product-other-empty">其他仓库暂无同一物料</p>
-          : <ul className="product-other-list">
-            {others.map((row) => <li key={row.warehouse_id}>
-              <span>{row.warehouse_name}</span>
-              <strong>{count(row.stock)} {row.unit || product.unit}</strong>
-            </li>)}
-          </ul>}
+          : <>
+            <ul className="product-other-list">
+              {others.map((row) => <li key={row.warehouse_id}>
+                <span>{row.warehouse_name}</span>
+                <strong>{count(row.stock)} {row.unit || product.unit}</strong>
+              </li>)}
+            </ul>
+            <div className="product-stock-total">
+              <div><span>当前仓库（{warehouseName}）</span><strong>{count(product.stock)} {product.unit}</strong></div>
+              <div><span>其他仓库合计</span><strong>{count(otherTotal)} {product.unit}</strong></div>
+              <div className="product-stock-total-sum"><span>当前仓库 − 其他仓库合计</span><strong>{count(product.stock - otherTotal)} {product.unit}</strong></div>
+            </div>
+          </>}
       </section>
     </div>
     <div className="modal-footer"><Button onClick={onClose}>关闭</Button></div>

@@ -1814,6 +1814,33 @@ table {
   color: #8593a8;
   font-size: 13px;
 }
+.product-stock-total {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e3e9f2;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.product-stock-total > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: #60728e;
+}
+.product-stock-total > div strong {
+  white-space: nowrap;
+  color: #17243c;
+}
+.product-stock-total-sum {
+  border-top: 1px solid #e7ecf3;
+  padding-top: 6px;
+  color: #17243c;
+  font-weight: 600;
+}
 .product-info strong {
   display: block;
   font-size: 11px;
