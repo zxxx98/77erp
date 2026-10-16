@@ -124,6 +124,7 @@ function Products({ data, inventory, showProduct, openModal }) {
     const params = new URLSearchParams({ limit: String(limit), q: query });
     if (category !== 'all') params.set('category_id', category);
     if (filter !== 'all') params.set(inventory ? 'stock' : 'status', filter);
+    if (inventory) params.set('status', 'active');
     const timer = setTimeout(() => {
       setLoading(true);
       api(`/products?${params}`).then(value => { if (live) { setResult(value); setError(''); } })

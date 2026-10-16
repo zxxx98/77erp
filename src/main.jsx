@@ -2011,9 +2011,10 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
   const categories = data.categories || [];
   const branch = categoryBranch(categories, category);
   useEffect(() => { if (category && !categories.some(c => c.id === category)) setCategory(null); }, [categories, category]);
-  const low = data.products.filter((p) => p.stock <= p.threshold),
-    empty = data.products.filter((p) => p.stock === 0);
-  const filtered = data.products.filter(
+  const activeProducts = data.products.filter((p) => p.active !== 0);
+  const low = activeProducts.filter((p) => p.stock <= p.threshold),
+    empty = activeProducts.filter((p) => p.stock === 0);
+  const filtered = activeProducts.filter(
     (p) =>
       (filter === "all" ||
         (filter === "warning" && p.stock <= p.threshold) ||
@@ -2054,7 +2055,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           <span>
             <small>在库总数量</small>
             <strong>
-              {count(data.products.reduce((s, p) => addQuantity(s, p.stock), 0))}
+              {count(activeProducts.reduce((s, p) => addQuantity(s, p.stock), 0))}
               <em> 件</em>
             </strong>
           </span>
@@ -2067,7 +2068,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
             <small>库存成本金额</small>
             <strong>
               <em>¥ </em>
-              {costs ? money(data.products.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0)) : '—'}
+              {costs ? money(activeProducts.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0)) : '—'}
             </strong>
           </span>
         </div>
@@ -2099,13 +2100,13 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
           <h3>物料分类</h3>
-          <CategoryTree categories={categories} products={data.products} selected={category} onSelect={setCategory} />
+          <CategoryTree categories={categories} products={activeProducts} selected={category} onSelect={setCategory} />
         </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
           <div className="filter-tabs">
             {[
-              ["all", "全部库存", data.products.length],
+              ["all", "全部库存", activeProducts.length],
               ["warning", "库存预警", low.length],
               ["empty", "已缺货", empty.length],
             ].map(([id, label, n]) => (

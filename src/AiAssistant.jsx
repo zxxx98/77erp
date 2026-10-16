@@ -6,6 +6,8 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './ai.css';
 
+const AI_STAGES = ['正在理解你的需求…', '正在查询业务数据…', '正在核对并整理回答…'];
+
 export function AiSettings({ onBusy = () => {} }) {
   const [form, setForm] = useState(null), [error, setError] = useState(''), [status, setStatus] = useState(''), [busy, setBusy] = useState(false), [audit, setAudit] = useState(null);
   const lock = useRef(false);
@@ -74,8 +76,13 @@ function ActionCard({ action, busy, confirm }) {
 
 export function AiAssistant({ onChanged, userId, warehouseName }) {
   const [text, setText] = useState(''), [thread, setThread] = useState({ messages: [], actions: [] }), [file, setFile] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [history, setHistory] = useState([]), [historyError, setHistoryError] = useState(''), [showHistory, setShowHistory] = useState(false), [pending, setPending] = useState(''), [copied, setCopied] = useState(null);
+  const [history, setHistory] = useState([]), [historyError, setHistoryError] = useState(''), [showHistory, setShowHistory] = useState(false), [pending, setPending] = useState(''), [copied, setCopied] = useState(null), [stage, setStage] = useState(0);
   const lock = useRef(false), input = useRef(null), prompt = useRef(null), feed = useRef(null), warehouse = useRef(getWarehouseId());
+  useEffect(() => {
+    if (!busy) { setStage(0); return; }
+    const timer = setInterval(() => setStage(s => Math.min(s + 1, AI_STAGES.length - 1)), 2600);
+    return () => clearInterval(timer);
+  }, [busy]);
   const refreshHistory = async () => {
     try { setHistory(await api('/ai/conversations')); setHistoryError(''); }
     catch (e) { setHistoryError(e.message); }
@@ -115,10 +122,17 @@ export function AiAssistant({ onChanged, userId, warehouseName }) {
   });
   const send = () => run(async () => {
     if (!text.trim()) return;
-    setPending(text);
-    const result = await api('/ai/chat', { method: 'POST', warehouseId: warehouse.current, body: { message: text, conversation_id: thread.conversation_id, ...(file ? { table: file.table } : {}) } });
+    const message = text, attachment = file;
+    setPending(message); setText(''); setFile(null); if (input.current) input.current.value = '';
+    let result;
+    try {
+      result = await api('/ai/chat', { method: 'POST', warehouseId: warehouse.current, body: { message, conversation_id: thread.conversation_id, ...(attachment ? { table: attachment.table } : {}) } });
+    } catch (e) {
+      setText(message); setFile(attachment);
+      throw e;
+    }
     try { sessionStorage.setItem(storageKey, result.conversation_id); } catch { /* Storage is optional. */ }
-    setPending(''); setThread(result); setError(result.error || ''); setText(''); setFile(null); if (input.current) input.current.value = '';
+    setPending(''); setThread(result); setError(result.error || '');
     await refreshHistory();
   });
   const confirm = id => run(async () => {
@@ -171,7 +185,7 @@ export function AiAssistant({ onChanged, userId, warehouseName }) {
             </div>
           </div>)}
           {pending && <div className="ai-message ai-user"><div className="ai-message-body"><p>{pending}</p></div></div>}
-          {busy && <div className="ai-processing" role="status"><LoaderCircle size={16} />正在处理…</div>}
+          {busy && <div className="ai-processing" role="status"><LoaderCircle size={16} />{AI_STAGES[stage]}</div>}
         </div>
         <div className="ai-actions">{thread.actions.map(a => <ActionCard key={a.id} action={a} busy={busy} confirm={confirm} />)}</div>
       </div>
