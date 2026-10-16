@@ -3057,11 +3057,10 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           }
           {templateAction.error && <p role="alert" className="form-error">{templateAction.error}</p>}
           <div className="form-grid">
-            <ContactPicker contacts={partners} value={partner} selectedId={partnerId}
+            <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable
               label={type === "in" ? "供应商" : "客户 / 往来单位"}
-              placeholder={type === "in" ? "选择或输入供应商" : "选择或输入客户"}
+              placeholder={type === "in" ? "选择供应商" : "选择客户"}
               required disabled={busy || templateAction.busy}
-              onChange={value => { setPartner(value); setPartnerId(partners.find(c => c.name === value)?.id ?? null); }}
               onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
             <label>
               入出库仓库

@@ -80,7 +80,7 @@ export function Dropdown({ options, value, displayValue, onSelect, onChange, lab
     }}>
       {label && <label htmlFor={inputId}>{label}{required && <span> *</span>}</label>}
       <div className="dropdown-control" data-disabled={disabled || undefined} data-invalid={!!error || undefined}>
-        {searchable && <Search size={16} aria-hidden="true" className="dropdown-search-icon" />}
+        {searchable && onChange == null && <Search size={16} aria-hidden="true" className="dropdown-search-icon" />}
         <input {...inputProps} ref={input} id={inputId} name={name} className="dropdown-input"
           role="combobox" aria-label={inputProps["aria-label"] || label} aria-expanded={open && !disabled} aria-controls={listId}
           aria-invalid={!!error || undefined} aria-describedby={error ? `${inputId}-error` : inputProps["aria-describedby"]}
@@ -167,7 +167,7 @@ export function Select({ children, value, onChange, required, disabled, name, ..
     </select>} />;
 }
 
-export function ContactPicker({ contacts, value = "", selectedId, onSelect, onChange, label = "往来单位",
+export function ContactPicker({ contacts, value = "", selectedId, onSelect, onChange, searchable = false, label = "往来单位",
   placeholder = "选择往来单位，或输入名称、联系人、电话搜索", ...props }) {
   const options = contacts.map(contact => ({ value: contact.id, label: contact.name,
     searchText: `${contact.name} ${contact.person} ${contact.phone}`, contact,
@@ -177,6 +177,6 @@ export function ContactPicker({ contacts, value = "", selectedId, onSelect, onCh
       </span></> }));
   return <Dropdown {...props} className="contact-picker" options={options} value={selectedId} displayValue={value}
     label={label} listLabel={label === "搜索往来单位" ? "往来单位" : label} placeholder={placeholder}
-    searchable emptyText="暂无可选往来单位" noMatchesText="没有匹配的往来单位" loadingText="正在加载往来单位…"
-    onChange={onChange} onSelect={option => onSelect(option.contact)} />;
+    searchable={searchable} emptyText="暂无可选往来单位" noMatchesText="没有匹配的往来单位" loadingText="正在加载往来单位…"
+    onChange={searchable ? onChange : undefined} onSelect={option => onSelect(option.contact)} />;
 }
