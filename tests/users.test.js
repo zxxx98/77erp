@@ -238,7 +238,7 @@ const routeRoles = new Map(Object.entries({
   'post /api/products/:id/status': 'admin', 'delete /api/products/:id': 'admin',
   'get /api/settings/ai': 'admin', 'put /api/settings/ai': 'admin', 'post /api/settings/ai/test': 'admin', 'get /api/settings/ai/audit': 'admin',
   // Legacy employees do not inherit the new AI permission; dedicated AI tests cover opt-in access.
-  'get /api/ai/conversations/:id': 'ai', 'post /api/ai/chat': 'ai', 'post /api/ai/confirm': 'ai',
+  'get /api/ai/conversations': 'ai', 'get /api/ai/conversations/:id': 'ai', 'post /api/ai/chat': 'ai', 'post /api/ai/confirm': 'ai',
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',
   'get /api/settings/notifications': 'admin', 'put /api/settings/notifications': 'admin',

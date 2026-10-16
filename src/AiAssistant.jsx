@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, getWarehouseId } from './api.js';
 import { parseCSV } from './data-files.js';
+import { Sparkles, Plus, ArrowUp, ArrowUpRight, PackageSearch, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './ai.css';
 
 export function AiSettings({ onBusy = () => {} }) {
@@ -69,9 +72,16 @@ function ActionCard({ action, busy, confirm }) {
   </section>;
 }
 
-export function AiAssistant({ onChanged, userId }) {
+export function AiAssistant({ onChanged, userId, warehouseName }) {
   const [text, setText] = useState(''), [thread, setThread] = useState({ messages: [], actions: [] }), [file, setFile] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const lock = useRef(false), input = useRef(null), warehouse = useRef(getWarehouseId());
+  const [history, setHistory] = useState([]), [historyError, setHistoryError] = useState(''), [showHistory, setShowHistory] = useState(false), [pending, setPending] = useState(''), [copied, setCopied] = useState(null);
+  const lock = useRef(false), input = useRef(null), prompt = useRef(null), feed = useRef(null), warehouse = useRef(getWarehouseId());
+  const refreshHistory = async () => {
+    try { setHistory(await api('/ai/conversations')); setHistoryError(''); }
+    catch (e) { setHistoryError(e.message); }
+  };
+  useEffect(() => { let alive = true; api('/ai/conversations').then(rows => { if (alive) setHistory(rows); }).catch(e => { if (alive) setHistoryError(e.message); }); return () => { alive = false; }; }, []);
+  useEffect(() => { if (feed.current) feed.current.scrollTop = thread.messages.length || pending ? feed.current.scrollHeight : 0; }, [thread, pending, busy]);
   const storageKey = `77erp-ai:${userId}:${warehouse.current}`;
   useEffect(() => {
     let alive = true;
@@ -89,7 +99,7 @@ export function AiAssistant({ onChanged, userId }) {
   const run = async fn => {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
-    try { await fn(); } catch (e) { setError(e.message); } finally { lock.current = false; setBusy(false); }
+    try { await fn(); } catch (e) { setError(e.message); } finally { lock.current = false; setBusy(false); setPending(''); }
   };
   const upload = selected => run(async () => {
     if (!selected) return;
@@ -104,25 +114,77 @@ export function AiAssistant({ onChanged, userId }) {
     setFile({ name: selected.name, table });
   });
   const send = () => run(async () => {
+    if (!text.trim()) return;
+    setPending(text);
     const result = await api('/ai/chat', { method: 'POST', warehouseId: warehouse.current, body: { message: text, conversation_id: thread.conversation_id, ...(file ? { table: file.table } : {}) } });
     try { sessionStorage.setItem(storageKey, result.conversation_id); } catch { /* Storage is optional. */ }
-    setThread(result); setError(result.error || ''); setText(''); setFile(null); if (input.current) input.current.value = '';
+    setPending(''); setThread(result); setError(result.error || ''); setText(''); setFile(null); if (input.current) input.current.value = '';
+    await refreshHistory();
   });
   const confirm = id => run(async () => {
     const result = await api('/ai/confirm', { method: 'POST', warehouseId: warehouse.current, body: { action_id: id } });
     setThread(t => ({ ...t, actions: t.actions.map(a => a.id === id ? { ...a, result } : a) }));
     await onChanged?.();
   });
+  const clearDraft = () => { setFile(null); setText(''); setError(''); setCopied(null); if (input.current) input.current.value = ''; };
+  const newThread = () => {
+    if (lock.current) return;
+    try { sessionStorage.removeItem(storageKey); } catch { /* Storage is optional. */ }
+    setThread({ messages: [], actions: [] }); clearDraft(); setShowHistory(false);
+  };
+  const openThread = id => run(async () => {
+    const result = await api(`/ai/conversations/${id}`);
+    setThread(result); clearDraft(); setShowHistory(false);
+    try { sessionStorage.setItem(storageKey, id); } catch { /* Storage is optional. */ }
+  });
+  const suggest = value => { setText(value); prompt.current?.focus(); };
+  const copy = async (content, index) => {
+    try { await navigator.clipboard.writeText(content); setCopied(index); }
+    catch { setError('无法复制，请选择回复文字手动复制。'); }
+  };
   return <div className="ai-assistant">
-    <p>可以查询跨仓库库存、批量入出库、仓库调拨、库存盘点，也可以上传物料表新增档案。写操作先预览，再由你确认。</p>
-    <div className="ai-buttons"><button className="btn" type="button" disabled={busy} onClick={() => { try { sessionStorage.removeItem(storageKey); } catch { /* Storage is optional. */ } setThread({ messages: [], actions: [] }); setFile(null); setText(''); setError(''); if (input.current) input.current.value = ''; }}>开始新对话</button></div>
-    <div className="ai-messages" aria-live="polite">{thread.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}><strong>{m.role === 'user' ? '你' : 'AI 助手'}</strong><p>{m.content}</p></div>)}</div>
-    {thread.actions.map(a => <ActionCard key={a.id} action={a} busy={busy} confirm={confirm} />)}
-    <label className="ai-prompt">你的需求<textarea rows={3} maxLength={4000} value={text} disabled={busy} placeholder="例如：当前仓库有多少种物料？" onChange={e => setText(e.target.value)} /></label>
-    <label>附加物料 Excel / CSV<input ref={input} type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => upload(e.target.files?.[0])} /></label>
-    <p className="ai-hint">仅解析第一张工作表，最多1000行；条码请设为文本以保留前导零。请说明表中数量是期初库存还是入出库数量。</p>
-    {file && <p>{file.name} · {file.table.length - 1} 行<button type="button" className="btn" disabled={busy} onClick={() => { setFile(null); input.current.value = ''; }}>移除附件</button></p>}
-    {error && <p className="form-error" role="alert">{error}</p>}
-    <button type="button" className="btn primary" disabled={busy || !text.trim()} onClick={send}>{busy ? '正在处理…' : '发送'}</button>
+    <aside className={`ai-sidebar ${showHistory ? 'is-open' : ''}`} aria-label="对话历史">
+      <div className="ai-brand"><span>77</span>ERP <button className="ai-icon ai-history-close" aria-label="关闭历史对话" onClick={() => setShowHistory(false)}><X size={18} /></button></div>
+      <button className="ai-new" disabled={busy} onClick={newThread}><Plus size={16} />开始新对话</button>
+      <div className="ai-sidebar-caption">最近对话 · 所有仓库</div>
+      <div className="ai-history-list">
+        {historyError ? <p className="ai-history-error" role="status">{historyError}<button className="ai-new" onClick={refreshHistory}>重新加载</button></p> : history.length ? history.map(h => <button key={h.id} className={`ai-history-item ${thread.conversation_id === h.id ? 'active' : ''}`} disabled={busy} onClick={() => openThread(h.id)} title={h.title} aria-current={thread.conversation_id === h.id ? 'true' : undefined}><span>{h.title}</span><small>{new Date(h.created_at).toLocaleDateString('zh-CN')}</small></button>) : <p className="ai-history-empty">开始聊天后，对话会保存在这里。</p>}
+      </div>
+      <div className="ai-sidebar-footer"><Sparkles size={15} />你的业务助手<p>查询、整理，协助日常工作</p></div>
+    </aside>
+    <section className="ai-chat" aria-label="AI 对话">
+      <div className="ai-context"><span className="ai-context-title"><Sparkles size={17} />{warehouseName || '当前仓库'}</span><span className="ai-context-note">库存与业务，随时问我</span><div className="ai-mobile-tools"><button className="ai-icon" aria-label="查看历史对话" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></button><button className="ai-icon" aria-label="开始新对话" disabled={busy} onClick={newThread}><Plus size={19} /></button></div></div>
+      <div className="ai-feed" ref={feed}>
+        {!thread.messages.length && !busy && <div className="ai-welcome">
+          <div className="ai-welcome-icon"><Sparkles size={30} /></div><h3>今天，有什么<br />可以帮你？</h3><p>查库存、整理单据、导入物料。<br />把需求告诉我，剩下的一起完成。</p>
+          <div className="ai-suggestions">{[
+            [PackageSearch, '查询物料数量', '当前仓库有多少种物料？'],
+            [ArrowLeftRight, '查询跨仓库库存', '我想对比不同仓库的物料库存，请先列出仓库。'],
+            [FileSpreadsheet, '上传表格，新增物料', '我想上传表格新增物料档案，请帮我核对列对应关系。'],
+          ].map(([Icon, label, value]) => <button key={label} onClick={() => suggest(value)}><Icon size={19} /><span>{label}</span><ArrowUpRight size={15} /></button>)}</div>
+        </div>}
+        <div className="ai-messages" aria-live="polite" aria-busy={busy}>
+          {thread.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
+            {m.role !== 'user' && <div className="ai-avatar"><Sparkles size={17} /></div>}
+            <div className="ai-message-body">{m.role !== 'user' && <div className="ai-author">AI 助手</div>}
+              {m.role === 'user' ? <p>{m.content}</p> : <><div className="ai-markdown"><Markdown skipHtml remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><button className="ai-copy" onClick={() => copy(m.content, i)}>{copied === i ? <Check size={13} /> : <Copy size={13} />}{copied === i ? '已复制' : '复制'}</button></>}
+            </div>
+          </div>)}
+          {pending && <div className="ai-message ai-user"><div className="ai-message-body"><p>{pending}</p></div></div>}
+          {busy && <div className="ai-processing" role="status"><LoaderCircle size={16} />正在处理…</div>}
+        </div>
+        <div className="ai-actions">{thread.actions.map(a => <ActionCard key={a.id} action={a} busy={busy} confirm={confirm} />)}</div>
+      </div>
+      <div className="ai-compose-area">
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <form className="ai-composer" onSubmit={e => { e.preventDefault(); send(); }}>
+          {file && <div className="ai-attachment"><FileSpreadsheet size={17} /><span>{file.name} · {file.table.length - 1} 行</span><button type="button" className="ai-icon" aria-label="移除附件" disabled={busy} onClick={() => { setFile(null); input.current.value = ''; }}><X size={15} /></button></div>}
+          <textarea ref={prompt} aria-label="你的需求" rows={2} maxLength={4000} value={text} disabled={busy} placeholder="描述你的需求，或上传物料表格…" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
+          <div className="ai-composer-tools"><input className="ai-file-input" ref={input} aria-label="附加物料 Excel / CSV" type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => upload(e.target.files?.[0])} /><button className="ai-upload" type="button" disabled={busy} onClick={() => input.current?.click()}><Plus size={19} /><span>添加表格</span></button><span className="ai-shortcut">Ctrl / ⌘ + Enter 发送</span><button type="submit" className="ai-send" aria-label="发送" disabled={busy || !text.trim()}><ArrowUp size={21} /></button></div>
+        </form>
+        <details className="ai-upload-help"><summary>Excel / CSV 上传说明</summary><p>仅解析第一张工作表，最多1000行、5 MB；条码请设为文本以保留前导零。请说明数量是期初库存还是入出库数量。</p></details>
+        <p className="ai-safety"><ShieldCheck size={12} />涉及库存变更的操作，将在你确认后执行</p>
+      </div>
+    </section>
   </div>;
 }

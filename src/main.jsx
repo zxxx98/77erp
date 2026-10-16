@@ -1008,7 +1008,7 @@ function App({ admin, onLogout }) {
           notify={notify}
         />
       )}
-      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" wide onClose={() => setModal(null)}><div className="form-body"><AiAssistant userId={user.id} onChanged={reload} /></div></Modal>}
+      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools products={data.products} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}

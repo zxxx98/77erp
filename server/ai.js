@@ -317,6 +317,14 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (sessionUser(req)?.role !== 'admin') fail('登录或权限已变化。', 403);
     return { ok: true, message: reply.content };
   }));
+  app.get('/api/ai/conversations', route(req => {
+    current(req);
+    return db.prepare('SELECT id,messages,created_at FROM ai_conversations WHERE user_id=? AND auth_context=? ORDER BY rowid DESC LIMIT 50')
+      .all(req.user.id, authContext(req.user)).flatMap(c => {
+        const first = JSON.parse(c.messages).find(m => m.role === 'user' && m.content);
+        return first ? [{ id: c.id, title: first.content.slice(0, 60), created_at: c.created_at }] : [];
+      });
+  }));
   app.get('/api/ai/conversations/:id', route(req => {
     current(req);
     const c = conversation(req, req.params.id);

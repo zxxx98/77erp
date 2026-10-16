@@ -1,6 +1,6 @@
 {
   "name": "77erp",
-  "version": "1.8.5",
+  "version": "1.8.6",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,7 +20,9 @@
     "multer": "^2.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
     "read-excel-file": "^9.3.10",
+    "remark-gfm": "^4.0.1",
     "sharp": "^0.35.5"
   },
   "devDependencies": {

@@ -42,3 +42,9 @@ AI设置、对话及审计不包含在现有“业务备份”JSON中。完整 S
 验证方式：`node --test tests/ai.test.js` 使用可控模型响应验证权限、跨库对比、批次原子性、幂等、数据变化、表格映射与完整行导入；`npx playwright test tests/browser/ai.spec.js` 使用测试模型接口验证桌面及移动浏览器的配置、Excel上传、预览、确认、恢复对话及调拨和盘点确认。测试不使用真实模型密钥，不代表某个服务商或模型的识别准确率验收。
 
 工具调用协议参考：[官方 Function calling 文档](https://developers.openai.com/api/docs/guides/function-calling)。
+
+## Web 对话界面
+
+桌面侧栏展示当前用户最近50个对话；手机 Web 通过历史按钮打开列表。历史跨仓库展示，继续提问时以顶部显示的当前仓库为准；权限变化后不显示旧权限下的对话。
+
+首页快捷提问填入输入框，编辑后发送。支持 Markdown 表格、列表及代码块，回复可复制；不执行模型返回的 HTML。添加表格入口支持 Excel / CSV，附件可移除。Ctrl / Command + Enter 发送，Enter 换行；所有库存写操作继续通过预览卡片确认。

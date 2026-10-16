@@ -247,3 +247,21 @@ test('AI transfer and stocktake confirmation failures roll back all stock, archi
   assert.deepEqual(stocks(), before);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM ai_audit WHERE tool IN ('confirm_transfer','confirm_stocktake') AND status='success'").get().n, 0);
 });
+
+test('conversation history only lists the current user and current permission context', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.request(null, '/ai/conversations')).status, 401);
+  assert.equal((await f.request(f.staff, '/ai/conversations')).status, 403);
+  await f.permissions(['ai']);
+  const own = await f.chat(f.staff, { message: '我的库存查询' });
+  await f.chat(f.admin, { message: '管理员的私人对话' });
+  const list = await f.request(f.staff, '/ai/conversations');
+  assert.equal(list.status, 200);
+  assert.equal(list.data.length, 1);
+  assert.equal(list.data[0].id, own.data.conversation_id);
+  assert.equal(list.data[0].title, '我的库存查询');
+  assert.equal(list.data[0].messages, undefined);
+  await f.permissions(['ai', 'purchase']);
+  assert.deepEqual((await f.request(f.staff, '/ai/conversations')).data, []);
+  assert.equal((await f.request(f.staff, `/ai/conversations/${own.data.conversation_id}`)).status, 403);
+});

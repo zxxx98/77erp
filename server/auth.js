@@ -229,7 +229,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
-    if ((read && /^\/ai\/conversations\/[0-9a-f-]+$/.test(path) ||
+    if ((read && (path === '/ai/conversations' || /^\/ai\/conversations\/[0-9a-f-]+$/.test(path)) ||
          post && ['/ai/chat', '/ai/confirm'].includes(path)) && hasPermission(req.user, 'ai')) return next();
     const legacyAllowed = (read && (
       ['/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export','/products','/orders','/dashboard'].includes(path) ||

@@ -25,6 +25,8 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} AI se
     await expect(settings.getByLabel('API Key')).toHaveValue('');
     await page.getByRole('button', { name: '取消', exact: true }).click();
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+    await page.getByRole('button', { name: '查询物料数量', exact: true }).click();
+    await expect(page.getByLabel('你的需求')).toHaveValue('当前仓库有多少种物料？');
     await page.getByLabel('附加物料 Excel / CSV').setInputFiles(resolve('tests/fixtures/products.xlsx'));
     await expect(page.getByText('products.xlsx · 1 行')).toBeVisible();
     await page.getByLabel('你的需求').fill('导入上传表，新增物料档案，数量为期初库存。');
@@ -64,6 +66,18 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} AI se
     const counted = await (await context.request.get(`/api/data?warehouse_id=${warehouse.id}`)).json();
     expect(counted.products[0].stock).toBe(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole('button', { name: '开始新对话', exact: true }).click();
+    await expect(page.getByText('今天，有什么')).toBeVisible();
+    await page.screenshot({ path: `output/ai-design/welcome-${mobile ? 'mobile' : 'desktop'}.png` });
+    if (mobile) await page.getByRole('button', { name: '查看历史对话' }).click();
+    await page.locator('.ai-history-item').filter({ hasText: '导入上传表' }).first().click();
+    await expect(page.locator('.ai-action')).toContainText('已完成，新增 1 个物料');
+    await page.getByLabel('你的需求').fill('展示表格测试');
+    await page.getByRole('button', { name: '发送', exact: true }).click();
+    await expect(page.locator('.ai-markdown table')).toContainText('不锈钢螺丝');
+    await expect(page.locator('.ai-markdown script')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `output/ai-design/implemented-${mobile ? 'mobile' : 'desktop'}.png` });
     expect(errors).toEqual([]);
   } finally { await context.close(); }
 });

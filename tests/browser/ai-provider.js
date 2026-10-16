@@ -8,6 +8,7 @@ export async function aiFetch(url, options) {
     const name = last.content.startsWith('调拨') ? 'preview_transfer' : 'preview_stocktake';
     message = { content: null, tool_calls: [{ id: name, type: 'function', function: { name, arguments: last.content.split('参数：')[1] } }] };
   }
+  else if (last.content === '展示表格测试') message = { content: '查询结果：\n\n| 物料名称 | 当前库存 |\n| --- | --- |\n| 不锈钢螺丝 | 24 个 |\n\n<script>window.alert(1)</script>' };
   else if (last.content.includes('导入上传表')) {
     const warehouse_id = Number(/当前仓库编号(\d+)/.exec(messages[0].content)?.[1]);
     message = { content: null, tool_calls: [{ id: 'excel-mapping', type: 'function', function: { name: 'preview_import', arguments: JSON.stringify({ warehouse_id, mapping: { name: 0, barcode: 1, category: 2, unit: 3, cost: 4, price: 5, threshold: 6, stock: 7 } }) } }] };
