@@ -1,3 +1,4 @@
+import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect } from "@playwright/test";
 import { createApp } from "../../server/app.js";
 
@@ -64,6 +65,11 @@ for (const width of [1440, 390]) {
         const bounds = await page.getByRole("listbox", { name: label }).boundingBox();
         expect(bounds.x).toBeGreaterThanOrEqual(0);
         expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+        // Typing only filters the list; it must never create or replace a partner.
+        await input.fill("未建档的往来单位");
+        await expect(options).toHaveCount(0);
+        await input.press("Escape");
+        await expect(input).toHaveValue(type === "in" ? "" : "零售客户");
         await input.fill(type === "in" ? "备用" : "城南");
         await expect(options).toHaveCount(1);
         await input.press("ArrowDown");
@@ -80,6 +86,7 @@ for (const width of [1440, 390]) {
         await page.getByRole("button", { name: type === "in" ? "确认入库" : "确认出库", exact: true }).click();
         await expect(page.getByRole("dialog")).toHaveCount(0);
         expect(f.db.prepare("SELECT partner_id FROM orders WHERE type=?").get(type).partner_id).toBe(rows[type === "in" ? 1 : 2].id);
+        expect(f.db.prepare("SELECT COUNT(*) AS n FROM contacts").get().n).toBe(4);
       }
     } finally {
       await f.close();
@@ -108,7 +115,7 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
     await page.getByRole("button", { name: "取消", exact: true }).click();
     await page.getByRole("link", { name: "采购入库", exact: true }).click();
     await page.getByRole("button", { name: "新建入库", exact: true }).click();
-    await page.getByPlaceholder("选择或输入供应商").fill("常用供应商");
+    await chooseContact(page, "常用供应商");
     await page.getByRole("textbox", { name: "查找并添加物料" }).fill("商务");
     await page.locator(".picker-results button").first().click();
     await page
@@ -255,6 +262,7 @@ test("contact search stays collapsed, filters in a dropdown and selects without 
 test("template picker filters by order type, preserves canceled edits and fits a narrow screen", async ({ page }) => {
   const f = await fixture(page);
   try {
+    await ensureContact(page.request, "当前正在编辑的供应商", { base: f.base });
     const template = await (await page.request.post(f.base + "/api/templates", {
       data: { name: "采购补货组合", request_id: "picker-in", type: "in", partner: "继续采购的供应商", note: "待核对数量", items: [{ product_id: f.id, quantity: 1, price: 10 }] },
     })).json();
@@ -282,16 +290,16 @@ test("template picker filters by order type, preserves canceled edits and fits a
     await page.getByRole("button", { name: `使用模板 #${template.id}`, exact: true }).click();
     await expect(picker).toHaveAttribute("aria-expanded", "false");
     await expect(picker).toBeFocused();
-    await expect(page.getByPlaceholder("选择或输入供应商")).toHaveValue("继续采购的供应商");
+    await expect(page.getByRole("combobox", { name: "供应商", exact: true })).toHaveValue("继续采购的供应商");
     await expect(page.locator(".order-template-status")).toContainText("已套用「采购补货组合」");
 
-    await page.getByPlaceholder("选择或输入供应商").fill("当前正在编辑的供应商");
+    await chooseContact(page, "当前正在编辑的供应商");
     await picker.click();
     await expect(card.getByText("本次已套用", { exact: true })).toBeVisible();
     page.once("dialog", dialog => dialog.dismiss());
     await page.getByRole("button", { name: `使用模板 #${template.id}`, exact: true }).click();
     await expect(picker).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByPlaceholder("选择或输入供应商")).toHaveValue("当前正在编辑的供应商");
+    await expect(page.getByRole("combobox", { name: "供应商", exact: true })).toHaveValue("当前正在编辑的供应商");
 
     page.once("dialog", dialog => dialog.accept());
     await page.getByRole("button", { name: `删除模板 #${template.id}`, exact: true }).click();

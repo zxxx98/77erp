@@ -1,3 +1,4 @@
+import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect } from "@playwright/test";
 
 test.beforeAll(async ({ request }) => {
@@ -11,6 +12,7 @@ test.beforeEach(async ({ page }) => {
     data: { username: "admin", password: "Test-admin-123" },
   });
   expect(response.ok()).toBe(true);
+  await ensureContact(page.request, '自动化测试供应商');
 });
 
 test("product → barcode lookup → inbound → stock guard → outbound → persisted stock", async ({
@@ -48,7 +50,7 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
     .locator(".scan-result-actions")
     .getByRole("button", { name: "采购入库" })
     .click();
-  await page.getByRole("combobox", { name: /供应商/ }).fill("自动化测试供应商");
+  await chooseContact(page, "自动化测试供应商");
   await page
     .getByRole("spinbutton", { name: "浏览器测试物料 数量" })
     .fill("10.25");
@@ -239,7 +241,7 @@ test("inventory page reduces stock with an adjustment record and blocks overdraw
   await page.getByPlaceholder("搜索物料或条码").fill("REDUCE-UI-001");
   const row = page.locator("tr", { hasText: "报损测试物料" });
   await row.getByRole("button", { name: "补货", exact: true }).click();
-  await page.getByRole("combobox", { name: /供应商/ }).fill("自动化测试供应商");
+  await chooseContact(page, "自动化测试供应商");
   await page.getByRole("spinbutton", { name: "报损测试物料 数量" }).fill("5");
   await page.getByRole("button", { name: "确认入库", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);

@@ -5,14 +5,3 @@ data/
 playwright-report/
 test-results/
 output/ui-preview/
-android/.gradle/
-android/.kotlin/
-android/**/build/
-android/local.properties
-*.jks
-*.keystore
-mobile/coverage/
-mobile/.metro-health-check*
-
-__pycache__/
-*.pyc

@@ -73,6 +73,8 @@ test('product images fit a simple overlay; closing preserves the editor and rest
   expect(await imageFits()).toBe(true);
   await expect(viewer.getByRole('button', { name: '关闭图片预览' })).toBeVisible();
   await viewer.click({ position: { x: 8, y: 8 } });
+  await expect(viewer).toBeVisible();
+  await viewer.getByRole('button', { name: '关闭图片预览' }).click();
   await expect(viewer).toHaveCount(0);
   await expect(thumbnail).toBeFocused();
 });

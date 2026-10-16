@@ -181,7 +181,7 @@ export function AiAssistant({ onChanged, userId, warehouseName }) {
           {thread.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
             {m.role !== 'user' && <div className="ai-avatar"><Sparkles size={17} /></div>}
             <div className="ai-message-body">{m.role !== 'user' && <div className="ai-author">AI 助手</div>}
-              {m.role === 'user' ? <p>{m.content}</p> : <><div className="ai-markdown"><Markdown skipHtml remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><button className="ai-copy" onClick={() => copy(m.content, i)}>{copied === i ? <Check size={13} /> : <Copy size={13} />}{copied === i ? '已复制' : '复制'}</button></>}
+              {m.role === 'user' ? <p>{m.content}</p> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><button className="ai-copy" onClick={() => copy(m.content, i)}>{copied === i ? <Check size={13} /> : <Copy size={13} />}{copied === i ? '已复制' : '复制'}</button></>}
             </div>
           </div>)}
           {pending && <div className="ai-message ai-user"><div className="ai-message-body"><p>{pending}</p></div></div>}

@@ -1,3 +1,4 @@
+import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
@@ -91,6 +92,7 @@ test("create and edit a multi-item QR, confirm the entire order, cancel without 
   page,
 }) => {
   const f = await fixture(page);
+  await ensureContact(page.request, "网页组合供应商");
   await f.open();
   await page.getByRole("button", { name: "管理出入库二维码" }).click();
   await page.getByRole("button", { name: "新建二维码", exact: true }).click();
@@ -108,7 +110,7 @@ test("create and edit a multi-item QR, confirm the entire order, cancel without 
   await dialog.getByLabel(`${f.products[0].name} 单次数量（个）`).fill("5");
   await dialog.getByLabel(`${f.products[1].name} 单次数量（箱）`).fill("2");
   await dialog.getByLabel("可扫描次数（累计上限）").fill("3");
-  await dialog.getByLabel("往来单位", { exact: true }).fill("网页组合供应商");
+  await chooseContact(page, "网页组合供应商", "往来单位");
   await dialog.getByRole("button", { name: "保存二维码", exact: true }).click();
   await expect(dialog.getByRole("img", { name: "出入库二维码" })).toBeVisible();
   const downloadPromise = page.waitForEvent("download");

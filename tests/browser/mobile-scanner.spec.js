@@ -1,3 +1,4 @@
+import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { qrSymbol } from '../../src/product-code.js';
 import JsBarcode from 'jsbarcode';
@@ -216,10 +217,11 @@ test('expanded search recognizes off-guide QR and wide Code 128 labels on mobile
 test('back and manual entry leave the order intact; camera recognition adds exactly one item', async ({ browser }) => {
   const { context, page } = await mobile(browser);
   const item = await product(context);
+  await ensureContact(context.request, '全屏扫码供应商');
   await page.reload();
   await mockCamera(page);
   await page.getByRole('button', { name: '采购入库', exact: true }).click();
-  await page.getByRole('combobox', { name: /供应商/ }).fill('全屏扫码供应商');
+  await chooseContact(page, '全屏扫码供应商');
   await page.getByRole('button', { name: '扫码添加物料', exact: true }).click();
   await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
   await page.goBack();

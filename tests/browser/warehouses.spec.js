@@ -56,7 +56,7 @@ test('create and rename a warehouse, selectively sync a product, switch and pers
   await expect(page.locator('.product-table tbody tr')).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  // The Android data-management link selects a warehouse once; later choices survive refresh.
+  // A data-management deep link selects a warehouse once; later choices survive refresh.
   await page.goto(`/?warehouse_id=${w.id}#products`);
   await expect(page.getByRole('combobox', { name: '当前仓库', exact: true })).toHaveValue(renamed);
   await expect.poll(() => new URL(page.url()).searchParams.has('warehouse_id')).toBe(false);

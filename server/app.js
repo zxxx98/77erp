@@ -445,7 +445,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         return res.status(409).json({
           code: 'PRODUCT_VERSION_CONFLICT',
           error: req.body.version == null
-            ? '缺少物料版本，请刷新页面或更新安卓客户端后重新编辑。'
+            ? '缺少物料版本，请刷新页面后重新编辑。'
             : '物料信息已被修改，本次未保存。请查看最新信息后重新编辑。',
         });
       }

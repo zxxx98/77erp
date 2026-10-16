@@ -111,7 +111,7 @@ function Contacts({ onRefresh }) {
         同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。
       </p>
       <ContactPicker contacts={contacts} value={form.id ? form.name : ""} selectedId={form.id}
-        label="搜索往来单位" loading={loading} disabled={busy} onSelect={setForm} />
+        label="搜索往来单位" searchable loading={loading} disabled={busy} onSelect={setForm} />
       <button
         type="button"
         className="btn"

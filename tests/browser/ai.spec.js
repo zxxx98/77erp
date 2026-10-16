@@ -78,6 +78,27 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} AI se
     await expect(page.locator('.ai-markdown script')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `output/ai-design/implemented-${mobile ? 'mobile' : 'desktop'}.png` });
+    const urls = {
+      HTTP: 'http://example.com/help', HTTPS: 'https://example.com/help', mixedCase: 'HtTpS://example.com/help',
+      javascript: 'javascript:alert(1)', mixedJavascript: 'JaVaScRiPt:alert(1)', entityJavascript: 'java&#x73;cript:alert(1)',
+      data: 'data:text/html;base64,PHNjcmlwdD4=', vbscript: 'vbscript:msgbox(1)', mailto: 'mailto:test@example.com',
+      relative: '/settings', protocolRelative: '//example.com/help', fragment: '#help',
+    };
+    await page.route('**/api/ai/chat', route => route.fulfill({ json: {
+      conversation_id: 'url-test', actions: [],
+      messages: [{ role: 'assistant', content: Object.entries(urls).map(([name, url]) => `[${name}](${url})`).join('\n\n') }],
+    } }));
+    await page.getByLabel('你的需求').fill('链接安全测试');
+    await page.getByRole('button', { name: '发送', exact: true }).click();
+    const links = page.locator('.ai-markdown a');
+    await expect(links).toHaveCount(Object.keys(urls).length);
+    for (const [name, url] of Object.entries(urls)) {
+      const link = links.filter({ hasText: new RegExp(`^${name}$`) });
+      if (['HTTP', 'HTTPS', 'mixedCase'].includes(name)) {
+        await expect(link).toHaveAttribute('href', url);
+        await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      } else await expect(link).not.toHaveAttribute('href');
+    }
     expect(errors).toEqual([]);
   } finally { await context.close(); }
 });

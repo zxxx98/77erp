@@ -1,4 +1,6 @@
+import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect } from '@playwright/test';
+import { permissionOptions } from '../../shared/permissions.js';
 import { createApp } from '../../server/app.js';
 
 async function fixture(page) {
@@ -65,6 +67,7 @@ test('employee sees shared business data and own templates, opens orders with an
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   try {
+    await ensureContact(page.request, '员工供应商', { base: f.base });
     await f.adminRequest('/users', { username: 'staff', password: 'Employee-password-123' });
     // Existing employees keep their former product, order and own-template access.
     f.db.prepare("UPDATE users SET permissions=NULL WHERE username='staff'").run();
@@ -83,7 +86,7 @@ test('employee sees shared business data and own templates, opens orders with an
     await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
     await page.getByRole('link', { name: '采购入库', exact: true }).click();
     await page.getByRole('button', { name: '新建入库', exact: true }).click();
-    await page.getByPlaceholder('选择或输入供应商').fill('员工供应商');
+    await chooseContact(page, '员工供应商');
     await page.getByRole('textbox', { name: '查找并添加物料' }).fill('马克杯');
     await page.locator('.picker-results button').first().click();
     await page.getByLabel('模板名称', {exact: true}).fill('员工补货模板');
@@ -116,7 +119,7 @@ test('employee sees shared business data and own templates, opens orders with an
   } finally { await f.close(); }
 });
 
-test('administrator configures nine employee modules and changes take effect in an existing employee session', async ({ page, browser }) => {
+test('administrator configures employee modules including AI and changes take effect in an existing employee session', async ({ page, browser }) => {
   const f = await fixture(page);
   const context = await browser.newContext();
   const employeePage = await context.newPage();
@@ -155,7 +158,8 @@ test('administrator configures nine employee modules and changes take effect in 
 
     await row.getByRole('button', { name: '权限配置' }).click();
     let dialog = page.getByRole('dialog', { name: 'staff 的权限配置', exact: true });
-    await expect(dialog.getByRole('checkbox')).toHaveCount(9);
+    await expect(dialog.getByRole('checkbox')).toHaveCount(permissionOptions.length);
+    await expect(dialog.getByRole('checkbox', { name: /^AI 助手/ })).not.toBeChecked();
     await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(0);
     await dialog.getByRole('checkbox', { name: /^物料管理/ }).check();
     await dialog.getByRole('button', { name: '保存权限' }).click();

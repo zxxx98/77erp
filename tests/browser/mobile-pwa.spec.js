@@ -1,3 +1,4 @@
+import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 
 test.beforeAll(async ({ request }) => {
@@ -59,12 +60,13 @@ test('device identity chooses mobile on Android tablets and iPadOS, and PC on na
   }
 });
 
-test('mobile purchase and sale preserve quantity precision and the Android confirmation flow', async ({ browser }) => {
+test('mobile purchase and sale preserve quantity precision and the confirmation flow', async ({ browser }) => {
   const { context, page } = await mobile(browser);
   const product = await fixtureProduct(context);
+  await ensureContact(context.request, 'PWA采购供应商');
   await page.reload();
   await page.getByRole('button', { name: '采购入库', exact: true }).click();
-  await page.getByRole('combobox', { name: /供应商/ }).fill('PWA采购供应商');
+  await chooseContact(page, 'PWA采购供应商');
   await addItem(page, product);
   await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('10.123456');
   await page.getByRole('button', { name: '确认入库', exact: true }).click();
@@ -245,9 +247,10 @@ test('session replacement isolates drafts by account and hides read-only employe
   const username = `pwa-reader-${Date.now()}`;
   expect((await context.request.post('/api/users', { data: { username, password: 'Reader-password-123', role: 'employee', permissions: [] } })).status()).toBe(201);
   const product = await fixtureProduct(context, 2);
+  await ensureContact(context.request, '仅管理员可见的草稿');
   await page.reload();
   await page.getByRole('button', { name: '采购入库', exact: true }).click();
-  await page.getByRole('combobox', { name: /供应商/ }).fill('仅管理员可见的草稿');
+  await chooseContact(page, '仅管理员可见的草稿');
   // Background immediately, before the debounced autosave, including drafts without items.
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
   await expect.poll(async () => (await savedDrafts(page))[0]?.partner).toBe('仅管理员可见的草稿');
@@ -303,8 +306,10 @@ test('a session changed in another tab cannot reassign an open draft to the new 
   const original = await (await context.request.get('/api/auth/status')).json();
   const username = `pwa-second-${Date.now()}`;
   expect((await context.request.post('/api/users', { data: { username, password: 'Second-password-123', role: 'admin' } })).status()).toBe(201);
+  await ensureContact(context.request, '原账号正在编辑');
+  await page.reload();
   await page.getByRole('button', { name: '采购入库', exact: true }).click();
-  await page.getByRole('combobox', { name: /供应商/ }).fill('原账号正在编辑');
+  await chooseContact(page, '原账号正在编辑');
   await expect.poll(async () => (await savedDrafts(page))[0]?.partner).toBe('原账号正在编辑');
   await context.request.post('/api/auth/login', { data: { username, password: 'Second-password-123' } });
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -409,6 +414,8 @@ test('mobile bottom drawers fit their content and keep long forms usable in smal
   expect(picker.y + picker.height).toBe(page.viewportSize().height);
   await page.screenshot({ path: 'output/ui-preview/mobile-drawer-warehouse.png' });
   await page.mouse.click(4, 4);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: '关闭弹窗', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
 
