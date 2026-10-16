@@ -39,6 +39,8 @@ function formatMessage(event) {
   if (event.warehouse) lines.push(`仓库：${event.warehouse.name}`);
   if (event.actor) lines.push(`操作人：${event.actor.username}`);
   if (d.number) lines.push(`单号：${d.number}`);
+  if (d.from) lines.push(`调出仓库：${d.from}`);
+  if (d.to) lines.push(`调入仓库：${d.to}`);
   if (d.source_number) lines.push(`原单号：${d.source_number}`);
   if (d.partner) lines.push(`往来单位：${d.partner}`);
   if (d.action) lines.push(`操作：${d.action}`);
@@ -168,7 +170,7 @@ export function queueDailySummary(db, now = new Date()) {
       out_of_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND stock=0').get(w.id).n,
     }));
     const byWarehouse = new Map(rows.map(w => [w.id, w]));
-    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,created_at FROM orders WHERE status='active' AND created_at>=? AND created_at<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
+    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,created_at FROM orders WHERE status='active' AND kind!='transfer' AND created_at>=? AND created_at<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
       const row = byWarehouse.get(o.warehouse_id);
       if (!row || localParts(new Date(o.created_at), config.timezone).day !== day) continue;
       const returns = o.kind === 'return';

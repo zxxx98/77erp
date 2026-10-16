@@ -19,6 +19,8 @@ import { migrateOperations, installOperations, operationRequest, saveOperationRe
 import { migrateCatalog, migrateWarehouseCategories, installCatalog } from "./catalog.js";
 import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
 import { installMultiStocktake } from './multi-stocktake.js';
+import { migrateTransfers } from './transfers.js';
+import { installQueries } from './queries.js';
 import { migrateNotifications, installNotifications, queueNotification } from './notifications.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -255,6 +257,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateCommerce(db);
   migrateCatalog(db);
   migrateWarehouses(db);
+  migrateTransfers(db);
   migrateWarehouseCategories(db);
   migrateUnits(db);
   migrateImagebed(db);
@@ -571,6 +574,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   installStockQr(app, db);
   installOperations(app, db, { productValues, generateBarcode, catalogValues });
   installMultiStocktake(app, db);
+  installQueries(app, db);
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));
   app.use((error, req, res, next) => {
     if (error.type === "entity.too.large") return res.status(413).json({ error: "提交内容过大，请减少行数或选择更小的文件。" });

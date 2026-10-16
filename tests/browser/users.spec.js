@@ -116,7 +116,7 @@ test('employee sees shared business data and own templates, opens orders with an
   } finally { await f.close(); }
 });
 
-test('administrator configures eight employee modules and changes take effect in an existing employee session', async ({ page, browser }) => {
+test('administrator configures nine employee modules and changes take effect in an existing employee session', async ({ page, browser }) => {
   const f = await fixture(page);
   const context = await browser.newContext();
   const employeePage = await context.newPage();
@@ -155,7 +155,7 @@ test('administrator configures eight employee modules and changes take effect in
 
     await row.getByRole('button', { name: '权限配置' }).click();
     let dialog = page.getByRole('dialog', { name: 'staff 的权限配置', exact: true });
-    await expect(dialog.getByRole('checkbox')).toHaveCount(8);
+    await expect(dialog.getByRole('checkbox')).toHaveCount(9);
     await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(0);
     await dialog.getByRole('checkbox', { name: /^物料管理/ }).check();
     await dialog.getByRole('button', { name: '保存权限' }).click();

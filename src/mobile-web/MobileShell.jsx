@@ -78,20 +78,30 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
 
 function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history }) {
   const { costs } = usePermissions();
-  const today = reportOrders(data.orders).filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
-  const low = data.products.filter(p => p.active !== 0 && p.stock <= p.threshold);
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState('');
+  // Aggregates come from the server so the home page does not depend on the
+  // whole workspace payload.
+  useEffect(() => {
+    let live = true;
+    api('/dashboard').then(value => { if (live) { setSummary(value); setError(''); } }).catch(e => { if (live) setError(e.message); });
+    return () => { live = false; };
+  }, [data]);
+  const low = summary?.products.low_stock_products || [];
+  const recent = summary?.recent_orders || [];
   const stats = [
-    ['物料种类', count(data.products.length), Box],
-    ['库存成本', costs ? money(data.products.reduce((total, p) => total + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)), 0) / 100) : '—', Warehouse],
-    ['今日采购', money(today.filter(o => o.type === 'in').reduce((sum, o) => sum + o.total, 0)), ArrowDownToLine],
-    ['今日销售', money(today.filter(o => o.type === 'out').reduce((sum, o) => sum + o.total, 0)), ArrowUpFromLine],
+    ['物料种类', summary ? count(summary.products.total) : '—', Box],
+    ['库存成本', summary && costs ? money((summary.products.inventory_value_cents ?? 0) / 100) : '—', Warehouse],
+    ['今日采购', summary ? money((summary.today.purchase_cents || 0) / 100) : '—', ArrowDownToLine],
+    ['今日销售', summary ? money((summary.today.sales_cents || 0) / 100) : '—', ArrowUpFromLine],
   ];
   return <div className="mw-stack">
     <div><h1>工作台</h1><p className="mw-muted">{data.settings.business_name} · {data.settings.warehouse_name}</p></div>
+    <Notice>{error}</Notice>
     <div className="mw-stats">{stats.map(([label, value, Icon]) => <section className="mw-stat" key={label}><div><span className="mw-muted">{label}</span><Icon size={18} /></div><strong>{value}</strong></section>)}</div>
     <section className="mw-card mw-stack"><h2>快速操作</h2><Button primary icon={ScanLine} onClick={onScan}>扫描物料条码</Button><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>采购入库</Button><Button permission="sale" icon={ArrowUpFromLine} onClick={() => openOrder('out')}>销售出库</Button></div></section>
-    <section className="mw-card mw-stack"><div className="mw-between"><h2>库存预警</h2><span className="mw-warning">{low.length} 件物料</span></div>{low.length ? low.slice(0, 5).map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">所有物料库存充足。</p>}</section>
-    <section className="mw-card mw-stack"><h2>最近单据</h2>{data.orders.slice(0, 3).map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{!data.orders.length && <p className="mw-muted">暂无单据，创建第一张入库单开始记录库存。</p>}<Button onClick={history}>查看全部单据</Button></section>
+    <section className="mw-card mw-stack"><div className="mw-between"><h2>库存预警</h2><span className="mw-warning">{summary ? `${summary.products.low_stock} 件物料` : '—'}</span></div>{low.length ? low.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">所有物料库存充足。</p>}</section>
+    <section className="mw-card mw-stack"><h2>最近单据</h2>{recent.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{summary && !recent.length && <p className="mw-muted">暂无单据，创建第一张入库单开始记录库存。</p>}<Button onClick={history}>查看全部单据</Button></section>
   </div>;
 }
 
@@ -101,28 +111,44 @@ function Products({ data, inventory, showProduct, openModal }) {
   const [category, setCategory] = useState('all');
   const [filter, setFilter] = useState(inventory ? 'all' : 'active');
   const [limit, setLimit] = useState(30);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const categories = flattenCategories(data.categories || []);
-  const branch = categoryBranch(data.categories || [], Number(category));
-  const filtered = data.products.filter(p => matchesProduct(p, query) &&
-    (category === 'all' || branch.has(p.category_id)) &&
-    (inventory ? filter === 'all' || (filter === 'empty' ? p.stock === 0 : p.stock <= p.threshold) : filter === 'all' || (filter === 'active' ? p.active !== 0 : p.active === 0)));
-  useEffect(() => setLimit(30), [query, category, filter]);
+  useEffect(() => { setLimit(30); }, [query, category, filter]);
   useEffect(() => { if (category !== 'all' && !categories.some(c => String(c.id) === category)) setCategory('all'); }, [data.categories, category]);
+  // Search, filters and paging run on the server, so large catalogs stay bounded.
+  useEffect(() => {
+    let live = true;
+    const params = new URLSearchParams({ limit: String(limit), q: query });
+    if (category !== 'all') params.set('category_id', category);
+    if (filter !== 'all') params.set(inventory ? 'stock' : 'status', filter);
+    const timer = setTimeout(() => {
+      setLoading(true);
+      api(`/products?${params}`).then(value => { if (live) { setResult(value); setError(''); } })
+        .catch(e => { if (live) setError(e.message); })
+        .finally(() => { if (live) setLoading(false); });
+    }, query ? 250 : 0);
+    return () => { live = false; clearTimeout(timer); };
+  }, [data, query, category, filter, limit, inventory]);
+  const products = result?.products || [];
   return <div className="mw-stack">
-    <div className="mw-between"><div><h1>{inventory ? '库存管理' : '物料管理'}</h1><p className="mw-muted">共 {data.products.length} 种物料 · 筛选 {filtered.length} 种</p></div>{!inventory && can('products') && <MobileIcon icon={Plus} label="新增物料" onClick={() => openModal({ kind: 'product' })} />}</div>
+    <div className="mw-between"><div><h1>{inventory ? '库存管理' : '物料管理'}</h1><p className="mw-muted">共 {result ? result.total : '—'} 种物料 · 已加载 {products.length} 种</p></div>{!inventory && can('products') && <MobileIcon icon={Plus} label="新增物料" onClick={() => openModal({ kind: 'product' })} />}</div>
     {!inventory && manage('products') && <Button onClick={() => openModal({ kind: 'categories' })}>管理分类</Button>}
     <SearchField value={query} onChange={setQuery} />
     <Chips label={inventory ? '库存筛选' : '使用状态'} value={filter} onChange={setFilter} options={inventory ? [['all', '全部库存'], ['low', '库存预警'], ['empty', '缺货']] : [['all', '全部状态'], ['active', '已启用'], ['inactive', '已停用']]} />
     {!inventory && <label className="mw-field"><span>物料分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>}
-    <div className="mw-product-list">{filtered.slice(0, limit).map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />)}</div>
-    {!filtered.length && <Empty title="未找到物料">尝试调整筛选条件，或新增物料档案。</Empty>}
-    {filtered.length > limit && <Button onClick={() => setLimit(value => value + 30)}>加载更多物料</Button>}
+    <Notice>{error}</Notice>
+    {loading && !products.length && <p className="mw-muted"><LoadingStatus>正在读取物料…</LoadingStatus></p>}
+    <div className="mw-product-list" aria-busy={loading}>{products.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />)}</div>
+    {!loading && !products.length && !error && <Empty title="未找到物料">尝试调整筛选条件，或新增物料档案。</Empty>}
+    {result?.has_more && <Button onClick={() => setLimit(value => value + 30)}>加载更多物料</Button>}
   </div>;
 }
 
 function OrderSummary({ order, onOpen }) {
   return <button type="button" className="mw-order-summary" onClick={() => onOpen(order)}>
-    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{money(order.total)}</strong>
+    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? '不涉及金额' : money(order.total)}</strong>
   </button>;
 }
 
@@ -133,10 +159,24 @@ function Orders({ data, initial, openOrder, showOrder }) {
   const [type, setType] = useState(initial);
   const [period, setPeriod] = useState('all');
   const [limit, setLimit] = useState(30);
-  const [exporting, setExporting] = useState(false);
+  const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const visible = data.orders.filter(o => (type === 'all' || businessType(o) === type) && (period === 'all' || Date.now() - new Date(o.created_at).getTime() <= Number(period) * 86400000) && `${o.number} ${o.partner} ${o.items.map(i => i.name).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()));
-  useEffect(() => setLimit(30), [query, type, period]);
+  const [exporting, setExporting] = useState(false);
+  useEffect(() => { setLimit(30); }, [query, type, period]);
+  // Filters and paging run on the server; rows no longer carry full item lists.
+  useEffect(() => {
+    let live = true;
+    const params = new URLSearchParams({ limit: String(limit), q: query });
+    if (type === 'transfer') params.set('kind', 'transfer');
+    else if (type !== 'all') params.set('business', type);
+    if (period !== 'all') params.set('from', new Date(Date.now() - Number(period) * 86400000).toISOString().slice(0, 10));
+    const timer = setTimeout(() => {
+      api(`/orders?${params}`).then(value => { if (live) { setResult(value); setError(''); } })
+        .catch(e => { if (live) setError(e.message); });
+    }, query ? 250 : 0);
+    return () => { live = false; clearTimeout(timer); };
+  }, [data, query, type, period, limit]);
+  const orders = result?.orders || [];
   const exportOrders = async () => {
     if (exporting) return;
     setExporting(true); setError('');
@@ -151,13 +191,13 @@ function Orders({ data, initial, openOrder, showOrder }) {
   return <div className="mw-stack">
     <h1>操作记录</h1><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>新建入库</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>新建出库</Button></div>
     <SearchField value={query} onChange={setQuery} label="搜索单据号、往来单位或物料" />
-    <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '采购入库'], ['out', '销售出库']] } />
+    <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '采购入库'], ['out', '销售出库'], ['transfer', '仓库调拨']] } />
     <Chips label="单据时间" value={period} onChange={setPeriod} options={ [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天']] } />
-    <p className="mw-muted">共 {visible.length} 张单据 · 合计 {money(visible.reduce((sum, o) => sum + o.total, 0))}</p>
+    <p className="mw-muted">共 {result ? result.total : '—'} 张单据 · 已加载 {orders.length} 张</p>
     <Notice>{error}</Notice>
-    {visible.slice(0, limit).map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}
-    {!visible.length && <Empty title="暂无单据">调整筛选条件，或创建第一张单据。</Empty>}
-    {visible.length > limit && <Button onClick={() => setLimit(value => value + 30)}>加载更多单据</Button>}
+    {orders.map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}
+    {!orders.length && !error && <Empty title="暂无单据">调整筛选条件，或创建第一张单据。</Empty>}
+    {result?.has_more && <Button onClick={() => setLimit(value => value + 30)}>加载更多单据</Button>}
     {can('data_io') && <Button busy={exporting} disabled={!online} onClick={exportOrders}>导出单据</Button>}
   </div>;
 }
@@ -194,7 +234,7 @@ export function DraftList({ data, userId, onOpen, onClose, Modal }) {
   </div></Modal>;
 }
 
-export function MobileProductDetail({ product, data, Modal, openOrder, openModal, onClose, onSaved }) {
+export function MobileProductDetail({ product, data, Modal, openOrder, openModal, openOrderDetail, onClose, onSaved }) {
   const { can, manage, costs } = usePermissions();
   const { online } = usePwa();
   const [others, setOthers] = useState(null);
@@ -220,7 +260,7 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
     <Notice>{error}</Notice><section className="mw-card mw-stack"><h2>{product.name}</h2><p className="mw-muted">{product.barcode}</p>{product.image && <ProductImage src={product.image} alt={product.name} className="mw-detail-image" />}<StockBadge product={product} />
       { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
     <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{money(product.price)}</DetailRow></section>
-    <ProductHistory key={product.id} product={product} onViewOrder={id => openModal({ kind: 'detail', order: data.orders.find(o => o.id === id) })} />
+    <ProductHistory key={product.id} product={product} onViewOrder={id => openOrderDetail?.(id)} />
     <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted"><LoadingStatus>读取中…</LoadingStatus></p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一物料</p>}</section>
     <Button onClick={() => openModal({ kind: 'barcode', product })}>物料条码</Button>
     {can('products') && <Button disabled={busy} onClick={() => openModal({ kind: 'product', product })}>编辑物料</Button>}

@@ -230,8 +230,9 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
     const legacyAllowed = (read && (
-      ['/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export'].includes(path) ||
+      ['/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export','/products','/orders','/dashboard'].includes(path) ||
       /^\/products\/barcode\/[^/]+$/.test(path) ||
+      /^\/orders\/\d+$/.test(path) ||
       /^\/products\/\d+\/(other-warehouses|history)$/.test(path))) ||
       (post && ['/products','/orders','/templates','/uploads/product-image'].includes(path)) ||
       (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
@@ -241,8 +242,9 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (legacyAllowed) return next();
     } else {
       const basicRead = read && (
-        ['/data','/style','/warehouses','/categories','/contacts','/templates'].includes(path) ||
+        ['/data','/style','/warehouses','/categories','/contacts','/templates','/products','/orders','/dashboard'].includes(path) ||
         /^\/products\/barcode\/[^/]+$/.test(path) ||
+        /^\/orders\/\d+$/.test(path) ||
         /^\/products\/\d+\/(other-warehouses|history)$/.test(path));
       if (basicRead) return next();
       let permission;
@@ -253,6 +255,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
           (['POST','PUT'].includes(req.method) && /^\/categories(?:\/\d+(?:\/delete)?)?$/.test(path))) permission = 'products';
       if (post && path === '/orders') permission = req.body?.type === 'in' ? 'purchase' : req.body?.type === 'out' ? 'sale' : null;
       if (post && /^\/orders\/\d+\/(void|returns)$/.test(path)) permission = 'corrections';
+      if ((read && path === '/transfers') ||
+          (post && (path === '/transfers' || /^\/transfers\/[0-9a-f-]{36}\/void$/.test(path)))) permission = 'transfer';
       if ((read || post) && path === '/stocktakes') permission = 'stocktake';
       if (post && path === '/stock/reduce') permission = 'stocktake';
       if ((read && path === '/stocktakes/multi/products') || (post && path === '/stocktakes/multi/compare')) permission = 'stocktake';

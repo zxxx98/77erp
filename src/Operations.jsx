@@ -1,8 +1,10 @@
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { parseQuantity, addQuantity } from "../shared/quantity.js";
+import { usePermissions } from "./permissions.jsx";
 import React, { useEffect, useRef, useState } from "react";
-import { FileSpreadsheet, Upload } from "lucide-react";
+import { ArrowRight, FileSpreadsheet, Package, Trash2, Truck, Upload } from "lucide-react";
 import { api } from "./api.js";
+import { Select } from "./Dropdown.jsx";
 import {
   download,
   downloadJSON,
@@ -13,13 +15,14 @@ import {
 import "./operations.css";
 
 export const orderLabel = (o) =>
-  `${o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : o.type === "in" ? "采购入库" : "销售出库"}${o.status === "void" ? " · 已作废" : ""}`;
+  `${o.kind === "transfer" ? (o.type === "in" ? "调拨入库" : "调拨出库") : o.kind === "return" ? (o.type === "in" ? "销售退货" : "采购退货") : o.type === "in" ? "采购入库" : "销售出库"}${o.status === "void" ? " · 已作废" : ""}`;
 export const businessType = (o) =>
-  o.kind === "return" ? (o.type === "in" ? "out" : "in") : o.type;
+  o.kind === "transfer" ? "transfer" : o.kind === "return" ? (o.type === "in" ? "out" : "in") : o.type;
 // Reports use the original business direction; returns reduce its amount.
+// Warehouse transfers move stock without money, so they stay out of the totals.
 export const reportOrders = (orders) =>
   orders
-    .filter((o) => o.status !== "void")
+    .filter((o) => o.status !== "void" && o.kind !== "transfer")
     .map((o) =>
       o.kind === "return"
         ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total }
@@ -566,6 +569,173 @@ export function Backup({ onSaved }) {
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+export function Transfer({ products = [], warehouses = [], warehouseId, onSaved }) {
+  const { can, costs } = usePermissions();
+  const { busy, error, run, send } = useOperation();
+  const [rows, setRows] = useState([]);
+  const [target, setTarget] = useState("");
+  const [note, setNote] = useState("");
+  const [query, setQuery] = useState("");
+  const [message, setMessage] = useState("");
+  const [records, setRecords] = useState(null);
+  const [listError, setListError] = useState("");
+  const [voiding, setVoiding] = useState(null);
+  const [reason, setReason] = useState("");
+  const others = warehouses.filter((w) => w.id !== warehouseId);
+  const load = async () => {
+    try { setRecords(await api("/transfers")); setListError(""); }
+    catch (e) { setListError(e.message); }
+  };
+  useEffect(() => { load(); }, [warehouseId]);
+  useEffect(() => {
+    if (target && !others.some((w) => String(w.id) === target)) setTarget("");
+  }, [warehouses, warehouseId]);
+  const keyword = query.trim().toLowerCase();
+  const matches = keyword
+    ? products
+        .filter((p) => [p.name, p.barcode, p.specification || ""].some((v) => v.toLowerCase().includes(keyword)))
+        .slice(0, 6)
+    : [];
+  const add = (product) => {
+    setMessage("");
+    setRows((prev) => prev.some((r) => r.product_id === product.id)
+      ? prev
+      : [...prev, { product_id: product.id, name: product.name, unit: product.unit, stock: product.stock, quantity: "1" }]);
+    setQuery("");
+  };
+  const update = (id, value) => setRows((prev) => prev.map((r) => (r.product_id === id ? { ...r, quantity: value } : r)));
+  const submit = () => run(async () => {
+    if (!target) throw new Error("请选择调入仓库。");
+    if (!rows.length) throw new Error("请至少添加一件物料。");
+    const items = rows.map((r) => ({ product_id: r.product_id, quantity: parseQuantity(r.quantity, true) }));
+    const over = rows.find((r) => Number(r.quantity) > r.stock);
+    if (over) throw new Error(`${over.name} 的调拨数量超过当前库存 ${over.stock} ${over.unit}。`);
+    const destination = others.find((w) => String(w.id) === target);
+    if (!window.confirm(`确认将 ${items.length} 种物料从当前仓库调拨到「${destination.name}」？调拨按移动加权平均成本结转，可在调拨记录中撤销。`)) return;
+    const result = await send("/transfers", { to_warehouse_id: Number(target), note, items });
+    setRows([]); setNote("");
+    setMessage(`调拨完成 · ${result.number}${result.created?.length ? `，已在目标仓库建立 ${result.created.join("、")} 档案` : ""}`);
+    await load();
+    await onSaved?.("仓库调拨已完成");
+  });
+  const undo = (record) => run(async () => {
+    if (!reason.trim()) throw new Error("请填写撤销原因。");
+    if (!window.confirm(`确认撤销调拨 ${record.number}？两个仓库的库存都会恢复。`)) return;
+    await send(`/transfers/${record.transfer_id}/void`, { reason });
+    setVoiding(null); setReason("");
+    await load();
+    await onSaved?.("调拨已撤销，库存已恢复");
+  });
+  return (
+    <div>
+      {busy && <p><LoadingStatus>正在处理调拨…</LoadingStatus></p>}
+      <p>
+        在当前仓库选择物料和数量，调入目标仓库；库存按移动加权平均成本结转，两个仓库都会留下调拨单据。目标仓库没有该物料时会自动建立档案（库存为零）。
+      </p>
+      {!others.length && <div className="info-box">当前只有一个仓库，请先在「基础设置 → 仓库管理」中新增仓库。</div>}
+      <div className="form-grid">
+        <label>
+          调出仓库
+          <input value={warehouses.find((w) => w.id === warehouseId)?.name || ""} disabled />
+        </label>
+        <label>
+          调入仓库
+          <Select label="调入仓库" aria-label="调入仓库" value={target} disabled={busy || !others.length} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">请选择</option>
+            {others.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </Select>
+        </label>
+      </div>
+      <label>
+        搜索要调拨的物料
+        <input value={query} disabled={busy} placeholder="物料名称、条码或规格型号" onChange={(e) => setQuery(e.target.value)} />
+      </label>
+      {matches.map((p) => (
+        <div className="operation-row" key={p.id}>
+          <div className="stocktake-product"><strong>{p.name}</strong><small>{p.barcode} · 库存 {p.stock} {p.unit}{p.active === 0 ? " · 已停用" : ""}</small></div>
+          <button type="button" className="btn" disabled={busy || p.stock <= 0} onClick={() => add(p)}>添加</button>
+        </div>
+      ))}
+      {keyword && !matches.length && <p>未找到匹配的物料。</p>}
+      {rows.length > 0 && (
+        <div className="operation-scroll">
+          <table className="data-table">
+            <thead><tr><th>物料</th><th>当前库存</th><th className="number-cell">调拨数量</th><th /></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.product_id}>
+                  <td>{r.name}</td>
+                  <td>{r.stock} {r.unit}</td>
+                  <td className="number-cell">
+                    <input
+                      aria-label={`${r.name} 调拨数量`}
+                      type="number" min="0" step="0.000001" max={r.stock}
+                      value={r.quantity} disabled={busy}
+                      onChange={(e) => update(r.product_id, e.target.value)}
+                    />
+                  </td>
+                  <td className="number-cell">
+                    <button type="button" className="text-button danger" aria-label={`移除 ${r.name}`} disabled={busy}
+                      onClick={() => setRows((prev) => prev.filter((row) => row.product_id !== r.product_id))}>
+                      <Trash2 size={14} /> 移除
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <label>
+        调拨原因
+        <input value={note} maxLength={500} disabled={busy} placeholder="例如：门店补货、仓库合并" onChange={(e) => setNote(e.target.value)} />
+      </label>
+      <button type="button" className="btn btn-primary" disabled={busy || !others.length || !rows.length} onClick={submit}>
+        <Truck size={15} /> 确认调拨
+      </button>
+      {message && <p role="status" className="template-success">{message}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <h3>调拨记录</h3>
+      {listError && <p className="form-error" role="alert">{listError}</p>}
+      {!records && !listError && <p><LoadingStatus>正在读取调拨记录…</LoadingStatus></p>}
+      {records && !records.transfers.length && <p>当前仓库暂无调拨记录。</p>}
+      {records?.transfers.map((record) => (
+        <div className="operation-row" key={record.id}>
+          <div className="stocktake-product">
+            <strong>
+              {record.direction === "in" ? "调拨入库" : "调拨出库"} · {record.number}
+              {record.status === "void" ? " · 已撤销" : ""}
+            </strong>
+            <small>
+              {record.direction === "in" ? `来自 ${record.counterpart_name}` : `发往 ${record.counterpart_name}`}
+              {" · "}{new Date(record.created_at).toLocaleString("zh-CN", { hour12: false })}
+              {" · "}{record.item_count} 种物料
+              {costs && record.cost_cents != null ? ` · 成本 ¥${(record.cost_cents / 100).toFixed(2)}` : ""}
+            </small>
+            <small>{record.items.map((i) => `${i.name} ${i.quantity}`).join("；")}</small>
+            {record.note && <small>原因：{record.note}</small>}
+            {record.status === "void" && <small>撤销原因：{record.void_reason}</small>}
+          </div>
+          {record.status !== "void" && record.direction === "out" && can("transfer") && (
+            <button type="button" className="btn" disabled={busy} onClick={() => { setVoiding(record); setReason(""); }}>撤销调拨</button>
+          )}
+          {voiding?.id === record.id && (
+            <div className="operation-row">
+              <label>
+                撤销原因
+                <input value={reason} maxLength={500} disabled={busy} onChange={(e) => setReason(e.target.value)} />
+              </label>
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => undo(record)}>确认撤销</button>
+              <button type="button" className="btn" disabled={busy} onClick={() => setVoiding(null)}>取消</button>
+            </div>
+          )}
+        </div>
+      ))}
+      {records?.has_more && <p className="muted">仅显示最近 30 条调拨记录。</p>}
     </div>
   );
 }

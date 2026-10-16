@@ -406,7 +406,7 @@ export function installCommerce(app, db, { route, mutation }) {
     route((req) => {
       const orders = db
         .prepare(
-          "SELECT * FROM orders WHERE status='active' AND warehouse_id=? ORDER BY created_at DESC,id DESC",
+          "SELECT * FROM orders WHERE status='active' AND kind!='transfer' AND warehouse_id=? ORDER BY created_at DESC,id DESC",
         )
         .all(req.warehouse.id)
         .map((o) => ({ ...o, ...settlement(db, o) }));

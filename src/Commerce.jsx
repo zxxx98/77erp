@@ -5,7 +5,7 @@ import { usePermissions } from './permissions.jsx';
 import React, { useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, Clock3, FilePenLine, Package, Trash2, UserRound } from "lucide-react";
 import { api } from "./api.js";
-import { orderLabel, Stocktake, ProductImport } from "./Operations.jsx";
+import { orderLabel, Stocktake, ProductImport, Transfer } from "./Operations.jsx";
 import "./commerce.css";
 import { MultiStocktake } from './MultiStocktake.jsx';
 const money = (n) => `¥ ${(n / 100).toFixed(2)}`;
@@ -60,6 +60,7 @@ export function BusinessTools({ products = [], warehouses = [], warehouseId, onS
     ...(can('business') ? [['contacts', '供应商与客户']] : []),
     ['templates', '单据模板'],
     ...(can('finance') ? [['finance', '收付款与欠款'], ['profit', '成本与毛利']] : []),
+    ...(can('transfer') ? [['transfer', '仓库调拨']] : []),
     ...(can('stocktake') ? [['stocktake', '库存盘点'], ['multi-stocktake', '多仓库盘点']] : []),
     ...(manage('data_io') ? [['import', '批量导入']] : []),
   ];
@@ -78,6 +79,7 @@ export function BusinessTools({ products = [], warehouses = [], warehouseId, onS
       {active === 'finance' && <Finance />}
       {active === 'profit' && <Profit />}
       {can('stocktake') && <div hidden={active !== 'stocktake'}><Stocktake products={products} onSaved={onSaved} /></div>}
+      {can('transfer') && <div hidden={active !== 'transfer'}><Transfer products={products} warehouses={warehouses} warehouseId={warehouseId} onSaved={onSaved} /></div>}
       {can('stocktake') && <div hidden={active !== 'multi-stocktake'}><MultiStocktake key={warehouseId} warehouses={warehouses} warehouseId={warehouseId} active={active === 'multi-stocktake'} /></div>}
       {manage('data_io') && <div hidden={active !== 'import'}><ProductImport onSaved={onSaved} /></div>}
     </section>

@@ -5,6 +5,7 @@ import { installCommerce, moveInventory, allocate } from "./commerce.js";
 import { createHash, randomUUID } from "node:crypto";
 import { categoryPaths, productDetails, splitLegacyCategories } from "./catalog.js";
 import { notificationMutation } from './notifications.js';
+import { installTransfers } from './transfers.js';
 
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -97,9 +98,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     fail("物料不存在，请刷新。");
   const changeStock = (id, delta, cost) => moveInventory(db, id, delta, cost);
   installCommerce(app, db, { route, mutation });
+  installTransfers(app, db, { route, mutation });
   const originalOrder = (id) => {
     const order = db.prepare("SELECT * FROM orders WHERE id=?").get(id);
     if (!order || order.status !== "active") fail("单据不存在或已作废。");
+    // Both legs of a warehouse transfer are corrected together, never one side.
+    if (order.kind === "transfer") fail("仓库调拨请在「业务管理 → 仓库调拨」中撤销。");
     if (!order.stock_applied)
       fail("期初已结转的演示单据不能作废或退货，请使用数据重置清理。");
     return order;
@@ -394,7 +398,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 11,
+    version: 12,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -402,13 +406,20 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
     if (value.version < 11) for (const item of data.order_items || []) {
       if (item && !('amount_cents' in item)) item.amount_cents = null;
+    }
+    if (value.version < 12) {
+      // Transfers arrive with version 12, so older backups never carry them.
+      const transferIds = new Set((data.orders || []).filter((o) => o.kind === 'transfer').map((o) => o.id));
+      data.orders = (data.orders || []).filter((o) => o.kind !== 'transfer');
+      if (data.order_items) data.order_items = data.order_items.filter((i) => !transferIds.has(i.order_id));
+      for (const o of data.orders) { o.transfer_id = ''; o.transfer_warehouse_id = null; }
     }
     if (value.version < 9) data.templates = [];
     if (value.version < 7) for (const table of stockQrTables) data[table] = [];
@@ -516,7 +527,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !text(o.number, 100) ||
         numbers.has(o.number) ||
         !["in", "out"].includes(o.type) ||
-        !["normal", "return"].includes(o.kind) ||
+        !["normal", "return", "transfer"].includes(o.kind) ||
         !["active", "void"].includes(o.status) ||
         !text(o.partner, 100) ||
         typeof o.note !== "string" ||
@@ -533,6 +544,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       )
         fail("备份单据内容无效。");
       numbers.add(o.number);
+      if (o.kind === "transfer") {
+        if (o.source_order_id !== null || o.settlement_tracked !== 0 || Math.round(o.total * 100) !== 0 ||
+            !text(o.transfer_id, 100) || !warehouseIds.has(o.transfer_warehouse_id) ||
+            o.transfer_warehouse_id === o.warehouse_id)
+          fail("备份调拨单据无效。");
+      } else if (o.transfer_id !== "" || o.transfer_warehouse_id !== null) fail("备份调拨关联无效。");
       if (o.kind === "return") {
         const source = orders.get(o.source_order_id);
         if (
@@ -544,6 +561,23 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         )
           fail("备份退货关联无效。");
       } else if (o.source_order_id !== null) fail("备份原单关联无效。");
+    }
+    // A transfer is exactly two linked legs whose item sets mirror by barcode.
+    const transferLegs = new Map();
+    for (const o of data.orders)
+      if (o.kind === "transfer") transferLegs.set(o.transfer_id, [...(transferLegs.get(o.transfer_id) || []), o]);
+    for (const legs of transferLegs.values()) {
+      const out = legs.find((leg) => leg.type === "out"), incoming = legs.find((leg) => leg.type === "in");
+      if (legs.length !== 2 || !out || !incoming || out.status !== incoming.status ||
+          out.transfer_warehouse_id !== incoming.warehouse_id || incoming.transfer_warehouse_id !== out.warehouse_id)
+        fail("备份调拨单据不完整。");
+      const quantities = new Map();
+      for (const item of data.order_items)
+        if (item.order_id === out.id) quantities.set(products.get(item.product_id)?.barcode, item.quantity);
+      const inbound = data.order_items.filter((item) => item.order_id === incoming.id);
+      if (inbound.length !== quantities.size ||
+          inbound.some((item) => quantities.get(products.get(item.product_id)?.barcode) !== item.quantity))
+        fail("备份调拨明细不一致。");
     }
     const keys = new Set(),
       totals = new Map(),

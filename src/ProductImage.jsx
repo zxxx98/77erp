@@ -48,7 +48,7 @@ function ImageViewer({ src, title, onClose }) {
       previousFocus?.focus();
     };
   }, []);
-  return <section className="image-viewer" role="dialog" aria-modal="true" aria-label={`图片预览：${title}`} onClick={e => { e.stopPropagation(); onClose(); }}>
+  return <section className="image-viewer" role="dialog" aria-modal="true" aria-label={`图片预览：${title}`}>
     <button ref={closeButton} type="button" className="image-viewer-close" aria-label="关闭图片预览" onClick={e => { e.stopPropagation(); onClose(); }}><X size={24} /></button>
     {failed ? <p role="alert">图片无法显示，请关闭后重试。</p> : <img className="image-viewer-image" src={src} alt={`${title} 大图`} draggable={false} onClick={e => e.stopPropagation()} onError={() => setFailed(true)} />}
   </section>;

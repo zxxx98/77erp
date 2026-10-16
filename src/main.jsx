@@ -49,6 +49,7 @@ import {
   TriangleAlert,
   Trash2,
   Warehouse,
+  Truck,
   X,
   Camera,
   CircleCheck,
@@ -348,12 +349,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
     };
   }, []);
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <div className="modal-backdrop">
       <section
         ref={ref}
         className={`modal ${wide ? "modal-wide" : ""} ${className}`}
@@ -557,7 +553,7 @@ function App({ admin, onLogout }) {
   const searchRef = useRef();
   const loadGeneration = useRef(0);
   const [switching, setSwitching] = useState(false);
-  const reload = async () => {
+  const loadWorkspace = async (attempt = 0) => {
     const generation = ++loadGeneration.current;
     setRefreshing(true);
     try {
@@ -576,11 +572,17 @@ function App({ admin, onLogout }) {
       setData(d);
       setLoadError("");
     } catch (e) {
-      if (generation === loadGeneration.current) setLoadError(e.message);
+      if (generation !== loadGeneration.current) return;
+      setLoadError(e.message);
+      // A read that fails right after connectivity returns recovers by itself,
+      // instead of waiting for the user to press 重新连接.
+      if (!e.status && navigator.onLine && attempt < 1)
+        setTimeout(() => { if (generation === loadGeneration.current) void loadWorkspace(attempt + 1); }, 800);
     } finally {
       if (generation === loadGeneration.current) { setLoading(false); setRefreshing(false); }
     }
   };
+  const reload = () => loadWorkspace(0);
   useEffect(() => {
     reload();
     const onHash = () => {
@@ -648,6 +650,16 @@ function App({ admin, onLogout }) {
   const can = key => hasPermission(user, key);
   const manage = key => canManage(user, key);
   const low = data.products.filter((p) => p.active !== 0 && p.stock <= p.threshold);
+  // Order details are fetched by id so trimmed or paged lists stay correct.
+  const openOrderDetail = async (order) => {
+    const id = typeof order === "number" ? order : order?.id;
+    if (!id) return;
+    if (typeof order === "object" && order?.items) { setModal({ kind: "detail", order }); return; }
+    try {
+      const { order: full } = await api(`/orders/${id}`);
+      setModal({ kind: "detail", order: full });
+    } catch (e) { notify(e.message, "error"); }
+  };
   const openOrder = (type, product, template) => {
     if (!can(type === 'in' ? 'purchase' : 'sale')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
     setModal({ kind: 'order', type, product, template });
@@ -661,7 +673,7 @@ function App({ admin, onLogout }) {
     <PermissionContext.Provider value={user}><div className="app-shell">
       {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />正在切换仓库…</div>}
       {mobileDevice ? <div inert={!!modal} aria-hidden={modal ? true : undefined}><MobileShell user={user} data={data} page={page} navigate={navigate} openModal={setModal} openOrder={openOrder}
-        showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={order => setModal({ kind: 'detail', order })}
+        showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={openOrderDetail}
         switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
         loggingOut={loggingOut} logout={logout}
         renderScanner={() => <Scanner data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
@@ -891,7 +903,7 @@ function App({ admin, onLogout }) {
                   low={low}
                   navigate={navigate}
                   openOrder={openOrder}
-                  showDetail={(order) => setModal({ kind: "detail", order })}
+                  showDetail={openOrderDetail}
                 />
               )}
               {page === "products" && (
@@ -913,6 +925,7 @@ function App({ admin, onLogout }) {
                   filter={inventoryFilter}
                   setFilter={setInventoryFilter}
                   openOrder={openOrder}
+                  openTransfer={() => setModal({ kind: "businessTools", initialTab: "transfer" })}
                   reduceStock={reduceStock}
                   showProduct={(product) => setModal({ kind: "productDetail", product })}
                   showBarcode={(product) =>
@@ -925,7 +938,7 @@ function App({ admin, onLogout }) {
                   page={page}
                   data={data}
                   openOrder={openOrder}
-                  showDetail={(order) => setModal({ kind: "detail", order })}
+                  showDetail={openOrderDetail}
                   notify={notify}
                 />
               )}
@@ -982,7 +995,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
-      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onViewOrder={id => setModal({ kind: 'detail', order: data.orders.find(o => o.id === id) })} onClose={() => setModal(null)} />)}
+      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} openOrderDetail={openOrderDetail} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onViewOrder={openOrderDetail} onClose={() => setModal(null)} />)}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}
@@ -1986,7 +1999,7 @@ function Pagination({ total, page, setPage }) {
     </div>
   );
 }
-function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcode, showProduct }) {
+function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceStock, showBarcode, showProduct }) {
   const { can, costs } = usePermissions();
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
@@ -2013,6 +2026,9 @@ function Inventory({ data, filter, setFilter, openOrder, reduceStock, showBarcod
           <Warehouse size={15} />
           {data.settings.warehouse_name}
         </span>
+        <Button permission="transfer" icon={Truck} onClick={openTransfer}>
+          仓库调拨
+        </Button>
         <Button permission="purchase"
           kind="primary"
           icon={ArrowDownToLine}
@@ -2363,6 +2379,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                   ["all", "全部操作"],
                   ["in", "采购入库"],
                   ["out", "销售出库"],
+                  ["transfer", "仓库调拨"],
                 ]
             ).map(([id, name]) => (
               <button
@@ -2452,7 +2469,11 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                     </div>
                   </td>
                   <td className="number-cell amount-cell">
-                    ¥ {money(o.total)}
+                    {o.kind === "transfer" ? (
+                      <span className="muted">不涉及金额</span>
+                    ) : (
+                      `¥ ${money(o.total)}`
+                    )}
                   </td>
                   <td className="muted">{dateTime(o.created_at)}</td>
                   <td>
@@ -3260,7 +3281,11 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   );
 }
 function OrderDetail({ order, onClose, onSaved, isAdmin }) {
-  const { can } = usePermissions();
+  const { can, costs } = usePermissions();
+  // Transfers carry no money: they are corrected from the transfer list, and
+  // the line value shown is the moved moving-average cost.
+  const transfer = order.kind === "transfer";
+  const costTotal = order.items.reduce((sum, i) => sum + (i.cost_cents || 0), 0) / 100;
   return (
     <Modal
       title={`${orderLabel(order)}单详情`}
@@ -3278,7 +3303,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
         </div>
         <div className="detail-meta">
           <div>
-            <small>往来单位</small>
+            <small>{transfer ? (order.type === "in" ? "来自仓库" : "发往仓库") : "往来单位"}</small>
             <strong>{order.partner}</strong>
           </div>
           <div>
@@ -3297,8 +3322,8 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
                 <th>物料名称</th>
                 <th>条码</th>
                 <th className="number-cell">数量</th>
-                <th className="number-cell">单价</th>
-                <th className="number-cell">小计</th>
+                <th className="number-cell">{transfer ? "成本单价" : "单价"}</th>
+                <th className="number-cell">{transfer ? "成本小计" : "小计"}</th>
               </tr>
             </thead>
             <tbody>
@@ -3307,10 +3332,19 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
                   <td>{i.name}</td>
                   <td className="mono muted">{i.barcode}</td>
                   <td className="number-cell">{i.quantity}</td>
-                  <td className="number-cell">¥ {money(i.price)}</td>
-                  <td className="number-cell">
-                    ¥ {money(orderLineAmount(i) / 100)}
-                  </td>
+                  {transfer ? (
+                    <>
+                      <td className="number-cell">{costs && i.cost_cents != null ? `¥ ${money(i.cost_cents / 100 / i.quantity)}` : "—"}</td>
+                      <td className="number-cell">{costs && i.cost_cents != null ? `¥ ${money(i.cost_cents / 100)}` : "—"}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="number-cell">¥ {money(i.price)}</td>
+                      <td className="number-cell">
+                        ¥ {money(orderLineAmount(i) / 100)}
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -3321,15 +3355,19 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
           <p>{order.note || "无备注"}</p>
         </div>
         <p className="muted">开单人：{order.created_by_name || '历史记录，操作人未知'}</p>
-        {can('finance') && <Payments order={order} />}
-        {can('corrections') && <OrderActions order={order} onSaved={onSaved} />}
+        {transfer && (
+          <div className="info-box">
+            仓库间调拨不涉及金额，两个仓库的库存已同步调整。请在有调出记录的仓库，通过「业务管理 → 仓库调拨」撤销。
+          </div>
+        )}
+        {!transfer && can('finance') && <Payments order={order} />}
+        {!transfer && can('corrections') && <OrderActions order={order} onSaved={onSaved} />}
       </div>
       <div className="modal-footer order-form-footer">
         <div>
-          <small>合计金额</small>
+          <small>{transfer ? "调拨成本" : "合计金额"}</small>
           <strong>
-            <span>¥ </span>
-            {money(order.total)}
+            {transfer ? (costs ? `¥ ${money(costTotal)}` : "—") : <><span>¥ </span>{money(order.total)}</>}
           </strong>
         </div>
         <Button onClick={onClose}>关闭详情</Button>

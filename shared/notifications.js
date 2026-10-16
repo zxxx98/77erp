@@ -6,6 +6,7 @@ export const notificationEvents = [
   { key: 'sale_out', label: '销售出库', description: '销售出库单提交成功后通知，包含二维码开单。' },
   { key: 'order_return', label: '采购／销售退货', description: '退货成功后通知，附原单号和原因。' },
   { key: 'order_void', label: '单据作废', description: '单据作废成功后通知。' },
+  { key: 'transfer', label: '仓库调拨', description: '仓库间调拨成功或撤销后通知，包含调出与调入仓库。' },
   { key: 'stock_adjustment', label: '盘点差异／报损', description: '盘点有实际差异或减少库存成功后通知。' },
   { key: 'payment', label: '收付款变动', description: '登记、撤销收付款或历史收付核对后通知，包含结清状态。' },
   { key: 'daily_summary', label: '每日经营汇总', description: '定时汇总当日采购、销售、退货和当前库存预警数量。' },
