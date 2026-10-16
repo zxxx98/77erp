@@ -1,6 +1,7 @@
 import { AiAssistant, AiSettings } from './AiAssistant.jsx';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { orderLineAmount } from "../shared/money.js";
+import { evaluateStockExpression, describeStockExpression } from "../shared/stock-compare.js";
 import { CameraScanner } from './CameraScanner.jsx';
 import { mobileDevice } from './device.js';
 import { PwaProvider } from './pwa/Pwa.jsx';
@@ -997,7 +998,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
-      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} openOrderDetail={openOrderDetail} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} warehouseName={data.settings.warehouse_name} onViewOrder={openOrderDetail} onClose={() => setModal(null)} />)}
+      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} openOrderDetail={openOrderDetail} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} data={data} warehouseName={data.settings.warehouse_name} onViewOrder={openOrderDetail} onClose={() => setModal(null)} />)}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}
@@ -2006,6 +2007,10 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
   const { can, costs } = usePermissions();
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
+  const [category, setCategory] = useState(null);
+  const categories = data.categories || [];
+  const branch = categoryBranch(categories, category);
+  useEffect(() => { if (category && !categories.some(c => c.id === category)) setCategory(null); }, [categories, category]);
   const low = data.products.filter((p) => p.stock <= p.threshold),
     empty = data.products.filter((p) => p.stock === 0);
   const filtered = data.products.filter(
@@ -2013,11 +2018,12 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
       (filter === "all" ||
         (filter === "warning" && p.stock <= p.threshold) ||
         (filter === "empty" && p.stock === 0)) &&
+      (category === null || branch.has(p.category_id)) &&
       [p.name, p.barcode].some((s) =>
         s.toLowerCase().includes(query.toLowerCase()),
       ),
   );
-  useEffect(() => setPage(1), [filter, query]);
+  useEffect(() => setPage(1), [filter, query, category]);
   return (
     <>
       <PageHeading
@@ -2090,7 +2096,12 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           </span>
         </div>
       </div>
-      <section className="panel">
+      <div className="catalog-layout">
+        <aside className="panel category-sidebar">
+          <h3>物料分类</h3>
+          <CategoryTree categories={categories} products={data.products} selected={category} onSelect={setCategory} />
+        </aside>
+      <section className="panel products-panel">
         <div className="table-toolbar">
           <div className="filter-tabs">
             {[
@@ -2213,6 +2224,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
         </div>
         <Pagination total={filtered.length} page={page} setPage={setPage} />
       </section>
+      </div>
       <div className="page-hint">
         <ShieldCheck size={16} />
         库存随单据确认自动更新，安全库存可在物料档案中调整。
@@ -2526,7 +2538,7 @@ function ProductName({ product, onView }) {
   return <button type="button" className="product-name-link" aria-label={`查看 ${product.name} 物料详情`} onClick={() => onView(product)}>{product.name}</button>;
 }
 
-function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
+function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
   const { costs } = usePermissions();
   const [others, setOthers] = useState(null);
   const [otherError, setOtherError] = useState("");
@@ -2538,8 +2550,12 @@ function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
       .catch((e) => { if (active) setOtherError(e.message); });
     return () => { active = false; };
   }, [product.id]);
-  const otherTotal = (others ?? []).reduce((sum, row) => sum + (Number(row.stock) || 0), 0);
-  const difference = (Number(product.stock) || 0) - otherTotal;
+  const expression = data?.settings?.stock_expression || null;
+  const nameById = Object.fromEntries((data?.warehouses || []).map((w) => [w.id, w.name]));
+  const stockByWarehouse = { ...(data?.warehouse_id != null ? { [data.warehouse_id]: Number(product.stock) || 0 } : {}) };
+  for (const row of others ?? []) stockByWarehouse[row.warehouse_id] = Number(row.stock) || 0;
+  const expressionValue = expression && others !== null ? evaluateStockExpression(expression, stockByWarehouse) : null;
+  const expressionText = expression ? describeStockExpression(expression, nameById) : "";
   const fields = [
     ["物料条码", product.barcode],
     ["物料分类", product.category],
@@ -2569,19 +2585,20 @@ function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
         {otherError ? <p className="form-error" role="alert">{otherError}</p>
           : others === null ? <p className="product-other-empty"><LoadingIndicator size={20} /> 读取中…</p>
           : others.length === 0 ? <p className="product-other-empty">其他仓库暂无同一物料</p>
-          : <>
-            <ul className="product-other-list">
-              {others.map((row) => <li key={row.warehouse_id}>
-                <span>{row.warehouse_name}</span>
-                <strong>{count(row.stock)} {row.unit || product.unit}</strong>
-              </li>)}
-            </ul>
-            <div className="product-stock-total">
-              <div><span>当前仓库（{warehouseName}）</span><strong>{count(product.stock)} {product.unit}</strong></div>
-              <div><span>其他仓库合计</span><strong>{count(otherTotal)} {product.unit}</strong></div>
-              <div className={`product-stock-total-sum stock-diff-${difference > 0 ? "positive" : difference < 0 ? "negative" : "zero"}`}><span>当前仓库 − 其他仓库合计（差异）</span><strong>{`${difference > 0 ? "+" : ""}${count(difference)}`} {product.unit}</strong></div>
+          : <ul className="product-other-list">
+            {others.map((row) => <li key={row.warehouse_id}>
+              <span>{row.warehouse_name}</span>
+              <strong>{count(row.stock)} {row.unit || product.unit}</strong>
+            </li>)}
+          </ul>}
+        {expressionValue !== null && (
+          <div className="product-stock-total">
+            <div className={`product-stock-total-sum stock-diff-${expressionValue > 0 ? "positive" : expressionValue < 0 ? "negative" : "zero"}`}>
+              <span title={expressionText}>{expressionText}</span>
+              <strong>{`${expressionValue > 0 ? "+" : ""}${count(expressionValue)}`} {product.unit}</strong>
             </div>
-          </>}
+          </div>
+        )}
       </section>
     </div>
     <div className="modal-footer"><Button onClick={onClose}>关闭</Button></div>
@@ -3655,6 +3672,48 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
     </>
   );
 }
+function StockExpressionEditor({ warehouses, value, onChange, disabled }) {
+  const expression = value && Number.isSafeInteger(value.left) ? value : null;
+  const terms = expression?.terms || [];
+  const used = new Set([expression?.left, ...terms.map((term) => term.warehouse_id)].filter((id) => id != null));
+  const available = warehouses.filter((w) => !used.has(w.id));
+  const leftOptions = warehouses.filter((w) => w.id === expression?.left || !terms.some((term) => term.warehouse_id === w.id));
+  const update = (next) => onChange(next);
+  const setLeft = (id) => update({ left: Number(id), terms: terms.filter((term) => term.warehouse_id !== Number(id)) });
+  const addTerm = () => available.length && update({ left: expression?.left, terms: [...terms, { warehouse_id: available[0].id, op: "+" }] });
+  const setTerm = (index, patch) => update({ left: expression.left, terms: terms.map((term, i) => i === index ? { ...patch(term) } : term) });
+  const removeTerm = (index) => update({ left: expression.left, terms: terms.filter((_, i) => i !== index) });
+  const nameById = Object.fromEntries(warehouses.map((w) => [w.id, w.name]));
+  const preview = expression ? describeStockExpression(expression, nameById) : "";
+  return <section className="stock-expression" aria-label="库存对比表达式">
+    <div className="settings-section-heading"><h3>库存对比表达式</h3><p>配置一个全局表达式，在物料详情中按各仓库库存求值并显示对比结果。左侧为起始仓库，右侧可添加带加减符号的仓库项。留空则不显示对比。</p></div>
+    <fieldset disabled={disabled}>
+      <label className="stock-expression-left">起始仓库
+        <Select aria-label="起始仓库" value={expression?.left ?? ""} onChange={(e) => setLeft(e.target.value)}>
+          <option value="" disabled>请选择</option>
+          {leftOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+        </Select>
+      </label>
+      {expression && <div className="stock-expression-terms">
+        {terms.map((term, index) => <div className="stock-expression-term" key={index}>
+          <Select aria-label={`第 ${index + 1} 项运算符`} value={term.op} onChange={(e) => setTerm(index, (t) => ({ ...t, op: e.target.value }))}>
+            <option value="+">+</option>
+            <option value="-">−</option>
+          </Select>
+          <Select aria-label={`第 ${index + 1} 项仓库`} value={term.warehouse_id} onChange={(e) => setTerm(index, (t) => ({ ...t, warehouse_id: Number(e.target.value) }))}>
+            {warehouses.filter((w) => w.id === term.warehouse_id || !used.has(w.id)).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </Select>
+          <Button type="button" icon={Trash2} aria-label={`删除第 ${index + 1} 项`} onClick={() => removeTerm(index)} />
+        </div>)}
+      </div>}
+      <div className="stock-expression-actions">
+        <Button type="button" icon={Plus} disabled={!expression || !available.length} onClick={addTerm}>添加仓库项</Button>
+        {expression && <Button type="button" onClick={() => update(null)}>清除表达式</Button>}
+      </div>
+      {preview && <p className="stock-expression-preview">当前表达式：<strong>{preview}</strong></p>}
+    </fieldset>
+  </section>;
+}
 function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPasswordChanged, initialSection = "general" }) {
   const lock = useRef(false);
   const [notificationDirty, setNotificationDirty] = useState(false);
@@ -3755,6 +3814,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             <Button type="button" icon={Plus} disabled={busy || form.units.length >= 100} onClick={() => setForm(current => ({ ...current, units: [...current.units, ""] }))}>新增单位</Button>
           </section>
           <WarehouseManager warehouses={warehouses} onRefresh={onRefresh} onBusy={setBusy} />
+          <StockExpressionEditor warehouses={warehouses} value={form.stock_expression} onChange={(next) => setForm((current) => ({ ...current, stock_expression: next }))} disabled={busy} />
           <div className="settings-version">
             <span className="brand-mark">
               <svg viewBox="0 0 40 40">

@@ -1850,6 +1850,26 @@ table {
 .stock-diff-zero > strong {
   color: #8593a8;
 }
+.stock-diff-positive strong, strong.stock-diff-positive {
+  color: #16816b;
+}
+.stock-diff-negative strong, strong.stock-diff-negative {
+  color: #d64545;
+}
+.stock-diff-zero strong, strong.stock-diff-zero {
+  color: #8593a8;
+}
+.stock-expression { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 16px 0 0; }
+.stock-expression fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.stock-expression-left { display: block; margin-bottom: 10px; }
+.stock-expression-left select { margin-top: 6px; }
+.stock-expression-terms { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.stock-expression-term { display: flex; align-items: center; gap: 8px; }
+.stock-expression-term select { flex: 1; min-width: 0; }
+.stock-expression-term select:first-child { flex: 0 0 72px; }
+.stock-expression-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.stock-expression-preview { margin: 10px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.stock-expression-preview strong { color: #17243c; }
 .product-info strong {
   display: block;
   font-size: 11px;

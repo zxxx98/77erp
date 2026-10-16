@@ -10,6 +10,7 @@ import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
 import { download } from '../data-files.js';
 import { ProductImage } from '../ProductImage.jsx';
 import { ProductHistory } from '../ProductHistory.jsx';
+import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
 import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge, matchesProduct } from './ui.jsx';
 import './mobile.css';
 
@@ -137,7 +138,7 @@ function Products({ data, inventory, showProduct, openModal }) {
     {!inventory && manage('products') && <Button onClick={() => openModal({ kind: 'categories' })}>管理分类</Button>}
     <SearchField value={query} onChange={setQuery} />
     <Chips label={inventory ? '库存筛选' : '使用状态'} value={filter} onChange={setFilter} options={inventory ? [['all', '全部库存'], ['low', '库存预警'], ['empty', '缺货']] : [['all', '全部状态'], ['active', '已启用'], ['inactive', '已停用']]} />
-    {!inventory && <label className="mw-field"><span>物料分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>}
+    <label className="mw-field"><span>物料分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
     <Notice>{error}</Notice>
     {loading && !products.length && <p className="mw-muted"><LoadingStatus>正在读取物料…</LoadingStatus></p>}
     <div className="mw-product-list" aria-busy={loading}>{products.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />)}</div>
@@ -248,6 +249,12 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
     api(`/products/${product.id}/other-warehouses`).then(result => { if (alive) setOthers(result.warehouses); }).catch(e => { if (alive) setOtherError(e.message); });
     return () => { alive = false; };
   }, [product.id]);
+  const expression = data?.settings?.stock_expression || null;
+  const nameById = Object.fromEntries((data?.warehouses || []).map(w => [w.id, w.name]));
+  const stockByWarehouse = { ...(data?.warehouse_id != null ? { [data.warehouse_id]: Number(product.stock) || 0 } : {}) };
+  for (const row of others ?? []) stockByWarehouse[row.warehouse_id] = Number(row.stock) || 0;
+  const mobileExpressionValue = expression && others !== null ? evaluateStockExpression(expression, stockByWarehouse) : null;
+  const mobileExpressionText = expression ? describeStockExpression(expression, nameById) : '';
   const lifecycle = async (remove) => {
     if (lock.current) return;
     const active = product.active === 0 ? 1 : 0;
@@ -262,7 +269,8 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
       { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
     <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{money(product.price)}</DetailRow></section>
     <ProductHistory key={product.id} product={product} onViewOrder={id => openOrderDetail?.(id)} />
-    <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted"><LoadingStatus>读取中…</LoadingStatus></p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一物料</p>}</section>
+    <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted"><LoadingStatus>读取中…</LoadingStatus></p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一物料</p>}
+      {mobileExpressionValue !== null && <DetailRow label={mobileExpressionText}><strong className={`stock-diff-${mobileExpressionValue > 0 ? 'positive' : mobileExpressionValue < 0 ? 'negative' : 'zero'}`}>{`${mobileExpressionValue > 0 ? '+' : ''}${count(mobileExpressionValue)} ${product.unit}`}</strong></DetailRow>}</section>
     <Button onClick={() => openModal({ kind: 'barcode', product })}>物料条码</Button>
     {can('products') && <Button disabled={busy} onClick={() => openModal({ kind: 'product', product })}>编辑物料</Button>}
     {manage('business') && <Button disabled={busy} onClick={() => openModal({ kind: 'stockQr', product })}>出入库二维码</Button>}

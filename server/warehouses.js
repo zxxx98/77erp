@@ -128,6 +128,16 @@ export function installWarehouses(app, db) {
         db.prepare('UPDATE notification_settings SET warehouse_ids=?,enabled=CASE WHEN ?=0 THEN 0 ELSE enabled END,version=version+1 WHERE id=1')
           .run(JSON.stringify(remaining), remaining.length);
       }
+      const expressionRow = db.prepare("SELECT value FROM app_metadata WHERE key='stock_expression'").get();
+      if (expressionRow) {
+        try {
+          const expression = JSON.parse(expressionRow.value);
+          if (expression?.left === id) db.prepare("DELETE FROM app_metadata WHERE key='stock_expression'").run();
+          else if (expression?.terms?.some(term => term.warehouse_id === id))
+            db.prepare("UPDATE app_metadata SET value=? WHERE key='stock_expression'")
+              .run(JSON.stringify({ ...expression, terms: expression.terms.filter(term => term.warehouse_id !== id) }));
+        } catch { db.prepare("DELETE FROM app_metadata WHERE key='stock_expression'").run(); }
+      }
       db.exec('COMMIT');
       res.json({ ok: true });
     } catch (e) {

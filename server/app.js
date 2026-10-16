@@ -20,6 +20,7 @@ import { migrateOperations, installOperations, operationRequest, saveOperationRe
 import { migrateCatalog, migrateWarehouseCategories, installCatalog } from "./catalog.js";
 import { migrateUnits, getUnits, validateUnits, saveUnits } from "./units.js";
 import { installMultiStocktake } from './multi-stocktake.js';
+import { getStockExpression, saveStockExpression } from './stock-compare.js';
 import { migrateTransfers } from './transfers.js';
 import { installQueries } from './queries.js';
 import { migrateNotifications, installNotifications, queueNotification } from './notifications.js';
@@ -291,7 +292,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       warehouses: warehouses(),
       warehouse_id: req.warehouse.id,
       instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
-      settings: { ...db.prepare("SELECT * FROM settings WHERE id=1").get(), warehouse_name: req.warehouse.name, units: getUnits(db) },
+      settings: { ...db.prepare("SELECT * FROM settings WHERE id=1").get(), warehouse_name: req.warehouse.name, units: getUnits(db), stock_expression: getStockExpression(db) },
     });
   });
   app.get("/api/style", (_, res) => {
@@ -575,17 +576,19 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     } catch (error) {
       return res.status(400).json({ error: error.message });
     }
+    const savesExpression = req.body.stock_expression !== undefined;
     try {
       db.exec("BEGIN IMMEDIATE");
       db.prepare("UPDATE warehouses SET name=? WHERE id=?").run(warehouse_name.trim(), req.warehouse.id);
       db.prepare("UPDATE settings SET business_name=? WHERE id=1").run(business_name.trim());
       if (req.warehouse.id === 1) db.prepare("UPDATE settings SET warehouse_name=? WHERE id=1").run(warehouse_name.trim());
       if (units) saveUnits(db, units);
+      if (savesExpression) saveStockExpression(db, req.body.stock_expression);
       db.exec("COMMIT");
       res.json({ ok: true });
     } catch (error) {
       if (db.isTransaction) db.exec("ROLLBACK");
-      res.status(400).json({ error: "仓库名称已存在。" });
+      res.status(400).json({ error: error.message.includes('对比表达式') ? error.message : "仓库名称已存在。" });
     }
   });
   installStockQr(app, db);

@@ -91,3 +91,24 @@ test('the category tree and product form fit a narrow viewport', async ({ page }
   await expect(page.getByRole('textbox', { name: '规格型号' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('inventory shows the shared category tree and filters rows by the selected branch', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const suffix = Date.now();
+  const categoryName = `库存分类-${suffix}`;
+  const productName = `库存分类物料-${suffix}`;
+  const created = await page.request.post('/api/categories', { data: { name: categoryName, parent_id: null } });
+  expect(created.ok()).toBe(true);
+  const categoryId = (await created.json()).id;
+  expect((await page.request.post('/api/products', { data: { name: productName, barcode: `INV-CAT-${suffix}`, category: categoryName, category_id: categoryId, unit: '件', cost: 10, price: 20, threshold: 0 } })).ok()).toBe(true);
+
+  await page.goto('/#inventory');
+  const tree = page.getByRole('navigation', { name: '物料分类树' });
+  await expect(tree).toBeVisible();
+  await tree.getByRole('button', { name: new RegExp(`^${categoryName}`) }).click();
+  const row = page.locator('.data-table tbody tr').filter({ hasText: productName });
+  await expect(row).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+});
