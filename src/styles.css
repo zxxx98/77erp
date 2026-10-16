@@ -1841,6 +1841,15 @@ table {
   color: #17243c;
   font-weight: 600;
 }
+.stock-diff-positive > strong {
+  color: #16816b;
+}
+.stock-diff-negative > strong {
+  color: #d64545;
+}
+.stock-diff-zero > strong {
+  color: #8593a8;
+}
 .product-info strong {
   display: block;
   font-size: 11px;

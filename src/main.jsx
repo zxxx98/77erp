@@ -2539,6 +2539,7 @@ function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
     return () => { active = false; };
   }, [product.id]);
   const otherTotal = (others ?? []).reduce((sum, row) => sum + (Number(row.stock) || 0), 0);
+  const difference = (Number(product.stock) || 0) - otherTotal;
   const fields = [
     ["物料条码", product.barcode],
     ["物料分类", product.category],
@@ -2578,7 +2579,7 @@ function ProductDetail({ product, warehouseName, onViewOrder, onClose }) {
             <div className="product-stock-total">
               <div><span>当前仓库（{warehouseName}）</span><strong>{count(product.stock)} {product.unit}</strong></div>
               <div><span>其他仓库合计</span><strong>{count(otherTotal)} {product.unit}</strong></div>
-              <div className="product-stock-total-sum"><span>当前仓库 − 其他仓库合计</span><strong>{count(product.stock - otherTotal)} {product.unit}</strong></div>
+              <div className={`product-stock-total-sum stock-diff-${difference > 0 ? "positive" : difference < 0 ? "negative" : "zero"}`}><span>当前仓库 − 其他仓库合计（差异）</span><strong>{`${difference > 0 ? "+" : ""}${count(difference)}`} {product.unit}</strong></div>
             </div>
           </>}
       </section>
