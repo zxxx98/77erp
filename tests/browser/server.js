@@ -1,7 +1,8 @@
+import { aiFetch } from './ai-provider.js';
 import { createApp } from "../../server/app.js";
 import { randomUUID } from 'node:crypto';
 // An isolated database keeps browser mutations out of the user's working data.
-const { app, db, notifications } = createApp(":memory:", { webhookSend: async config => {
+const { app, db, notifications } = createApp(":memory:", { aiFetch, aiEncryptionKey: 'ab'.repeat(32), webhookSend: async config => {
   if (new URL(config.url).hostname !== 'hooks.77erp.test') throw new Error('Unexpected webhook destination');
 }, imagebedFetch: async (url, options) => {
   if (url.origin !== 'https://img.77erp.test' || url.pathname !== '/upload' || url.searchParams.get('uploadChannel') !== 'cfr2' || options.body.get('file')?.type !== 'image/webp')

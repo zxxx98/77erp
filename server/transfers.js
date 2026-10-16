@@ -99,59 +99,57 @@ export function installTransfers(app, db, { route, mutation }) {
     }),
   );
 
-  app.post(
-    '/api/transfers',
-    route((req) =>
-      mutation(req, () => {
-        const body = req.body || {};
-        if (!Number.isSafeInteger(body.to_warehouse_id)) fail('请选择调入仓库。');
-        const target = db.prepare('SELECT * FROM warehouses WHERE id=?').get(body.to_warehouse_id);
-        if (!target) fail('调入仓库不存在，请刷新后重试。');
-        if (target.id === req.warehouse.id) fail('调入仓库不能与调出仓库相同。');
-        const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim() : '仓库间调拨';
-        if (note.length > 500) fail('调拨原因最多 500 字。');
-        if (!Array.isArray(body.items) || !body.items.length || body.items.length > 100)
-          fail('每次调拨请选择 1–100 种物料。');
-        const seen = new Set();
-        // Destination products are resolved before any stock moves so a missing
-        // archive fails the whole request instead of a half-applied transfer.
-        const normalized = body.items.map((item) => {
-          if (!integer(item?.product_id) || !validQuantity(item?.quantity, true))
-            fail('调拨数量需为正数且最多 6 位小数。');
-          if (seen.has(item.product_id)) fail('同一物料不能重复添加，请合并数量。');
-          seen.add(item.product_id);
-          const source = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, req.warehouse.id);
-          if (!source) fail('物料不属于当前仓库。');
-          if (source.stock < item.quantity)
-            fail(`${source.name} 库存不足（当前 ${source.stock} ${source.unit}）。`);
-          return { source, destination: destinationOf(source, target.id), quantity: item.quantity };
-        });
-        const at = new Date().toISOString(), transferId = randomUUID();
-        const user = { id: req.user.id, name: req.user.username };
-        const outNumber = nextNumber(`DC${at.slice(0, 10).replaceAll('-', '')}`);
-        const inNumber = nextNumber(`DR${at.slice(0, 10).replaceAll('-', '')}`);
-        const outLeg = insertLeg({ number: outNumber, type: 'out', partner: target.name, note, at, warehouseId: req.warehouse.id, counterpartId: target.id, transferId, user });
-        const inLeg = insertLeg({ number: inNumber, type: 'in', partner: req.warehouse.name, note, at, warehouseId: target.id, counterpartId: req.warehouse.id, transferId, user });
-        const insertItem = db.prepare('INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents) VALUES (?,?,?,?,?,0,?,0)');
-        const moved = normalized.map((item) => {
-          const cost = moveInventory(db, item.source.id, -item.quantity);
-          moveInventory(db, item.destination.product.id, item.quantity, cost);
-          insertItem.run(outLeg, item.source.id, item.source.name, item.source.barcode, item.quantity, cost);
-          insertItem.run(inLeg, item.destination.product.id, item.destination.product.name, item.destination.product.barcode, item.quantity, cost);
-          return { name: item.source.name, unit: item.source.unit, quantity: item.quantity, cost_cents: cost, created: item.destination.created };
-        });
-        queueNotification(db, req, 'transfer', {
-          number: outNumber, action: '仓库间调拨', from: req.warehouse.name, to: target.name, reason: note,
-          items: moved.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })),
-        });
-        notifyStockChanges(db, req, normalized.map((i) => i.source), { number: outNumber });
-        return {
-          ok: true, transfer_id: transferId, number: outNumber, in_number: inNumber,
-          created: moved.filter((i) => i.created).map((i) => i.name),
-        };
-      }),
-    ),
-  );
+  // Caller owns the transaction, also used by AI preview and confirmation.
+  function createTransfer(req) {
+    const body = req.body || {};
+    if (!Number.isSafeInteger(body.to_warehouse_id)) fail('请选择调入仓库。');
+    const target = db.prepare('SELECT * FROM warehouses WHERE id=?').get(body.to_warehouse_id);
+    if (!target) fail('调入仓库不存在，请刷新后重试。');
+    if (target.id === req.warehouse.id) fail('调入仓库不能与调出仓库相同。');
+    const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim() : '仓库间调拨';
+    if (note.length > 500) fail('调拨原因最多 500 字。');
+    if (!Array.isArray(body.items) || !body.items.length || body.items.length > 100)
+      fail('每次调拨请选择 1–100 种物料。');
+    const seen = new Set();
+    // Destination products are resolved before any stock moves so a missing
+    // archive fails the whole request instead of a half-applied transfer.
+    const normalized = body.items.map((item) => {
+      if (!integer(item?.product_id) || !validQuantity(item?.quantity, true))
+        fail('调拨数量需为正数且最多 6 位小数。');
+      if (seen.has(item.product_id)) fail('同一物料不能重复添加，请合并数量。');
+      seen.add(item.product_id);
+      const source = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, req.warehouse.id);
+      if (!source) fail('物料不属于当前仓库。');
+      if (source.stock < item.quantity)
+        fail(`${source.name} 库存不足（当前 ${source.stock} ${source.unit}）。`);
+      return { source, destination: destinationOf(source, target.id), quantity: item.quantity };
+    });
+    const at = new Date().toISOString(), transferId = randomUUID();
+    const user = { id: req.user.id, name: req.user.username };
+    const outNumber = nextNumber(`DC${at.slice(0, 10).replaceAll('-', '')}`);
+    const inNumber = nextNumber(`DR${at.slice(0, 10).replaceAll('-', '')}`);
+    const outLeg = insertLeg({ number: outNumber, type: 'out', partner: target.name, note, at, warehouseId: req.warehouse.id, counterpartId: target.id, transferId, user });
+    const inLeg = insertLeg({ number: inNumber, type: 'in', partner: req.warehouse.name, note, at, warehouseId: target.id, counterpartId: req.warehouse.id, transferId, user });
+    const insertItem = db.prepare('INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents) VALUES (?,?,?,?,?,0,?,0)');
+    const moved = normalized.map((item) => {
+      const cost = moveInventory(db, item.source.id, -item.quantity);
+      moveInventory(db, item.destination.product.id, item.quantity, cost);
+      insertItem.run(outLeg, item.source.id, item.source.name, item.source.barcode, item.quantity, cost);
+      insertItem.run(inLeg, item.destination.product.id, item.destination.product.name, item.destination.product.barcode, item.quantity, cost);
+      return { name: item.source.name, unit: item.source.unit, quantity: item.quantity, cost_cents: cost, created: item.destination.created };
+    });
+    queueNotification(db, req, 'transfer', {
+      number: outNumber, action: '仓库间调拨', from: req.warehouse.name, to: target.name, reason: note,
+      items: moved.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })),
+    });
+    notifyStockChanges(db, req, normalized.map((i) => i.source), { number: outNumber });
+    return {
+      ok: true, transfer_id: transferId, number: outNumber, in_number: inNumber,
+      created: moved.filter((i) => i.created).map((i) => i.name),
+    };
+  }
+  app.post('/api/transfers', route(req => mutation(req, () => createTransfer(req))));
+
 
   app.post(
     '/api/transfers/:id/void',
@@ -184,4 +182,5 @@ export function installTransfers(app, db, { route, mutation }) {
       }),
     ),
   );
+  return { createTransfer };
 }

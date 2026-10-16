@@ -1,3 +1,4 @@
+import { installAi } from './ai.js';
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
 import { installProductHistory } from './product-history.js';
 import { validQuantity } from '../shared/quantity.js';
@@ -267,8 +268,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateNotifications(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
+  app.use("/api/ai", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
-  installAuth(app, db, options);
+  const { sessionUser } = installAuth(app, db, options);
   const { warehouses } = installWarehouses(app, db);
   installProductHistory(app, db);
   const notifications = installNotifications(app, db, options);
@@ -533,6 +535,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       db.exec("BEGIN IMMEDIATE");
       const counts = { action: '重置业务数据', products: db.prepare('SELECT COUNT(*) AS n FROM products').get().n, orders: db.prepare('SELECT COUNT(*) AS n FROM orders').get().n };
       clearStockQr(db);
+      db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
       db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
       queueNotification(db, req, 'admin_action', counts, { global: true });
       db.exec("COMMIT");
@@ -572,7 +575,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     }
   });
   installStockQr(app, db);
-  installOperations(app, db, { productValues, generateBarcode, catalogValues });
+  const imports = installOperations(app, db, { productValues, generateBarcode, catalogValues });
+  installAi(app, db, { ...options, sessionUser, imports });
   installMultiStocktake(app, db);
   installQueries(app, db);
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));

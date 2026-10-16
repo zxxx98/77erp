@@ -229,6 +229,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
+    if ((read && /^\/ai\/conversations\/[0-9a-f-]+$/.test(path) ||
+         post && ['/ai/chat', '/ai/confirm'].includes(path)) && hasPermission(req.user, 'ai')) return next();
     const legacyAllowed = (read && (
       ['/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export','/products','/orders','/dashboard'].includes(path) ||
       /^\/products\/barcode\/[^/]+$/.test(path) ||
@@ -348,4 +350,5 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       res.json({ ok: true });
     } catch (error) { db.exec('ROLLBACK'); throw error; }
   });
+  return { sessionUser };
 }

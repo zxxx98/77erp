@@ -206,6 +206,7 @@ function More({ user, data, openModal, loggingOut, logout }) {
   const { manage } = usePermissions();
   return <div className="mw-stack"><h1>工作空间</h1>
     <section className="mw-card"><div className="mw-account"><ShieldCheck size={30} /><div><h2>{user.username}</h2><p className="mw-muted">{user.role === 'admin' ? '管理员账号' : '员工账号'}</p></div></div></section>
+    {(user.role === 'admin' || user.permissions?.includes('ai')) && <section className="mw-card"><Button icon={Settings} onClick={() => openModal({ kind: 'ai' })}>AI 助手</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>商户与仓库设置</Button>}</section>
     <Button onClick={() => openModal({ kind: 'account' })}>修改密码</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>业务管理</Button>
     {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>出入库二维码</Button>}

@@ -1,3 +1,4 @@
+import { AiAssistant, AiSettings } from './AiAssistant.jsx';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { orderLineAmount } from "../shared/money.js";
 import { CameraScanner } from './CameraScanner.jsx';
@@ -761,6 +762,7 @@ function App({ admin, onLogout }) {
           <button className="nav-item" onClick={() => setModal({ kind: 'businessTools' })}>
             <History size={18} /><span>业务管理</span>
           </button>
+          {can('ai') && <button className="nav-item" onClick={() => setModal({ kind: 'ai' })}><Settings size={18} /><span>AI 助手</span></button>}
           {isAdmin && <button className="nav-item" aria-label="系统设置" title="系统设置" onClick={() => setModal({ kind: 'settings' })}>
             <Settings size={18} /><span>系统设置</span>
           </button>}
@@ -1006,6 +1008,7 @@ function App({ admin, onLogout }) {
           notify={notify}
         />
       )}
+      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" wide onClose={() => setModal(null)}><div className="form-body"><AiAssistant userId={user.id} onChanged={reload} /></div></Modal>}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools products={data.products} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
@@ -3695,7 +3698,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
       <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["ai", "AI 助手", Settings, "模型连接与操作范围"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
               <button key={id} type="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </button>
@@ -3759,6 +3762,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           <div className="info-box"><ShieldCheck size={17} /><p>物料和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
           {section === "users" && <div className="settings-section"><UserManager Modal={Modal} /><ChangePassword onChanged={onPasswordChanged} /></div>}
+          {section === 'ai' && <div className="settings-section"><AiSettings onBusy={setBusy} /></div>}
           <div hidden={section !== 'imagebed'} className="settings-section"><ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} /></div>
           <div hidden={section !== 'notifications'} className="settings-section"><NotificationSettings warehouses={warehouses} active={section === 'notifications'} onBusy={setBusy} onDirty={setNotificationDirty} /></div>
           <div hidden={section !== "data"} className="settings-section">

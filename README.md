@@ -34,6 +34,10 @@ Android Chrome 菜单中的 **Install（安装）** 与 **Create shortcut（创�
 
 现有安卓发布工作流会在推送与 `package.json` 版本一致的 `v1.0.0` 类标签后，由 GitHub Actions 编译并发布签名 APK / AAB。本流程仅在明确要求安卓更新时使用；普通 Web 发布需先避开版本同步和标签触发的连带安卓更新。配置签名、版本号规则和发布步骤见 [安卓发布文档](docs/android.md)。[下载 APK](https://github.com/zxxx98/77erp/releases) · [查看流水线](https://github.com/zxxx98/77erp/actions/workflows/android-release.yml)。
 
+## AI 助手
+
+支持跨仓库库存对比、批量入出库、仓库调拨、库存盘点预览和 Excel / CSV 物料录入，写操作由当前用户确认，沿用业务权限并记录审计。默认关闭，在「系统设置 → AI 助手」配置模型连接；部署时需设置 `AI_ENCRYPTION_KEY`。详见 [AI 助手配置与使用说明](docs/ai-assistant.md)。
+
 ## 启动
 
 ```bash

@@ -236,6 +236,9 @@ const routeRoles = new Map(Object.entries({
   'get /api/data': 'employee', 'get /api/style': 'employee', 'get /api/products/barcode/:barcode': 'employee', 'get /api/products/:id/other-warehouses': 'employee', 'get /api/products/:id/history': 'employee',
   'get /api/orders/export': 'employee', 'post /api/products': 'employee', 'put /api/products/:id': 'employee', 'post /api/orders': 'employee',
   'post /api/products/:id/status': 'admin', 'delete /api/products/:id': 'admin',
+  'get /api/settings/ai': 'admin', 'put /api/settings/ai': 'admin', 'post /api/settings/ai/test': 'admin', 'get /api/settings/ai/audit': 'admin',
+  // Legacy employees do not inherit the new AI permission; dedicated AI tests cover opt-in access.
+  'get /api/ai/conversations/:id': 'ai', 'post /api/ai/chat': 'ai', 'post /api/ai/confirm': 'ai',
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',
   'get /api/settings/notifications': 'admin', 'put /api/settings/notifications': 'admin',
@@ -276,7 +279,7 @@ test('every API route declares its role, and employee access matches that declar
     const [method, path] = key.split(' ');
     const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
     const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
-    assert.equal(response.status === 403, role === 'admin', `${key} 返回 ${response.status}`);
+    assert.equal(response.status === 403, ['admin', 'ai'].includes(role), `${key} 返回 ${response.status}`);
   }
   assert.deepEqual(counts(), before, '权限探测不应改动业务数据');
   assert.equal((await f.request(employee.cookie, '/auth/logout', {}, 'POST')).status, 200);

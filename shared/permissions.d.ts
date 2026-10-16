@@ -1,4 +1,4 @@
-export type PermissionKey = 'products' | 'purchase' | 'sale' | 'corrections' | 'stocktake' | 'business' | 'finance' | 'data_io';
+export type PermissionKey = 'ai' | 'products' | 'purchase' | 'sale' | 'corrections' | 'stocktake' | 'business' | 'finance' | 'data_io';
 export type PermissionUser = { role?: string; permissions?: string[]; legacy_permissions?: boolean };
 export const permissionOptions: { key: PermissionKey; label: string; description: string }[];
 export const permissionKeys: PermissionKey[];

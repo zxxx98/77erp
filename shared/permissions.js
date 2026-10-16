@@ -1,4 +1,5 @@
 export const permissionOptions = [
+  { key: 'ai', label: 'AI 助手', description: '使用 AI 查询及生成操作预览，执行仍需对应业务权限' },
   { key: 'products', label: '物料管理', description: '物料档案、启停、删除、分类、图片及跨仓库同步' },
   { key: 'purchase', label: '采购入库', description: '采购开单及扫码入库' },
   { key: 'sale', label: '销售出库', description: '销售开单及扫码出库' },

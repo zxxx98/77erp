@@ -98,7 +98,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     fail("物料不存在，请刷新。");
   const changeStock = (id, delta, cost) => moveInventory(db, id, delta, cost);
   installCommerce(app, db, { route, mutation });
-  installTransfers(app, db, { route, mutation });
+  const { createTransfer } = installTransfers(app, db, { route, mutation });
   const originalOrder = (id) => {
     const order = db.prepare("SELECT * FROM orders WHERE id=?").get(id);
     if (!order || order.status !== "active") fail("单据不存在或已作废。");
@@ -257,35 +257,34 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         .all(req.warehouse.id),
     ),
   );
-  app.post(
-    "/api/stocktakes",
-    route((req) =>
-      mutation(req, () => {
-        const reason = reasonOf(req.body),
-          items = req.body.items,
-          seen = new Set(),
-          batch = randomUUID();
-        if (!Array.isArray(items) || !items.length || items.length > 1000)
-          fail("每次盘点请选择 1–1000 种物料。");
-        for (const item of items) {
-          if (
-            !integer(item.product_id) ||
-            !validQuantity(item.counted) ||
-            !validQuantity(item.expected_stock) ||
-            seen.has(item.product_id)
-          )
-            fail("实盘数量需为非负数且最多 6 位小数，物料不能重复。");
-          seen.add(item.product_id);
-          const p = product(item.product_id);
-          if (p.stock !== item.expected_stock)
-            fail(`${p.name} 库存已变化，请刷新后重新盘点。`);
-          adjustment(batch, p, item.counted, reason, "stocktake");
-          changeStock(p.id, addQuantity(item.counted, -p.stock));
-        }
-        return { ok: true, batch };
-      }),
-    ),
-  );
+  // Caller owns transaction and notification handling.
+  function createStocktake(req) {
+    const reason = reasonOf(req.body),
+      items = req.body.items,
+      seen = new Set(),
+      batch = randomUUID();
+    if (!Array.isArray(items) || !items.length || items.length > 1000)
+      fail("每次盘点请选择 1–1000 种物料。");
+    for (const item of items) {
+      if (
+        !integer(item.product_id) ||
+        !validQuantity(item.counted) ||
+        !validQuantity(item.expected_stock) ||
+        seen.has(item.product_id)
+      )
+        fail("实盘数量需为非负数且最多 6 位小数，物料不能重复。");
+      seen.add(item.product_id);
+      const p = product(item.product_id);
+      if (p.warehouse_id !== req.warehouse.id) fail("物料不属于当前仓库。");
+      if (p.stock !== item.expected_stock)
+        fail(`${p.name} 库存已变化，请刷新后重新盘点。`);
+      adjustment(batch, p, item.counted, reason, "stocktake");
+      changeStock(p.id, addQuantity(item.counted, -p.stock));
+    }
+    return { ok: true, batch };
+  }
+  app.post("/api/stocktakes", route(req => mutation(req, () => createStocktake(req))));
+
   app.post(
     "/api/stock/reduce",
     route((req) =>
@@ -336,6 +335,34 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     });
     return { normalized, errors };
   }
+  // Shared by HTTP import and AI confirmation; the caller owns the transaction.
+  function importProducts(req, { includeBatch = false } = {}) {
+    if (req.body.token !== hash(req.body.rows))
+      fail("导入内容已变化，请重新预览。");
+    const { normalized, errors } = validateRows(req.body.rows, req.warehouse.id);
+    if (errors.length) fail(`第 ${errors[0].row} 行：${errors[0].error}`);
+    const batch = randomUUID();
+    // Reserve explicit barcodes before generating codes for blank cells.
+    for (const row of [
+      ...normalized.filter((r) => r.values[1]),
+      ...normalized.filter((r) => !r.values[1]),
+    ]) {
+      const values = [...row.values];
+      const catalog = catalogValues(req.body.rows[row.index], undefined, req.warehouse.id);
+      values[2] = catalog.path;
+      if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
+      const result = db
+        .prepare(
+          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(...values, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
+      const p = product(Number(result.lastInsertRowid));
+      adjustment(batch, p, row.stock, "批量导入期初库存", "opening");
+      changeStock(p.id, row.stock, Math.round(p.cost * row.stock * 100));
+    }
+    return { ok: true, count: normalized.length, ...(includeBatch ? { batch } : {}) };
+  }
+
   app.post(
     "/api/products/import/preview",
     route((req) => {
@@ -350,32 +377,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   app.post(
     "/api/products/import",
     route((req) =>
-      mutation(req, () => {
-        if (req.body.token !== hash(req.body.rows))
-          fail("导入内容已变化，请重新预览。");
-        const { normalized, errors } = validateRows(req.body.rows, req.warehouse.id);
-        if (errors.length) fail(`第 ${errors[0].row} 行：${errors[0].error}`);
-        const batch = randomUUID();
-        // Reserve explicit barcodes before generating codes for blank cells.
-        for (const row of [
-          ...normalized.filter((r) => r.values[1]),
-          ...normalized.filter((r) => !r.values[1]),
-        ]) {
-          const values = [...row.values];
-          const catalog = catalogValues(req.body.rows[row.index], undefined, req.warehouse.id);
-          values[2] = catalog.path;
-          if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
-          const result = db
-            .prepare(
-              "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            )
-            .run(...values, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
-          const p = product(Number(result.lastInsertRowid));
-          adjustment(batch, p, row.stock, "批量导入期初库存", "opening");
-          changeStock(p.id, row.stock, Math.round(p.cost * row.stock * 100));
-        }
-        return { ok: true, count: normalized.length };
-      }),
+      mutation(req, () => importProducts(req)),
     ),
   );
 
@@ -690,6 +692,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         const data = validateBackup(req.body.backup);
         // Deferred references allow return records to refer to original orders regardless of array order.
         clearStockQr(db);
+        db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
         db.exec(
           "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
         );
@@ -720,4 +723,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       }),
     ),
   );
+  return {
+    previewImport(rows, warehouseId) {
+      const result = validateRows(rows, warehouseId);
+      return { count: rows.length, errors: result.errors, token: hash(rows) };
+    },
+    importProducts,
+    createTransfer,
+    createStocktake: req => notificationMutation(db, req, () => createStocktake(req)),
+  };
+
 }
