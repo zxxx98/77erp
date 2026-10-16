@@ -346,7 +346,7 @@ test("unknown historical costs and settlement are explicit, and v11 backup round
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 12);
+  assert.equal(backup.version, 13);
   assert.equal(backup.data.payments.length, 1);
   assert.equal(backup.data.templates.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
@@ -436,7 +436,7 @@ test('purchase return tails and legacy v10 refunds retain their financial histor
   assert.equal(f.db.prepare("SELECT SUM(total) n FROM orders WHERE kind='return'").get().n, 0.02);
   // A new backup of historical data must remain restorable.
   const upgraded = (await f.request('/backup')).data;
-  assert.equal(upgraded.version, 12);
+  assert.equal(upgraded.version, 13);
   assert.equal((await f.request('/backup/preview', { backup: upgraded })).status, 200);
 });
 

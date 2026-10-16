@@ -381,7 +381,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "templates", "payments", ...stockQrTables];
+  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "product_changes", "templates", "payments", ...stockQrTables];
   const columns = Object.fromEntries(
     tables.map((table) => [
       table,
@@ -400,7 +400,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 12,
+    version: 13,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -408,11 +408,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 13) data.product_changes = [];
     if (value.version < 11) for (const item of data.order_items || []) {
       if (item && !('amount_cents' in item)) item.amount_cents = null;
     }
@@ -645,6 +646,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !text(a.created_at, 100)
       )
         fail("备份盘点记录无效。");
+    for (const change of data.product_changes) {
+      if (!products.has(change.product_id) ||
+          !['before_cost','after_cost','before_price','after_price'].every(key =>
+            Number.isFinite(change[key]) && change[key] >= 0 && change[key] <= 99999999 &&
+            Math.abs(change[key] * 100 - Math.round(change[key] * 100)) <= 0.00001) ||
+          (change.before_cost === change.after_cost && change.before_price === change.after_price) ||
+          !(change.created_by === null || (Number.isSafeInteger(change.created_by) && change.created_by > 0)) ||
+          !text(change.created_by_name, 32) || !text(change.created_at, 100))
+        fail('备份物料改价记录无效。');
+    }
     const paid = new Map();
     for (const p of data.payments) {
       const o = orders.get(p.order_id);
@@ -694,7 +705,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         clearStockQr(db);
         db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
         db.exec(
-          "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
+          "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM product_changes; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
         );
         for (const table of tables) {
           const fields = columns[table];
@@ -703,7 +714,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           );
           for (const row of data[table]) {
             // Cross-server user IDs must never become local owners of restored templates.
-            if (['orders','templates'].includes(table) && row.created_by !== null &&
+            if (['orders','templates','product_changes'].includes(table) && row.created_by !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
                  !db.prepare('SELECT 1 FROM users WHERE id=?').get(row.created_by))) row.created_by = null;
             if (table === 'stock_qr_codes') { row.qr_id = randomUUID(); row.enabled = 0; }

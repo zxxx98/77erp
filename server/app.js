@@ -1,3 +1,4 @@
+import { migrateProductChanges, recordProductChange } from './product-changes.js';
 import { installAi } from './ai.js';
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
 import { installProductHistory } from './product-history.js';
@@ -272,6 +273,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   app.use("/api/ai", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
   const { sessionUser } = installAuth(app, db, options);
+  migrateProductChanges(db);
   const { warehouses } = installWarehouses(app, db);
   installProductHistory(app, db);
   const notifications = installNotifications(app, db, options);
@@ -409,7 +411,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
           "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
-      syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids);
+      syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids, req.user);
       const saved = db.prepare('SELECT version FROM products WHERE id=?').get(result.lastInsertRowid);
       db.exec("COMMIT");
       inTransaction = false;
@@ -455,7 +457,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       db.prepare(
         "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=? WHERE id=? AND version=?",
       ).run(...v, ...catalog.values, req.params.id, existing.version);
-      syncProduct(db, existing.id, req.body.sync_warehouse_ids);
+      recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
+      syncProduct(db, existing.id, req.body.sync_warehouse_ids, req.user);
       const saved = db.prepare('SELECT version FROM products WHERE id=?').get(existing.id);
       db.exec("COMMIT");
       inTransaction = false;
@@ -493,6 +496,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (db.prepare("SELECT 1 FROM order_items WHERE product_id=? LIMIT 1").get(product.id) ||
           db.prepare("SELECT 1 FROM stock_adjustments WHERE product_id=? LIMIT 1").get(product.id))
         throw new Error("物料已有单据或盘点记录，不能删除，请使用停用。");
+      if (db.prepare("SELECT 1 FROM product_changes WHERE product_id=? LIMIT 1").get(product.id))
+        throw new Error("物料已有改价记录，不能删除，请使用停用。");
       if (db.prepare("SELECT 1 FROM templates d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
         throw new Error("物料被模板引用，不能删除，请先移除模板中的物料或使用停用。");
       if (db.prepare("SELECT 1 FROM stock_qr_items WHERE product_id=? LIMIT 1").get(product.id))
@@ -551,7 +556,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       const counts = { action: '重置业务数据', products: db.prepare('SELECT COUNT(*) AS n FROM products').get().n, orders: db.prepare('SELECT COUNT(*) AS n FROM orders').get().n };
       clearStockQr(db);
       db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
-      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
+      db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM product_changes; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
       queueNotification(db, req, 'admin_action', counts, { global: true });
       db.exec("COMMIT");
       res.json({ ok: true });

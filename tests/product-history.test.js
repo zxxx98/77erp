@@ -29,6 +29,90 @@ async function fixture(t) {
   return { request, db, product, warehouse, command, order };
 }
 
+test('price audit captures actual before/after values and actor atomically, including synchronized warehouses', async t => {
+  const f = await fixture(t);
+  const current = () => f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
+  const changes = () => f.db.prepare('SELECT * FROM product_changes ORDER BY id').all();
+  const original = current();
+  assert.equal((await f.request(`/products/${f.product}`, { ...original, cost: 12.34, price: 25.67, sync_warehouse_ids: [f.warehouse] }, 'PUT')).status, 200);
+  assert.equal(changes().length, 2);
+  for (const change of changes()) {
+    assert.equal(change.before_cost, 10);
+    assert.equal(change.after_cost, 12.34);
+    assert.equal(change.before_price, 20);
+    assert.equal(change.after_price, 25.67);
+    assert.equal(change.created_by_name, 'admin');
+    assert.equal(change.created_by, f.db.prepare("SELECT id FROM users WHERE username='admin'").get().id);
+    assert.ok(Number.isFinite(Date.parse(change.created_at)));
+  }
+  const snapshot = changes();
+  assert.equal((await f.request(`/products/${f.product}`, { ...current(), note: '仅改备注', sync_warehouse_ids: [f.warehouse] }, 'PUT')).status, 200);
+  assert.deepEqual(changes(), snapshot);
+  assert.equal((await f.request(`/products/${f.product}`, { ...original, price: 99 }, 'PUT')).status, 409);
+  const saved = current();
+  assert.equal((await f.request(`/products/${f.product}`, { ...saved, price: 99, sync_warehouse_ids: [f.warehouse, 999999] }, 'PUT')).status, 400);
+  assert.deepEqual(current(), saved);
+  assert.deepEqual(changes(), snapshot);
+  const records = (await f.request(`/products/${f.product}/history`)).data.records;
+  assert.equal(records.length, 1);
+  assert.equal(records[0].event, 'price_change');
+  assert.equal(records[0].after_cost, 12.34);
+  assert.equal(records[0].operator, 'admin');
+  const remote = changes()[1].product_id;
+  assert.equal((await f.request(`/products/${remote}/history`, undefined, 'GET', f.warehouse)).data.records.length, 1);
+  assert.equal((await f.request(`/products/${remote}/history`)).status, 400);
+  assert.match((await f.request(`/products/${f.product}`, {}, 'DELETE')).data.error, /改价记录/);
+});
+
+test('price history is restricted to finance permission and records the authenticated employee', async t => {
+  const f = await fixture(t);
+  const staff = (await f.request('/users', { username: 'editor', password: 'Test-staff-123' })).data.id;
+  assert.equal((await f.request(`/users/${staff}/permissions`, { permissions: ['products'], version: 1 }, 'PUT')).status, 200);
+  const auth = (await f.request('/auth/login', { username: 'editor', password: 'Test-staff-123' }, 'POST', 1, null)).cookie;
+  const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
+  assert.equal((await f.request(`/products/${f.product}`, { ...product, price: 0, created_by_name: 'forged' }, 'PUT', 1, auth)).status, 200);
+  const path = `/products/${f.product}/history`;
+  assert.deepEqual((await f.request(path, undefined, 'GET', 1, auth)).data.records, []);
+  assert.equal((await f.request(`/users/${staff}/permissions`, { permissions: ['products', 'finance'], version: 2 }, 'PUT')).status, 200);
+  const record = (await f.request(path, undefined, 'GET', 1, auth)).data.records[0];
+  assert.equal(record.operator, 'editor');
+  assert.equal(record.before_price, 20);
+  assert.equal(record.after_price, 0);
+});
+
+test('price audit survives backup restore, validates records, supports legacy backups and clears on business reset', async t => {
+  const f = await fixture(t);
+  const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
+  await f.request(`/products/${f.product}`, { ...product, price: 21 }, 'PUT');
+  const backup = (await f.request('/backup')).data;
+  assert.equal(backup.version, 13);
+  assert.equal(backup.data.product_changes.length, 1);
+  for (const patch of [{ after_cost: -1 }, { product_id: 999999 }, { created_by: -1 }, { created_by_name: '' }]) {
+    const invalid = structuredClone(backup);
+    Object.assign(invalid.data.product_changes[0], patch);
+    assert.equal((await f.request('/backup/preview', { backup: invalid })).status, 400);
+  }
+  const restore = async value => {
+    const preview = await f.request('/backup/preview', { backup: value });
+    assert.equal(preview.status, 200);
+    assert.equal((await f.command('/backup/restore', { backup: value, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
+  };
+  await restore(backup);
+  assert.deepEqual((await f.request('/backup')).data.data.product_changes, backup.data.product_changes);
+  const foreign = { ...backup, source_instance_id: 'another-server' };
+  await restore(foreign);
+  assert.equal(f.db.prepare('SELECT created_by,created_by_name FROM product_changes').get().created_by, null);
+  assert.equal(f.db.prepare('SELECT created_by_name FROM product_changes').get().created_by_name, 'admin');
+  const legacy = structuredClone(backup);
+  legacy.version = 12;
+  delete legacy.data.product_changes;
+  await restore(legacy);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM product_changes').get().n, 0);
+  await restore(backup);
+  assert.equal((await f.request('/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' })).status, 200);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM product_changes').get().n, 0);
+});
+
 test('product history merges orders, returns, void reversals and stock adjustments, isolated to the current product and warehouse', async t => {
   const f = await fixture(t);
   await f.order('in', 10);

@@ -1,3 +1,4 @@
+import { recordProductChange } from './product-changes.js';
 import { randomUUID } from 'node:crypto';
 import { copyCategoryToWarehouse } from './catalog.js';
 
@@ -74,7 +75,7 @@ export function installWarehouses(app, db) {
         for (const category of db.prepare('SELECT id FROM categories WHERE warehouse_id=? ORDER BY id').all(req.warehouse.id))
           copyCategoryToWarehouse(db, category.id, id);
         for (const product of db.prepare('SELECT id,active FROM products WHERE warehouse_id=? ORDER BY id').all(req.warehouse.id)) {
-          syncProduct(db, product.id, [id]);
+          syncProduct(db, product.id, [id], req.user);
           db.prepare('UPDATE products SET active=? WHERE warehouse_id=? AND sync_key=(SELECT sync_key FROM products WHERE id=?)').run(product.active, id, product.id);
         }
       }
@@ -116,6 +117,7 @@ export function installWarehouses(app, db) {
       // Original orders and their returns belong to the same warehouse and are removed together.
       db.prepare('DELETE FROM orders WHERE warehouse_id=?').run(id);
       db.prepare('DELETE FROM stock_adjustments WHERE product_id IN (SELECT id FROM products WHERE warehouse_id=?)').run(id);
+      db.prepare('DELETE FROM product_changes WHERE product_id IN (SELECT id FROM products WHERE warehouse_id=?)').run(id);
       db.prepare('DELETE FROM products WHERE warehouse_id=?').run(id);
       // Delete the category tree in one statement so parent references are checked together.
       db.prepare('DELETE FROM categories WHERE warehouse_id=?').run(id);
@@ -154,7 +156,7 @@ function warehouseName(name) {
 }
 
 // Caller holds the product save transaction. Stock and its valuation are never copied.
-export function syncProduct(db, id, targets) {
+export function syncProduct(db, id, targets, user) {
   if (targets === undefined) return;
   if (!Array.isArray(targets) || targets.length > 100 || new Set(targets).size !== targets.length || targets.some(id => !Number.isSafeInteger(id) || id < 1)) throw new Error('请选择有效的同步仓库。');
   const product = db.prepare('SELECT * FROM products WHERE id=?').get(id);
@@ -170,7 +172,10 @@ export function syncProduct(db, id, targets) {
     if (collision && collision.id !== existing?.id) throw new Error('目标仓库已有同条码的独立物料，请先核对条码，未保存任何修改。');
     const categoryId = copyCategoryToWarehouse(db, product.category_id, target);
     const values = fields.map(field => field === 'category_id' ? categoryId : product[field]);
-    if (existing) db.prepare(`UPDATE products SET ${fields.map(f => `${f}=?`).join(',')} WHERE id=?`).run(...values, existing.id);
+    if (existing) {
+      db.prepare(`UPDATE products SET ${fields.map(f => `${f}=?`).join(',')} WHERE id=?`).run(...values, existing.id);
+      recordProductChange(db, existing, product, user);
+    }
     else db.prepare(`INSERT INTO products (${fields.join(',')},warehouse_id,sync_key,created_at) VALUES (${fields.map(() => '?').join(',')},?,?,?)`).run(...values, target, product.sync_key, new Date().toISOString());
   }
 }

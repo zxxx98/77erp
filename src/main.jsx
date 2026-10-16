@@ -1,8 +1,7 @@
-import { AiAssistant, AiSettings } from './AiAssistant.jsx';
+import { AiAssistant, AiSettings, CameraScanner, Barcode, StockQrManager, StockQrExecution } from './LazyComponents.jsx';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { orderLineAmount } from "../shared/money.js";
 import { evaluateStockExpression, describeStockExpression } from "../shared/stock-compare.js";
-import { CameraScanner } from './CameraScanner.jsx';
 import { mobileDevice } from './device.js';
 import { PwaProvider } from './pwa/Pwa.jsx';
 import { MobileShell, WarehousePicker, DraftList, MobileProductDetail } from './mobile-web/MobileShell.jsx';
@@ -11,7 +10,6 @@ import { MobileOrderDetail } from './mobile-web/MobileOrderDetail.jsx';
 import { Select } from "./Dropdown.jsx";
 import { PermissionContext, usePermissions } from './permissions.jsx';
 import { hasPermission, canManage } from '../shared/permissions.js';
-import { StockQrManager, StockQrExecution } from './StockQr.jsx';
 import { addQuantity, parseQuantity } from "../shared/quantity.js";
 import { stockQrLabel } from './stock-qr-client.js';
 import React, { useEffect, useId, useRef, useState } from "react";
@@ -58,7 +56,6 @@ import {
   RefreshCw,
   LogOut,
 } from "lucide-react";
-import JsBarcode from "jsbarcode";
 import "./styles.css";
 import { api, getWarehouseId, setWarehouseId } from "./api.js";
 import { WarehouseManager, ProductSync } from "./Warehouses.jsx";
@@ -281,24 +278,6 @@ function ProductArt({ product, size = "normal", preview = true }) {
       </svg>
     </span>
   );
-}
-function Barcode({ value, height = 45 }) {
-  const ref = useRef();
-  useEffect(() => {
-    try {
-      JsBarcode(ref.current, value, {
-        format: "CODE128",
-        height,
-        width: 1.5,
-        margin: 8,
-        fontSize: 12,
-        font: "monospace",
-        background: "#ffffff",
-        lineColor: "#17243c",
-      });
-    } catch {}
-  }, [value, height]);
-  return <svg ref={ref} className="barcode" aria-label={`条码 ${value}`} />;
 }
 function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions }) {
   const titleId = useId();
