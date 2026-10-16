@@ -777,8 +777,8 @@ export function StockQrManager({
                   >
                     查看标签
                   </button>
-                  <button className={button} onClick={() => edit(q)}>
-                    编辑 {q.name}
+                  <button className={button} aria-label={`编辑 ${q.name}`} onClick={() => edit(q)}>
+                    编辑
                   </button>
                   <button
                     className={button}

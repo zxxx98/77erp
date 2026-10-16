@@ -55,6 +55,9 @@
   gap: 8px;
   align-items: center;
 }
+.stock-qr-actions > .dropdown {
+  flex: 0 1 180px;
+}
 .stock-qr-line {
   display: flex;
   justify-content: space-between;
@@ -79,6 +82,9 @@
   margin: 0;
   color: #647084;
 }
+.stock-qr-record { min-width: 0; overflow-wrap: anywhere; }
+.stock-qr-record .stock-qr-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 280px; }
+.stock-qr-record .stock-qr-actions > .btn { min-width: 0; margin: 0; padding-inline: 6px; white-space: nowrap; }
 .stock-qr-manager h3 {
   margin: 8px 0;
 }

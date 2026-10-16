@@ -1,11 +1,29 @@
 .account-fields { display: grid; gap: 12px; max-width: 420px; margin: 16px 0; }
 .account-fields label { display: grid; gap: 6px; }
-.user-list { margin: 20px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.user-list { margin: 20px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; container-type: inline-size; }
 .user-table { width: 100%; border-collapse: collapse; }
 .user-table td { vertical-align: middle; }
 .user-table td strong { color: var(--text-strong, #1c2433); font-size: 12px; }
-.user-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-@media (max-width: 640px) { .user-table { min-width: 520px; } }
+.user-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.user-table td:nth-child(3), .user-table td:last-child { width: 1%; }
+.user-table td:nth-child(3) .dropdown { width: 132px; }
+.user-actions { display: grid; grid-template-columns: 56px 88px 88px; align-items: center; gap: 8px; }
+.user-actions > .btn { margin: 0; padding-inline: 10px; white-space: nowrap; }
+.user-actions > .muted { text-align: center; }
+/* Adapt to the available settings panel width, including narrow desktop dialogs. */
+@container (max-width: 640px) {
+  .user-table thead { display: none; }
+  .user-table tbody { display: block; }
+  .user-table .user-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 16px 12px; border-bottom: 1px solid var(--border); }
+  .user-table .user-row:last-child { border-bottom: 0; }
+  .user-table td { display: block; padding: 0; border: 0; white-space: normal; min-width: 0; }
+  .user-table td:nth-child(2) { justify-self: end; white-space: nowrap; }
+  .user-table td:nth-child(3), .user-table td:last-child { grid-column: 1 / -1; width: auto; }
+  .user-table td:nth-child(3) { display: flex; align-items: center; gap: 12px; }
+  .user-table td:nth-child(3)::before { content: '角色'; flex-shrink: 0; }
+  .user-table td:nth-child(3) .dropdown { width: 160px; }
+  .user-actions { grid-template-columns: 56px repeat(2, minmax(0, 1fr)); }
+}
 
 .permission-dialog { width: min(620px, 100%); max-height: 90dvh; overflow-y: auto; border-radius: 12px; padding: 24px; background: white; box-shadow: 0 20px 60px rgba(15, 23, 42, .2); }
 .permission-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }

@@ -1,4 +1,4 @@
-.dropdown { position: relative; min-width: 0; font-weight: 400; }
+.dropdown { position: relative; min-width: 0; max-width: 100%; font-weight: 400; }
 :where(.dropdown-field) > label { display: block; margin: 0 0 8px; color: #304563; font-size: 13px; font-weight: 500; }
 :where(.dropdown-field) > label > span { color: var(--red); }
 .dropdown-control { display: flex; align-items: center; min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); transition: border-color .16s, box-shadow .16s; }
@@ -7,7 +7,8 @@
 .dropdown-control[data-invalid] { border-color: var(--red); }
 .dropdown-error { margin: 6px 0 0; color: var(--red); font-size: 12px; }
 .dropdown-control[data-disabled], .dropdown-control:has(> input:disabled) { opacity: .55; background: var(--background); }
-.dropdown .dropdown-control > .dropdown-input { flex: 1; width: 0; min-width: 0; min-height: 42px; height: auto; padding: 10px 12px; margin: 0; border: 0; border-radius: 8px 0 0 8px; background: transparent; box-shadow: none; color: #304563; font-size: 13px; text-overflow: ellipsis; }
+/* Preserve an intrinsic text width when the dropdown is placed in a flex row. */
+.dropdown .dropdown-control > .dropdown-input { flex: 1; width: 100%; min-width: 0; min-height: 42px; height: auto; padding: 10px 12px; margin: 0; border: 0; border-radius: 8px 0 0 8px; background: transparent; box-shadow: none; color: #304563; font-size: 13px; text-overflow: ellipsis; }
 .dropdown .dropdown-control > .dropdown-input:focus { border: 0 !important; box-shadow: none; }
 .dropdown-input[readonly] { cursor: pointer; }
 .dropdown-input::placeholder { color: var(--muted); }

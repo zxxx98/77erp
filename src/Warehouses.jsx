@@ -46,11 +46,15 @@ export function WarehouseManager({ warehouses, onRefresh, onBusy }) {
     <button type="button" className="btn btn-secondary" disabled={busy || !name.trim()} onClick={() => save(null, name)}>新增仓库</button>
     <p>主仓库保留；其他仓库所有物料库存均为 0 时可删除，其档案、业务历史及配置会一并永久清除。</p>
     {warehouses.map(w => <div className="warehouse-row" key={w.id}>
-      {editing?.id === w.id ? <>
-        <input aria-label={`修改${w.name}名称`} maxLength={60} value={editing.name} disabled={busy} onChange={e => setEditing({ ...editing, name: e.target.value })} />
-        <button type="button" className="btn" disabled={busy} onClick={() => save(w.id, editing.name)}>保存名称</button>
-      </> : <><strong>{w.name}</strong><button type="button" className="btn" disabled={busy} onClick={() => setEditing({ ...w })}>改名</button></>}
-      {w.id !== 1 && <button type="button" className="btn" disabled={busy} aria-label={`删除仓库 ${w.name}`} onClick={() => remove(w)}>删除仓库</button>}
+      {editing?.id === w.id
+        ? <input aria-label={`修改${w.name}名称`} maxLength={60} value={editing.name} disabled={busy} onChange={e => setEditing({ ...editing, name: e.target.value })} />
+        : <strong>{w.name}</strong>}
+      <div className="warehouse-row-actions">
+        {editing?.id === w.id
+          ? <button type="button" className="btn" disabled={busy} onClick={() => save(w.id, editing.name)}>保存名称</button>
+          : <button type="button" className="btn" disabled={busy} onClick={() => setEditing({ ...w })}>改名</button>}
+        {w.id !== 1 && <button type="button" className="btn" disabled={busy} aria-label={`删除仓库 ${w.name}`} onClick={() => remove(w)}>删除仓库</button>}
+      </div>
     </div>)}
     {error && <p className="form-error" role="alert">{error}</p>}
   </section>;
