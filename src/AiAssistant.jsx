@@ -118,7 +118,7 @@ export function AiAssistant({ onChanged, userId }) {
     <div className="ai-buttons"><button className="btn" type="button" disabled={busy} onClick={() => { try { sessionStorage.removeItem(storageKey); } catch { /* Storage is optional. */ } setThread({ messages: [], actions: [] }); setFile(null); setText(''); setError(''); if (input.current) input.current.value = ''; }}>开始新对话</button></div>
     <div className="ai-messages" aria-live="polite">{thread.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}><strong>{m.role === 'user' ? '你' : 'AI 助手'}</strong><p>{m.content}</p></div>)}</div>
     {thread.actions.map(a => <ActionCard key={a.id} action={a} busy={busy} confirm={confirm} />)}
-    <label className="ai-prompt">你的需求<textarea rows={3} maxLength={4000} value={text} disabled={busy} placeholder="例如：对比主仓库和B库条码为123的物料数量" onChange={e => setText(e.target.value)} /></label>
+    <label className="ai-prompt">你的需求<textarea rows={3} maxLength={4000} value={text} disabled={busy} placeholder="例如：当前仓库有多少种物料？" onChange={e => setText(e.target.value)} /></label>
     <label>附加物料 Excel / CSV<input ref={input} type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => upload(e.target.files?.[0])} /></label>
     <p className="ai-hint">仅解析第一张工作表，最多1000行；条码请设为文本以保留前导零。请说明表中数量是期初库存还是入出库数量。</p>
     {file && <p>{file.name} · {file.table.length - 1} 行<button type="button" className="btn" disabled={busy} onClick={() => { setFile(null); input.current.value = ''; }}>移除附件</button></p>}
