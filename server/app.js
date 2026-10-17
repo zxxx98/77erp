@@ -1,3 +1,4 @@
+import { installR2Backup } from './r2-backup.js';
 import { migrateProductChanges, recordProductChange } from './product-changes.js';
 import { installAi } from './ai.js';
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
@@ -277,6 +278,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   const { warehouses } = installWarehouses(app, db);
   installProductHistory(app, db);
   const notifications = installNotifications(app, db, options);
+  const r2Backup = installR2Backup(app, db, options);
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
   app.get("/api/data", (req, res) => {
@@ -617,5 +619,5 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         err.status === 400 ? "请求格式错误。" : "服务暂时不可用，请稍后重试。",
     });
   });
-  return { app, db, notifications };
+  return { app, db, notifications, r2Backup };
 }

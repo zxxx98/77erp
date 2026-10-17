@@ -1,6 +1,6 @@
 {
   "name": "77erp",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,8 +11,11 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@aws-sdk/lib-storage": "^3.1152.0",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
+    "cron-parser": "^5.10.2",
     "express": "^5.1.0",
     "jsbarcode": "^3.12.1",
     "lucide-react": "^0.468.0",

@@ -1,0 +1,119 @@
+import { backup } from 'node:sqlite';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { S3Client } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { CronExpressionParser } from 'cron-parser';
+import { queueNotification } from './notifications.js';
+
+export function nextBackup(cron, timezone, now = new Date()) {
+  if (typeof cron !== 'string' || cron.trim().split(/\s+/).length !== 5 || cron.length > 100) throw new Error('Cron 必须为五段：分 时 日 月 周。');
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: timezone }).format(now);
+    return CronExpressionParser.parse(cron, { tz: timezone, currentDate: now }).next().toISOString();
+  } catch { throw new Error('Cron 或时区无效，请检查配置。'); }
+}
+export async function uploadR2(config, path, key) {
+  const client = new S3Client({ region: 'auto', endpoint: `https://${config.account_id}.r2.cloudflarestorage.com`,
+    credentials: { accessKeyId: config.access_key, secretAccessKey: config.secret_key }, maxAttempts: 3,
+    requestHandler: { connectionTimeout: 10000, requestTimeout: 120000 } });
+  const body = createReadStream(path);
+  const upload = new Upload({ client, params: { Bucket: config.bucket, Key: key, Body: body, ContentType: 'application/vnd.sqlite3' }, queueSize: 2 });
+  const timer = setTimeout(() => { void upload.abort(); body.destroy(new Error('Upload timeout')); }, 15 * 60000);
+  timer.unref();
+  try { await upload.done(); } finally { clearTimeout(timer); body.destroy(); client.destroy(); }
+}
+
+export function installR2Backup(app, db, { r2Upload = uploadR2 } = {}) {
+  db.exec(`CREATE TABLE IF NOT EXISTS r2_backup_settings (
+    id INTEGER PRIMARY KEY CHECK(id=1), config TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1
+  ); DROP TABLE IF EXISTS r2_backup_runs;`);
+  // Remove obsolete scheduling state and independent notification credentials.
+  for (const column of db.prepare('PRAGMA table_info(r2_backup_settings)').all()) {
+    if (['next_at', 'lease_until'].includes(column.name)) db.exec(`ALTER TABLE r2_backup_settings DROP COLUMN ${column.name}`);
+  }
+  const defaults = { enabled: false, cron: '0 2 * * *', timezone: 'Asia/Shanghai', account_id: '', bucket: '', prefix: '77erp', access_key: '', secret_key: '' };
+  db.prepare('INSERT OR IGNORE INTO r2_backup_settings(id,config) VALUES (1,?)').run(JSON.stringify(defaults));
+  const row = () => db.prepare('SELECT * FROM r2_backup_settings WHERE id=1').get();
+  const read = () => JSON.parse(row().config);
+  const clean = Object.fromEntries(Object.entries(read()).filter(([key]) => Object.hasOwn(defaults, key)));
+  db.prepare('UPDATE r2_backup_settings SET config=? WHERE id=1').run(JSON.stringify(clean));
+  let running = null, timer, stopped = false, nextAt;
+  const resetSchedule = () => { const c = read(); nextAt = c.enabled ? nextBackup(c.cron, c.timezone) : null; };
+  resetSchedule();
+  const publicConfig = () => {
+    const { access_key, secret_key, ...config } = read();
+    return { ...config, version: row().version, has_access_key: !!access_key, has_secret_key: !!secret_key };
+  };
+  const ready = c => c.account_id && c.bucket && c.access_key && c.secret_key;
+  app.get('/api/settings/r2-backup', (_, res) => res.json(publicConfig()));
+  app.put('/api/settings/r2-backup', (req, res) => {
+    try {
+      const b = req.body || {}, current = row(), c = { ...read() };
+      if (b.version !== current.version) return res.status(409).json({ error: '备份配置已变化，请重新打开设置。' });
+      if (typeof b.enabled !== 'boolean') throw new Error('启用状态无效。');
+      for (const key of ['cron', 'timezone', 'account_id', 'bucket', 'prefix']) {
+        if (typeof b[key] !== 'string' || b[key].length > 200 || /[\x00-\x1f\x7f]/.test(b[key])) throw new Error('备份配置格式无效。');
+        c[key] = b[key].trim();
+      }
+      c.enabled = b.enabled;
+      nextBackup(c.cron, c.timezone);
+      if (c.account_id && !/^[a-f0-9]{32}$/i.test(c.account_id)) throw new Error('R2 Account ID 应为 32 位十六进制字符。');
+      if (c.bucket && !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(c.bucket)) throw new Error('R2 存储桶名称无效。');
+      if (!/^[a-zA-Z0-9/_-]*$/.test(c.prefix) || c.prefix.includes('//')) throw new Error('备份目录仅支持字母、数字、斜线、下划线和短横线。');
+      c.prefix = c.prefix.replace(/^\/+|\/+$/g, '');
+      for (const key of ['access_key', 'secret_key']) {
+        if (b[key] !== undefined && (typeof b[key] !== 'string' || b[key].length > 4096 || /[\x00-\x20\x7f]/.test(b[key]))) throw new Error('凭据格式无效。');
+        if (b[`clear_${key}`] !== undefined && typeof b[`clear_${key}`] !== 'boolean') throw new Error('清除凭据选项无效。');
+        c[key] = b[`clear_${key}`] ? '' : b[key] || c[key];
+      }
+      if (c.enabled && !ready(c)) throw new Error('启用前请填写 R2 账户、存储桶和访问凭据。');
+      db.prepare('UPDATE r2_backup_settings SET config=?,version=version+1 WHERE id=1').run(JSON.stringify(c));
+      resetSchedule();
+      res.json(publicConfig());
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+  function launch(now = new Date()) {
+    if (running || stopped) return null;
+    const c = read();
+    if (!ready(c)) return null;
+    const key = [c.prefix, `${now.toISOString().replaceAll(':', '-')}-${randomUUID()}.sqlite`].filter(Boolean).join('/');
+    running = (async () => {
+      let directory, status = 'success', bytes = 0, error = '';
+      try {
+        directory = await mkdtemp(join(tmpdir(), '77erp-backup-'));
+        const path = join(directory, 'database.sqlite');
+        await backup(db, path);
+        bytes = (await stat(path)).size;
+        await r2Upload(c, path, key);
+      } catch { status = 'failed'; error = '备份失败，请检查临时磁盘空间、R2 凭据、存储桶权限和网络。'; }
+      finally { if (directory) await rm(directory, { recursive: true, force: true }).catch(() => {}); }
+      queueNotification(db, null, 'database_backup', { status, object_key: key, bytes, reason: error }, { global: true });
+      return { status, object_key: key, bytes, error };
+    })().finally(() => { running = null; });
+    return running;
+  }
+  app.post('/api/settings/r2-backup/run', async (req, res) => {
+    if (req.body?.version !== row().version) return res.status(409).json({ error: '配置已变化，请重新打开设置。' });
+    if (!ready(read())) return res.status(400).json({ error: '请先保存完整的 R2 配置。' });
+    const task = launch();
+    if (!task) return res.status(409).json({ error: '已有备份正在执行，请稍后再试。' });
+    const result = await task;
+    res.status(result.status === 'success' ? 200 : 502).json(result);
+  });
+  const tick = (now = new Date()) => {
+    if (nextAt && nextAt <= now.toISOString()) {
+      const due = nextAt;
+      const c = read();
+      nextAt = c.enabled ? nextBackup(c.cron, c.timezone, now) : null;
+      // Only execute in the scheduled minute; missed times are never replayed.
+      if (c.enabled && Math.floor(Date.parse(due) / 60000) === Math.floor(now.getTime() / 60000)) launch(now);
+    }
+    return running || Promise.resolve();
+  };
+  return { tick, start() { if (timer) return; stopped = false; resetSchedule(); timer = setInterval(() => { void tick().catch(() => {}); }, 15000); timer.unref(); },
+    async stop() { stopped = true; clearInterval(timer); timer = null; await running; } };
+}

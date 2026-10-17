@@ -1,4 +1,5 @@
 export const notificationEvents = [
+  { key: 'database_backup', label: '数据库备份', description: 'R2 备份成功或失败后通知，不受仓库筛选限制。' },
   { key: 'low_stock', label: '低库存预警', description: '库存从正常变为偏低时通知。' },
   { key: 'out_of_stock', label: '缺货提醒', description: '库存从有货变为零时通知。' },
   { key: 'stock_recovered', label: '库存恢复', description: '低库存或缺货恢复到安全库存以上时通知。' },

@@ -1,3 +1,4 @@
+import { R2BackupSettings } from './R2BackupSettings.jsx';
 import { AiAssistant, AiSettings, CameraScanner, Barcode, StockQrManager, StockQrExecution } from './LazyComponents.jsx';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { orderLineAmount } from "../shared/money.js";
@@ -3697,7 +3698,8 @@ function StockExpressionEditor({ warehouses, value, onChange, disabled }) {
 function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPasswordChanged, initialSection = "general" }) {
   const lock = useRef(false);
   const [notificationDirty, setNotificationDirty] = useState(false);
-  const closeSettings = () => { if (!notificationDirty || window.confirm('通知设置尚未保存，确定放弃修改并关闭？')) onClose(); };
+  const [backupDirty, setBackupDirty] = useState(false);
+  const closeSettings = () => { if (!(notificationDirty || backupDirty) || window.confirm('设置尚未保存，确定放弃修改并关闭？')) onClose(); };
   const contentRef = useRef(null);
   const [section, setSection] = useState(initialSection);
   const [form, setForm] = useState(() => ({ ...settings, units: settings.units || ["个"] })),
@@ -3814,6 +3816,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           <div hidden={section !== 'imagebed'} className="settings-section"><ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} /></div>
           <div hidden={section !== 'notifications'} className="settings-section"><NotificationSettings warehouses={warehouses} active={section === 'notifications'} onBusy={setBusy} onDirty={setNotificationDirty} /></div>
           <div hidden={section !== "data"} className="settings-section">
+          <R2BackupSettings active={section === "data"} onBusy={setBusy} onDirty={setBackupDirty} />
           {section === "data" && <Backup onSaved={onSaved} />}
           <section className="settings-danger">
           <h3>重置业务数据</h3>

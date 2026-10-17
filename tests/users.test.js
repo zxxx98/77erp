@@ -241,6 +241,8 @@ const routeRoles = new Map(Object.entries({
   'get /api/ai/conversations': 'ai', 'get /api/ai/conversations/:id': 'ai', 'post /api/ai/chat': 'ai', 'post /api/ai/confirm': 'ai',
   'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',
+  'get /api/settings/r2-backup': 'admin', 'put /api/settings/r2-backup': 'admin',
+  'post /api/settings/r2-backup/run': 'admin',
   'get /api/settings/notifications': 'admin', 'put /api/settings/notifications': 'admin',
   'get /api/settings/notifications/deliveries': 'admin', 'post /api/settings/notifications/test': 'admin',
   'post /api/settings/notifications/deliveries/:id/retry': 'admin',

@@ -38,6 +38,10 @@ function formatMessage(event) {
   const lines = [`77 ERP · ${labels[event.event] || '测试通知'}`, `时间：${event.occurred_at}`];
   if (event.warehouse) lines.push(`仓库：${event.warehouse.name}`);
   if (event.actor) lines.push(`操作人：${event.actor.username}`);
+  if (event.event === 'database_backup') {
+    lines.push(`结果：${d.status === 'success' ? '备份成功' : '备份失败'}`, `文件：${d.object_key}`);
+    if (d.status === 'success') lines.push(`大小：${d.bytes} 字节`);
+  }
   if (d.number) lines.push(`单号：${d.number}`);
   if (d.from) lines.push(`调出仓库：${d.from}`);
   if (d.to) lines.push(`调入仓库：${d.to}`);
