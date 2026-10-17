@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync } from 'node:fs';
 import { createApp } from '../server/app.js';
-import { installR2Backup, nextBackup } from '../server/r2-backup.js';
+import { installR2Backup, nextBackup, pruneR2Backups } from '../server/r2-backup.js';
 
 async function fixture(t, options = {}) {
   const instance = createApp(':memory:', options);
@@ -105,4 +105,62 @@ test('previous backup history and independent webhook credentials are removed on
     assert.equal(config.secret_key, credentials.secret_key);
     assert.equal(config.webhook_url, undefined); assert.equal(config.webhook_secret, undefined);
   } finally { db.close(); }
+});
+
+const backupObject = (index, prefix = '77erp/') => ({
+  Key: `${prefix}2026-01-01T00-00-00.000Z-00000000-0000-4000-8000-${String(index).padStart(12, '0')}.sqlite`,
+  LastModified: new Date(index * 1000),
+});
+test('R2 retention paginates, keeps ten latest backups and ignores other files and subdirectories', async () => {
+  const objects = Array.from({ length: 1015 }, (_, i) => backupObject(i));
+  const deleted = [], lists = [];
+  const client = { async send(command) {
+    const input = command.input;
+    if (command.constructor.name === 'ListObjectsV2Command') {
+      lists.push(input);
+      return input.ContinuationToken ? { Contents: [...objects.slice(1000), backupObject(9999, '77erp/sub/'), backupObject(9999, 'other/'), { Key: '77erp/manual.sqlite' }] }
+        : { Contents: objects.slice(0, 1000), IsTruncated: true, NextContinuationToken: 'page-2' };
+    }
+    deleted.push(input.Delete.Objects.map(o => o.Key)); return {};
+  } };
+  await pruneR2Backups(client, { bucket: 'backups', prefix: '77erp' }, objects.at(-1).Key);
+  assert.equal(lists.length, 2); assert.equal(lists[0].Prefix, '77erp/');
+  assert.deepEqual(deleted.map(batch => batch.length), [1000, 5]);
+  assert.deepEqual(new Set(deleted.flat()), new Set(objects.slice(0, 1005).map(o => o.Key)));
+});
+test('R2 retention never deletes when listing fails or current upload is absent', async () => {
+  for (const mode of ['failure', 'missing', 'truncated']) {
+    let deletes = 0;
+    const client = { async send(command) {
+      if (command.constructor.name === 'DeleteObjectsCommand') { deletes++; return {}; }
+      if (mode === 'failure') throw new Error('listing failed');
+      return { Contents: Array.from({ length: 12 }, (_, i) => backupObject(i)), IsTruncated: mode === 'truncated' };
+    } };
+    await assert.rejects(pruneR2Backups(client, { bucket: 'backups', prefix: '77erp' }, backupObject(99).Key));
+    assert.equal(deletes, 0);
+  }
+});
+test('R2 retention handles empty prefix, short lists, clock changes and partial delete errors', async () => {
+  for (const count of [5, 12]) {
+    const objects = Array.from({ length: count }, (_, i) => backupObject(i, ''));
+    const client = { async send(command) {
+      if (command.constructor.name === 'ListObjectsV2Command') {
+        assert.equal(command.input.Prefix, ''); return { Contents: objects };
+      }
+      assert.deepEqual(command.input.Delete.Objects, [{ Key: objects[2].Key }, { Key: objects[1].Key }]);
+      return { Errors: [{ Code: 'AccessDenied' }] };
+    } };
+    const task = pruneR2Backups(client, { bucket: 'backups', prefix: '' }, objects[0].Key);
+    if (count === 12) await assert.rejects(task, /deletion/); else await task;
+  }
+});
+test('retention warnings preserve backup success and reach existing notifications', async t => {
+  const f = await fixture(t, { r2Upload: async () => ({ warning: '旧备份清理失败' }) });
+  const c = (await f.configure(credentials)).data;
+  const notification = (await f.request('/settings/notifications')).data;
+  await f.request('/settings/notifications', 'PUT', { ...notification, enabled: true, url: 'https://example.com/hook', events: ['database_backup'] });
+  const result = await f.request('/settings/r2-backup/run', 'POST', { version: c.version });
+  assert.equal(result.status, 200); assert.equal(result.data.warning, '旧备份清理失败');
+  const payload = JSON.parse(f.db.prepare("SELECT payload FROM notification_deliveries WHERE event='database_backup'").get().payload);
+  assert.equal(payload.data.status, 'success'); assert.match(payload.message, /旧备份清理失败/);
 });
