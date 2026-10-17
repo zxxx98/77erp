@@ -1,17 +1,18 @@
+import { useQuery, usePagedQuery, queryPath } from '../queries.js';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, FilePenLine, History, LayoutDashboard, LogOut, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
-import { flattenCategories, categoryBranch } from '../catalog.js';
+import { flattenCategories } from '../catalog.js';
 import { api } from '../api.js';
-import { orderLabel, businessType, reportOrders } from '../Operations.jsx';
+import { orderLabel } from '../Operations.jsx';
 import { OfflineNotice, PwaActions, usePwa } from '../pwa/Pwa.jsx';
 import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
 import { download } from '../data-files.js';
 import { ProductImage } from '../ProductImage.jsx';
 import { ProductHistory } from '../ProductHistory.jsx';
 import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
-import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge, matchesProduct } from './ui.jsx';
+import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
 import './mobile.css';
 
 const tabs = [['overview', '工作台', LayoutDashboard], ['products', '物料', Box], ['inventory', '库存', Warehouse], ['history', '单据', History], ['more', '更多', Settings]];
@@ -79,15 +80,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
 
 function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history }) {
   const { costs } = usePermissions();
-  const [summary, setSummary] = useState(null);
-  const [error, setError] = useState('');
-  // Aggregates come from the server so the home page does not depend on the
-  // whole workspace payload.
-  useEffect(() => {
-    let live = true;
-    api('/dashboard').then(value => { if (live) { setSummary(value); setError(''); } }).catch(e => { if (live) setError(e.message); });
-    return () => { live = false; };
-  }, [data]);
+  const { result: summary, error } = useQuery('/dashboard', data);
   const low = summary?.products.low_stock_products || [];
   const recent = summary?.recent_orders || [];
   const stats = [
@@ -101,7 +94,7 @@ function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history })
     <Notice>{error}</Notice>
     <div className="mw-stats">{stats.map(([label, value, Icon]) => <section className="mw-stat" key={label}><div><span className="mw-muted">{label}</span><Icon size={18} /></div><strong>{value}</strong></section>)}</div>
     <section className="mw-card mw-stack"><h2>快速操作</h2><Button primary icon={ScanLine} onClick={onScan}>扫描物料条码</Button><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>采购入库</Button><Button permission="sale" icon={ArrowUpFromLine} onClick={() => openOrder('out')}>销售出库</Button></div></section>
-    <section className="mw-card mw-stack"><div className="mw-between"><h2>库存预警</h2><span className="mw-warning">{summary ? `${summary.products.low_stock} 件物料` : '—'}</span></div>{low.length ? low.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">所有物料库存充足。</p>}</section>
+    <section className="mw-card mw-stack"><div className="mw-between"><h2>库存预警</h2><span className="mw-warning">{summary ? `${summary.products.low_stock + summary.products.out_of_stock} 件物料` : '—'}</span></div>{low.length ? low.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">所有物料库存充足。</p>}</section>
     <section className="mw-card mw-stack"><h2>最近单据</h2>{recent.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{summary && !recent.length && <p className="mw-muted">暂无单据，创建第一张入库单开始记录库存。</p>}<Button onClick={history}>查看全部单据</Button></section>
   </div>;
 }
@@ -111,28 +104,11 @@ function Products({ data, inventory, showProduct, openModal }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
   const [filter, setFilter] = useState(inventory ? 'all' : 'active');
-  const [limit, setLimit] = useState(30);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
   const categories = flattenCategories(data.categories || []);
-  useEffect(() => { setLimit(30); }, [query, category, filter]);
   useEffect(() => { if (category !== 'all' && !categories.some(c => String(c.id) === category)) setCategory('all'); }, [data.categories, category]);
-  // Search, filters and paging run on the server, so large catalogs stay bounded.
-  useEffect(() => {
-    let live = true;
-    const params = new URLSearchParams({ limit: String(limit), q: query });
-    if (category !== 'all') params.set('category_id', category);
-    if (filter !== 'all') params.set(inventory ? 'stock' : 'status', filter);
-    if (inventory) params.set('status', 'active');
-    const timer = setTimeout(() => {
-      setLoading(true);
-      api(`/products?${params}`).then(value => { if (live) { setResult(value); setError(''); } })
-        .catch(e => { if (live) setError(e.message); })
-        .finally(() => { if (live) setLoading(false); });
-    }, query ? 250 : 0);
-    return () => { live = false; clearTimeout(timer); };
-  }, [data, query, category, filter, limit, inventory]);
+  const { result, error, loading, loadMore, retry } = usePagedQuery(queryPath('/products', {
+    q: query, category_id: category, status: inventory ? 'active' : filter, stock: inventory ? filter : 'all',
+  }), data, 'products', query ? 250 : 0);
   const products = result?.products || [];
   return <div className="mw-stack">
     <div className="mw-between"><div><h1>{inventory ? '库存管理' : '物料管理'}</h1><p className="mw-muted">共 {result ? result.total : '—'} 种物料 · 已加载 {products.length} 种</p></div>{!inventory && can('products') && <MobileIcon icon={Plus} label="新增物料" onClick={() => openModal({ kind: 'product' })} />}</div>
@@ -140,11 +116,11 @@ function Products({ data, inventory, showProduct, openModal }) {
     <SearchField value={query} onChange={setQuery} />
     <Chips label={inventory ? '库存筛选' : '使用状态'} value={filter} onChange={setFilter} options={inventory ? [['all', '全部库存'], ['low', '库存预警'], ['empty', '缺货']] : [['all', '全部状态'], ['active', '已启用'], ['inactive', '已停用']]} />
     <label className="mw-field"><span>物料分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
-    <Notice>{error}</Notice>
+    <Notice>{error}</Notice>{error && <Button onClick={retry}>重新加载</Button>}
     {loading && !products.length && <p className="mw-muted"><LoadingStatus>正在读取物料…</LoadingStatus></p>}
     <div className="mw-product-list" aria-busy={loading}>{products.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />)}</div>
     {!loading && !products.length && !error && <Empty title="未找到物料">尝试调整筛选条件，或新增物料档案。</Empty>}
-    {result?.has_more && <Button onClick={() => setLimit(value => value + 30)}>加载更多物料</Button>}
+    {result?.has_more && <Button busy={loading} onClick={loadMore}>加载更多物料</Button>}
   </div>;
 }
 
@@ -160,34 +136,22 @@ function Orders({ data, initial, openOrder, showOrder }) {
   const [query, setQuery] = useState('');
   const [type, setType] = useState(initial);
   const [period, setPeriod] = useState('all');
-  const [limit, setLimit] = useState(30);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
-  useEffect(() => { setLimit(30); }, [query, type, period]);
-  // Filters and paging run on the server; rows no longer carry full item lists.
-  useEffect(() => {
-    let live = true;
-    const params = new URLSearchParams({ limit: String(limit), q: query });
-    if (type === 'transfer') params.set('kind', 'transfer');
-    else if (type !== 'all') params.set('business', type);
-    if (period !== 'all') params.set('from', new Date(Date.now() - Number(period) * 86400000).toISOString().slice(0, 10));
-    const timer = setTimeout(() => {
-      api(`/orders?${params}`).then(value => { if (live) { setResult(value); setError(''); } })
-        .catch(e => { if (live) setError(e.message); });
-    }, query ? 250 : 0);
-    return () => { live = false; clearTimeout(timer); };
-  }, [data, query, type, period, limit]);
+  const [exportError, setExportError] = useState('');
+  const { result, error, loading, loadMore, retry } = usePagedQuery(queryPath('/orders', {
+    q: query, kind: type === 'transfer' ? 'transfer' : null, business: ['in', 'out'].includes(type) ? type : null,
+    from: period === 'all' ? null : new Date(Date.now() - Number(period) * 86400000).toISOString().slice(0, 10),
+  }), data, 'orders', query ? 250 : 0);
   const orders = result?.orders || [];
   const exportOrders = async () => {
     if (exporting) return;
-    setExporting(true); setError('');
+    setExporting(true); setExportError('');
     try {
       const rows = await api('/orders/export');
       const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
       const csv = '\uFEFF' + [['单据号', '类型', '往来单位', '时间', '金额'], ...rows.map(o => [o.number, orderLabel(o), o.partner, o.created_at, Number(o.total).toFixed(2)])].map(row => row.map(cell).join(',')).join('\r\n');
       await download(csv, '77erp-orders.csv', 'text/csv;charset=utf-8');
-    } catch (e) { setError(e.message); }
+    } catch (e) { setExportError(e.message); }
     finally { setExporting(false); }
   };
   return <div className="mw-stack">
@@ -196,10 +160,10 @@ function Orders({ data, initial, openOrder, showOrder }) {
     <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '采购入库'], ['out', '销售出库'], ['transfer', '仓库调拨']] } />
     <Chips label="单据时间" value={period} onChange={setPeriod} options={ [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天']] } />
     <p className="mw-muted">共 {result ? result.total : '—'} 张单据 · 已加载 {orders.length} 张</p>
-    <Notice>{error}</Notice>
+    <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>重新加载</Button>}{loading && <LoadingStatus>正在读取单据…</LoadingStatus>}
     {orders.map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}
-    {!orders.length && !error && <Empty title="暂无单据">调整筛选条件，或创建第一张单据。</Empty>}
-    {result?.has_more && <Button onClick={() => setLimit(value => value + 30)}>加载更多单据</Button>}
+    {!loading && !orders.length && !error && <Empty title="暂无单据">调整筛选条件，或创建第一张单据。</Empty>}
+    {result?.has_more && <Button busy={loading} onClick={loadMore}>加载更多单据</Button>}
     {can('data_io') && <Button busy={exporting} disabled={!online} onClick={exportOrders}>导出单据</Button>}
   </div>;
 }

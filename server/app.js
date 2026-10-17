@@ -281,6 +281,17 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   const r2Backup = installR2Backup(app, db, options);
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
+  // Lightweight bootstrap: business lists and details are queried on demand.
+  app.get('/api/workspace', (req, res) => {
+    res.json({
+      user: req.user,
+      categories: db.prepare('SELECT id,name,parent_id,warehouse_id FROM categories WHERE warehouse_id=? ORDER BY name,id').all(req.warehouse.id),
+      warehouses: warehouses(),
+      warehouse_id: req.warehouse.id,
+      instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
+      settings: { ...db.prepare('SELECT * FROM settings WHERE id=1').get(), warehouse_name: req.warehouse.name, units: getUnits(db), stock_expression: getStockExpression(db) },
+    });
+  });
   app.get("/api/data", (req, res) => {
     const financial = hasPermission(req.user, 'finance');
     const hideCosts = !financial && !req.user.legacy_permissions;

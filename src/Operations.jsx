@@ -1,3 +1,4 @@
+import { useQuery, usePagedQuery, queryPath } from './queries.js';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { parseQuantity, addQuantity } from "../shared/quantity.js";
 import { usePermissions } from "./permissions.jsx";
@@ -175,7 +176,7 @@ export function OrderActions({ order, onSaved }) {
     </section>
   );
 }
-export function Stocktake({ products, onSaved }) {
+export function Stocktake({ data, onSaved }) {
   const { busy, error, run, send } = useOperation();
   const [query, setQuery] = useState(""),
     [selected, setSelected] = useState({}),
@@ -186,6 +187,8 @@ export function Stocktake({ products, onSaved }) {
       .then(setHistory)
       .catch(() => {});
   }, []);
+  const catalog = usePagedQuery(queryPath('/products', { q: query, status: 'all' }), data, 'products', query ? 250 : 0);
+  const products = catalog.result?.products || [];
   const items = Object.values(selected);
   return (
     <div>
@@ -201,6 +204,8 @@ export function Stocktake({ products, onSaved }) {
           disabled={busy}
         />
       </label>
+      {catalog.error && <div role="alert">{catalog.error}<button onClick={catalog.retry}>重新加载</button></div>}
+      {catalog.loading && <LoadingStatus>正在读取物料…</LoadingStatus>}
       <div className="operation-scroll">
         {products
           .filter((p) =>
@@ -252,6 +257,7 @@ export function Stocktake({ products, onSaved }) {
             </div>
           ))}
       </div>
+      {catalog.result?.has_more && <button type="button" className="btn" disabled={catalog.loading} onClick={catalog.loadMore}>加载更多物料</button>}
       {items.length > 0 && (
         <p>
           已选 {items.length} 件：
@@ -669,7 +675,7 @@ export function Backup({ onSaved }) {
   );
 }
 
-export function Transfer({ products = [], warehouses = [], warehouseId, onSaved }) {
+export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
   const { can, costs } = usePermissions();
   const { busy, error, run, send } = useOperation();
   const [rows, setRows] = useState([]);
@@ -691,11 +697,8 @@ export function Transfer({ products = [], warehouses = [], warehouseId, onSaved 
     if (target && !others.some((w) => String(w.id) === target)) setTarget("");
   }, [warehouses, warehouseId]);
   const keyword = query.trim().toLowerCase();
-  const matches = keyword
-    ? products
-        .filter((p) => [p.name, p.barcode, p.specification || ""].some((v) => v.toLowerCase().includes(keyword)))
-        .slice(0, 6)
-    : [];
+  const catalog = useQuery(queryPath('/products', { q: query, limit: 6, status: 'all' }), data, query ? 250 : 0);
+  const matches = keyword ? catalog.result?.products || [] : [];
   const add = (product) => {
     setMessage("");
     setRows((prev) => prev.some((r) => r.product_id === product.id)
@@ -750,6 +753,7 @@ export function Transfer({ products = [], warehouses = [], warehouseId, onSaved 
         搜索要调拨的物料
         <input value={query} disabled={busy} placeholder="物料名称、条码或规格型号" onChange={(e) => setQuery(e.target.value)} />
       </label>
+      {catalog.error && <div role="alert">{catalog.error}<button onClick={catalog.retry}>重新加载</button></div>}
       {matches.map((p) => (
         <div className="operation-row" key={p.id}>
           <div className="stocktake-product"><strong>{p.name}</strong><small>{p.barcode} · 库存 {p.stock} {p.unit}{p.active === 0 ? " · 已停用" : ""}</small></div>

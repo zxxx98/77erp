@@ -192,6 +192,27 @@ test('the dashboard aggregates counts, today totals, trend and recent orders per
   assert.equal(empty.recent_orders.length, 0);
 });
 
+test('dashboard stock alerts exclude inactive products and return after reactivation', async (t) => {
+  const f = await fixture(t);
+  const low = await f.product({ name: '低库存物料', barcode: 'ALERT-LOW' });
+  const empty = await f.product({ name: '缺货物料', barcode: 'ALERT-EMPTY' });
+  await f.order(f.admin, { type: 'in', partner: '供应商', items: [{ product_id: low.id, quantity: 2, price: 10 }] });
+  const other = await f.warehouse('预警分仓');
+  await f.product({ name: '分仓缺货物料', barcode: 'ALERT-OTHER' }, other);
+  const alerts = async (lowCount, emptyCount, ids) => {
+    const { products } = (await f.request(f.admin, '/dashboard')).data;
+    assert.equal(products.low_stock, lowCount);
+    assert.equal(products.out_of_stock, emptyCount);
+    assert.deepEqual(products.low_stock_products.map(p => p.id), ids);
+  };
+  await alerts(1, 1, [empty.id, low.id]);
+  for (const p of [low, empty]) assert.equal((await f.request(f.admin, `/products/${p.id}/status`, 'POST', { active: 0 })).status, 200);
+  await alerts(0, 0, []);
+  for (const stock of ['low', 'empty']) assert.equal((await f.request(f.admin, `/products?status=active&stock=${stock}`)).data.total, 0);
+  for (const p of [low, empty]) assert.equal((await f.request(f.admin, `/products/${p.id}/status`, 'POST', { active: 1 })).status, 200);
+  await alerts(1, 1, [empty.id, low.id]);
+});
+
 test('literal order routes stay reachable next to the new query endpoints', async (t) => {
   const f = await fixture(t);
   const item = await f.product({ name: '导出物料', barcode: 'Q-400' });
@@ -203,4 +224,39 @@ test('literal order routes stay reachable next to the new query endpoints', asyn
   assert.equal((await f.request(f.admin, '/products/barcode/Q-400')).data.id, item.id);
   assert.equal((await f.request(f.admin, `/products/${item.id}/other-warehouses`)).status, 200);
   assert.equal((await f.request(f.admin, `/products/${item.id}/history`)).status, 200);
+});
+
+test('workspace bootstrap omits business collections and product details remain warehouse scoped', async (t) => {
+  const f = await fixture(t);
+  const product = await f.product({ name: '按需读取', barcode: 'LAZY-001' });
+  const workspace = await f.request(f.admin, '/workspace');
+  assert.equal(workspace.status, 200);
+  assert.equal(workspace.data.warehouse_id, 1);
+  for (const key of ['products', 'orders', 'contacts']) assert.equal(Object.hasOwn(workspace.data, key), false);
+  assert.ok(workspace.data.settings);
+  const detail = await f.request(f.admin, `/products/${product.id}`);
+  assert.equal(detail.data.product.name, '按需读取');
+  const warehouse = await f.warehouse('详情隔离仓');
+  assert.equal((await f.request(f.admin, `/products/${product.id}`, 'GET', undefined, warehouse)).status, 400);
+  await f.grant([]);
+  assert.equal((await f.request(f.staff, '/workspace')).status, 200);
+  const staffDetail = await f.request(f.staff, `/products/${product.id}`);
+  assert.equal(staffDetail.status, 200);
+  assert.equal(Object.hasOwn(staffDetail.data.product, 'inventory_value_cents'), false);
+});
+
+test('order aggregates cover the entire filter, not only the returned page', async (t) => {
+  const f = await fixture(t);
+  const product = await f.product({ name: '分页统计', barcode: 'PAGE-SUM' });
+  for (let i = 0; i < 3; i++) await f.order(f.admin, { type: 'in', partner: '分页供应商', items: [{ product_id: product.id, quantity: 2, price: 10 }] });
+  const page = (await f.request(f.admin, '/orders?limit=1&business=in')).data;
+  assert.equal(page.orders.length, 1);
+  assert.equal(page.total, 3);
+  assert.equal(page.aggregate.net_total, 60);
+  assert.equal(page.aggregate.active_count, 3);
+  assert.equal(page.aggregate.quantity, 6);
+  assert.equal(Object.hasOwn(page.orders[0], 'items'), false);
+  const next = (await f.request(f.admin, '/orders?limit=1&offset=1&business=in')).data;
+  assert.notEqual(next.orders[0].id, page.orders[0].id);
+  assert.deepEqual(next.aggregate, page.aggregate);
 });

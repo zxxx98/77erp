@@ -232,8 +232,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     if ((read && (path === '/ai/conversations' || /^\/ai\/conversations\/[0-9a-f-]+$/.test(path)) ||
          post && ['/ai/chat', '/ai/confirm'].includes(path)) && hasPermission(req.user, 'ai')) return next();
     const legacyAllowed = (read && (
-      ['/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export','/products','/orders','/dashboard'].includes(path) ||
-      /^\/products\/barcode\/[^/]+$/.test(path) ||
+      ['/workspace','/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export','/products','/orders','/dashboard'].includes(path) ||
+      /^\/products\/barcode\/[^/]+$/.test(path) || /^\/products\/\d+$/.test(path) ||
       /^\/orders\/\d+$/.test(path) ||
       /^\/products\/\d+\/(other-warehouses|history)$/.test(path))) ||
       (post && ['/products','/orders','/templates','/uploads/product-image'].includes(path)) ||
@@ -244,8 +244,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (legacyAllowed) return next();
     } else {
       const basicRead = read && (
-        ['/data','/style','/warehouses','/categories','/contacts','/templates','/products','/orders','/dashboard'].includes(path) ||
-        /^\/products\/barcode\/[^/]+$/.test(path) ||
+        ['/workspace','/data','/style','/warehouses','/categories','/contacts','/templates','/products','/orders','/dashboard'].includes(path) ||
+        /^\/products\/barcode\/[^/]+$/.test(path) || /^\/products\/\d+$/.test(path) ||
         /^\/orders\/\d+$/.test(path) ||
         /^\/products\/\d+\/(other-warehouses|history)$/.test(path));
       if (basicRead) return next();

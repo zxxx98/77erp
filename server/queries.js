@@ -38,8 +38,7 @@ const search = (value) => {
 };
 
 // Read-only list, detail and aggregate endpoints for large workspaces. The
-// existing /api/data payload stays unchanged for older clients and for the
-// components that still read the whole workspace.
+// existing /api/data payload stays unchanged for older clients.
 export function installQueries(app, db) {
   const financial = (req) => hasPermission(req.user, 'finance');
   const hidesCosts = (req) => !financial(req) && !req.user.legacy_permissions;
@@ -84,6 +83,14 @@ export function installQueries(app, db) {
     );
     return orders.map((order) => Object.assign(order, settlementFromPaid(order, paid.get(order.id) || 0)));
   };
+
+  app.get('/api/products/:id', (req, res, next) => {
+    if (!/^\d+$/.test(req.params.id)) return next();
+    const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
+    if (!product) return res.status(404).json({ error: '物料不存在。' });
+    if (hidesCosts(req)) delete product.inventory_value_cents;
+    res.json({ product });
+  });
 
   app.get(
     '/api/products',
@@ -152,9 +159,18 @@ export function installQueries(app, db) {
       const rows = db
         .prepare(`SELECT o.* FROM orders o WHERE ${where} ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
+      const aggregate = db.prepare(`SELECT
+        COALESCE(SUM(CASE WHEN o.status='active' AND o.kind!='transfer' THEN CASE WHEN o.kind='return' THEN -o.total ELSE o.total END ELSE 0 END),0) AS net_total,
+        COALESCE(SUM(o.status='active'),0) AS active_count,
+        COALESCE(SUM(CASE WHEN o.status='active' THEN (SELECT SUM(i.quantity) FROM order_items i WHERE i.order_id=o.id) ELSE 0 END),0) AS quantity
+        FROM orders o WHERE ${where}`).get(...params);
+      const counts = db.prepare(`SELECT COUNT(*) AS all_count,
+        SUM((kind='normal' AND type='in') OR (kind='return' AND type='out')) AS in_count,
+        SUM((kind='normal' AND type='out') OR (kind='return' AND type='in')) AS out_count,
+        SUM(kind='transfer') AS transfer_count FROM orders WHERE warehouse_id=?`).get(req.warehouse.id);
       const summary = itemSummary(rows.map((order) => order.id));
       const orders = withSettlement(req, rows.map((order) => ({ ...order, ...(summary.get(order.id) || { item_count: 0, item_quantity: 0, item_names: [] }) })));
-      return { orders, total, has_more: offset + orders.length < total, next_offset: offset + orders.length };
+      return { orders, total, aggregate, counts, has_more: offset + orders.length < total, next_offset: offset + orders.length };
     }),
   );
 
@@ -191,8 +207,10 @@ export function installQueries(app, db) {
     route((req) => {
       const days = [7, 30].includes(Number(req.query.days)) ? Number(req.query.days) : 7;
       const counts = db
-        .prepare(`SELECT COUNT(*) AS products, SUM(active!=0) AS active,
-          SUM(stock>0 AND stock<=threshold) AS low_stock, SUM(stock=0) AS out_of_stock,
+        .prepare(`SELECT COUNT(*) AS products, SUM(active!=0) AS active, SUM(stock) AS stock,
+          SUM(CASE WHEN active!=0 THEN stock ELSE 0 END) AS active_stock,
+          SUM(CASE WHEN active!=0 THEN inventory_value_cents ELSE 0 END) AS active_value,
+          SUM(active!=0 AND stock>0 AND stock<=threshold) AS low_stock, SUM(active!=0 AND stock=0) AS out_of_stock,
           COALESCE(SUM(inventory_value_cents),0) AS inventory_value_cents FROM products WHERE warehouse_id=?`)
         .get(req.warehouse.id);
       const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -224,7 +242,8 @@ export function installQueries(app, db) {
       return {
         days,
         products: {
-          total: counts.products, active: counts.active || 0,
+          total: counts.products, active: counts.active || 0, stock: counts.stock || 0, active_stock: counts.active_stock || 0,
+          active_value_cents: hidesCosts(req) ? undefined : counts.active_value || 0,
           low_stock: counts.low_stock || 0, out_of_stock: counts.out_of_stock || 0,
           inventory_value_cents: hidesCosts(req) ? undefined : counts.inventory_value_cents,
           low_stock_products: db
@@ -235,6 +254,7 @@ export function installQueries(app, db) {
         today: { day: new Date().toISOString().slice(0, 10), ...totalsOf(trading.filter((row) => row.day === new Date().toISOString().slice(0, 10))) },
         trend,
         recent_orders: withSettlement(req, recent.map((order) => ({ ...order, ...(summary.get(order.id) || { item_count: 0, item_quantity: 0, item_names: [] }) }))),
+        category_counts: db.prepare('SELECT category_id,COUNT(*) AS total,SUM(active!=0) AS active FROM products WHERE warehouse_id=? GROUP BY category_id').all(req.warehouse.id),
         warehouses: db.prepare('SELECT * FROM warehouses ORDER BY id').all(),
       };
     }),

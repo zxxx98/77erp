@@ -1,9 +1,10 @@
+import { useQuery } from '../queries.js';
+import { lookupProductCode, useProductSelection } from '../product-query.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Check, FilePenLine, Minus, Plus, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { usePermissions } from '../permissions.jsx';
 import { ContactPicker, Templates, useBusiness } from '../Commerce.jsx';
-import { resolveProductCode } from '../product-scan.js';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
 import { draftScope, localId, removeDraft, saveDraft } from '../pwa/drafts.js';
 import { usePwa } from '../pwa/Pwa.jsx';
@@ -24,13 +25,16 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const snapshot = (p, line = {}) => ({ product_id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version, quantity: line.quantity ?? 1, price: line.price ?? (type === 'in' ? p.cost : p.price) });
   const [items, setItems] = useState(() => initialDraft?.items || (initialTemplate ? initialTemplate.items.map(line => {
     const p = data.products.find(p => p.id === line.product_id);
-    return p ? snapshot(p, line) : { ...line, name: '物料已不存在' };
+    return p ? snapshot(p, line) : { ...line, name: line.name || '正在读取物料' };
   }) : initialProduct ? [snapshot(initialProduct)] : []));
   const [pending, setPending] = useState(initialDraft?.pending || null);
   const [query, setQuery] = useState('');
   const [barcode, setBarcode] = useState('');
   const [camera, setCamera] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(false);
+  const selection = useProductSelection(data, items, query, includeInactive, initialProduct);
+  const contacts = useQuery('/contacts', data);
+  data = { ...data, products: selection.products, contacts: contacts.result || [] };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState({ message: '', revision: 0 });
   const [storageError, setStorageError] = useState('');
@@ -74,6 +78,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
 
   const add = product => {
     if (disabled) return;
+    selection.remember(product);
     const found = items.find(line => line.product_id === product.id);
     if (!found && items.length >= 100) { reportError('一张单据最多添加 100 种物料。'); return; }
     try {
@@ -81,15 +86,21 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
       setQuery(''); setBarcode(''); reportError('');
     } catch (e) { reportError(e.message); }
   };
-  const scan = code => {
+  const scan = async code => {
     setCamera(false);
     try {
-      const product = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id, sourceId: data.instance_id });
+      const product = await lookupProductCode(code, data);
       if (!product) throw new Error(`未找到条码「${code.trim()}」，请先建立物料档案。`);
       add(product);
     } catch (e) { reportError(e.message); }
   };
   const update = (productId, key, value) => setItems(current => current.map(line => line.product_id === productId ? { ...line, [key]: value } : line));
+  useEffect(() => {
+    setItems(current => current.map(line => {
+      const product = selection.products.find(p => p.id === line.product_id);
+      return product && !line.version ? snapshot(product, line) : line;
+    }));
+  }, [selection.products.map(p => `${p.id}:${p.version}`).join(',')]);
   const stale = items.filter(line => { const p = data.products.find(p => p.id === line.product_id); return p && line.version && line.version !== p.version; });
   const payload = () => {
     if (!partner.trim() || partner.length > 100) throw new Error('请填写 1–100 字的往来单位。');
@@ -172,13 +183,13 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     finally { setSavingClose(false); }
   };
   const partners = (data.contacts || []).filter(c => c.active && c.role === (type === 'in' ? 'supplier' : 'customer'));
-  const matches = query.trim() ? data.products.filter(p => (includeInactive || p.active !== 0) && [p.name, p.barcode, p.category, p.specification || ''].some(value => value.toLowerCase().includes(query.trim().toLowerCase()))).slice(0, 20) : [];
+  const matches = query.trim() ? selection.matches : [];
 
   return <>
     <Modal title={type === 'in' ? '采购入库' : '销售出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
       <form onSubmit={confirm} className="mw-order-form">
         <div ref={bodyRef} className="form-body mw-stack mw-order-body">
-          <Notice>{error.message}</Notice><Notice>{storageError}</Notice>
+          <Notice>{error.message || selection.error || contacts.error}</Notice><Notice>{storageError}</Notice>
           <p className="mw-muted" aria-live="polite">{savedAt ? `草稿已保存 · ${new Date(savedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '本地草稿自动保存'}</p>
           {pending && <section className="mw-card mw-stack"><h2>提交结果待确认</h2><p>保留原单据内容，核对时不会重复开单。</p><Button primary busy={busy} disabled={!online} onClick={submit}>核对并重试原提交</Button></section>}
           {!!stale.length && !pending && <section className="mw-card mw-stack"><Notice>物料资料已变化：{stale.map(line => line.name).join('、')}。请核对物料与成交单价。</Notice><Button onClick={() => setItems(current => current.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? { ...line, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version } : line; }))}>使用最新档案继续核对</Button></section>}
@@ -186,7 +197,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             {online && <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={disabled} onUse={selected => {
               if (items.length && !window.confirm('套用模板将替换当前编辑内容，是否继续？')) return false;
               setTemplate(selected); setTemplateName(selected.name); setTemplateMessage(''); setPartner(selected.partner); setPartnerId(selected.partner_id); setNote(selected.note);
-              setItems(selected.items.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? snapshot(p, line) : { ...line, name: '物料已不存在' }; }));
+              setItems(selected.items.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? snapshot(p, line) : { ...line, name: line.name || '正在读取物料' }; }));
             }} />}
             {template && <p className="mw-muted">已套用「{template.name}」，本次修改不会自动更新模板。</p>}
             {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">模板名称<input maxLength={100} placeholder="例如：每周日用品补货" value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? '另存为模板' : '保存为模板'}</Button>{template && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}

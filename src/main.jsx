@@ -1,3 +1,5 @@
+import { lookupProductCode, useProductSelection } from './product-query.js';
+import { useQuery, queryPath } from './queries.js';
 import { R2BackupSettings } from './R2BackupSettings.jsx';
 import { AiAssistant, AiSettings, CameraScanner, Barcode, StockQrManager, StockQrExecution } from './LazyComponents.jsx';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
@@ -67,11 +69,10 @@ import { ProductConflict } from './ProductConflict.jsx';
 import { ImagebedSettings } from './ImagebedSettings.jsx';
 import { NotificationSettings } from './NotificationSettings.jsx';
 import { AuthGate } from "./Auth.jsx";
-import { resolveProductCode } from "./product-scan.js";
 import { ChangePassword, UserManager } from "./Users.jsx";
 import { version as appVersion } from "../package.json";
 import { BusinessTools, ContactPicker, Templates, Payments, useBusiness } from "./Commerce.jsx";
-import { Backup, OrderActions, orderLabel, reportOrders, businessType } from "./Operations.jsx";
+import { Backup, OrderActions, orderLabel, businessType } from "./Operations.jsx";
 
 const money = (v) =>
   new Intl.NumberFormat("zh-CN", {
@@ -540,10 +541,10 @@ function App({ admin, onLogout }) {
     setRefreshing(true);
     try {
       let d;
-      try { d = await api("/data"); }
+      try { d = await api("/workspace"); }
       catch (e) {
         if (e.status !== 400 || !e.message.startsWith('仓库不存在')) throw e;
-        d = await api('/data', { warehouseId: 1 });
+        d = await api('/workspace', { warehouseId: 1 });
       }
       if (generation !== loadGeneration.current) return;
       if (d.user?.id !== admin.id) {
@@ -551,7 +552,7 @@ function App({ admin, onLogout }) {
         return;
       }
       setWarehouseId(d.warehouse_id);
-      setData(d);
+      setData({ ...d, products: [], orders: [] });
       setLoadError("");
     } catch (e) {
       if (generation !== loadGeneration.current) return;
@@ -616,14 +617,14 @@ function App({ admin, onLogout }) {
     const generation = ++loadGeneration.current;
     setSwitching(true);
     try {
-      const workspace = await api('/data', { warehouseId: id });
+      const workspace = await api('/workspace', { warehouseId: id });
       if (generation !== loadGeneration.current) return;
       if (workspace.user?.id !== admin.id) {
         window.dispatchEvent(new Event('erp:unauthorized'));
         return;
       }
       setWarehouseId(id);
-      setData(workspace);
+      setData({ ...workspace, products: [], orders: [] });
       setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
     } catch (e) { notify(e.message, 'error'); }
     finally { setSwitching(false); setRefreshing(false); }
@@ -631,7 +632,9 @@ function App({ admin, onLogout }) {
   const user = data.user || admin;
   const can = key => hasPermission(user, key);
   const manage = key => canManage(user, key);
-  const low = data.products.filter((p) => p.active !== 0 && p.stock <= p.threshold);
+  const summaryQuery = useQuery(mobileDevice ? null : '/dashboard', data);
+  const low = summaryQuery.result?.products.low_stock_products || [];
+  const lowCount = (summaryQuery.result?.products.low_stock || 0) + (summaryQuery.result?.products.out_of_stock || 0);
   // Order details are fetched by id so trimmed or paged lists stay correct.
   const openOrderDetail = async (order) => {
     const id = typeof order === "number" ? order : order?.id;
@@ -658,7 +661,7 @@ function App({ admin, onLogout }) {
         showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={openOrderDetail}
         switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
         loggingOut={loggingOut} logout={logout}
-        renderScanner={() => <Scanner data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
+        renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>
         <a
@@ -805,7 +808,7 @@ function App({ admin, onLogout }) {
                 <div className="notification-popover">
                   <div className="popover-title">
                     <strong>库存提醒</strong>
-                    <span>{low.length} 条</span>
+                    <span>{lowCount} 条</span>
                   </div>
                   {low.length ? (
                     low.map((p) => (
@@ -992,7 +995,7 @@ function App({ admin, onLogout }) {
       {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
-        <div className="form-body"><BusinessTools products={data.products} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
+        <div className="form-body"><BusinessTools data={data} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
           onUse={template => openOrder(template.type, undefined, template)} onRefresh={reload} /></div>
         <div className="modal-footer"><Button onClick={() => setModal(null)}>取消</Button></div>
       </Modal>}
@@ -1269,27 +1272,22 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
   const { can, costs } = usePermissions();
   const [days, setDays] = useState(7),
     [orderTab, setOrderTab] = useState("all");
-  const reporting = reportOrders(data.orders);
-  const todayOrders = reporting.filter((o) =>
-    sameDay(o.created_at, new Date()),
-  );
-  const incoming = todayOrders.filter((o) => o.type === "in"),
-    outgoing = todayOrders.filter((o) => o.type === "out");
-  const totalStock = data.products.reduce((s, p) => addQuantity(s, p.stock), 0),
-    value = data.products.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0);
-  const periodStart = new Date();
-  periodStart.setDate(periodStart.getDate() - days + 1);
-  periodStart.setHours(0, 0, 0, 0);
-  const salesSum = reporting
-    .filter((o) => o.type === "out" && new Date(o.created_at) >= periodStart)
-    .reduce((s, o) => s + o.total, 0);
-  const filteredOrders = data.orders
-    .filter((o) => orderTab === "all" || businessType(o) === orderTab)
-    .slice(0, 5);
+  const summaryQuery = useQuery(`/dashboard?days=${days}`, data);
+  const recentQuery = useQuery(queryPath('/orders', { limit: 5, business: orderTab === 'all' ? null : orderTab }), data);
+  const summary = summaryQuery.result;
+  const reporting = (summary?.trend || []).flatMap(row => [
+    { type: 'in', created_at: `${row.day}T12:00:00`, total: row.purchase_cents / 100 },
+    { type: 'out', created_at: `${row.day}T12:00:00`, total: row.sales_cents / 100 },
+  ]);
+  const totalStock = summary?.products.stock || 0;
+  const value = (summary?.products.inventory_value_cents || 0) / 100;
+  const salesSum = (summary?.trend || []).reduce((sum, row) => sum + row.sales_cents / 100, 0);
+  const filteredOrders = recentQuery.result?.orders || [];
+  const warningCount = (summary?.products.low_stock || 0) + (summary?.products.out_of_stock || 0);
   const metrics = [
     {
       label: "物料总数",
-      value: count(data.products.length),
+      value: summary ? count(summary.products.total) : "—",
       unit: "种",
       icon: Box,
       tone: "blue",
@@ -1316,7 +1314,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     },
     {
       label: "今日采购",
-      value: money(incoming.reduce((s, o) => s + o.total, 0)),
+      value: money((summary?.today.purchase_cents || 0) / 100),
       prefix: "¥",
       icon: ArrowDownLeft,
       tone: "green",
@@ -1324,7 +1322,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         <>
           <Badge tone="green" dot={false}>
             <ArrowDownLeft size={12} />
-            {incoming.length} 笔入库
+            {summary?.today.purchase_count || 0} 笔入库
           </Badge>
           <span className="metric-info">已完成</span>
         </>
@@ -1332,7 +1330,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     },
     {
       label: "今日销售",
-      value: money(outgoing.reduce((s, o) => s + o.total, 0)),
+      value: money((summary?.today.sales_cents || 0) / 100),
       prefix: "¥",
       icon: ArrowUpRight,
       tone: "orange",
@@ -1340,7 +1338,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         <>
           <Badge tone="blue" dot={false}>
             <ArrowUpRight size={12} />
-            {outgoing.length} 笔出库
+            {summary?.today.sales_count || 0} 笔出库
           </Badge>
           <span className="metric-info">已完成</span>
         </>
@@ -1349,6 +1347,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
   ];
   return (
     <>
+      <QueryStatus query={summaryQuery} /><QueryStatus query={recentQuery} />
       <PageHeading
         title="工作台"
         description="物料、库存及今日入出库数据概览。"
@@ -1569,7 +1568,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         <Panel
           title="库存预警"
           className="warning-panel"
-          extra={<span className="warning-counter">{low.length} 件物料</span>}
+          extra={<span className="warning-counter">{warningCount} 件物料</span>}
         >
           <div className="warning-description">
             <span className="warning-dot" />
@@ -1628,12 +1627,12 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
   );
 }
 
-function CategoryTree({ categories, products, selected, onSelect }) {
+function CategoryTree({ categories, counts = [], active = false, selected, onSelect }) {
   const [collapsed, setCollapsed] = useState(new Set());
   const render = (parent = null, depth = 0) => categories.filter(c => c.parent_id === parent).map(c => {
     const children = categories.some(child => child.parent_id === c.id);
     const branch = categoryBranch(categories, c.id);
-    const total = products.filter(p => branch.has(p.category_id)).length;
+    const total = counts.filter(row => branch.has(row.category_id)).reduce((sum, row) => sum + (active ? row.active : row.total), 0);
     return <li key={c.id}>
       <div className="category-tree-row" style={{ paddingLeft: depth * 14 }}>
         {children ? <button className="category-expand" aria-label={`${collapsed.has(c.id) ? '展开' : '折叠'} ${c.name}`} aria-expanded={!collapsed.has(c.id)} onClick={() => setCollapsed(current => { const next = new Set(current); next.has(c.id) ? next.delete(c.id) : next.add(c.id); return next; })}>{collapsed.has(c.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button> : <span className="category-expand" />}
@@ -1643,7 +1642,7 @@ function CategoryTree({ categories, products, selected, onSelect }) {
     </li>;
   });
   return <nav aria-label="物料分类树" className="category-tree">
-    <button className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部物料</span><small>{products.length}</small></button>
+    <button className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部物料</span><small>{counts.reduce((sum, row) => sum + (active ? row.active : row.total), 0)}</small></button>
     <ul>{render()}</ul>
     {!categories.length && <p className="muted">暂无分类，请添加分类。</p>}
   </nav>;
@@ -1716,20 +1715,14 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
     [pageNum, setPageNum] = useState(1);
   const [managing, setManaging] = useState(false);
   const categories = data.categories || [];
-  const branch = categoryBranch(categories, category);
   useEffect(() => { if (category && !categories.some(c => c.id === category)) setCategory(null); }, [categories, category]);
-  const filtered = data.products.filter(
-    (p) =>
-      (status === "all" || (status === "active" ? p.active !== 0 : p.active === 0)) &&
-      (category === null || branch.has(p.category_id)) &&
-      (!search ||
-        [p.name, p.barcode, p.category, p.specification || "", p.note || ""].some((s) =>
-          s.toLowerCase().includes(search.toLowerCase()),
-        )),
-  );
   useEffect(() => setPageNum(1), [category, search, status]);
-  useEffect(() => setPageNum(p => Math.min(p, Math.max(1, Math.ceil(filtered.length / 8)))), [filtered.length]);
-  const visible = filtered.slice((pageNum - 1) * 8, pageNum * 8);
+  const list = useQuery(queryPath('/products', { limit: 8, offset: (pageNum - 1) * 8, q: search, status, category_id: category }), data, search ? 250 : 0);
+  const stats = useQuery('/dashboard', data);
+  const filtered = list.result?.products || [];
+  const total = list.result?.total || 0;
+  useEffect(() => { if (list.result) setPageNum(p => Math.min(p, Math.max(1, Math.ceil(total / 8)))); }, [list.result, total]);
+  const visible = filtered;
   return (
     <>
       <PageHeading
@@ -1746,7 +1739,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
           <h3>物料分类</h3>
-          <CategoryTree categories={categories} products={data.products} selected={category} onSelect={setCategory} />
+          <CategoryTree categories={categories} counts={stats.result?.category_counts} selected={category} onSelect={setCategory} />
         </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
@@ -1789,6 +1782,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
             </div>
           </div>
         </div>
+        <QueryStatus query={list} />
         {filtered.length ? (
           view === "list" ? (
             <div className="table-scroll">
@@ -1913,7 +1907,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
               ))}
             </div>
           )
-        ) : (
+        ) : !list.loading && !list.error && (
           <Empty
             title="没有找到物料"
             description="请调整搜索条件，或新增物料。"
@@ -1925,7 +1919,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
           />
         )}
         <Pagination
-          total={filtered.length}
+          total={total}
           page={pageNum}
           setPage={setPageNum}
         />
@@ -1938,6 +1932,11 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
       </div>
     </>
   );
+}
+function QueryStatus({ query }) {
+  if (query.loading) return <p role="status"><LoadingStatus>正在读取数据…</LoadingStatus></p>;
+  if (query.error) return <div role="alert" className="info-box">{query.error}<Button onClick={query.retry}>重新加载</Button></div>;
+  return null;
 }
 function Pagination({ total, page, setPage }) {
   const pages = Math.max(1, Math.ceil(total / 8));
@@ -1989,24 +1988,18 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
     [page, setPage] = useState(1);
   const [category, setCategory] = useState(null);
   const categories = data.categories || [];
-  const branch = categoryBranch(categories, category);
   useEffect(() => { if (category && !categories.some(c => c.id === category)) setCategory(null); }, [categories, category]);
-  const activeProducts = data.products.filter((p) => p.active !== 0);
-  const low = activeProducts.filter((p) => p.stock <= p.threshold),
-    empty = activeProducts.filter((p) => p.stock === 0);
-  const filtered = activeProducts.filter(
-    (p) =>
-      (filter === "all" ||
-        (filter === "warning" && p.stock <= p.threshold) ||
-        (filter === "empty" && p.stock === 0)) &&
-      (category === null || branch.has(p.category_id)) &&
-      [p.name, p.barcode].some((s) =>
-        s.toLowerCase().includes(query.toLowerCase()),
-      ),
-  );
+  const stats = useQuery('/dashboard', data);
+  const summary = stats.result?.products;
+  const list = useQuery(queryPath('/products', { limit: 8, offset: (page - 1) * 8, q: query, status: 'active', stock: filter === 'warning' ? 'low' : filter, category_id: category }), data, query ? 250 : 0);
+  const filtered = list.result?.products || [];
+  const total = list.result?.total || 0;
+  const lowCount = (summary?.low_stock || 0) + (summary?.out_of_stock || 0);
   useEffect(() => setPage(1), [filter, query, category]);
+  useEffect(() => { if (list.result) setPage(p => Math.min(p, Math.max(1, Math.ceil(total / 8)))); }, [list.result, total]);
   return (
     <>
+      <QueryStatus query={list} /><QueryStatus query={stats} />
       <PageHeading
         eyebrow="INVENTORY"
         title="库存管理"
@@ -2035,7 +2028,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           <span>
             <small>在库总数量</small>
             <strong>
-              {count(activeProducts.reduce((s, p) => addQuantity(s, p.stock), 0))}
+              {count(summary?.active_stock || 0)}
               <em> 件</em>
             </strong>
           </span>
@@ -2048,7 +2041,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
             <small>库存成本金额</small>
             <strong>
               <em>¥ </em>
-              {costs ? money(activeProducts.reduce((s, p) => s + (p.inventory_value_cents ?? Math.round(p.stock * p.cost * 100)) / 100, 0)) : '—'}
+              {costs ? money((summary?.active_value_cents || 0) / 100) : '—'}
             </strong>
           </span>
         </div>
@@ -2059,7 +2052,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           <span>
             <small>低库存物料</small>
             <strong>
-              {low.length}
+              {lowCount}
               <em> 种</em>
             </strong>
           </span>
@@ -2071,7 +2064,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           <span>
             <small>缺货物料</small>
             <strong>
-              {empty.length}
+              {summary?.out_of_stock || 0}
               <em> 种</em>
             </strong>
           </span>
@@ -2080,15 +2073,15 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
           <h3>物料分类</h3>
-          <CategoryTree categories={categories} products={activeProducts} selected={category} onSelect={setCategory} />
+          <CategoryTree categories={categories} counts={stats.result?.category_counts} active selected={category} onSelect={setCategory} />
         </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
           <div className="filter-tabs">
             {[
-              ["all", "全部库存", activeProducts.length],
-              ["warning", "库存预警", low.length],
-              ["empty", "已缺货", empty.length],
+              ["all", "全部库存", summary?.active || 0],
+              ["warning", "库存预警", lowCount],
+              ["empty", "已缺货", summary?.out_of_stock || 0],
             ].map(([id, label, n]) => (
               <button
                 key={id}
@@ -2124,7 +2117,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
               </tr>
             </thead>
             <tbody>
-              {filtered.slice((page - 1) * 8, page * 8).map((p) => (
+              {filtered.map((p) => (
                 <tr key={p.id}>
                   <td>
                     <div className="product-info">
@@ -2203,7 +2196,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
             />
           )}
         </div>
-        <Pagination total={filtered.length} page={page} setPage={setPage} />
+        <Pagination total={total} page={page} setPage={setPage} />
       </section>
       </div>
       <div className="page-hint">
@@ -2284,17 +2277,15 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
     setTab("all");
   }, [page]);
   useEffect(() => setPageNum(1), [query, days, tab]);
-  const filtered = data.orders.filter(
-    (o) =>
-      (!type || businessType(o) === type) &&
-      (tab === "all" || businessType(o) === tab) &&
-      (days === "all" ||
-        new Date(o.created_at) >
-          new Date(Date.now() - Number(days) * 86400000)) &&
-      [o.number, o.partner, ...o.items.map((i) => i.name)].some((s) =>
-        s.toLowerCase().includes(query.toLowerCase()),
-      ),
-  );
+  const direction = type || tab;
+  const list = useQuery(queryPath('/orders', { limit: 8, offset: (pageNum - 1) * 8, q: query,
+    business: ['in', 'out'].includes(direction) ? direction : null, kind: direction === 'transfer' ? 'transfer' : null,
+    from: days === 'all' ? null : new Date(Date.now() - Number(days) * 86400000).toISOString().slice(0, 10),
+  }), data, query ? 250 : 0);
+  const filtered = list.result?.orders || [];
+  const total = list.result?.total || 0;
+  const aggregate = list.result?.aggregate;
+  useEffect(() => { if (list.result) setPageNum(p => Math.min(p, Math.max(1, Math.ceil(total / 8)))); }, [list.result, total]);
   const titles = {
     purchases: ["PURCHASES", "采购入库", "采购入库"],
     sales: ["SALES", "销售出库", "销售出库"],
@@ -2303,6 +2294,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
   const [eyebrow, title, label] = titles[page];
   return (
     <>
+      <QueryStatus query={list} />
       <PageHeading
         eyebrow={eyebrow}
         title={title}
@@ -2335,13 +2327,13 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           </span>
           <strong>
             <small>¥ </small>
-            {money(reportOrders(filtered).reduce((s, o) => s + o.total, 0))}
+            {money(aggregate?.net_total || 0)}
           </strong>
         </div>
         <div>
           <span>有效单据</span>
           <strong>
-            {filtered.filter(o => o.status !== "void").length}
+            {aggregate?.active_count || 0}
             <small> 笔</small>
           </strong>
         </div>
@@ -2349,10 +2341,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           <span>物料流转数量</span>
           <strong>
             {count(
-              filtered.filter(o => o.status !== "void").reduce(
-                (s, o) => addQuantity(s, o.items.reduce((n, i) => addQuantity(n, i.quantity), 0)),
-                0,
-              ),
+              aggregate?.quantity || 0,
             )}
             <small> 件</small>
           </strong>
@@ -2385,10 +2374,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               >
                 {name}
                 <span>
-                  {type
-                    ? filtered.length
-                    : data.orders.filter((o) => id === "all" || businessType(o) === id)
-                        .length}
+                  {type ? total : list.result?.counts?.[`${id}_count`] || 0}
                 </span>
               </button>
             ))}
@@ -2429,7 +2415,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice((pageNum - 1) * 8, pageNum * 8).map((o) => (
+              {filtered.map((o) => (
                 <tr
                   key={o.id}
                   className="clickable-row"
@@ -2457,10 +2443,10 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                   <td>{o.partner}</td>
                   <td>
                     <div className="order-item-preview">
-                      <strong>{o.items[0]?.name}</strong>
+                      <strong>{o.item_names?.[0]}</strong>
                       <small>
-                        {o.items.length} 种物料 ·{" "}
-                        {o.items.reduce((s, i) => addQuantity(s, i.quantity), 0)} 件
+                        {o.item_count} 种物料 ·{" "}
+                        {count(o.item_quantity)} 件
                       </small>
                     </div>
                   </td>
@@ -2506,7 +2492,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           )}
         </div>
         <Pagination
-          total={filtered.length}
+          total={total}
           page={pageNum}
           setPage={setPageNum}
         />
@@ -2798,8 +2784,8 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               setBusy(true);
               setLatest(null);
               try {
-                const data = await api('/data', { warehouseId });
-                const current = data.products.find(p => p.id === product.id);
+                const [data, detail] = await Promise.all([api('/workspace', { warehouseId }), api(`/products/${product.id}`, { warehouseId })]);
+                const current = detail.product;
                 if (!current) throw new Error('物料已被删除，当前填写内容已保留。');
                 setLatest({ product: current, categories: data.categories });
               } catch (e) { setError(e.message); }
@@ -2947,7 +2933,11 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     [camera, setCamera] = useState(false),
     [scanMessage, setScanMessage] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
+  const selection = useProductSelection(data, items, query, includeInactive, initialProduct);
+  const contacts = useQuery('/contacts', data);
+  data = { ...data, products: selection.products, contacts: contacts.result || [] };
   const add = (p) => {
+    selection.remember(p);
     setItems((prev) => {
       const found = prev.find((i) => i.product_id === p.id);
       return found
@@ -2969,10 +2959,10 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     setScanMessage(`已添加 ${p.name}${p.active === 0 ? "（已停用）" : ""}`);
     setError("");
   };
-  const scan = (code) => {
+  const scan = async (code) => {
     setCamera(false);
     try {
-      const p = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id || 1, sourceId: data.instance_id });
+      const p = await lookupProductCode(code, data);
       if (!p) {
         setError(`未找到条码「${code.trim()}」，请先在物料管理中建档。`);
         return;
@@ -3029,14 +3019,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
   });
   const partners = (data.contacts || []).filter(c => c.active && c.role === (type === "in" ? "supplier" : "customer"));
-  const matches = data.products
-    .filter(p => includeInactive || p.active !== 0)
-    .filter((p) =>
-      [p.name, p.barcode].some((s) =>
-        s.toLowerCase().includes(query.toLowerCase()),
-      ),
-    )
-    .slice(0, 6);
+  const matches = selection.matches.slice(0, 6);
   return (
     <Modal
       title={type === "in" ? "新建采购入库" : "新建销售出库"}
@@ -3045,6 +3028,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
       wide
     >
       <form onSubmit={submit}>
+        {selection.error && <div role="alert">{selection.error}</div>}<QueryStatus query={contacts} />
         <div className="form-body order-form-body">
           <label className="inactive-product-option"><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />包含停用物料（用于清库存等操作）</label>
 
@@ -3174,6 +3158,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               <tbody>
                 {items.map((i) => {
                   const p = data.products.find((p) => p.id === i.product_id);
+                  if (!p) return <tr key={i.product_id}><td colSpan={4}>正在核对物料 #{i.product_id}；若物料已删除，请移除后重新选择。</td><td><button type="button" aria-label={`移除物料 #${i.product_id}`} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></button></td></tr>;
                   return (
                     <tr key={i.product_id}>
                       <td>
@@ -3398,20 +3383,33 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
   useEffect(() => {
     if (mode !== 'query' && !can(mode === 'in' ? 'purchase' : 'sale')) { setMode('query'); setCamera(false); setStockLabel(null); }
   }, [mode, data.user]);
-  const product = data.products.find((p) => p.id === selected?.id) || selected;
+  useEffect(() => {
+    if (!selected?.id) return;
+    const controller = new AbortController();
+    api(`/products/${selected.id}`, { warehouseId: data.warehouse_id, signal: controller.signal })
+      .then(({ product }) => { if (!controller.signal.aborted) setSelected(product); })
+      .catch(error => { if (!controller.signal.aborted) { setSelected(null); setError(error.message); } });
+    return () => controller.abort();
+  }, [data, selected?.id]);
+  const product = selected;
+  const scanGeneration = useRef(0);
+  useEffect(() => () => { scanGeneration.current++; }, [data.warehouse_id]);
   const input = useRef();
   useEffect(() => {
     if (manual) input.current?.focus();
   }, [manual]);
-  const scan = (code) => {
+  const scan = async (code) => {
     if (stockBusy) return;
+    const generation = ++scanGeneration.current;
     setCamera(false);
     const operation = stockQrLabel(code);
     if (operation) { setSelected(null); setError(""); setStockLabel(operation); setBarcode(""); return; }
     let p = null;
     try {
-      p = resolveProductCode(code, { products: data.products, warehouseId: data.warehouse_id || 1, sourceId: data.instance_id });
+      p = await lookupProductCode(code, data);
+      if (generation !== scanGeneration.current) return;
     } catch (e) {
+      if (generation !== scanGeneration.current) return;
       setError(e.message);
       setSelected(null);
       return;

@@ -1,8 +1,9 @@
+import { useQuery } from './queries.js';
+import { lookupProductCode, useProductSelection } from './product-query.js';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { Select, ContactPicker } from "./Dropdown.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
-import { resolveProductCode } from "./product-scan.js";
 import { stockQrPayload, newRequestId } from "./stock-qr-client.js";
 import { download } from "./data-files.js";
 import "./stock-qr.css";
@@ -172,6 +173,9 @@ export function StockQrManager({
       body: { ...body, request_id: request.current.id },
     });
   };
+  const selection = useProductSelection(data, form?.items || [], query, true, initialProduct);
+  const contacts = useQuery('/contacts', data);
+  data = { ...data, products: selection.products, contacts: contacts.result || [] };
   const line = (p) => ({
     product_id: p.id,
     name: p.name,
@@ -211,6 +215,7 @@ export function StockQrManager({
     );
   };
   const add = (p) => {
+    selection.remember(p);
     if (form.items.some((i) => i.product_id === p.id)) {
       setError("该物料已在明细中，请编辑已有数量。");
       return;
@@ -229,14 +234,10 @@ export function StockQrManager({
     setQuery("");
     setError("");
   };
-  const scan = (raw) => {
+  const scan = async (raw) => {
     setCamera(false);
     try {
-      const p = resolveProductCode(raw, {
-        products: data.products,
-        warehouseId: data.warehouse_id,
-        sourceId: data.instance_id,
-      });
+      const p = await lookupProductCode(raw, data);
       if (!p) throw new Error("未找到物料，请先建立物料档案。");
       add(p);
       setBarcode("");
@@ -409,15 +410,10 @@ export function StockQrManager({
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </label>
+              {(selection.error || contacts.error) && <div role="alert">{selection.error || contacts.error}</div>}
               <div className="stock-qr-options">
                 {query &&
-                  data.products
-                    .filter((p) =>
-                      `${p.name} ${p.barcode}`
-                        .toLowerCase()
-                        .includes(query.toLowerCase()),
-                    )
-                    .slice(0, 15)
+                  selection.matches
                     .map((p) => (
                       <button
                         type="button"

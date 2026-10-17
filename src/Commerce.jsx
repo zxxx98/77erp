@@ -54,7 +54,7 @@ export function useBusiness() {
   };
   return { busy, error, setError, run, send };
 }
-export function BusinessTools({ products = [], warehouses = [], warehouseId, onSaved, onUse, onRefresh, initialTab }) {
+export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onUse, onRefresh, initialTab }) {
   const { can, manage } = usePermissions();
   const available = [
     ...(can('business') ? [['contacts', '供应商与客户']] : []),
@@ -66,20 +66,21 @@ export function BusinessTools({ products = [], warehouses = [], warehouseId, onS
   ];
   const [tab, setTab] = useState(initialTab || available[0][0]);
   const active = available.some(([id]) => id === tab) ? tab : available[0][0];
+  const [visited, setVisited] = useState(() => new Set([tab]));
   return (
     <section className="operation-panel">
       <div className="operation-tabs" aria-label="业务分类">
         {available.map(([id, label]) => (
           <button type="button" key={id} aria-pressed={active === id}
-            className={`btn btn-${active === id ? 'primary' : 'secondary'}`} onClick={() => setTab(id)}>{label}</button>
+            className={`btn btn-${active === id ? 'primary' : 'secondary'}`} onClick={() => { setTab(id); setVisited(current => new Set([...current, id])); }}>{label}</button>
         ))}
       </div>
       {active === 'contacts' && <Contacts onRefresh={onRefresh} />}
       {active === 'templates' && <Templates onUse={onUse} />}
       {active === 'finance' && <Finance />}
       {active === 'profit' && <Profit />}
-      {can('stocktake') && <div hidden={active !== 'stocktake'}><Stocktake products={products} onSaved={onSaved} /></div>}
-      {can('transfer') && <div hidden={active !== 'transfer'}><Transfer products={products} warehouses={warehouses} warehouseId={warehouseId} onSaved={onSaved} /></div>}
+      {can('stocktake') && (active === 'stocktake' || visited.has('stocktake')) && <div hidden={active !== 'stocktake'}><Stocktake data={data} onSaved={onSaved} /></div>}
+      {can('transfer') && (active === 'transfer' || visited.has('transfer')) && <div hidden={active !== 'transfer'}><Transfer data={data} warehouses={warehouses} warehouseId={warehouseId} onSaved={onSaved} /></div>}
       {can('stocktake') && <div hidden={active !== 'multi-stocktake'}><MultiStocktake key={warehouseId} warehouses={warehouses} warehouseId={warehouseId} active={active === 'multi-stocktake'} /></div>}
       {manage('data_io') && <div hidden={active !== 'import'}><ProductImport onSaved={onSaved} /></div>}
       {manage('data_io') && <div hidden={active !== 'export'}><ProductExport warehouses={warehouses} warehouseId={warehouseId} /></div>}

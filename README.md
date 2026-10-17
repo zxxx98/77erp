@@ -191,7 +191,7 @@ API 可通过 `X-Warehouse-ID` 请求头或 `warehouse_id` 查询参数指定仓
 
 `POST /api/warehouses` 新增仓库，可传 `reuse_catalog: true` 复用请求所选当前仓库的分类与物料；省略时创建空仓库。`PUT /api/warehouses/:id` 改名，管理员可通过 `DELETE /api/warehouses/:id` 删除符合条件的仓库。物料新增/编辑可发送 `sync_warehouse_ids: [2, 3]` 选择本次同步目标，省略或空数组则不向其他仓库同步。
 
-大工作空间的读取接口：`GET /api/products` 支持 `q`、`category_id`（含下级分类）、`status`（active / inactive / all）、`stock`（low / empty / all）、`limit`（1–100，默认 30）与 `offset`，返回 `products`、`total`、`has_more`、`next_offset`；`GET /api/orders` 支持 `business`（in / out，按业务方向合并退货）、`type`、`kind`（normal / return / transfer）、`status`、`from`、`to`、`partner`、`q`（单号、往来单位或物料）与 `limit` / `offset`，返回单头、物料条数与物料名摘要，不返回完整明细；`GET /api/orders/:id` 返回单张单据及明细（含可退数量和行金额）；`GET /api/dashboard` 返回当前仓库的物料统计、今日采购销售、按日趋势、最近单据与仓库列表。四者均按当前仓库过滤，并按权限隐藏库存价值、成本与收付字段；`GET /api/data` 保持原有全量响应，供旧客户端及仍需整份工作空间的界面使用。
+大工作空间的读取接口：`GET /api/products` 支持 `q`、`category_id`（含下级分类）、`status`（active / inactive / all）、`stock`（low / empty / all）、`limit`（1–100，默认 30）与 `offset`，返回 `products`、`total`、`has_more`、`next_offset`；`GET /api/orders` 支持 `business`（in / out，按业务方向合并退货）、`type`、`kind`（normal / return / transfer）、`status`、`from`、`to`、`partner`、`q`（单号、往来单位或物料）与 `limit` / `offset`，返回单头、物料条数与物料名摘要，不返回完整明细；`GET /api/orders/:id` 返回单张单据及明细（含可退数量和行金额）；`GET /api/dashboard` 返回当前仓库的物料统计、今日采购销售、按日趋势、最近单据与仓库列表。四者均按当前仓库过滤，并按权限隐藏库存价值、成本与收付字段；`GET /api/data` 保持原有全量响应，供旧客户端使用。当前桌面 Web、移动 Web / PWA 初始化和切换仓库使用 `GET /api/workspace`，仅返回账户、分类、仓库和设置，不携带物料、单据或往来单位集合。桌面列表每页 8 条，移动端每次追加 30 条，搜索和筛选在服务端执行；开单、扫码、盘点与调拨按需检索物料，`GET /api/products/:id` 读取单个物料档案。单据列表的 `aggregate` 返回整个筛选范围的净额、有效单据数和流转数量，`counts` 返回当前仓库各业务方向的单据数，统计不受当前页限制。导出仍通过专用导出接口读取完整范围。
 
 ## 扫码
 
