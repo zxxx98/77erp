@@ -2,7 +2,7 @@ import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { parseQuantity, addQuantity } from "../shared/quantity.js";
 import { usePermissions } from "./permissions.jsx";
 import React, { useEffect, useRef, useState } from "react";
-import { ArrowRight, FileSpreadsheet, Package, Trash2, Truck, Upload } from "lucide-react";
+import { ArrowRight, FileJson, FileSpreadsheet, Package, Trash2, Truck, Upload } from "lucide-react";
 import { api } from "./api.js";
 import { Select } from "./Dropdown.jsx";
 import {
@@ -558,8 +558,10 @@ export function Backup({ onSaved }) {
   const { busy, error, run, send } = useOperation();
   const [backup, setBackup] = useState(null),
     [preview, setPreview] = useState(null);
+  const fileInput = useRef(null);
+  const [fileName, setFileName] = useState("");
   return (
-    <div>
+    <div className="backup-business">
       {busy && <p><LoadingStatus>正在处理备份…</LoadingStatus></p>}
       <p>
         备份包含全部仓库、物料、库存成本、单据、盘点、往来单位、模板、收付款记录及操作人名称，不包含用户账号、密码和图床凭据。物料图片只备份 URL，图片文件需在图床保留。恢复会替换全部业务数据，保留当前账户、登录信息、图床配置、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
@@ -579,17 +581,22 @@ export function Backup({ onSaved }) {
       >
         下载业务备份
       </button>
-      <label>
-        选择备份文件
+      <div className="file-upload-field" role="group" aria-label="业务备份文件">
+        <div className="file-upload-label">选择备份文件</div>
         <input
+          ref={fileInput}
+          hidden
+          aria-label="选择备份文件"
           type="file"
           accept=".json"
           disabled={busy}
           onChange={(e) => {
             const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            setFileName("");
             setBackup(null);
             setPreview(null);
-            if (!file) return;
             void run(async () => {
               if (file.size > 95 * 1024 * 1024)
                 throw new Error("备份不能超过 95 MB。");
@@ -598,12 +605,29 @@ export function Backup({ onSaved }) {
                 method: "POST",
                 body: { backup: value },
               });
+              setFileName(file.name);
               setBackup(value);
               setPreview(result);
             });
           }}
         />
-      </label>
+        <button
+          type="button"
+          className="file-upload-button"
+          disabled={busy}
+          aria-busy={busy}
+          onClick={() => fileInput.current?.click()}
+        >
+          <span className="file-upload-icon" aria-hidden="true">
+            {busy ? <LoadingIndicator size={22} /> : <FileJson size={22} />}
+          </span>
+          <span className="file-upload-copy">
+            <strong>{busy ? "正在处理备份…" : fileName || "选择备份文件"}</strong>
+            <span>{busy ? "正在处理，请稍候" : "点击选择 JSON 业务备份文件，最大 95 MB"}</span>
+          </span>
+          {!busy && <Upload size={18} aria-hidden="true" />}
+        </button>
+      </div>
       {preview && (
         <>
           <p>

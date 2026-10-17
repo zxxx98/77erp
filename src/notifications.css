@@ -23,3 +23,5 @@
   .settings-nav { overflow-x: auto; }
   .settings-nav button { flex: 0 0 auto; padding: 12px; }
 }
+
+.r2-backup-settings > .settings-section-heading { margin-bottom: 24px; }

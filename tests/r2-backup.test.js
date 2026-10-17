@@ -164,3 +164,24 @@ test('retention warnings preserve backup success and reach existing notification
   const payload = JSON.parse(f.db.prepare("SELECT payload FROM notification_deliveries WHERE event='database_backup'").get().payload);
   assert.equal(payload.data.status, 'success'); assert.match(payload.message, /旧备份清理失败/);
 });
+
+test('R2 credentials trim clipboard whitespace and report invalid fields without exposing secrets', async t => {
+  const f = await fixture(t);
+  const saved = await f.configure({ ...credentials, access_key: ' \t' + credentials.access_key + '\r\n', secret_key: '\u00a0' + credentials.secret_key + '\uFEFF' });
+  assert.equal(saved.status, 200);
+  const stored = () => JSON.parse(f.db.prepare('SELECT config FROM r2_backup_settings').get().config);
+  assert.equal(stored().access_key, credentials.access_key);
+  assert.equal(stored().secret_key, credentials.secret_key);
+  assert.equal((await f.configure({ access_key: '   ', secret_key: '\n' })).status, 200);
+  assert.equal(stored().secret_key, credentials.secret_key);
+  for (const [key, label] of [['access_key', 'R2 Access Key ID'], ['secret_key', 'R2 Secret Access Key']]) {
+    for (const value of ['private secret', 'private\nsecret', 'private\u200bsecret', 'private\u0000secret', 'x'.repeat(4097), 123]) {
+      const response = await f.configure({ [key]: value });
+      assert.equal(response.status, 400);
+      assert.ok(response.data.error.includes(label));
+      assert.ok(!response.data.error.includes('private'));
+    }
+  }
+  assert.equal((await f.configure({ clear_secret_key: true })).status, 200);
+  assert.equal(stored().secret_key, '');
+});

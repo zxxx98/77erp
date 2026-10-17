@@ -21,7 +21,7 @@ export function R2BackupSettings({ active, onBusy, onDirty }) {
     finally { lock.current = false; setBusy(false); onBusy?.(false); }
   };
   const field = (key, value) => setConfig(c => ({ ...c, [key]: value }));
-  return <section className="notification-settings" aria-label="R2 自动备份">
+  return <section className="notification-settings r2-backup-settings" aria-label="R2 自动备份">
     <div className="settings-section-heading"><h3>Cloudflare R2 自动备份</h3><p>完整 SQLite 在线备份，包含所有仓库、账号和系统凭据。请使用私有存储桶；图片文件仍需在图床保留。</p></div>
     {config && <div className="notification-fields">
       <label className="notification-choice"><input type="checkbox" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)} /><span>启用定时备份</span></label>

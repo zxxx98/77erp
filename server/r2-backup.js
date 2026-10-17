@@ -96,9 +96,14 @@ export function installR2Backup(app, db, { r2Upload = uploadR2 } = {}) {
       if (!/^[a-zA-Z0-9/_-]*$/.test(c.prefix) || c.prefix.includes('//')) throw new Error('备份目录仅支持字母、数字、斜线、下划线和短横线。');
       c.prefix = c.prefix.replace(/^\/+|\/+$/g, '');
       for (const key of ['access_key', 'secret_key']) {
-        if (b[key] !== undefined && (typeof b[key] !== 'string' || b[key].length > 4096 || /[\x00-\x20\x7f]/.test(b[key]))) throw new Error('凭据格式无效。');
+        const label = key === 'access_key' ? 'R2 Access Key ID' : 'R2 Secret Access Key';
+        if (b[key] !== undefined && typeof b[key] !== 'string') throw new Error(`${label} 必须为文本。`);
+        // Clipboard content may include surrounding whitespace; preserve the key itself.
+        const value = (b[key] ?? '').trim();
+        if (value.length > 4096) throw new Error(`${label} 长度不能超过 4096 个字符。`);
+        if (/[\s\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/u.test(value)) throw new Error(`${label} 中间含有空白或不可见字符，请重新复制对应的凭据。`);
         if (b[`clear_${key}`] !== undefined && typeof b[`clear_${key}`] !== 'boolean') throw new Error('清除凭据选项无效。');
-        c[key] = b[`clear_${key}`] ? '' : b[key] || c[key];
+        c[key] = b[`clear_${key}`] ? '' : value || c[key];
       }
       if (c.enabled && !ready(c)) throw new Error('启用前请填写 R2 账户、存储桶和访问凭据。');
       db.prepare('UPDATE r2_backup_settings SET config=?,version=version+1 WHERE id=1').run(JSON.stringify(c));
