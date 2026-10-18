@@ -36,7 +36,7 @@ test("first-run setup, password confirmation, logout, login and session expiry",
   // Revoke the session outside the UI; the next business call must clear the workspace.
   expect((await page.request.post(base + "/api/auth/logout", { data: {} })).ok()).toBe(true);
   await page.getByRole("button", { name: "系统设置", exact: true }).click();
-  // Opening data management loads stocktake history and detects expiry immediately.
+  // Opening settings refreshes metadata without relying on hidden panels to detect expiry.
   await expect(page.getByRole("heading", { name: "账号登录" })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("登录已失效");
   await expect(page.getByRole("navigation")).toHaveCount(0);

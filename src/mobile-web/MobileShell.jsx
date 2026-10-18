@@ -5,7 +5,7 @@ import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, FilePenLine, History,
 import { usePermissions } from '../permissions.jsx';
 import { flattenCategories } from '../catalog.js';
 import { api } from '../api.js';
-import { orderLabel } from '../Operations.jsx';
+import { orderLabel } from '../order-utils.js';
 import { OfflineNotice, PwaActions, usePwa } from '../pwa/Pwa.jsx';
 import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
 import { download } from '../data-files.js';

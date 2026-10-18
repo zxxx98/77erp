@@ -1,7 +1,7 @@
 import { LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useState } from 'react';
 import { api } from './api.js';
-import { orderLabel } from './Operations.jsx';
+import { orderLabel } from './order-utils.js';
 import './product-history.css';
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });

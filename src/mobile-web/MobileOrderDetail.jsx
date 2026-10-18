@@ -1,6 +1,7 @@
 import React from 'react';
-import { Payments } from '../Commerce.jsx';
-import { OrderActions, orderLabel } from '../Operations.jsx';
+import { Payments } from '../LazyComponents.jsx';
+import { OrderActions } from '../LazyComponents.jsx';
+import { orderLabel } from '../order-utils.js';
 import { usePermissions } from '../permissions.jsx';
 import { orderLineAmount } from '../../shared/money.js';
 import { MobileButton, DetailRow, Notice, money, count, dateTime } from './ui.jsx';

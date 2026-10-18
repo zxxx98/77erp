@@ -1,3 +1,5 @@
+import { useBusiness } from './business-api.js';
+export { useBusiness } from './business-api.js';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { Select, ContactPicker } from "./Dropdown.jsx";
 export { ContactPicker } from "./Dropdown.jsx";
@@ -5,7 +7,8 @@ import { usePermissions } from './permissions.jsx';
 import React, { useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, Clock3, FilePenLine, Package, Trash2, UserRound } from "lucide-react";
 import { api } from "./api.js";
-import { orderLabel, Stocktake, ProductImport, ProductExport, Transfer } from "./Operations.jsx";
+import { Stocktake, ProductImport, ProductExport, Transfer } from './Operations.jsx';
+import { orderLabel } from './order-utils.js';
 import "./commerce.css";
 import { MultiStocktake } from './MultiStocktake.jsx';
 const money = (n) => `¥ ${(n / 100).toFixed(2)}`;
@@ -16,44 +19,6 @@ export const paymentLabel = {
   paid: "已结清",
   void: "已作废",
 };
-export function useBusiness() {
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const lock = useRef(false),
-    key = useRef({});
-  const run = async (fn) => {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      await fn();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  };
-  const send = async (path, body) => {
-    const fingerprint = JSON.stringify([path, body]);
-    if (key.current.fingerprint !== fingerprint)
-      key.current = {
-        fingerprint,
-        id: Array.from(crypto.getRandomValues(new Uint32Array(4)), (x) =>
-          x.toString(16),
-        ).join("-"),
-      };
-    const id = key.current.id;
-    const result = await api(path, {
-      method: "POST",
-      body: { ...body, request_id: id },
-    });
-    if (key.current.id === id) key.current = {};
-    return result;
-  };
-  return { busy, error, setError, run, send };
-}
 export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onUse, onRefresh, initialTab }) {
   const { can, manage } = usePermissions();
   const available = [
