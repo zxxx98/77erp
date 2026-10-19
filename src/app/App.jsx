@@ -351,9 +351,9 @@ function App({ admin, onLogout }) {
             className="user-profile"
             onClick={() => setModal({ kind: "account" })}
           >
-            <span className="avatar">{admin.username.slice(0, 1).toUpperCase()}</span>
+            <span className="avatar">{(user.name || user.username).slice(0, 1).toUpperCase()}</span>
             <span>
-              <strong>{admin.username}</strong>
+              <strong>{user.name || user.username}</strong>
               <small>{isAdmin ? "管理员" : "员工"}</small>
             </span>
             <Ellipsis size={18} />
@@ -449,7 +449,7 @@ function App({ admin, onLogout }) {
               aria-label={isAdmin ? "商户设置" : "账户设置"}
               onClick={() => setModal({ kind: isAdmin ? "settings" : "account" })}
             >
-              {admin.username.slice(0, 1).toUpperCase()}
+              {(user.name || user.username).slice(0, 1).toUpperCase()}
             </button>
             <button
               className="icon-button logout-button"
@@ -510,6 +510,7 @@ function App({ admin, onLogout }) {
                   openOrder={openOrder}
                   openTransfer={() => setModal({ kind: "businessTools", initialTab: "transfer" })}
                   reduceStock={reduceStock}
+                  increaseStock={product => setModal({ kind: "increase", product })}
                   showProduct={(product) => setModal({ kind: "productDetail", product })}
                   showBarcode={(product) =>
                     setModal({ kind: "barcode", product })
@@ -570,8 +571,9 @@ function App({ admin, onLogout }) {
       {modal?.kind === "detail" && (
         mobileDevice ? <MobileOrderDetail order={modal.order} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
-      {modal?.kind === "reduce" && can('stocktake') && (
+      {["reduce", "increase"].includes(modal?.kind) && can('stocktake') && (
         <ReduceStockModal
+          increase={modal.kind === "increase"}
           product={modal.product}
           onClose={() => setModal(null)}
           onSaved={saved}
@@ -590,7 +592,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
-      {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{admin.username} · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
+      {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{user.name || user.username}（{user.username}） · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools data={data} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
           onUse={template => openOrder(template.type, undefined, template)} onRefresh={reload} /></div>

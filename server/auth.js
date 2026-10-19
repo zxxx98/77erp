@@ -19,6 +19,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   const userColumns = db.prepare('PRAGMA table_info(users)').all();
   if (!userColumns.some(c => c.name === 'permissions')) db.exec('ALTER TABLE users ADD COLUMN permissions TEXT');
   if (!userColumns.some(c => c.name === 'permissions_version')) db.exec('ALTER TABLE users ADD COLUMN permissions_version INTEGER NOT NULL DEFAULT 1');
+  if (!userColumns.some(c => c.name === 'name')) db.exec("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''");
   db.exec(`CREATE TABLE IF NOT EXISTS user_permission_changes (
     id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
     changed_by INTEGER NOT NULL REFERENCES users(id), before_permissions TEXT, after_permissions TEXT NOT NULL,
@@ -49,11 +50,12 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     }
   }
   const initialized = () => !!db.prepare("SELECT 1 FROM users LIMIT 1").get();
-  const publicUser = (user) => ({ id: user.id, username: user.username, role: user.role,
+  const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, role: user.role,
     permissions: user.role === 'admin' ? permissionKeys : user.permissions == null ? legacyPermissions : JSON.parse(user.permissions),
     legacy_permissions: user.role === 'employee' && user.permissions == null,
     permissions_version: user.permissions_version ?? 1 });
   const validUsername = (value) => typeof value === 'string' && /^[A-Za-z0-9_.-]{3,32}$/.test(value.trim());
+  const validName = (value) => typeof value === 'string' && value.length <= 60;
   const validPassword = (value) => typeof value === 'string' && value.length >= 8 && value.length <= 128;
   const passwordFields = async (password) => {
     const salt = randomBytes(16).toString('hex');
@@ -78,7 +80,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   };
   const sessionUser = (req) => {
     const token = sessionToken(req);
-    const user = token ? db.prepare(`SELECT u.id,u.username,u.role,u.permissions,u.permissions_version FROM auth_sessions s
+    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.permissions,u.permissions_version FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`)
       .get(digest(token), Date.now()) : undefined;
     return user ? publicUser(user) : undefined;
@@ -143,13 +145,14 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   });
   app.post("/api/auth/setup", authLimit, async (req, res) => {
     if (initialized()) return res.status(409).json({ error: "管理员已设置，请直接登录。" });
-    const { username, password } = req.body || {};
+    const { username, password, name = '' } = req.body || {};
     if (typeof username !== "string" || !/^[A-Za-z0-9_.-]{3,32}$/.test(username.trim())) {
       return res.status(400).json({ error: "账号需为 3–32 位字母、数字或 ._-。" });
     }
     if (typeof password !== "string" || password.length < 8 || password.length > 128) {
       return res.status(400).json({ error: "密码需为 8–128 位字符。" });
     }
+    if (!validName(name)) return res.status(400).json({ error: '名称最多 60 个字。' });
     const salt = randomBytes(16).toString("hex");
     const hash = (await deriveKey(password, salt, 64)).toString("hex");
     // Recheck inside a write transaction: competing setup requests cannot replace the admin.
@@ -159,9 +162,9 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
         db.exec("ROLLBACK");
         return res.status(409).json({ error: "管理员已设置，请直接登录。" });
       }
-      db.prepare("INSERT INTO users(id,username,password_salt,password_hash,role,created_at) VALUES (1,?,?,?,'admin',?)")
-        .run(username.trim(), salt, hash, new Date().toISOString());
-      const state = issueSession(req, res, { id: 1, username: username.trim(), role: 'admin' });
+      db.prepare("INSERT INTO users(id,username,password_salt,password_hash,role,created_at,name) VALUES (1,?,?,?,'admin',?,?)")
+        .run(username.trim(), salt, hash, new Date().toISOString(), name.trim());
+      const state = issueSession(req, res, { id: 1, username: username.trim(), name: name.trim(), role: 'admin' });
       db.exec("COMMIT");
       clearAttempts(req);
       res.status(201).json(state);
@@ -260,10 +263,10 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if ((read && path === '/transfers') ||
           (post && (path === '/transfers' || /^\/transfers\/[0-9a-f-]{36}\/void$/.test(path)))) permission = 'transfer';
       if ((read || post) && path === '/stocktakes') permission = 'stocktake';
-      if (post && path === '/stock/reduce') permission = 'stocktake';
+      if (post && ['/stock/reduce', '/stock/increase'].includes(path)) permission = 'stocktake';
       if ((read && path === '/stocktakes/multi/products') || (post && path === '/stocktakes/multi/compare')) permission = 'stocktake';
       if ((post && ['/contacts','/templates'].includes(path)) ||
-          (post && /^\/templates\/\d+\/delete$/.test(path)) ||
+          (post && /^\/(templates|contacts)\/\d+\/delete$/.test(path)) ||
           ((read || ['POST','PUT'].includes(req.method)) && /^\/stock-qrs(?:\/[0-9a-f-]{36}(?:\/(usages|revisions))?)?$/.test(path))) permission = 'business';
       if ((read && ['/finance','/reports/profit'].includes(path)) ||
           ((read || post) && /^\/orders\/\d+\/(payments|settlement)$/.test(path)) ||
@@ -279,16 +282,16 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     }
     return res.status(403).json({ error: '没有此操作的权限，请联系管理员。' });
   });
-  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,role,active,created_at,permissions,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
+  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,name,role,active,created_at,permissions,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
   app.post('/api/users', async (req, res) => {
-    const { username, password, role = 'employee' } = req.body || {};
-    if (!validUsername(username) || !validPassword(password) || !['admin','employee'].includes(role))
-      return res.status(400).json({ error: '请填写有效账号、8–128 位密码及角色。' });
+    const { username, password, role = 'employee', name = '' } = req.body || {};
+    if (!validUsername(username) || !validPassword(password) || !validName(name) || !['admin','employee'].includes(role))
+      return res.status(400).json({ error: '请填写有效账号、8–128 位密码、角色及最多 60 个字的名称。' });
     const [salt, hash] = await passwordFields(password);
     if (sessionUser(req)?.role !== 'admin') return res.status(401).json({ error: '登录或权限已变化，请重新登录。' });
     try {
-      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,permissions) VALUES (?,?,?,?,?,'[]')")
-        .run(username.trim(), salt, hash, role, new Date().toISOString());
+      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,permissions) VALUES (?,?,?,?,?,?,'[]')")
+        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim());
       res.status(201).json({ id: Number(result.lastInsertRowid) });
     } catch (error) {
       if (!error.message.includes('UNIQUE')) throw error;
@@ -317,8 +320,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   });
   app.put('/api/users/:id', (req, res) => {
     const { role, active } = req.body || {};
-    if (!['admin','employee'].includes(role) || ![0,1].includes(active))
-      return res.status(400).json({ error: '请选择有效角色和账号状态。' });
+    if (!['admin','employee'].includes(role) || ![0,1].includes(active) || (req.body.name !== undefined && !validName(req.body.name)))
+      return res.status(400).json({ error: '请选择有效角色、账号状态，并填写最多 60 个字的名称。' });
     // Same recheck as the other account endpoints: a concurrent demotion must not slip through.
     if (sessionUser(req)?.role !== 'admin') return res.status(401).json({ error: '登录或权限已变化，请重新登录。' });
     db.exec('BEGIN IMMEDIATE');
@@ -329,7 +332,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
           db.prepare("SELECT COUNT(*) AS n FROM users WHERE active=1 AND role='admin'").get().n <= 1) {
         db.exec('ROLLBACK'); return res.status(409).json({ error: '不能停用或降级最后一个管理员。' });
       }
-      db.prepare('UPDATE users SET role=?,active=? WHERE id=?').run(role, active, user.id);
+      db.prepare('UPDATE users SET role=?,active=?,name=? WHERE id=?').run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), user.id);
       if (!active || role !== user.role) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(user.id);
       if (role !== user.role || active !== user.active) queueNotification(db, req, 'admin_action', { action: '修改账号角色／状态', target_user: user.username, before_role: user.role, role, before_active: user.active, active }, { global: true });
       db.exec('COMMIT');

@@ -248,6 +248,20 @@ export function installCommerce(app, db, { route, mutation }) {
       }),
     ),
   );
+  app.post(
+    "/api/contacts/:id/delete",
+    route((req) => mutation(req, () => {
+      const contact = db.prepare("SELECT * FROM contacts WHERE id=?").get(req.params.id);
+      if (!contact || contact.version !== req.body.version)
+        fail("往来单位已变化或已删除，请刷新后重试。");
+      if (db.prepare("SELECT 1 FROM orders WHERE partner_id=?").get(contact.id) ||
+          db.prepare("SELECT 1 FROM templates WHERE partner_id=?").get(contact.id) ||
+          db.prepare("SELECT 1 FROM stock_qr_codes WHERE partner_id=?").get(contact.id))
+        fail("此往来单位已关联单据、模板或出入库二维码，不能删除；可停用以保留历史记录。");
+      db.prepare("DELETE FROM contacts WHERE id=?").run(contact.id);
+      return { ok: true };
+    })),
+  );
   app.get(
     "/api/templates",
     route((req) =>
@@ -288,7 +302,7 @@ export function installCommerce(app, db, { route, mutation }) {
               .prepare(
                 "INSERT INTO templates(name,type,partner,partner_id,note,items,updated_at,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?,?,?)",
               )
-              .run(...fields, req.warehouse.id, req.user.id, req.user.username).lastInsertRowid,
+              .run(...fields, req.warehouse.id, req.user.id, (req.user.name || req.user.username)).lastInsertRowid,
           );
         const d = db.prepare("SELECT * FROM templates WHERE id=?").get(id);
         return { ...d, items: JSON.parse(d.items) };

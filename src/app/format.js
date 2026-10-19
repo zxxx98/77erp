@@ -24,6 +24,9 @@ const sameDay = (a, b) =>
   new Date(a).toDateString() === new Date(b).toDateString();
 
 const stockStatus = (p) =>
-  p.stock === 0 ? "缺货" : p.stock <= p.threshold ? "库存偏低" : "库存充足";
+  p.threshold <= 0 ? "不预警" : p.stock === 0 ? "缺货" : p.stock <= p.threshold ? "库存偏低" : "库存充足";
 
-export { money, count, shortDate, dateTime, todayKey, sameDay, stockStatus };
+const stockTone = (p) =>
+  p.threshold <= 0 ? "gray" : p.stock === 0 ? "red" : p.stock <= p.threshold ? "orange" : "green";
+
+export { money, count, shortDate, dateTime, todayKey, sameDay, stockStatus, stockTone };

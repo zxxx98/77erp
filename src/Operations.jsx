@@ -301,7 +301,7 @@ export function Stocktake({ data, onSaved }) {
         </p>
       )}
       <details>
-        <summary>最近盘点与期初库存记录（最多 1000 条）</summary>
+        <summary>最近库存调整与期初库存记录（最多 1000 条）</summary>
         <div className="operation-scroll">
           {history.length ? (
             history.map((h) => (

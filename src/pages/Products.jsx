@@ -15,7 +15,7 @@ import {
 } from '../components/common.jsx';
 import { Plus, Search, X, List, Grid2X2, ScanLine, ChevronRight } from 'lucide-react';
 import { LoadingStatus } from '../Loading.jsx';
-import { money, count, stockStatus } from '../app/format.js';
+import { money, count, stockStatus, stockTone } from '../app/format.js';
 import { CategoryManager } from '../LazyComponents.jsx';
 
 function Products({ data, search, setSearch, edit, showProduct, barcode, onCategoriesChanged, onSaved, isAdmin }) {
@@ -163,11 +163,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       <td>
                         <Badge
                           tone={
-                            p.stock === 0
-                              ? "red"
-                              : p.stock <= p.threshold
-                                ? "orange"
-                                : "green"
+                            stockTone(p)
                           }
                         >
                           {stockStatus(p)}
@@ -204,11 +200,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                     <ProductArt product={p} size="large" />
                     <Badge
                       tone={
-                        p.stock === 0
-                          ? "red"
-                          : p.stock <= p.threshold
-                            ? "orange"
-                            : "green"
+                        stockTone(p)
                       }
                     >
                       {stockStatus(p)}

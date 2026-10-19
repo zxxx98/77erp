@@ -51,6 +51,7 @@
 .mw-badge {max-width:100%;display:inline-flex;align-self:flex-start;border-radius:6px;padding:4px 8px;font-size:12px;font-weight:600;line-height:18px;}
 .mw-badge.red {background:#fbeef0;color:#c63f4a;}
 .mw-badge.orange {background:#fbf4e9;color:#a56b12;}
+.mw-badge.gray {background:#f1f3f6;color:#697586;}
 .mw-badge.green {background:#edf7f4;color:#16866d;}
 .mw-order-summary {display:flex;width:100%;flex-direction:column;gap:10px;text-align:left;padding:12px 0;border:0;background:transparent;overflow-wrap:anywhere;}
 .mw-order-summary>strong {font-size:15px;font-weight:600;}
@@ -71,6 +72,7 @@
 .mw-error svg {flex-shrink:0;margin-top:2px;}
 .mw-empty {padding:28px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;color:#647084;}
 .mw-account {display:flex;align-items:center;gap:12px;}
+.mw-account > div {min-width:0;overflow-wrap:anywhere;}
 .mw-account svg {color:#2563eb;flex-shrink:0;}
 .mw-offline {display:flex;align-items:center;gap:8px;padding:10px 16px;color:#a56b12;background:#fff6e6;font-size:13px;}
 .mw-refresh {display:flex;gap:12px;align-items:center;justify-content:space-between;padding-top:24px;flex-wrap:wrap;}

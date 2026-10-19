@@ -227,7 +227,7 @@ test("contact search stays collapsed, filters in a dropdown and selects without 
     await expect(page.getByLabel("联系人", { exact: true })).toHaveValue("李女士");
     expect(f.db.prepare("SELECT COUNT(*) AS n FROM contacts").get().n).toBe(3);
     await search.click();
-    await page.getByText("同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。", { exact: true }).click();
+    await page.getByText(/^同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。/).click();
     await expect(search).toHaveAttribute("aria-expanded", "false");
     await search.click();
     await page.keyboard.press("Escape");

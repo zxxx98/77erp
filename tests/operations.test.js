@@ -482,3 +482,33 @@ test("existing order schema upgrades without changing stock and marks only seede
     assert.equal(migrated.db.prepare("SELECT COUNT(*) AS n FROM orders WHERE stock_applied=0").get().n, 64);
   } finally { migrated.db.close(); }
 });
+
+
+test('material returns increase inventory once, preserve average cost, reject stale and invalid quantities, and survive backup restore', async t => {
+  const f = await fixture(t), id = await f.makeProduct();
+  const payload = { product_id: id, quantity: 0.123456, expected_stock: 0, reason: '生产余料退回', request_id: randomUUID() };
+  assert.equal((await f.request('/stock/increase', payload)).status, 200);
+  assert.equal((await f.request('/stock/increase', payload)).status, 200);
+  assert.equal(f.stock(id), 0.123456);
+  assert.equal(f.db.prepare('SELECT inventory_value_cents FROM products WHERE id=?').get(id).inventory_value_cents, 123);
+  assert.equal(f.db.prepare("SELECT COUNT(*) n FROM stock_adjustments WHERE product_id=? AND kind='increase'").get(id).n, 1);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM orders WHERE note=?').get(payload.reason).n, 0);
+  assert.equal((await f.command('/stock/increase', { ...payload, request_id: randomUUID() })).status, 400);
+  for (const quantity of [0, -1, 0.0000001, '1', 99999999]) {
+    const result = await f.command('/stock/increase', { product_id: id, quantity, expected_stock: f.stock(id), reason: '错误数量' });
+    assert.equal(result.status, 400);
+  }
+  assert.equal((await f.command('/stock/increase', { product_id: id, quantity: 1, expected_stock: f.stock(id), reason: '' })).status, 400);
+  const warehouse = (await f.request('/warehouses', { name: '退料分仓' })).data.id;
+  assert.equal((await f.command(`/stock/increase?warehouse_id=${warehouse}`, { product_id: id, quantity: 1, expected_stock: f.stock(id), reason: '跨仓' })).status, 400);
+  f.db.prepare('UPDATE products SET stock=2,inventory_value_cents=3000 WHERE id=?').run(id);
+  assert.equal((await f.command('/stock/increase', { product_id: id, quantity: 1, expected_stock: 2, reason: '余料回库' })).status, 200);
+  assert.equal(f.db.prepare('SELECT inventory_value_cents FROM products WHERE id=?').get(id).inventory_value_cents, 4500);
+  const history = (await f.request(`/products/${id}/history`)).data.records;
+  assert.ok(history.some(row => row.event === 'increase' && row.delta === 1));
+  const backup = (await f.request('/backup')).data;
+  const preview = await f.request('/backup/preview', { backup });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal((await f.command('/backup/restore', { backup, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
+  assert.equal(f.stock(id), 3);
+});

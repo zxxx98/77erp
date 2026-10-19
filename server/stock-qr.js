@@ -218,7 +218,7 @@ export function installStockQr(app, db) {
         q.version,
         JSON.stringify(detail(q)),
         req.user.id,
-        req.user.username,
+        (req.user.name || req.user.username),
         now(),
       );
   const validate = (q) => {
@@ -363,9 +363,9 @@ export function installStockQr(app, db) {
                 body.note ?? "",
                 body.enabled === false ? 0 : 1,
                 req.user.id,
-                req.user.username,
+                (req.user.name || req.user.username),
                 req.user.id,
-                req.user.username,
+                (req.user.name || req.user.username),
                 at,
                 at,
               ).lastInsertRowid,
@@ -429,7 +429,7 @@ export function installStockQr(app, db) {
             b.note ?? "",
             b.enabled === undefined ? q.enabled : b.enabled ? 1 : 0,
             req.user.id,
-            req.user.username,
+            (req.user.name || req.user.username),
             now(),
             q.id,
           );
@@ -587,7 +587,7 @@ export function installStockQr(app, db) {
             q.used_scans + 1,
             JSON.stringify(view),
             req.user.id,
-            req.user.username,
+            (req.user.name || req.user.username),
             now(),
           );
           const result = {
@@ -624,7 +624,7 @@ export function validateStockQrBackup(data) {
     amounts = new Map();
   const actor = (row, prefix) =>
     (row[prefix] === null || integer(row[prefix], 1)) &&
-    text(row[`${prefix}_name`], 32, true);
+    text(row[`${prefix}_name`], 60, true);
   for (const q of codes.values()) {
     if (
       !uuid(q.qr_id) ||

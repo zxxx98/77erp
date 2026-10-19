@@ -463,3 +463,24 @@ test('return allocation also carries sub-cent remainders forward until the final
     assert.equal((await f.request('/backup/preview', { backup: corrupt })).status, 400);
   }
 });
+
+
+test('unused suppliers and customers can be deleted with version and retry protection; linked contacts retain their history', async t => {
+  const f = await fixture(t), productId = await f.product();
+  for (const role of ['supplier', 'customer']) {
+    const body = { role, name: role, active: 1, person: '', phone: '', address: '', note: '' };
+    const id = (await f.command('/contacts', body)).data.id;
+    assert.equal((await f.command(`/contacts/${id}/delete`, { version: 0 })).status, 400);
+    const deletion = { request_id: randomUUID(), version: 1 };
+    assert.equal((await f.request(`/contacts/${id}/delete`, deletion)).status, 200);
+    assert.equal((await f.request(`/contacts/${id}/delete`, deletion)).status, 200);
+    assert.ok(!(await f.request('/contacts')).data.some(c => c.id === id));
+    const linkedId = (await f.command('/contacts', body)).data.id;
+    const type = role === 'supplier' ? 'in' : 'out';
+    if (type === 'out') await f.order(productId, 'in', 2, 10);
+    await f.order(productId, type, 1, 10, { partner_id: linkedId });
+    const blocked = await f.command(`/contacts/${linkedId}/delete`, { version: 1 });
+    assert.equal(blocked.status, 400);
+    assert.match(blocked.data.error, /关联/);
+  }
+});

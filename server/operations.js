@@ -212,7 +212,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             source.id,
             source.partner_id,
             source.warehouse_id,
-            req.user.id, req.user.username,
+            req.user.id, (req.user.name || req.user.username),
           );
         for (const i of items) {
           const movedCost = changeStock(i.product_id, (type === "in" ? 1 : -1) * i.quantity, i.return_cost);
@@ -307,6 +307,24 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         return { ok: true, stock: next };
       }),
     ),
+  );
+
+  app.post(
+    "/api/stock/increase",
+    route(req => mutation(req, () => {
+      const reason = reasonOf(req.body);
+      const { product_id, quantity, expected_stock } = req.body;
+      if (!integer(product_id) || !validQuantity(quantity, true) || !validQuantity(expected_stock))
+        fail("请填写有效的物料、增加数量（正数，最多 6 位小数）及当前库存。");
+      const p = product(product_id);
+      if (p.warehouse_id !== req.warehouse.id) fail("物料不属于当前仓库。");
+      if (p.stock !== expected_stock) fail(`${p.name} 库存已变化，请刷新后重试。`);
+      const next = addQuantity(p.stock, quantity);
+      if (!validQuantity(next)) fail("增加后库存超出上限。");
+      adjustment(randomUUID(), p, next, reason, "increase");
+      changeStock(p.id, quantity);
+      return { ok: true, stock: next };
+    })),
   );
 
   function validateRows(rows, warehouseId) {
@@ -457,7 +475,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     }
     for (const table of ['orders','templates']) for (const row of data[table] || []) {
       if (!(row.created_by === null || (Number.isSafeInteger(row.created_by) && row.created_by > 0)) ||
-          typeof row.created_by_name !== 'string' || row.created_by_name.length > 32)
+          typeof row.created_by_name !== 'string' || row.created_by_name.length > 60)
         fail('备份操作人信息无效。');
     }
     // Backups made before product lifecycle support default to listed products.
@@ -642,7 +660,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !text(a.batch, 100) ||
         !text(a.name, 100) ||
         !text(a.reason) ||
-        !["stocktake", "opening", "reduce"].includes(a.kind) ||
+        !["stocktake", "opening", "reduce", "increase"].includes(a.kind) ||
         !text(a.created_at, 100)
       )
         fail("备份盘点记录无效。");
@@ -653,7 +671,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             Math.abs(change[key] * 100 - Math.round(change[key] * 100)) <= 0.00001) ||
           (change.before_cost === change.after_cost && change.before_price === change.after_price) ||
           !(change.created_by === null || (Number.isSafeInteger(change.created_by) && change.created_by > 0)) ||
-          !text(change.created_by_name, 32) || !text(change.created_at, 100))
+          !text(change.created_by_name, 60) || !text(change.created_at, 100))
         fail('备份物料改价记录无效。');
     }
     const paid = new Map();

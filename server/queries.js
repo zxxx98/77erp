@@ -102,8 +102,8 @@ export function installQueries(app, db) {
       const clauses = ['warehouse_id=?'], params = [req.warehouse.id];
       if (status === 'active') clauses.push('active!=0');
       if (status === 'inactive') clauses.push('active=0');
-      if (stock === 'low') clauses.push('stock<=threshold');
-      if (stock === 'empty') clauses.push('stock=0');
+      if (stock === 'low') clauses.push('threshold>0 AND stock<=threshold');
+      if (stock === 'empty') clauses.push('threshold>0 AND stock=0');
       if (req.query.category_id !== undefined && req.query.category_id !== '' && req.query.category_id !== 'all') {
         const raw = String(req.query.category_id);
         if (!/^\d+$/.test(raw)) fail('分类筛选无效。');
@@ -210,7 +210,7 @@ export function installQueries(app, db) {
         .prepare(`SELECT COUNT(*) AS products, SUM(active!=0) AS active, SUM(stock) AS stock,
           SUM(CASE WHEN active!=0 THEN stock ELSE 0 END) AS active_stock,
           SUM(CASE WHEN active!=0 THEN inventory_value_cents ELSE 0 END) AS active_value,
-          SUM(active!=0 AND stock>0 AND stock<=threshold) AS low_stock, SUM(active!=0 AND stock=0) AS out_of_stock,
+          SUM(active!=0 AND threshold>0 AND stock>0 AND stock<=threshold) AS low_stock, SUM(active!=0 AND threshold>0 AND stock=0) AS out_of_stock,
           COALESCE(SUM(inventory_value_cents),0) AS inventory_value_cents FROM products WHERE warehouse_id=?`)
         .get(req.warehouse.id);
       const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -247,7 +247,7 @@ export function installQueries(app, db) {
           low_stock: counts.low_stock || 0, out_of_stock: counts.out_of_stock || 0,
           inventory_value_cents: hidesCosts(req) ? undefined : counts.inventory_value_cents,
           low_stock_products: db
-            .prepare('SELECT * FROM products WHERE warehouse_id=? AND active!=0 AND stock<=threshold ORDER BY stock,id LIMIT 5')
+            .prepare('SELECT * FROM products WHERE warehouse_id=? AND active!=0 AND threshold>0 AND stock<=threshold ORDER BY stock,id LIMIT 5')
             .all(req.warehouse.id)
             .map((product) => { if (hidesCosts(req)) delete product.inventory_value_cents; return product; }),
         },

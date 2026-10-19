@@ -24,9 +24,9 @@ import {
   Minus,
   ShieldCheck,
 } from 'lucide-react';
-import { count, money, stockStatus } from '../app/format.js';
+import { count, money, stockStatus, stockTone } from '../app/format.js';
 
-function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceStock, showBarcode, showProduct }) {
+function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceStock, increaseStock, showBarcode, showProduct }) {
   const { can, costs } = usePermissions();
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
@@ -183,11 +183,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
                   <td className="number-cell">
                     <strong
                       className={
-                        p.stock === 0
-                          ? "red-text"
-                          : p.stock <= p.threshold
-                            ? "orange-text"
-                            : ""
+                        ({ red: "red-text", orange: "orange-text" })[stockTone(p)] || ""
                       }
                     >
                       {p.stock}
@@ -200,11 +196,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
                   <td>
                     <Badge
                       tone={
-                        p.stock === 0
-                          ? "red"
-                          : p.stock <= p.threshold
-                            ? "orange"
-                            : "green"
+                        stockTone(p)
                       }
                     >
                       {stockStatus(p)}
@@ -219,6 +211,9 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
                       >
                         <Plus size={14} />
                         补货
+                      </button>
+                      <button className="text-button" hidden={!can("stocktake")} onClick={() => increaseStock(p)}>
+                        <Plus size={14} />增加库存（退料）
                       </button>
                       <button
                         className="text-button danger"

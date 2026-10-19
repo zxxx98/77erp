@@ -246,13 +246,13 @@ const routeRoles = new Map(Object.entries({
   'get /api/settings/notifications': 'admin', 'put /api/settings/notifications': 'admin',
   'get /api/settings/notifications/deliveries': 'admin', 'post /api/settings/notifications/test': 'admin',
   'post /api/settings/notifications/deliveries/:id/retry': 'admin',
-  'get /api/contacts': 'employee', 'post /api/contacts': 'admin',
+  'get /api/contacts': 'employee', 'post /api/contacts': 'admin', 'post /api/contacts/:id/delete': 'admin',
   'get /api/templates': 'employee', 'post /api/templates': 'employee', 'post /api/templates/:id/delete': 'employee',
   'get /api/orders/:id/payments': 'admin', 'post /api/orders/:id/payments': 'admin', 'post /api/orders/:id/settlement': 'admin',
   'post /api/payments/:id/reverse': 'admin', 'get /api/finance': 'admin', 'get /api/reports/profit': 'admin',
   'post /api/orders/:id/void': 'admin', 'post /api/orders/:id/returns': 'admin',
   'get /api/stocktakes': 'admin', 'post /api/stocktakes': 'admin',
-  'post /api/stock/reduce': 'admin',
+  'post /api/stock/reduce': 'admin', 'post /api/stock/increase': 'admin',
   'get /api/stocktakes/multi/products': 'admin', 'post /api/stocktakes/multi/compare': 'admin',
   'post /api/products/import/preview': 'admin', 'post /api/products/import': 'admin', 'get /api/products/export': 'admin',
   'get /api/stock-qrs': 'admin', 'post /api/stock-qrs': 'admin', 'get /api/stock-qrs/:qr_id': 'admin', 'put /api/stock-qrs/:qr_id': 'admin',
@@ -328,4 +328,32 @@ test('a conflicting account upgrade fails loudly and leaves the legacy administr
   assert.equal(restarted.db.prepare('SELECT password_hash FROM users WHERE id=1').get().password_hash, 'legacy-hash');
   assert.equal(restarted.db.prepare("SELECT 1 FROM sqlite_master WHERE name='administrator'").get(), undefined);
   restarted.db.close();
+});
+
+
+test('account names are optional, validated, reflected in active sessions and snapshotted in business records', async t => {
+  const f = await fixture(t);
+  const name = '张'.repeat(60);
+  const created = await f.request(f.admin, '/users', { username: 'named', password, name });
+  assert.equal(created.status, 201);
+  const login = await f.request(null, '/auth/login', { username: 'named', password });
+  assert.equal(login.data.name, name);
+  assert.equal(login.data.username, 'named');
+  const user = (await f.request(f.admin, '/users')).data.find(u => u.id === created.data.id);
+  await f.request(f.admin, `/users/${user.id}/permissions`, { permissions: ['purchase', 'business'], version: user.permissions_version }, 'PUT');
+  const order = await f.command(login.cookie, '/orders', { type: 'in', partner: '名称测试供应商', items: [{ product_id: 1, quantity: 1, price: 10 }] });
+  assert.equal(order.status, 201);
+  assert.equal(f.db.prepare('SELECT created_by_name FROM orders WHERE id=?').get(order.data.id).created_by_name, name);
+  const update = next => f.request(f.admin, `/users/${user.id}`, { role: 'employee', active: 1, ...next }, 'PUT');
+  assert.equal((await update({ name: '李四' })).status, 200);
+  assert.equal((await f.request(login.cookie, '/auth/status')).data.name, '李四');
+  assert.equal((await update({})).status, 200);
+  assert.equal((await f.request(login.cookie, '/auth/status')).data.name, '李四');
+  for (const invalid of [null, 7, '名'.repeat(61)]) assert.equal((await update({ name: invalid })).status, 400);
+  assert.equal((await update({ name: '  ' })).status, 200);
+  assert.equal((await f.request(login.cookie, '/auth/status')).data.name, 'named');
+  assert.equal(f.db.prepare('SELECT created_by_name FROM orders WHERE id=?').get(order.data.id).created_by_name, name);
+  const backup = (await f.request(f.admin, '/backup')).data;
+  const preview = (await f.request(f.admin, '/backup/preview', { backup })).data;
+  assert.equal((await f.command(f.admin, '/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
 });

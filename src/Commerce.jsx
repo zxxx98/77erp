@@ -74,7 +74,7 @@ function Contacts({ onRefresh }) {
     <div>
       {busy && <p><LoadingStatus>正在保存往来单位…</LoadingStatus></p>}
       <p>
-        同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。
+        同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。未关联单据、模板或出入库二维码的单位可删除。
       </p>
       <ContactPicker contacts={contacts} value={form.id ? form.name : ""} selectedId={form.id}
         label="搜索往来单位" searchable loading={loading} disabled={busy} onSelect={setForm} />
@@ -140,6 +140,15 @@ function Contacts({ onRefresh }) {
       >
         保存往来单位
       </button>
+      {form.id && <button type="button" className="btn btn-danger" disabled={busy} onClick={() => {
+        if (!window.confirm(`确定删除「${form.name}」？删除后无法恢复，已关联单据、模板或出入库二维码的单位不能删除。`)) return;
+        void run(async () => {
+          await send(`/contacts/${form.id}/delete`, { version: form.version });
+          setForm(empty);
+          await load();
+          await onRefresh?.();
+        });
+      }}>删除往来单位</button>}
       {error && (
         <p role="alert" className="form-error">
           {error}

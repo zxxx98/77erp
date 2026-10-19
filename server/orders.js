@@ -74,7 +74,7 @@ export function createOrder(db, req, body) {
       contact.id,
       req.warehouse.id,
       req.user.id,
-      req.user.username,
+      (req.user.name || req.user.username),
     );
   normalized.forEach((i) => {
     const cost = moveInventory(

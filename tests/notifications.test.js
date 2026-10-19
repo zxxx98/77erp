@@ -100,6 +100,45 @@ test('stock transitions and orders are transactional, aggregate items, hide amou
   assert.equal(f.events().length, length); assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(id).stock, 0);
 });
 
+test('inactive products do not trigger stock alerts during clearance and resume alerts when reactivated', async t => {
+  const f = await fixture(t);
+  const active = await f.product(), inactive = await f.product();
+  for (const id of [active, inactive]) assert.equal((await f.order(id, 'in', 5)).status, 201);
+  assert.equal((await f.request(`/products/${inactive}/status`, 'POST', { active: 0 })).status, 200);
+  await f.configure({ events: ['low_stock', 'out_of_stock', 'stock_recovered'] });
+  for (const [type, quantity, event] of [['out', 3, 'low_stock'], ['out', 2, 'out_of_stock'], ['in', 5, 'stock_recovered']]) {
+    const result = await f.request('/orders', 'POST', { type, partner: '清库存测试', items: [active, inactive].map(product_id => ({ product_id, quantity, price: 10 })) });
+    assert.equal(result.status, 201, JSON.stringify(result.data));
+    assert.equal(f.events().at(-1).event, event);
+    assert.deepEqual(f.events().at(-1).payload.data.items.map(p => p.id), [active]);
+  }
+  assert.equal(f.events().length, 3);
+  assert.equal((await f.request(`/products/${inactive}/status`, 'POST', { active: 1 })).status, 200);
+  assert.equal((await f.order(inactive, 'out', 3)).status, 201);
+  assert.equal(f.events().length, 4);
+  assert.equal(f.events().at(-1).event, 'low_stock');
+  assert.deepEqual(f.events().at(-1).payload.data.items.map(p => p.id), [inactive]);
+});
+
+test('daily summary stock counts exclude inactive products and include them after reactivation', async t => {
+  const f = await fixture(t);
+  await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
+  const low = await f.product(), empty = await f.product();
+  assert.equal((await f.order(low, 'in', 1)).status, 201);
+  await f.configure({ events: ['daily_summary'], daily_time: '00:00', timezone: 'UTC' });
+  const summary = (day, lowCount, emptyCount) => {
+    queueDailySummary(f.db, new Date(`2026-10-${day}T12:00:00Z`));
+    const row = f.events().at(-1).payload.data.warehouses[0];
+    assert.equal(row.low_stock, lowCount);
+    assert.equal(row.out_of_stock, emptyCount);
+  };
+  summary('15', 1, 1);
+  for (const id of [low, empty]) assert.equal((await f.request(`/products/${id}/status`, 'POST', { active: 0 })).status, 200);
+  summary('16', 0, 0);
+  for (const id of [low, empty]) assert.equal((await f.request(`/products/${id}/status`, 'POST', { active: 1 })).status, 200);
+  summary('17', 1, 1);
+});
+
 test('subscriptions, warehouse filters, and disabling cancel pending deliveries', async t => {
   const f = await fixture(t);
   const other = (await f.request('/warehouses', 'POST', { name: '其他仓库' })).data.id;
@@ -251,4 +290,45 @@ test('transport pins validated DNS, rejects private DNS and redirects, and detec
   await sendWebhook(config, event, { resolveAddress, httpsRequest: transport(200, '{"errcode":0}') });
   await sendWebhook({ ...config, format: 'feishu' }, event, { resolveAddress, httpsRequest: transport(200, '{"code":0}') });
   await sendWebhook({ ...config, format: 'json' }, event, { resolveAddress, httpsRequest: transport(204, '') });
+});
+
+
+test('material stock increases notify adjustments and recovered stock once without creating purchase events', async t => {
+  const f = await fixture(t); await f.configure();
+  const id = await f.product();
+  const body = { product_id: id, quantity: 5, expected_stock: 0, reason: '生产余料回库', request_id: randomUUID() };
+  assert.equal((await f.request('/stock/increase', 'POST', body)).status, 200);
+  assert.equal((await f.request('/stock/increase', 'POST', body)).status, 200);
+  assert.deepEqual(f.events().map(e => e.event), ['stock_adjustment', 'stock_recovered']);
+  assert.equal(f.events()[0].payload.data.action, '退料／增加库存');
+  assert.equal(f.events()[0].payload.data.items[0].stock, 5);
+});
+
+test('zero safety stock suppresses empty, low and recovery alerts and daily summary counts until enabled', async t => {
+  const f = await fixture(t);
+  await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
+  const id = await f.product();
+  const updateThreshold = async threshold => {
+    const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(id);
+    assert.equal((await f.request(`/products/${id}`, 'PUT', { ...product, threshold })).status, 200);
+  };
+  await updateThreshold(0);
+  await f.configure({ events: ['low_stock', 'out_of_stock', 'stock_recovered'] });
+  for (const [type, quantity] of [['in', 5], ['out', 3], ['out', 2], ['in', 5]])
+    assert.equal((await f.order(id, type, quantity)).status, 201);
+  assert.deepEqual(f.events(), []);
+  await updateThreshold(2);
+  assert.equal((await f.order(id, 'out', 3)).status, 201);
+  assert.equal(f.events().at(-1).event, 'low_stock');
+  await updateThreshold(0);
+  assert.equal((await f.order(id, 'out', 2)).status, 201);
+  assert.equal(f.events().length, 1);
+  await f.configure({ events: ['daily_summary'], daily_time: '00:00', timezone: 'UTC' });
+  for (const [day, threshold, expected] of [['20', 0, 0], ['21', 2, 1]]) {
+    await updateThreshold(threshold);
+    queueDailySummary(f.db, new Date(`2026-10-${day}T12:00:00Z`));
+    const row = f.events().at(-1).payload.data.warehouses[0];
+    assert.equal(row.low_stock, 0);
+    assert.equal(row.out_of_stock, expected);
+  }
 });

@@ -16,5 +16,5 @@ export function recordProductChange(db, before, after, user) {
   db.prepare(`INSERT INTO product_changes
     (product_id,before_cost,after_cost,before_price,after_price,created_by,created_by_name,created_at)
     VALUES (?,?,?,?,?,?,?,?)`)
-    .run(before.id, before.cost, after.cost, before.price, after.price, user.id, user.username, new Date().toISOString());
+    .run(before.id, before.cost, after.cost, before.price, after.price, user.id, user.name || user.username, new Date().toISOString());
 }

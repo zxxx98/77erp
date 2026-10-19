@@ -125,7 +125,7 @@ export function installTransfers(app, db, { route, mutation }) {
       return { source, destination: destinationOf(source, target.id), quantity: item.quantity };
     });
     const at = new Date().toISOString(), transferId = randomUUID();
-    const user = { id: req.user.id, name: req.user.username };
+    const user = { id: req.user.id, name: (req.user.name || req.user.username) };
     const outNumber = nextNumber(`DC${at.slice(0, 10).replaceAll('-', '')}`);
     const inNumber = nextNumber(`DR${at.slice(0, 10).replaceAll('-', '')}`);
     const outLeg = insertLeg({ number: outNumber, type: 'out', partner: target.name, note, at, warehouseId: req.warehouse.id, counterpartId: target.id, transferId, user });

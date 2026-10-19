@@ -33,9 +33,12 @@ export function ChangePassword({ onChanged }) {
   </section>;
 }
 
-export function UserManager({ Modal }) {
+export function UserManager({ Modal, onChanged }) {
   const [users, setUsers] = useState([]);
   const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
+  const [nameUser, setNameUser] = useState(null);
+  const [editName, setEditName] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('employee');
   const [permissionUser, setPermissionUser] = useState(null);
@@ -51,7 +54,7 @@ export function UserManager({ Modal }) {
   const run = async (action, message) => {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError(''); setNotice('');
-    try { await action(); await load(); setNotice(message); }
+    try { await action(); await load(); await onChanged?.(); setNotice(message); }
     catch (e) { setError(e.message); }
     finally { lock.current = false; setBusy(false); }
   };
@@ -64,11 +67,12 @@ export function UserManager({ Modal }) {
     <p className="muted">所有用户共享全部仓库。新员工默认只读，由管理员配置业务权限；管理员拥有全部权限。</p>
     <div className="account-fields">
       <label>新账号<input autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>
+      <label>账号名称<input maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="例如：张三" /></label>
       <label>初始密码<input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
       <label>新账号角色<Select value={role} onChange={e => setRole(e.target.value)} disabled={busy}><option value="employee">员工</option><option value="admin">管理员</option></Select></label>
       <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
-        await api('/users', { method: 'POST', body: { username, password, role } });
-        setUsername(''); setPassword('');
+        await api('/users', { method: 'POST', body: { username, password, role, name } });
+        setUsername(''); setPassword(''); setName('');
       }, '账号已创建')}>新增账号</button>
     </div>
     {error && <p role="alert" className="form-error">{error}</p>}
@@ -78,7 +82,7 @@ export function UserManager({ Modal }) {
         <thead><tr><th>账号</th><th>状态</th><th>角色</th><th>操作</th></tr></thead>
         <tbody>
           {users.map(user => <tr className="user-row" key={user.id}>
-            <td><strong>{user.username}</strong></td>
+            <td><strong>{user.name}</strong><small className="user-login">账号：{user.username}</small><button type="button" className="btn" disabled={busy} onClick={() => { setNameUser(user); setEditName(user.name); }}>修改名称</button></td>
             <td>{user.active ? '正常' : '已停用'}</td>
             <td><Select aria-label={`${user.username}的角色`} value={user.role} disabled={busy} onChange={e => {
               const nextRole = e.target.value;
@@ -95,6 +99,16 @@ export function UserManager({ Modal }) {
         </tbody>
       </table>
     </div>
+    {nameUser && <Modal title={`修改 ${nameUser.username} 的名称`} onClose={() => { if (!busy) { setNameUser(null); setError(''); } }}>
+      <div className="form-body account-fields"><label>名称<input maxLength={60} value={editName} disabled={busy} onChange={e => setEditName(e.target.value)} /></label>
+        <p className="muted">留空时显示登录账号。名称用于新单据的开单人，历史记录保留原名称。</p>
+        {error && <p role="alert" className="form-error">{error}</p>}
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
+          await api(`/users/${nameUser.id}`, { method: 'PUT', body: { role: nameUser.role, active: nameUser.active, name: editName } });
+          setNameUser(null);
+        }, '名称已更新')}>保存名称</button>
+      </div>
+    </Modal>}
     {permissionUser && <Modal title={`${permissionUser.username} 的权限配置`} className="permission-dialog" onClose={() => { if (!busy) { setPermissionUser(null); setError(''); } }}>
       <div className="form-body">
         <p className="muted">物料、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。</p>

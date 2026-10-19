@@ -61,6 +61,7 @@ export function AuthGate({ children }) {
 
 function AuthPage({ setup, notice, onSuccess, onConflict }) {
   const [username, setUsername] = useState("");
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [visible, setVisible] = useState(false);
@@ -77,7 +78,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
     setBusy(true);
     try {
       const state = await api(setup ? "/auth/setup" : "/auth/login", {
-        method: "POST", body: { username: username.trim(), password },
+        method: "POST", body: { username: username.trim(), password, ...(setup ? { name } : {}) },
       });
       onSuccess(state);
     } catch (e) {
@@ -127,6 +128,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
               <input id="auth-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required minLength={setup ? 3 : undefined} maxLength={32} pattern={setup ? "[A-Za-z0-9_.\\-]{3,32}" : undefined} placeholder={setup ? "设置管理员账号" : "请输入账号"} value={username} onChange={(e) => setUsername(e.target.value)} disabled={busy} />
             </div>
             {setup && <p className="auth-field-hint">3–32 位字母、数字或 ._-</p>}
+            {setup && <><label htmlFor="auth-name">管理员名称（选填）</label><div className="auth-input"><UserRound size={17} /><input id="auth-name" maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} /></div></>}
             <label htmlFor="auth-password">{setup ? "设置密码" : "密码"}</label>
             <div className="auth-input">
               <LockKeyhole size={17} />

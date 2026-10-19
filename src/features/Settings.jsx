@@ -178,7 +178,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           </div>
           <div className="info-box"><ShieldCheck size={17} /><p>物料和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
-          {section === "users" && <div className="settings-section"><UserManager Modal={Modal} /><ChangePassword onChanged={onPasswordChanged} /></div>}
+          {section === "users" && <div className="settings-section"><UserManager Modal={Modal} onChanged={onRefresh} /><ChangePassword onChanged={onPasswordChanged} /></div>}
           {section === 'ai' && <div className="settings-section"><AiSettings onBusy={setBusy} /></div>}
           <div hidden={section !== 'imagebed'} className="settings-section">{visited.has('imagebed') && <ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} />}</div>
           <div hidden={section !== 'notifications'} className="settings-section">{visited.has('notifications') && <NotificationSettings warehouses={warehouses} active={section === 'notifications'} onBusy={setBusy} onDirty={setNotificationDirty} />}</div>

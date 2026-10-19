@@ -7,7 +7,7 @@ import './product-history.css';
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 const money = value => Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const label = record => record.event === 'price_change' ? '物料改价' : record.event === 'void' ? `作废${orderLabel({ ...record, status: 'active' })}`
-  : record.event === 'order' ? orderLabel(record) : record.event === 'reduce' ? '减少库存（报损）' : '库存盘点';
+  : record.event === 'order' ? orderLabel(record) : record.event === 'reduce' ? '减少库存（报损）' : record.event === 'increase' ? '增加库存（退料）' : '库存盘点';
 
 export function ProductHistory({ product, onViewOrder }) {
   const [opened, setOpened] = useState(false);
@@ -38,7 +38,7 @@ export function ProductHistory({ product, onViewOrder }) {
     }}>{opened ? '收起操作记录' : '查看操作记录'}</button>
     {opened && <div className="product-history-body">
       <h4>当前物料操作记录</h4>
-      <p className="muted">当前仓库的出入库、退货、作废记录，以及有权限查看的盘点／报损、改价记录，按时间倒序显示。</p>
+      <p className="muted">当前仓库的出入库、退货、作废记录，以及有权限查看的盘点／报损／退料、改价记录，按时间倒序显示。</p>
       <ol className="product-history-list">{records.map(record => <li key={`${record.event}:${record.event_id}`}>
         <div className="product-history-title"><strong>{label(record)}</strong>{record.event !== 'price_change' && <span>{record.delta === null ? '期初已结转' : `${record.delta > 0 ? '+' : ''}${count(record.delta)} ${product.unit}`}</span>}</div>
         <time dateTime={record.created_at}>{new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}</time>

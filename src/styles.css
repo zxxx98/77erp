@@ -353,8 +353,12 @@ table {
 }
 .user-profile > span:nth-child(2) {
   flex: 1;
+  min-width: 0;
 }
 .user-profile strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   display: block;
 }
@@ -785,6 +789,10 @@ table {
   height: 4px;
   border-radius: 50%;
   background: currentColor;
+}
+.badge-gray {
+  background: #f1f3f6;
+  color: #697586;
 }
 .badge-green {
   background: #edf8f4;

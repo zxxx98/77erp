@@ -33,3 +33,5 @@
 .permission-options small { color: var(--muted, #6982a5); line-height: 1.6; }
 .permission-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
 @media (max-width: 640px) { .permission-options { grid-template-columns: 1fr; } .permission-dialog { padding: 18px; } }
+
+.user-login { display: block; margin-top: 6px; color: var(--muted); overflow-wrap: anywhere; }

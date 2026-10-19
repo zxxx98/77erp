@@ -260,3 +260,27 @@ test('order aggregates cover the entire filter, not only the returned page', asy
   assert.notEqual(next.orders[0].id, page.orders[0].id);
   assert.deepEqual(next.aggregate, page.aggregate);
 });
+
+test('zero safety stock disables dashboard alerts and inventory warning filters, and edits take effect immediately', async t => {
+  const f = await fixture(t);
+  const unmonitored = await f.product({ name: '不预警物料', barcode: 'NO-ALERT', threshold: 0 });
+  const monitored = await f.product({ name: '预警物料', barcode: 'YES-ALERT', threshold: 0.000001 });
+  const assertAlerts = async expected => {
+    const { products } = (await f.request(f.admin, '/dashboard')).data;
+    assert.equal(products.low_stock, 0);
+    assert.equal(products.out_of_stock, expected.length);
+    assert.deepEqual(products.low_stock_products.map(p => p.id), expected);
+    for (const filter of ['low', 'empty'])
+      assert.deepEqual((await f.request(f.admin, `/products?stock=${filter}`)).data.products.map(p => p.id), expected);
+  };
+  await assertAlerts([monitored.id]);
+  assert.equal((await f.request(f.admin, '/products')).data.total, 2);
+  const updateThreshold = async (id, threshold) => {
+    const product = (await f.request(f.admin, `/products/${id}`)).data.product;
+    assert.equal((await f.request(f.admin, `/products/${id}`, 'PUT', { ...product, threshold })).status, 200);
+  };
+  await updateThreshold(monitored.id, 0);
+  await assertAlerts([]);
+  await updateThreshold(unmonitored.id, 2);
+  await assertAlerts([unmonitored.id]);
+});

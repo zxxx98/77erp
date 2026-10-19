@@ -18,7 +18,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { CameraScanner, StockQrExecution } from '../LazyComponents.jsx';
-import { stockStatus, money } from '../app/format.js';
+import { stockStatus, money, stockTone } from '../app/format.js';
 
 function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onSaved }) {
   const { can } = usePermissions();
@@ -194,11 +194,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                   </p>
                   <Badge
                     tone={
-                      product.stock === 0
-                        ? "red"
-                        : product.stock <= product.threshold
-                          ? "orange"
-                          : "green"
+                      stockTone(product)
                     }
                   >
                     {stockStatus(product)}

@@ -91,8 +91,8 @@ export function queueNotification(db, req, event, data, { global = false, dedupe
 export function notifyStockChanges(db, req, before, reference = {}) {
   const changes = { low_stock: [], out_of_stock: [], stock_recovered: [] };
   for (const p of before) {
-    const next = db.prepare('SELECT id,name,barcode,stock,threshold,unit FROM products WHERE id=?').get(p.id);
-    if (!next || next.stock === p.stock) continue;
+    const next = db.prepare('SELECT id,name,barcode,stock,threshold,unit FROM products WHERE id=? AND active!=0').get(p.id);
+    if (!next || next.threshold <= 0 || next.stock === p.stock) continue;
     const item = { ...next, before_stock: p.stock };
     if (p.stock > 0 && next.stock === 0) changes.out_of_stock.push(item);
     else if (p.stock > p.threshold && next.stock > 0 && next.stock <= next.threshold) changes.low_stock.push(item);
@@ -124,18 +124,19 @@ export function notificationMutation(db, req, fn) {
   const correction = /\/orders\/\d+\/(void|returns)$/.test(path);
   const stocktake = path.endsWith('/stocktakes');
   const reduce = path.endsWith('/stock/reduce');
+  const increase = path.endsWith('/stock/increase');
   let before = [];
   if (correction) before = db.prepare('SELECT p.* FROM products p JOIN order_items i ON i.product_id=p.id WHERE i.order_id=?').all(req.params.id);
-  if (stocktake || reduce) {
-    const ids = reduce ? [req.body.product_id] : Array.isArray(req.body.items) ? req.body.items.map(i => i?.product_id) : [];
+  if (stocktake || reduce || increase) {
+    const ids = reduce || increase ? [req.body.product_id] : Array.isArray(req.body.items) ? req.body.items.map(i => i?.product_id) : [];
     before = [...new Set(ids)].filter(Number.isSafeInteger).map(id => db.prepare('SELECT * FROM products WHERE id=?').get(id)).filter(Boolean);
   }
   const result = fn();
   if (correction) notifyOrder(db, req, path.endsWith('/returns') ? result.id : Number(req.params.id), path.endsWith('/returns') ? 'order_return' : 'order_void', before);
-  if (stocktake || reduce) {
+  if (stocktake || reduce || increase) {
     const items = before.map(p => ({ id: p.id, name: p.name, unit: p.unit, threshold: p.threshold, before_stock: p.stock, stock: db.prepare('SELECT stock FROM products WHERE id=?').get(p.id).stock }))
       .filter(p => p.before_stock !== p.stock);
-    if (items.length) queueNotification(db, req, 'stock_adjustment', { action: reduce ? '报损／减少库存' : '库存盘点', reason: req.body.reason, items });
+    if (items.length) queueNotification(db, req, 'stock_adjustment', { action: reduce ? '报损／减少库存' : increase ? '退料／增加库存' : '库存盘点', reason: req.body.reason, items });
     notifyStockChanges(db, req, before);
   }
   if (/\/orders\/\d+\/(payments|settlement)$/.test(path) || /\/payments\/\d+\/reverse$/.test(path)) {
@@ -170,8 +171,8 @@ export function queueDailySummary(db, now = new Date()) {
   try {
     const rows = db.prepare('SELECT id,name FROM warehouses ORDER BY id').all().filter(w => !config.warehouse_ids.length || config.warehouse_ids.includes(w.id)).map(w => ({
       ...w, purchase_count: 0, sales_count: 0, return_count: 0, purchase_cents: 0, sales_cents: 0, purchase_returns_cents: 0, sales_returns_cents: 0,
-      low_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND stock>0 AND stock<=threshold').get(w.id).n,
-      out_of_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND stock=0').get(w.id).n,
+      low_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND active!=0 AND threshold>0 AND stock>0 AND stock<=threshold').get(w.id).n,
+      out_of_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND active!=0 AND threshold>0 AND stock=0').get(w.id).n,
     }));
     const byWarehouse = new Map(rows.map(w => [w.id, w]));
     for (const o of db.prepare("SELECT warehouse_id,type,kind,total,created_at FROM orders WHERE status='active' AND kind!='transfer' AND created_at>=? AND created_at<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {

@@ -1,3 +1,4 @@
+import { stockStatus, stockTone } from '../app/format.js';
 import { LoadingIndicator } from '../Loading.jsx';
 import React from 'react';
 import { Box, ChevronRight, Search, TriangleAlert, X } from 'lucide-react';
@@ -7,7 +8,7 @@ import { ProductImage } from '../ProductImage.jsx';
 export const money = value => `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 export const count = value => Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 export const dateTime = value => new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-export const stockLabel = p => p.stock === 0 ? '缺货' : p.stock <= p.threshold ? '库存偏低' : '库存充足';
+export const stockLabel = stockStatus;
 export const matchesProduct = (product, query) => [product.name, product.barcode, product.category, product.specification || '', product.note || ''].some(value => value.toLowerCase().includes(query.trim().toLowerCase()));
 
 export function MobileButton({ children, icon: Icon, primary = false, danger = false, permission, busy, ...props }) {
@@ -34,7 +35,7 @@ export function SearchField({ value, onChange, label = '搜索物料名称、条
   </div>;
 }
 export function StockBadge({ product }) {
-  return <span className={`mw-badge ${product.stock === 0 ? 'red' : product.stock <= product.threshold ? 'orange' : 'green'}`}>{stockLabel(product)}</span>;
+  return <span className={`mw-badge ${stockTone(product)}`}>{stockLabel(product)}</span>;
 }
 export function ProductRow({ product, onOpen }) {
   return <article className="mw-product-row">

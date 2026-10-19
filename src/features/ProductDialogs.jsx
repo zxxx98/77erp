@@ -337,7 +337,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               value={form.threshold}
               onChange={(e) => change("threshold", e.target.value)}
             />
-            <small>库存小于或等于此数量时，自动提醒补货。</small>
+            <small>设为 0 则不启用缺货和低库存预警；大于 0 时，库存小于或等于此数量会提醒补货。</small>
           </label>
           <ProductSync warehouses={warehouses} warehouseId={warehouseId} targets={syncTargets} setTargets={setSyncTargets} disabled={busy || readingImage} />
           {!product && (
@@ -431,7 +431,8 @@ function CategoryManager({ categories, onClose, onChanged }) {
   </Modal>;
 }
 
-function ReduceStockModal({ product, onClose, onSaved }) {
+function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
+  const action = increase ? '增加' : '减少';
   const { busy, error, run, send } = useBusiness();
   const [quantity, setQuantity] = useState(""),
     [reason, setReason] = useState("");
@@ -439,29 +440,29 @@ function ReduceStockModal({ product, onClose, onSaved }) {
     e.preventDefault();
     run(async () => {
       const amount = parseQuantity(quantity, true);
-      if (!reason.trim()) throw new Error("请填写减少原因。");
-      if (amount > product.stock)
+      if (!reason.trim()) throw new Error(`请填写${action}原因。`);
+      if (!increase && amount > product.stock)
         throw new Error(`减少数量不能超过现有库存 ${product.stock} ${product.unit}。`);
       if (
         !window.confirm(
-          `确认将「${product.name}」库存从 ${product.stock} 减少 ${amount} ${product.unit}？`,
+          `确认将「${product.name}」库存从 ${product.stock} ${action} ${amount} ${product.unit}？`,
         )
       )
         return;
-      await send("/stock/reduce", {
+      await send(increase ? "/stock/increase" : "/stock/reduce", {
         product_id: product.id,
         quantity: amount,
         expected_stock: product.stock,
         reason,
       });
-      await onSaved(`库存已减少 · ${product.name}`);
+      await onSaved(`库存已${action} · ${product.name}`);
     });
   };
   return (
     <Modal
-      title="减少库存"
-      subtitle="用于报损、损耗或盘亏，直接调整现有库存并记录原因。"
-      onClose={onClose}
+      title={increase ? "增加库存（退料）" : "减少库存"}
+      subtitle={increase ? "用于生产余料退回，直接增加库存并记录原因。按当前库存平均成本计价，零库存时使用参考采购价。" : "用于报损、损耗或盘亏，直接调整现有库存并记录原因。"}
+      onClose={busy ? () => {} : onClose}
     >
       <form onSubmit={submit}>
         <div className="form-body">
@@ -472,7 +473,7 @@ function ReduceStockModal({ product, onClose, onSaved }) {
             </small>
           </div>
           <label>
-            减少数量（{product.unit}） <span>*</span>
+            {action}数量（{product.unit}） <span>*</span>
             <input
               required
               data-autofocus
@@ -486,11 +487,11 @@ function ReduceStockModal({ product, onClose, onSaved }) {
             />
           </label>
           <label>
-            减少原因 <span>*</span>
+            {action}原因 <span>*</span>
             <input
               required
               maxLength={500}
-              placeholder="例如：破损报废、盘点损耗"
+              placeholder={increase ? "例如：生产余料退回" : "例如：破损报废、盘点损耗"}
               value={reason}
               disabled={busy}
               onChange={(e) => setReason(e.target.value)}
@@ -506,8 +507,8 @@ function ReduceStockModal({ product, onClose, onSaved }) {
           <Button type="button" onClick={onClose} disabled={busy}>
             取消
           </Button>
-          <Button type="submit" kind="primary" icon={Minus} busy={busy}>
-            {busy ? "处理中…" : "确认减少"}
+          <Button type="submit" kind="primary" icon={increase ? Plus : Minus} busy={busy}>
+            {busy ? "处理中…" : `确认${action}`}
           </Button>
         </div>
       </form>
