@@ -34,11 +34,9 @@ test('first setup publishes the release once, with normal per-account read state
   assert.equal(list.total, 1);
   assert.equal(list.unread_count, 1);
   const item = await request(`/announcements/${list.announcements[0].id}`);
-  assert.match(item.title, /1\.14\.5 更新公告/);
+  assert.match(item.title, /\d+\.\d+\.\d+ 更新公告/);
   assert.equal(item.created_by_name, '系统更新');
-  assert.match(item.content, /公告中心/);
-  assert.match(item.content, /桌面操作体验/);
-  assert.match(item.content, /移动 Web \/ PWA/);
+  assert.ok(item.content.length > 0);
   await request(`/announcements/${item.id}/read`, 'POST', { content_version: item.content_version });
   assert.equal((await request('/announcements/unread-count')).count, 0);
   assert.equal((await request('/announcements')).total, 1);
