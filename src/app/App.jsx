@@ -232,7 +232,7 @@ function App({ admin, onLogout }) {
   const summaryQuery = useQuery(mobileDevice ? null : '/dashboard', data);
   const announcementQuery = useAnnouncementQuery('/announcements/unread-count', data);
   const announcementCount = announcementQuery.result?.count || 0;
-  const announcementSaved = message => { setModal(null); announcementsChanged(); notify(message); };
+  const announcementSaved = async message => { announcementsChanged(); await saved(message); };
   const low = summaryQuery.result?.products.low_stock_products || [];
   const lowCount = (summaryQuery.result?.products.low_stock || 0) + (summaryQuery.result?.products.out_of_stock || 0);
   // Order details are fetched by id so trimmed or paged lists stay correct.
@@ -578,7 +578,7 @@ function App({ admin, onLogout }) {
           onSaved={saved}
         />
       )}
-      {modal?.kind === 'announcementDetail' && <AnnouncementDetail id={modal.id} data={data} onClose={() => setModal(null)} onEdit={item => setModal({ kind: 'announcementEditor', item })} onSaved={announcementSaved} />}
+      {modal?.kind === 'announcementDetail' && <AnnouncementDetail id={modal.id} data={data} onClose={() => setModal(null)} onEdit={item => setModal({ kind: 'announcementEditor', item })} onSaved={announcementSaved} onRead={reload} />}
       {modal?.kind === 'announcementEditor' && user.role === 'admin' && <AnnouncementEditor key={modal.item?.id || 'new'} item={modal.item} onClose={() => setModal(null)} onSaved={announcementSaved} />}
       {modal?.kind === "detail" && (
         mobileDevice ? <MobileOrderDetail order={modal.order} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />

@@ -5,13 +5,18 @@ test.beforeAll(async ({ request }) => {
   const r = await request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
   expect([201,409]).toContain(r.status());
 });
-for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} AI settings, Excel, transfer, stocktake confirmations and conversation recovery`, async ({ browser }) => {
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', ...(mobile ? devices['Pixel 7'] : { viewport: { width: 1440, height: 1000 } }) });
+for (const device of [null, 'Pixel 7', 'iPhone 13']) test(`${device || 'desktop'} AI settings, Excel, transfer, stocktake confirmations and conversation recovery`, async ({ browser }) => {
+  const mobile = !!device;
+  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(mobile ? devices[device] : { viewport: { width: 1440, height: 1000 } }) });
   try {
     await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
     const warehouse = await (await context.request.post('/api/warehouses', { data: { name: `AI-${mobile}-${Date.now()}` } })).json();
     const page = await context.newPage(), errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(`/?warehouse_id=${warehouse.id}`);
+    if (device === 'iPhone 13') await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
+    });
     if (mobile) { await page.getByRole('button', { name: '更多', exact: true }).click(); await page.getByRole('button', { name: '商户与仓库设置', exact: true }).click(); }
     else await page.getByRole('button', { name: '系统设置', exact: true }).click();
     await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /^AI 助手/ }).click();
@@ -30,12 +35,32 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} AI se
     await page.getByLabel('附加物料 Excel / CSV').setInputFiles(resolve('tests/fixtures/products.xlsx'));
     await expect(page.getByText('products.xlsx · 1 行')).toBeVisible();
     await page.getByLabel('你的需求').fill('导入上传表，新增物料档案，数量为期初库存。');
+    const previewed = page.waitForResponse(response => response.url().endsWith('/api/ai/chat'));
     await page.getByRole('button', { name: '发送', exact: true }).click();
+    const initial = await (await previewed).json();
     const action = page.locator('.ai-action');
     await expect(action).toContainText('新增物料预览 · 待确认');
     await expect(action).toContainText('001234');
     const before = await (await context.request.get(`/api/data?warehouse_id=${warehouse.id}`)).json();
     expect(before.products).toHaveLength(0);
+
+    // Continuing without confirmation dismisses the old preview and invalidates stale copies.
+    await page.getByLabel('你的需求').fill('先不导入，继续聊聊');
+    await page.getByRole('button', { name: '发送', exact: true }).click();
+    await expect(action).toHaveCount(0);
+    await expect(page.getByLabel('你的需求')).toBeEnabled();
+    await expect(action).toHaveCount(0);
+    expect((await context.request.post('/api/ai/confirm', { data: { action_id: initial.actions[0].id } })).status()).toBe(409);
+    expect((await (await context.request.get(`/api/data?warehouse_id=${warehouse.id}`)).json()).products).toHaveLength(0);
+    await page.reload();
+    if (mobile) await page.getByRole('button', { name: '更多', exact: true }).click();
+    await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+    await expect(page.locator('.ai-user').filter({ hasText: '先不导入，继续聊聊' })).toBeVisible();
+    await expect(action).toHaveCount(0);
+    await page.getByLabel('你的需求').fill('重新导入上传表，新增物料档案，数量为期初库存。');
+    await page.getByRole('button', { name: '发送', exact: true }).click();
+    await expect(action).toHaveCount(1);
+    await expect(action).toContainText('新增物料预览 · 待确认');
     await action.getByRole('button', { name: '确认执行本批操作' }).click();
     await expect(action).toContainText('已完成，新增 1 个物料');
     const after = await (await context.request.get(`/api/data?warehouse_id=${warehouse.id}`)).json();

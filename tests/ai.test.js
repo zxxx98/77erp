@@ -110,6 +110,58 @@ test('batch orders preview without writes, confirm atomically, attribute to curr
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM ai_audit WHERE tool='confirm_orders' AND status='success'").get().n, 1);
 });
 
+test('continuing a conversation supersedes unconfirmed previews while preserving completed results and other conversations', async t => {
+  const f = await fixture(t); await f.permissions(['ai', 'purchase']);
+  const before = f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock;
+  f.use('preview_orders', { orders: [f.order()] });
+  const first = (await f.chat(f.staff)).data, old = first.actions[0];
+  const cid = first.conversation_id;
+  assert.equal((await f.chat(f.staff, { conversation_id: cid, message: ' ' })).status, 400);
+  await f.chat(f.staff); // A new, unrelated conversation must leave the original preview available.
+  assert.deepEqual((await f.request(f.staff, `/ai/conversations/${cid}`)).data.actions.map(a => a.id), [old.id]);
+
+  f.use('preview_orders', { orders: [f.order('in', 3)] });
+  const next = await f.chat(f.staff, { conversation_id: cid, message: '改成入库3个' });
+  assert.equal(next.status, 200);
+  assert.equal(next.data.actions.length, 1);
+  const replacement = next.data.actions[0];
+  assert.notEqual(replacement.id, old.id);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before);
+  const cancelled = await f.request(f.staff, '/ai/confirm', { action_id: old.id });
+  assert.equal(cancelled.status, 409);
+  assert.match(cancelled.data.error, /已取消/);
+  assert.deepEqual((await f.request(f.staff, `/ai/conversations/${cid}`)).data.actions.map(a => a.id), [replacement.id]);
+
+  const confirmed = await f.request(f.staff, '/ai/confirm', { action_id: replacement.id });
+  assert.equal(confirmed.status, 200);
+  const continued = await f.chat(f.staff, { conversation_id: cid, message: '谢谢' });
+  assert.equal(continued.data.actions.length, 1);
+  assert.deepEqual(continued.data.actions[0].result, confirmed.data);
+  assert.deepEqual((await f.request(f.staff, '/ai/confirm', { action_id: replacement.id })).data, confirmed.data);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before + 3);
+});
+
+test('provider failures do not restore superseded previews or discard previews from the current turn', async t => {
+  const f = await fixture(t);
+  f.use('preview_orders', { orders: [f.order()] });
+  const first = (await f.chat(f.admin)).data, old = first.actions[0];
+  const failure = () => { throw new Error('测试模型暂时不可用'); };
+  f.replies.push(failure);
+  const failed = await f.chat(f.admin, { conversation_id: first.conversation_id, message: '先不要操作' });
+  assert.equal(failed.status, 200);
+  assert.match(failed.data.error, /AI 服务连接失败/);
+  assert.deepEqual(failed.data.actions, []);
+  assert.deepEqual((await f.request(f.admin, `/ai/conversations/${first.conversation_id}`)).data.actions, []);
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: old.id })).status, 409);
+
+  f.use('preview_orders', { orders: [f.order()] });
+  f.replies.push(failure);
+  const regenerated = await f.chat(f.admin, { conversation_id: first.conversation_id, message: '重新生成' });
+  assert.match(regenerated.data.error, /AI 服务连接失败/);
+  assert.equal(regenerated.data.actions.length, 1);
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: regenerated.data.actions[0].id })).status, 200);
+});
+
 test('previews reject changed stock, revoked permissions, expired actions and wrong owners', async t => {
   const f = await fixture(t); await f.permissions(['ai','purchase']);
   f.use('preview_orders', { orders: [f.order()] }); const r = await f.chat(f.staff), a = r.data.actions[0];
@@ -162,6 +214,8 @@ test('a second upload in the same conversation uses the new table and drops the 
   f.use('preview_import', { warehouse_id: 1, mapping: { name: 1, barcode: 0, unit: 2, stock: 3 } });
   const from = f.calls.length;
   const r2 = await f.chat(f.staff, { table: second, conversation_id: cid, message: '再导入这个上传表' });
+  assert.equal(r2.data.actions.length, 1);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: r1.data.actions[0].id })).status, 409);
   const latest = r2.data.actions.at(-1).preview.rows;
   assert.deepEqual(latest.map(r => r.name), ['乙']);
   assert.equal(latest[0].barcode, 'B001');

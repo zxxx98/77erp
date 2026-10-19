@@ -52,7 +52,7 @@ export function Announcements({ data, openModal }) {
   </div>;
 }
 
-export function AnnouncementDetail({ id, data, onClose, onEdit, onSaved }) {
+export function AnnouncementDetail({ id, data, onClose, onEdit, onSaved, onRead }) {
   const { user } = usePermissions();
   const query = useQuery(`/announcements/${id}`, data);
   const item = query.result;
@@ -64,7 +64,12 @@ export function AnnouncementDetail({ id, data, onClose, onEdit, onSaved }) {
     const controller = new AbortController();
     setReadError('');
     api(`/announcements/${id}/read`, { method: 'POST', body: { content_version: item.content_version }, signal: controller.signal })
-      .then(() => { if (!controller.signal.aborted) announcementsChanged(); })
+      .then(() => {
+        if (controller.signal.aborted) return;
+        announcementsChanged();
+        // Reading changes the user's data revision too; reload its baseline along with the page data.
+        return onRead();
+      })
       .catch(error => { if (!controller.signal.aborted) setReadError(error.message); });
     return () => controller.abort();
   }, [id, item]);

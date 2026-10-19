@@ -2,6 +2,7 @@ import { test, expect, devices } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
 const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+const release = JSON.parse(readFileSync(new URL('../../shared/release-notes.json', import.meta.url), 'utf8'))[version];
 
 test.beforeAll(async ({ request }) => {
   const response = await request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
@@ -29,8 +30,7 @@ test('built-in release notice is readable on desktop, Android and iPhone with sh
         await card.click();
         const detail = page.getByRole('dialog', { name: '公告详情' });
         await expect(detail).toContainText('系统更新');
-        await expect(detail).toContainText('桌面操作体验');
-        await expect(detail).toContainText('移动 Web / PWA');
+        await expect(detail.locator('.announcement-content')).toHaveText(`${release.date}\n\n${release.content.join('\n')}`);
         await expect(detail.getByRole('button', { name: '编辑公告', exact: true })).toHaveCount(0);
         await expect(card).toContainText('已读');
         await detail.getByRole('button', { name: '关闭', exact: true }).click();
@@ -48,6 +48,13 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
     const title = `${device || '桌面'}盘点公告-${Date.now()}`;
     let id;
     try {
+      await page.clock.install();
+      const expectNoUpdateNotice = async () => {
+        const checked = page.waitForResponse(response => new URL(response.url()).pathname === '/api/updates');
+        await page.clock.fastForward(30000);
+        expect((await checked).ok()).toBe(true);
+        await expect(page.getByRole('status', { name: '数据更新提示' })).toHaveCount(0);
+      };
       await page.goto('/');
       await page.getByRole(device ? 'button' : 'link', { name: '公告中心', exact: true }).click();
       await expect(page.getByRole('heading', { name: '公告中心', exact: true })).toBeVisible();
@@ -64,10 +71,14 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
       const card = page.locator('.announcement-card').filter({ hasText: title });
       await expect(card).toContainText('置顶');
       await expect(card).toContainText('未读');
+      await expectNoUpdateNotice();
       await card.click();
       const dialog = page.getByRole('dialog', { name: '公告详情' });
       await expect(dialog).toContainText('<script>alert("test")</script>');
       await expect.poll(async () => (await (await context.request.get(`/api/announcements/${id}`)).json()).unread).toBe(0);
+      await expect(card).toContainText('已读');
+      await expectNoUpdateNotice();
+      await expect(dialog).toContainText('<script>alert("test")</script>');
       await dialog.getByRole('button', { name: '编辑公告', exact: true }).click();
       await page.getByRole('textbox', { name: '公告正文', exact: true }).fill('盘点改为周六上午。');
       await page.getByRole('checkbox', { name: '置顶公告' }).uncheck();
@@ -76,6 +87,7 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
       await expect(card).toContainText('未读');
       await expect(card).toContainText('盘点改为周六上午。');
       await expect(card).not.toContainText('置顶');
+      await expectNoUpdateNotice();
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: `output/ui-preview/announcements-${device || 'desktop'}.png`, fullPage: true });
       await card.click();
@@ -89,6 +101,7 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
       await dialog.getByRole('button', { name: '删除公告', exact: true }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(card).toHaveCount(0);
+      await expectNoUpdateNotice();
       expect(errors).toEqual([]);
     } finally {
       if (id) {
@@ -153,7 +166,15 @@ test('PWA keeps the announcement form when offline and can publish after reconne
     await page.getByRole('button', { name: '确认发布', exact: true }).click();
     item = await (await published).json();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.locator('.announcement-card').filter({ hasText: title })).toBeVisible();
+    const card = page.locator('.announcement-card').filter({ hasText: title });
+    await expect(card).toBeVisible();
+    await card.click();
+    await expect(card).toContainText('已读');
+    const checked = page.waitForResponse(response => new URL(response.url()).pathname === '/api/updates');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    expect((await checked).ok()).toBe(true);
+    await expect(page.getByRole('status', { name: '数据更新提示' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: '公告详情' })).toContainText('联网后发布这条公告。');
   } finally {
     await context.setOffline(false);
     if (item?.id) await context.request.delete(`/api/announcements/${item.id}`, { data: { version: item.version } });
