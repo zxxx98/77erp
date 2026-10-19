@@ -3,6 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createApp } from "../server/app.js";
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 async function fixture(t) {
   const { app, db } = createApp(":memory:");
@@ -65,6 +68,111 @@ async function fixture(t) {
     });
   return { db, request, command, product, order };
 }
+
+test('internal units receive and issue stock without entering trading totals, finance, profit or settlement', async t => {
+  const f = await fixture(t), id = await f.product();
+  const contact = (await f.command('/contacts', { role: 'internal', name: '一号产线', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  const savedContact = (await f.request('/contacts')).data.find(row => row.id === contact.id);
+  Object.assign(contact, savedContact);
+  assert.equal(contact.role, 'internal');
+  await f.order(id, 'in', 10, 10);
+  await f.order(id, 'out', 2, 30);
+  const out = await f.order(id, 'out', 3, 999, { partner_id: contact.id, partner: contact.name, kind: 'normal' });
+  const incoming = await f.order(id, 'in', 2, 10, { partner_id: contact.id, partner: contact.name });
+  assert.equal(out.status, 201);
+  assert.equal(incoming.status, 201);
+  const rows = (await f.request('/orders?kind=internal')).data;
+  assert.equal(rows.total, 2);
+  assert.equal(rows.aggregate.net_total, 0);
+  assert.equal(rows.aggregate.quantity, 5);
+  assert.equal(rows.counts.internal_count, 2);
+  for (const row of rows.orders) {
+    assert.equal(row.kind, 'internal');
+    assert.equal(row.settlement_tracked, 0);
+    assert.equal(row.payment_status, 'not_applicable');
+    assert.equal(row.due_cents, 0);
+    assert.equal((await f.request(`/orders/${row.id}/payments`)).status, 400);
+    assert.equal((await f.command(`/orders/${row.id}/payments`, { amount: 1, method: '现金', note: '' })).status, 400);
+    assert.equal((await f.command(`/orders/${row.id}/settlement`, { paid: 0, note: '核对', confirmation: 'TRACK_SETTLEMENT' })).status, 400);
+  }
+  assert.ok((await f.request('/orders?business=in')).data.orders.some(row => row.id === incoming.data.id));
+  assert.ok((await f.request('/orders?business=out')).data.orders.some(row => row.id === out.data.id));
+  const summary = (await f.request('/dashboard')).data;
+  assert.equal(summary.products.stock, 7);
+  assert.equal(summary.products.inventory_value_cents, 7000);
+  assert.equal(summary.today.purchase_cents, 10000);
+  assert.equal(summary.today.sales_cents, 6000);
+  assert.equal(summary.today.purchase_count, 1);
+  assert.equal(summary.today.sales_count, 1);
+  const finance = (await f.request('/finance')).data;
+  assert.equal(finance.orders.length, 2);
+  assert.ok(finance.balances.every(balance => balance.partner_id !== contact.id));
+  const profit = (await f.request('/reports/profit')).data;
+  assert.equal(profit.totals.revenue_cents, 6000);
+  assert.equal(profit.totals.cost_cents, 2000);
+  for (const type of ['in', 'out']) {
+    const template = await f.command('/templates', { name: `内部${type}`, type, partner: contact.name, partner_id: contact.id, note: '', items: [{ product_id: id, quantity: 1, price: 10 }] });
+    assert.equal(template.status, 200, JSON.stringify(template.data));
+  }
+  const backup = (await f.request('/backup')).data;
+  assert.equal(backup.version, 15);
+  const corrupt = structuredClone(backup);
+  corrupt.data.orders.find(row => row.id === out.data.id).kind = 'normal';
+  assert.equal((await f.request('/backup/preview', { backup: corrupt })).status, 400);
+  const preview = await f.request('/backup/preview', { backup });
+  assert.equal(preview.status, 200);
+  assert.equal((await f.command('/backup/restore', { backup, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
+  assertRestoredBusiness((await f.request('/backup')).data.data, backup.data);
+  assert.equal((await f.command(`/orders/${out.data.id}/void`, { reason: '撤销内部领料' })).status, 200);
+  assert.equal((await f.request('/dashboard')).data.products.stock, 10);
+  assert.equal((await f.request('/dashboard')).data.today.sales_cents, 6000);
+});
+
+test('internal contact resolution respects explicit IDs, same-name ambiguity and disabled units', async t => {
+  const f = await fixture(t), id = await f.product();
+  const contact = (await f.command('/contacts', { role: 'internal', name: '同名单位', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  Object.assign(contact, (await f.request('/contacts')).data.find(row => row.id === contact.id));
+  // Name-only clients may use an unambiguous internal unit without creating a supplier.
+  const named = await f.order(id, 'in', 3, 10, { partner: contact.name });
+  assert.equal(named.status, 201);
+  assert.equal((await f.request(`/orders/${named.data.id}`)).data.order.kind, 'internal');
+  const supplier = (await f.command('/contacts', { role: 'supplier', name: contact.name, person: '', phone: '', address: '', note: '', active: 1 })).data;
+  assert.equal((await f.order(id, 'in', 1, 10, { partner: contact.name })).status, 400);
+  const normal = await f.order(id, 'in', 1, 10, { partner: contact.name, partner_id: supplier.id, kind: 'internal' });
+  assert.equal(normal.status, 201);
+  assert.equal((await f.request(`/orders/${normal.data.id}`)).data.order.kind, 'normal');
+  assert.equal((await f.command('/contacts', { ...contact, active: 0 })).status, 200);
+  for (const type of ['in', 'out']) assert.equal((await f.order(id, type, 1, 10, { partner: contact.name, partner_id: contact.id })).status, 400);
+  assert.equal((await f.request('/dashboard')).data.products.stock, 4);
+});
+
+test('legacy contact schema gains internal units without losing contact IDs or business references, including restart', t => {
+  const folder = mkdtempSync(join(tmpdir(), '77erp-internal-'));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const path = join(folder, 'legacy.sqlite');
+  let { db } = createApp(path);
+  db.exec("INSERT INTO contacts(id,role,name,person,phone,address,note,version) VALUES (501,'supplier','原供应商','张工','123','车间','原备注',7)");
+  db.exec("UPDATE orders SET partner_id=501 WHERE id=1; INSERT INTO templates(id,name,type,partner,partner_id,note,items,updated_at) VALUES (501,'原模板','in','原供应商',501,'','[]','2026-10-19')");
+  const before = db.prepare('SELECT * FROM contacts WHERE id=501').get();
+  // Reproduce the old CHECK constraint; old installations have no data-update triggers.
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'data_revision_*'").all()) db.exec(`DROP TRIGGER ${name}`);
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE name='contacts'").get().sql;
+  db.exec('PRAGMA foreign_keys=OFF; BEGIN');
+  db.exec(schema.replace('CREATE TABLE contacts', 'CREATE TABLE contacts_legacy').replace(",'internal'", ''));
+  db.exec('INSERT INTO contacts_legacy SELECT * FROM contacts; DROP TABLE contacts; ALTER TABLE contacts_legacy RENAME TO contacts; COMMIT');
+  db.close();
+  ({ db } = createApp(path));
+  assert.deepEqual(db.prepare('SELECT * FROM contacts WHERE id=501').get(), before);
+  assert.equal(db.prepare('SELECT partner_id FROM orders WHERE id=1').get().partner_id, 501);
+  assert.equal(db.prepare('SELECT partner_id FROM templates WHERE id=501').get().partner_id, 501);
+  db.exec("INSERT INTO contacts(role,name) VALUES ('internal','升级后的产线')");
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  db.close();
+  ({ db } = createApp(path));
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM contacts WHERE role='internal'").get().n, 1);
+  assert.deepEqual(db.prepare('SELECT * FROM contacts WHERE id=501').get(), before);
+  db.close();
+});
 test("moving weighted average fixes sale cost, returns reverse original cost and product edits do not rewrite profit", async (t) => {
   const f = await fixture(t),
     id = await f.product();
@@ -346,7 +454,7 @@ test("unknown historical costs and settlement are explicit, and v11 backup round
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 13);
+  assert.equal(backup.version, 15);
   assert.equal(backup.data.payments.length, 1);
   assert.equal(backup.data.templates.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
@@ -436,7 +544,7 @@ test('purchase return tails and legacy v10 refunds retain their financial histor
   assert.equal(f.db.prepare("SELECT SUM(total) n FROM orders WHERE kind='return'").get().n, 0.02);
   // A new backup of historical data must remain restorable.
   const upgraded = (await f.request('/backup')).data;
-  assert.equal(upgraded.version, 13);
+  assert.equal(upgraded.version, 15);
   assert.equal((await f.request('/backup/preview', { backup: upgraded })).status, 200);
 });
 

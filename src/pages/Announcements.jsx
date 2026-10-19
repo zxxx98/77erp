@@ -17,7 +17,7 @@ export function Announcements({ data, openModal }) {
   const { user } = usePermissions();
   const [unread, setUnread] = useState(false);
   const [offset, setOffset] = useState(0);
-  const query = useAnnouncementQuery(`/announcements?unread=${unread}&offset=${offset}&limit=20`, data, true);
+  const query = useAnnouncementQuery(`/announcements?unread=${unread}&offset=${offset}&limit=20`, data);
   const result = query.result;
   useEffect(() => {
     if (result && offset > 0 && !result.announcements.length) setOffset(Math.max(0, offset - 20));

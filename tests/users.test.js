@@ -198,7 +198,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 13);
+  assert.equal(backup.version, 15);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -239,6 +239,7 @@ const routeRoles = new Map(Object.entries({
   'get /api/data': 'employee', 'get /api/style': 'employee', 'get /api/products/barcode/:barcode': 'employee', 'get /api/products/:id/other-warehouses': 'employee', 'get /api/products/:id/history': 'employee',
   'get /api/orders/export': 'employee', 'post /api/products': 'employee', 'put /api/products/:id': 'employee', 'post /api/orders': 'employee',
   'post /api/products/:id/status': 'admin', 'delete /api/products/:id': 'admin',
+  'post /api/products/:id/inspect': 'employee',
   'get /api/settings/ai': 'admin', 'put /api/settings/ai': 'admin', 'post /api/settings/ai/test': 'admin', 'get /api/settings/ai/audit': 'admin',
   // Legacy employees do not inherit the new AI permission; dedicated AI tests cover opt-in access.
   'get /api/ai/conversations': 'ai', 'get /api/ai/conversations/:id': 'ai', 'post /api/ai/chat': 'ai', 'post /api/ai/confirm': 'ai',
@@ -262,7 +263,7 @@ const routeRoles = new Map(Object.entries({
   'get /api/stock-qrs/:qr_id/usages': 'admin', 'get /api/stock-qrs/:qr_id/revisions': 'admin',
   'post /api/stock-qrs/preview': 'employee', 'post /api/stock-qrs/:qr_id/execute': 'employee',
   'get /api/backup': 'admin', 'post /api/backup/preview': 'admin', 'post /api/backup/restore': 'admin',
-  'get /api/workspace': 'employee', 'get /api/products/:id': 'employee',
+  'get /api/workspace': 'employee', 'get /api/updates': 'employee', 'get /api/products/:id': 'employee',
   'get /api/products': 'employee', 'get /api/orders': 'employee', 'get /api/orders/:id': 'employee', 'get /api/dashboard': 'employee',
   'get /api/transfers': 'admin', 'post /api/transfers': 'admin', 'post /api/transfers/:id/void': 'admin',
 }));

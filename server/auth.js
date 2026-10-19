@@ -232,6 +232,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
+    if (read && path === '/updates') return next();
     if ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
         (post && /^\/announcements\/\d+\/read$/.test(path))) return next();
     if ((read && (path === '/ai/conversations' || /^\/ai\/conversations\/[0-9a-f-]+$/.test(path)) ||
@@ -243,6 +244,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       /^\/products\/\d+\/(other-warehouses|history)$/.test(path))) ||
       (post && ['/products','/orders','/templates','/uploads/product-image'].includes(path)) ||
       (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
+      (post && /^\/products\/\d+\/inspect$/.test(path)) ||
       (post && /^\/templates\/\d+\/delete$/.test(path)) ||
       (post && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path)));
     if (req.user.legacy_permissions) {
@@ -257,7 +259,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       let permission;
       if ((post && ['/products','/uploads/product-image'].includes(path)) ||
           (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
-          (post && /^\/products\/\d+\/status$/.test(path)) ||
+          (post && /^\/products\/\d+\/(status|inspect)$/.test(path)) ||
           (req.method === 'DELETE' && /^\/products\/\d+$/.test(path)) ||
           (['POST','PUT'].includes(req.method) && /^\/categories(?:\/\d+(?:\/delete)?)?$/.test(path))) permission = 'products';
       if (post && path === '/orders') permission = req.body?.type === 'in' ? 'purchase' : req.body?.type === 'out' ? 'sale' : null;

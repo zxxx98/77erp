@@ -83,7 +83,7 @@ test('v11 backups restore a tree and product details independently of current ca
   const f = await fixture(t), root = await f.category('食材'), child = await f.category('调味品', root);
   await f.request('/products', 'POST', { ...product, category_id: child, image, specification: '500g', note: '避光保存' });
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 13);
+  assert.equal(backup.version, 15);
   await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
   const newRoot = await f.category('不同的当前分类');
   assert.equal((await f.request(`/categories/${newRoot}`, 'PUT', { name: '当前分类', parent_id: null })).status, 200);
@@ -122,6 +122,8 @@ test('existing flat category database migrates idempotently without changing sto
   const path = join(folder, 'legacy.sqlite');
   let { db } = createApp(path);
   const original = db.prepare('SELECT id,name,barcode,category,stock FROM products ORDER BY id').all();
+  // Downgrade fixtures must also remove triggers that did not exist in the legacy schema.
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'data_revision_*'").all()) db.exec(`DROP TRIGGER ${name}`);
   db.exec('DROP TRIGGER product_version_update');
   for (const key of ['category_id', 'image', 'specification', 'note']) db.exec(`ALTER TABLE products DROP COLUMN ${key}`);
   db.exec('DROP TABLE categories'); db.close();
@@ -149,6 +151,7 @@ test('a shared legacy tree is copied into every existing warehouse, retaining pr
   const remote = { ...source, id: 1000, barcode: 'LEGACY-REMOTE', warehouse_id: 2, sync_key: randomUUID(), stock: 3, inventory_value_cents: 3000 };
   const fields = Object.keys(remote);
   db.prepare(`INSERT INTO products (${fields.join(',')}) VALUES (${fields.map(() => '?').join(',')})`).run(...Object.values(remote));
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'data_revision_*'").all()) db.exec(`DROP TRIGGER ${name}`);
   db.exec('DROP INDEX categories_sibling_name; ALTER TABLE categories DROP COLUMN warehouse_id; CREATE UNIQUE INDEX categories_sibling_name ON categories(COALESCE(parent_id,0),name);');
   const oldCategories = db.prepare('SELECT * FROM categories ORDER BY id').all();
   const oldProducts = db.prepare('SELECT * FROM products ORDER BY id').all();

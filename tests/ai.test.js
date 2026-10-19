@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 
 async function fixture(t) {
@@ -62,6 +63,31 @@ test('cross-warehouse comparison matches identity and distinguishes absent produ
   const empty = (await f.request(f.admin, '/warehouses', { name: '空仓' })).data.id;
   f.use('compare_stock', { product_id: 1, warehouse_a: 1, warehouse_b: empty }); await f.chat(f.admin);
   assert.equal(JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content).b.stock, null);
+});
+
+test('AI identifies internal units and preserves their identity and accounting through preview and confirmation', async t => {
+  const f = await fixture(t);
+  const contact = await f.request(f.admin, '/contacts', { request_id: randomUUID(), role: 'internal', name: 'AI内部产线', person: '', phone: '', address: '', note: '', active: 1 });
+  assert.equal(contact.status, 200);
+  const before = (await f.request(f.admin, '/dashboard')).data.today;
+  f.use('search_contacts', { query: 'AI内部产线' });
+  await f.chat(f.admin);
+  const found = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(found[0].role, 'internal');
+  const count = f.db.prepare('SELECT COUNT(*) n FROM orders').get().n;
+  f.use('preview_orders', { orders: [{ ...f.order('out', 2), partner: 'AI内部产线', partner_id: contact.data.id }] });
+  const preview = await f.chat(f.admin);
+  const action = preview.data.actions[0];
+  assert.ok(action);
+  assert.equal(action.preview.orders[0].kind, 'internal');
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM orders').get().n, count);
+  const confirmed = await f.request(f.admin, '/ai/confirm', { action_id: action.id });
+  assert.equal(confirmed.status, 200);
+  const order = f.db.prepare('SELECT * FROM orders WHERE id=?').get(confirmed.data.orders[0].id);
+  assert.equal(order.kind, 'internal');
+  assert.equal(order.partner_id, contact.data.id);
+  assert.equal(order.settlement_tracked, 0);
+  assert.deepEqual((await f.request(f.admin, '/dashboard')).data.today, before);
 });
 
 test('batch orders preview without writes, confirm atomically, attribute to current user and deduplicate retries', async t => {

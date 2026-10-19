@@ -1,3 +1,4 @@
+import { contactMatchesDirection } from '../../shared/contacts.js';
 import { useQuery } from '../queries.js';
 import { lookupProductCode, useProductSelection } from '../product-query.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -184,11 +185,12 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     } catch (e) { setClosing(false); reportError(e.message); }
     finally { setSavingClose(false); }
   };
-  const partners = (data.contacts || []).filter(c => c.active && c.role === (type === 'in' ? 'supplier' : 'customer'));
+  const partners = (data.contacts || []).filter(c => c.active && contactMatchesDirection(c, type));
+  const internal = partners.find(c => c.id === partnerId)?.role === 'internal';
   const matches = query.trim() ? selection.matches : [];
 
   return <>
-    <Modal title={type === 'in' ? '采购入库' : '销售出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
+    <Modal title={internal ? (type === 'in' ? '内部入库' : '内部出库') : type === 'in' ? '采购入库' : '销售出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
       <form onSubmit={confirm} className="mw-order-form">
         <div ref={bodyRef} className="form-body mw-stack mw-order-body">
           <Notice>{error.message || selection.error || contacts.error}</Notice><Notice>{storageError}</Notice>
@@ -204,6 +206,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             {template && <p className="mw-muted">已套用「{template.name}」，本次修改不会自动更新模板。</p>}
             {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">模板名称<input maxLength={100} placeholder="例如：每周日用品补货" value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? '另存为模板' : '保存为模板'}</Button>{template && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
             <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable label={type === 'in' ? '供应商' : '客户 / 往来单位'} required disabled={disabled} onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
+            {internal && <p className="mw-muted">内部流转仅调整库存，不计入采购额、销售额、利润及应收应付。入库单价用于库存计价。</p>}
             <Button primary icon={Camera} disabled={!online} onClick={() => setCamera(value => !value)}>{camera ? '关闭摄像头' : '扫码添加物料'}</Button>
             {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加物料" note="识别后自动添加到当前单据"
               onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
@@ -223,7 +226,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
         <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料</span><h2>{money(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
       </form>
     </Modal>
-    {confirming && <Modal title={type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {money(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
+    {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {money(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
     {closing && <Modal title={pending ? '保存待核对单据？' : '保存本地草稿？'} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? '提交结果尚未确认，请保留草稿，联网后核对原提交。' : '保存后可从“更多 → 本地草稿”继续编辑。'}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>保存草稿并关闭</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>放弃草稿</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>继续编辑</Button></div></Modal>}
   </>;
 }

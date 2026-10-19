@@ -1,0 +1,51 @@
+import { useMemo, useState } from 'react';
+import { usePagedQuery } from './queries.js';
+import { api } from './api.js';
+import { useBusiness } from './business-api.js';
+import { usePermissions } from './permissions.jsx';
+import { Button, Modal } from './components/common.jsx';
+import { inspectionCycleLabel, inspectionToday, nextInspectionDate } from '../shared/inspection.js';
+import './inspection.css';
+
+export function InspectionPanel({ data }) {
+  const { can } = usePermissions();
+  const [revision, setRevision] = useState(0);
+  const queryData = useMemo(() => ({ ...data }), [data, revision]);
+  const query = usePagedQuery('/products?inspection=due', queryData, 'products');
+  const action = useBusiness();
+  const [selected, setSelected] = useState(null);
+  const [nextDate, setNextDate] = useState('');
+  const [message, setMessage] = useState('');
+  const refresh = () => { setSelected(null); action.setError(''); setRevision(value => value + 1); };
+  const complete = product => action.run(async () => {
+    const saved = await api(`/products/${product.id}/inspect`, {
+      method: 'POST', warehouseId: data.warehouse_id,
+      body: { version: product.version, ...(product.inspection_interval ? {} : { next_date: nextDate }) },
+    });
+    setSelected(null);
+    setMessage(`${product.name}已校验，下次校验日期：${saved.inspection_date}`);
+    setRevision(value => value + 1);
+  });
+  const products = query.result?.products || [];
+  if (!query.result?.total && !query.error && !action.error && !message) return null;
+  return <section className="inspection-panel" aria-label="待校验物料">
+    <div className="inspection-heading"><h2>待校验物料{query.result ? `（${query.result.total}）` : ''}</h2><Button disabled={action.busy || query.loading} onClick={refresh}>刷新列表</Button></div>
+    {message && <p className="inspection-success" role="status">{message}</p>}
+    {(query.error || (!selected && action.error)) && <p role="alert" className="form-error">{query.error || action.error}</p>}
+    {products.map(product => <div className="inspection-row" key={product.id}>
+      <div><strong>{product.name}</strong><small>{product.barcode}{product.specification ? ` · ${product.specification}` : ''}</small><span>校验日期：{product.inspection_date} · {inspectionCycleLabel(product)}</span></div>
+      {can('products') && <Button aria-label={`已校验：${product.name}`} disabled={action.busy || query.loading} onClick={() => {
+        action.setError('');
+        if (product.inspection_interval) complete(product);
+        else { setSelected(product); setNextDate(''); }
+      }}>已校验</Button>}
+    </div>)}
+    {query.result?.has_more && <Button disabled={query.loading || action.busy} onClick={query.loadMore}>{query.loading ? '正在加载…' : '加载更多待校验物料'}</Button>}
+    {selected && <Modal title="设置下次校验日期" subtitle={selected.name} onClose={() => { if (!action.busy) setSelected(null); }}>
+      <form onSubmit={event => { event.preventDefault(); complete(selected); }}>
+        <div className="form-body"><p>此物料未配置周期，请手动填写下次校验日期。</p><label>下次校验日期<input type="date" required min={nextInspectionDate(inspectionToday(), 1, 'day')} value={nextDate} disabled={action.busy} onChange={event => setNextDate(event.target.value)} /></label>{action.error && <p role="alert" className="form-error">{action.error}</p>}</div>
+        <div className="modal-footer"><Button type="button" disabled={action.busy} onClick={() => setSelected(null)}>取消</Button><Button type="submit" kind="primary" busy={action.busy}>保存校验结果</Button></div>
+      </form>
+    </Modal>}
+  </section>;
+}

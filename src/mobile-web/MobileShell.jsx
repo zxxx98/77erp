@@ -14,10 +14,12 @@ import { ProductHistory } from '../ProductHistory.jsx';
 import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
 import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
 import './mobile.css';
+import { InspectionPanel } from '../InspectionPanel.jsx';
+import { inspectionCycleLabel } from '../../shared/inspection.js';
 
 const tabs = [['overview', '工作台', LayoutDashboard], ['products', '物料', Box], ['inventory', '库存', Warehouse], ['history', '单据', History], ['more', '更多', Settings]];
 
-export function MobileShell({ user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, announcementCount }) {
+export function MobileShell({ user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, announcementCount, updateNotice }) {
   const { online } = usePwa();
   const [updated, setUpdated] = useState(null);
   const dataRef = useRef(data);
@@ -60,6 +62,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
     </header>
     <OfflineNotice />
     <main className="mw-content" inert={switching}>
+      {updateNotice}
       {loading && !ready ? <div className="mw-empty" role="status"><LoadingIndicator size={64} /><p>正在读取库存…</p></div> : <>
         {loadError && <div className="mw-stack"><Notice>{loadError}{ready ? ' 当前显示上次读取的数据。' : ''}</Notice><Button icon={RefreshCw} busy={refreshing} onClick={reload}>重新同步</Button></div>}
         {!ready && !loadError && <Empty title="等待连接工作空间" />}
@@ -95,6 +98,7 @@ function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history })
     <div><h1>工作台</h1><p className="mw-muted">{data.settings.business_name} · {data.settings.warehouse_name}</p></div>
     <Notice>{error}</Notice>
     <div className="mw-stats">{stats.map(([label, value, Icon]) => <section className="mw-stat" key={label}><div><span className="mw-muted">{label}</span><Icon size={18} /></div><strong>{value}</strong></section>)}</div>
+    <InspectionPanel key={data.warehouse_id} data={data} />
     <section className="mw-card mw-stack"><h2>快速操作</h2><Button primary icon={ScanLine} onClick={onScan}>扫描物料条码</Button><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>采购入库</Button><Button permission="sale" icon={ArrowUpFromLine} onClick={() => openOrder('out')}>销售出库</Button></div></section>
     <section className="mw-card mw-stack"><div className="mw-between"><h2>库存预警</h2><span className="mw-warning">{summary ? `${summary.products.low_stock + summary.products.out_of_stock} 件物料` : '—'}</span></div>{low.length ? low.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">所有物料库存充足。</p>}</section>
     <section className="mw-card mw-stack"><h2>最近单据</h2>{recent.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{summary && !recent.length && <p className="mw-muted">暂无单据，创建第一张入库单开始记录库存。</p>}<Button onClick={history}>查看全部单据</Button></section>
@@ -128,7 +132,7 @@ function Products({ data, inventory, showProduct, openModal }) {
 
 function OrderSummary({ order, onOpen }) {
   return <button type="button" className="mw-order-summary" onClick={() => onOpen(order)}>
-    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? '不涉及金额' : money(order.total)}</strong>
+    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? '不涉及金额' : `${order.kind === 'internal' ? '参考 ' : ''}${money(order.total)}`}</strong>
   </button>;
 }
 
@@ -141,7 +145,7 @@ function Orders({ data, initial, openOrder, showOrder }) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const { result, error, loading, loadMore, retry } = usePagedQuery(queryPath('/orders', {
-    q: query, kind: type === 'transfer' ? 'transfer' : null, business: ['in', 'out'].includes(type) ? type : null,
+    q: query, kind: ['transfer', 'internal'].includes(type) ? type : null, business: ['in', 'out'].includes(type) ? type : null,
     from: period === 'all' ? null : new Date(Date.now() - Number(period) * 86400000).toISOString().slice(0, 10),
   }), data, 'orders', query ? 250 : 0);
   const orders = result?.orders || [];
@@ -159,7 +163,7 @@ function Orders({ data, initial, openOrder, showOrder }) {
   return <div className="mw-stack">
     <h1>操作记录</h1><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>新建入库</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>新建出库</Button></div>
     <SearchField value={query} onChange={setQuery} label="搜索单据号、往来单位或物料" />
-    <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '采购入库'], ['out', '销售出库'], ['transfer', '仓库调拨']] } />
+    <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '采购入库'], ['out', '销售出库'], ['transfer', '仓库调拨'], ['internal', '内部流转']] } />
     <Chips label="单据时间" value={period} onChange={setPeriod} options={ [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天']] } />
     <p className="mw-muted">共 {result ? result.total : '—'} 张单据 · 已加载 {orders.length} 张</p>
     <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>重新加载</Button>}{loading && <LoadingStatus>正在读取单据…</LoadingStatus>}
@@ -234,6 +238,7 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
   return <Modal title="物料详情" onClose={busy ? () => {} : onClose}><div className="form-body mw-stack">
     <Notice>{error}</Notice><section className="mw-card mw-stack"><h2>{product.name}</h2><p className="mw-muted">{product.barcode}</p>{product.image && <ProductImage src={product.image} alt={product.name} className="mw-detail-image" />}<StockBadge product={product} />
       { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
+    <section className="mw-card mw-stack"><DetailRow label="校验日期">{product.inspection_date || '未配置'}</DetailRow><DetailRow label="校验周期">{inspectionCycleLabel(product)}</DetailRow><DetailRow label="上次校验">{product.last_inspected_on || '暂无记录'}</DetailRow></section>
     <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{money(product.price)}</DetailRow></section>
     <ProductHistory key={product.id} product={product} onViewOrder={id => openOrderDetail?.(id)} />
     <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted"><LoadingStatus>读取中…</LoadingStatus></p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一物料</p>}

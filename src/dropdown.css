@@ -38,3 +38,5 @@
 .form-grid .dropdown-field, .stock-qr-manager .dropdown-field { margin: 0; }
 .user-table .dropdown { min-width: 110px; }
 @media (prefers-reduced-motion: reduce) { .dropdown-control, .dropdown-toggle > svg { transition: none; } }
+
+.dropdown-role-internal { color:#8257b5;background:#f3edfb; }

@@ -1,5 +1,6 @@
 import { orderLineAmount } from "../shared/money.js";
 import { validQuantity, quantityUnits, addQuantity } from "../shared/quantity.js";
+import { contactMatchesDirection, contactRoleLabels } from '../shared/contacts.js';
 
 const fail = (message) => {
   throw new Error(message);
@@ -19,13 +20,26 @@ export const cents = (n) => {
 };
 const integer = (n) => Number.isSafeInteger(n) && n >= 0;
 export const businessRole = (order) =>
+  order.kind === 'internal' ? 'internal' :
   (order.kind === "return" ? order.type === "out" : order.type === "in")
     ? "supplier"
     : "customer";
 export function migrateCommerce(db) {
-  db.exec(`CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY, role TEXT NOT NULL CHECK(role IN ('supplier','customer')), name TEXT NOT NULL, person TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1, UNIQUE(role,name));
+  db.exec(`CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY, role TEXT NOT NULL CHECK(role IN ('supplier','customer','internal')), name TEXT NOT NULL, person TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1, UNIQUE(role,name));
     CREATE TABLE IF NOT EXISTS templates (id INTEGER PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('in','out')), partner TEXT NOT NULL, partner_id INTEGER REFERENCES contacts(id), note TEXT NOT NULL, items TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL, warehouse_id INTEGER NOT NULL DEFAULT 1 REFERENCES warehouses(id));
     CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id), amount_cents INTEGER NOT NULL, method TEXT NOT NULL, note TEXT NOT NULL, created_at TEXT NOT NULL, reversed_at TEXT, reverse_reason TEXT NOT NULL DEFAULT '');`);
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='contacts'").get().sql;
+  if (!schema.includes("'internal'")) {
+    // Preserve contact IDs and every existing order/template/QR foreign key.
+    db.exec('PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE');
+    try {
+      db.exec(schema.replace(/CREATE TABLE\s+"?contacts"?/i, 'CREATE TABLE contacts_internal')
+        .replace(/'supplier'\s*,\s*'customer'/, "'supplier','customer','internal'"));
+      db.exec('INSERT INTO contacts_internal SELECT * FROM contacts; DROP TABLE contacts; ALTER TABLE contacts_internal RENAME TO contacts;');
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    finally { db.exec('PRAGMA foreign_keys=ON'); }
+  }
   const add = (table, name, def) => {
     if (
       db
@@ -63,9 +77,16 @@ export function resolveContact(db, type, name, id) {
   const role = type === "in" ? "supplier" : "customer";
   if (id != null) {
     const c = db.prepare("SELECT * FROM contacts WHERE id=?").get(id);
-    if (!c || c.role !== role || !c.active)
+    if (!c || !contactMatchesDirection(c, type) || !c.active)
       fail("往来单位不存在、已停用或类型不匹配。");
     return c;
+  }
+  const internal = db.prepare("SELECT * FROM contacts WHERE role='internal' AND name=?").get(name.trim());
+  if (internal) {
+    if (db.prepare('SELECT 1 FROM contacts WHERE role=? AND name=?').get(role, name.trim()))
+      fail('存在同名往来单位，请明确选择单位。');
+    if (!internal.active) fail('此往来单位已停用，请先启用或选择其他单位。');
+    return internal;
   }
   db.prepare("INSERT OR IGNORE INTO contacts(role,name) VALUES (?,?)").run(
     role,
@@ -122,6 +143,7 @@ export function settlement(db, order) {
   return settlementFromPaid(order, paid);
 }
 export function settlementFromPaid(order, paid) {
+  if (order.kind === 'internal') return { paid_cents: 0, due_cents: 0, payment_status: 'not_applicable', direction: order.type === 'out' ? 'receive' : 'pay' };
   const total = Math.round(order.total * 100);
   return {
     paid_cents: paid,
@@ -155,7 +177,7 @@ export function validateTemplate(db, body) {
     const c = db
       .prepare("SELECT * FROM contacts WHERE id=?")
       .get(body.partner_id);
-    if (!c || c.role !== (body.type === "in" ? "supplier" : "customer"))
+    if (!c || !contactMatchesDirection(c, body.type))
       fail("模板往来单位无效。");
   }
   const seen = new Set();
@@ -188,7 +210,7 @@ export function installCommerce(app, db, { route, mutation }) {
       mutation(req, () => {
         const b = req.body;
         if (
-          !["supplier", "customer"].includes(b.role) ||
+          !Object.hasOwn(contactRoleLabels, b.role) ||
           !text(b.name) ||
           !text(b.person, 100, true) ||
           !text(b.phone, 50, true) ||
@@ -330,6 +352,7 @@ export function installCommerce(app, db, { route, mutation }) {
         .prepare("SELECT * FROM orders WHERE id=?")
         .get(req.params.id);
       if (!o) fail("单据不存在。");
+      if (o.kind === 'internal') fail('内部流转不涉及收付款。');
       return {
         ...settlement(db, o),
         total: o.total,
@@ -348,6 +371,7 @@ export function installCommerce(app, db, { route, mutation }) {
           .get(req.params.id);
         if (
           !o ||
+          o.kind === 'internal' ||
           o.status !== "active" ||
           o.settlement_tracked ||
           req.body.confirmation !== "TRACK_SETTLEMENT"
@@ -374,7 +398,7 @@ export function installCommerce(app, db, { route, mutation }) {
         const o = db
           .prepare("SELECT * FROM orders WHERE id=?")
           .get(req.params.id);
-        if (!o || o.status !== "active" || !o.settlement_tracked)
+        if (!o || o.kind === 'internal' || o.status !== "active" || !o.settlement_tracked)
           fail("单据不存在、已作废或尚未核对收付款。");
         const amount = cents(req.body.amount);
         if (
@@ -420,7 +444,7 @@ export function installCommerce(app, db, { route, mutation }) {
     route((req) => {
       const orders = db
         .prepare(
-          "SELECT * FROM orders WHERE status='active' AND kind!='transfer' AND warehouse_id=? ORDER BY created_at DESC,id DESC",
+          "SELECT * FROM orders WHERE status='active' AND kind NOT IN ('transfer','internal') AND warehouse_id=? ORDER BY created_at DESC,id DESC",
         )
         .all(req.warehouse.id)
         .map((o) => ({ ...o, ...settlement(db, o) }));

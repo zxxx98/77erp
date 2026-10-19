@@ -164,7 +164,7 @@ export function syncProduct(db, id, targets, user) {
     product.sync_key = randomUUID();
     db.prepare('UPDATE products SET sync_key=? WHERE id=?').run(product.sync_key, id);
   }
-  const fields = ['name','barcode','category','unit','cost','price','threshold','color','category_id','image','specification','note'];
+  const fields = ['name','barcode','category','unit','cost','price','threshold','color','category_id','image','specification','note','inspection_date','inspection_interval','inspection_unit'];
   for (const target of targets) {
     if (target === product.warehouse_id || !db.prepare('SELECT 1 FROM warehouses WHERE id=?').get(target)) throw new Error('同步目标仓库不存在或与当前仓库相同。');
     const existing = db.prepare('SELECT * FROM products WHERE warehouse_id=? AND sync_key=?').get(target, product.sync_key);

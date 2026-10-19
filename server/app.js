@@ -5,6 +5,7 @@ import { installAi } from './ai.js';
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
 import { installProductHistory } from './product-history.js';
 import { validQuantity } from '../shared/quantity.js';
+import { inspectionToday, nextInspectionDate, validInspectionDate } from '../shared/inspection.js';
 import { hasPermission } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
 import { migrateProductVersions } from './product-version.js';
@@ -26,6 +27,7 @@ import { installMultiStocktake } from './multi-stocktake.js';
 import { getStockExpression, saveStockExpression } from './stock-compare.js';
 import { migrateTransfers } from './transfers.js';
 import { installQueries } from './queries.js';
+import { installDataUpdates } from './data-updates.js';
 import { migrateNotifications, installNotifications, queueNotification } from './notifications.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -283,9 +285,11 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   const r2Backup = installR2Backup(app, db, options);
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
+  const dataRevision = installDataUpdates(app, db);
   // Lightweight bootstrap: business lists and details are queried on demand.
   app.get('/api/workspace', (req, res) => {
     res.json({
+      revision: dataRevision(req),
       user: req.user,
       categories: db.prepare('SELECT id,name,parent_id,warehouse_id FROM categories WHERE warehouse_id=? ORDER BY name,id').all(req.warehouse.id),
       warehouses: warehouses(),
@@ -423,7 +427,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (!v[1]) v[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,inspection_date,inspection_interval,inspection_unit,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids, req.user);
@@ -470,7 +474,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       v[2] = catalog.path;
       if (!v[1]) v[1] = existing.barcode;
       db.prepare(
-        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=? WHERE id=? AND version=?",
+        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,inspection_date=?,inspection_interval=?,inspection_unit=? WHERE id=? AND version=?",
       ).run(...v, ...catalog.values, req.params.id, existing.version);
       recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
       syncProduct(db, existing.id, req.body.sync_warehouse_ids, req.user);
@@ -485,6 +489,30 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
           ? "该条码已被使用，请使用其他条码。"
           : e.message,
       });
+    }
+  });
+  app.post('/api/products/:id/inspect', (req, res) => {
+    try {
+      db.exec('BEGIN IMMEDIATE');
+      const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(req.params.id, req.warehouse.id);
+      if (!product) throw new Error('物料不存在或不属于当前仓库。');
+      if (req.body.version !== product.version) {
+        db.exec('ROLLBACK');
+        return res.status(409).json({ error: '物料或校验日期已变化，请刷新待校验列表后重试。' });
+      }
+      const today = inspectionToday();
+      if (!product.active || !product.inspection_date || product.inspection_date > today)
+        throw new Error('此物料尚未到校验日期或已停用，请刷新待校验列表。');
+      const next = product.inspection_interval
+        ? nextInspectionDate(today, product.inspection_interval, product.inspection_unit) : req.body.next_date;
+      if (!validInspectionDate(next) || next <= today) throw new Error('请手动填写晚于今天的下次校验日期。');
+      db.prepare('UPDATE products SET inspection_date=?,last_inspected_on=? WHERE id=?').run(next, today, product.id);
+      const saved = db.prepare('SELECT version FROM products WHERE id=?').get(product.id);
+      db.exec('COMMIT');
+      res.json({ ok: true, inspection_date: next, last_inspected_on: today, version: saved.version });
+    } catch (error) {
+      if (db.isTransaction) db.exec('ROLLBACK');
+      res.status(400).json({ error: error.message });
     }
   });
   // Lifecycle actions affect only the current warehouse, never synchronized copies.

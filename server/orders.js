@@ -62,7 +62,7 @@ export function createOrder(db, req, body) {
   const contact = resolveContact(db, type, partner, body.partner_id);
   const result = db
     .prepare(
-      "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)",
+      "INSERT INTO orders (number,type,partner,note,total,created_at,partner_id,kind,settlement_tracked,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .run(
       number,
@@ -72,6 +72,8 @@ export function createOrder(db, req, body) {
       total / 100,
       at,
       contact.id,
+      contact.role === 'internal' ? 'internal' : 'normal',
+      contact.role === 'internal' ? 0 : 1,
       req.warehouse.id,
       req.user.id,
       (req.user.name || req.user.username),

@@ -28,6 +28,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api, setWarehouseId, getWarehouseId } from '../api.js';
 import { hasPermission, canManage } from '../../shared/permissions.js';
 import { useQuery } from '../queries.js';
+import { DataUpdateNotice, useDataUpdates } from '../DataUpdates.jsx';
 import { announcementsChanged, useAnnouncementQuery } from '../announcement-query.js';
 import '../announcement-entry.css';
 import { PermissionContext } from '../permissions.jsx';
@@ -189,15 +190,7 @@ function App({ admin, onLogout }) {
       window.removeEventListener("keydown", key);
     };
   }, []);
-  useEffect(() => {
-    const refreshPermissions = () => { if (document.visibilityState === 'visible') reload(); };
-    window.addEventListener('focus', refreshPermissions);
-    const onVisible = () => { if (document.visibilityState === 'visible') refreshPermissions(); };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', refreshPermissions);
-    const timer = !isAdmin ? setInterval(refreshPermissions, 30000) : null;
-    return () => { window.removeEventListener('focus', refreshPermissions); document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('online', refreshPermissions); if (timer) clearInterval(timer); };
-  }, [isAdmin]);
+  const updatesAvailable = useDataUpdates(data, admin.id);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4200);
@@ -237,7 +230,7 @@ function App({ admin, onLogout }) {
   const can = key => hasPermission(user, key);
   const manage = key => canManage(user, key);
   const summaryQuery = useQuery(mobileDevice ? null : '/dashboard', data);
-  const announcementQuery = useAnnouncementQuery('/announcements/unread-count', data, true);
+  const announcementQuery = useAnnouncementQuery('/announcements/unread-count', data);
   const announcementCount = announcementQuery.result?.count || 0;
   const announcementSaved = message => { setModal(null); announcementsChanged(); notify(message); };
   const low = summaryQuery.result?.products.low_stock_products || [];
@@ -261,6 +254,7 @@ function App({ admin, onLogout }) {
     setModal({ kind: 'reduce', product });
   };
   const currentNav = navItems.find((n) => n.id === page);
+  const updateNotice = updatesAvailable ? <DataUpdateNotice onRefresh={reload} busy={refreshing} disabled={!!modal} /> : null;
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
       {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />正在切换仓库…</div>}
@@ -268,6 +262,7 @@ function App({ admin, onLogout }) {
         showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={openOrderDetail}
         switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
         loggingOut={loggingOut} logout={logout}
+        updateNotice={updateNotice}
         announcementCount={announcementCount}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
@@ -384,9 +379,9 @@ function App({ admin, onLogout }) {
             <Select className="warehouse-select" aria-label="当前仓库" value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e.target.value))}>
               {(data.warehouses || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </Select>
-            <div className="sync-state">
+            <div className={`sync-state${updatesAvailable ? ' pending' : ''}`}>
               <i />
-              数据已同步
+              {refreshing ? '正在刷新' : updatesAvailable ? '有数据变更' : '数据已读取'}
             </div>
             <form
               className="global-search"
@@ -477,6 +472,7 @@ function App({ admin, onLogout }) {
           </div>
         </header>
         <main key={data.warehouse_id || 1} className="main-content" inert={switching}>
+          {updateNotice}
           {loading ? (
             <div className="loading-page" role="status">
               <LoadingIndicator size={64} />

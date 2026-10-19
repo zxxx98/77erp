@@ -17,14 +17,15 @@ import { ProductConflict } from '../ProductConflict.jsx';
 import { useBusiness } from '../business-api.js';
 import { parseQuantity } from '../../shared/quantity.js';
 import { mobileDevice } from '../device.js';
+import { inspectionCycleLabel, inspectionUnits } from '../../shared/inspection.js';
 
 function ProductFormSection({ title, children }) {
   return mobileDevice ? <>{children}</> : <section className="drawer-form-section"><h3>{title}</h3>{children}</section>;
 }
 
 const productSnapshot = (form, targets) => JSON.stringify([
-  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold']
-    .map(key => ['category_id', 'cost', 'price', 'threshold'].includes(key) && form[key] !== '' && form[key] != null
+  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'inspection_date', 'inspection_interval', 'inspection_unit']
+    .map(key => ['category_id', 'cost', 'price', 'threshold', 'inspection_interval'].includes(key) && form[key] !== '' && form[key] != null
       ? Number(form[key]) : String(form[key] ?? '')),
   [...targets].sort((a, b) => a - b),
 ]);
@@ -120,6 +121,9 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
     ["安全库存", `${count(product.threshold)} ${product.unit}`],
     ["库存状态", stockStatus(product)],
     ["使用状态", product.active === 0 ? "已停用" : "已启用"],
+    ["校验日期", product.inspection_date || '未配置'],
+    ["校验周期", inspectionCycleLabel(product)],
+    ["上次校验", product.last_inspected_on || '暂无记录'],
   ];
   return <Modal title="物料详情" subtitle="查看物料档案与当前库存" onClose={onClose} presentation="drawer">
     <div className="form-body product-detail">
@@ -177,6 +181,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       cost: "",
       price: "",
       threshold: 20,
+      inspection_date: '', inspection_interval: 0, inspection_unit: 'month',
     },
   );
   const [error, setError] = useState(""),
@@ -210,6 +215,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             cost: Number(form.cost),
             price: Number(form.price),
             threshold: Number(form.threshold),
+            inspection_interval: Number(form.inspection_interval || 0),
             sync_warehouse_ids: syncTargets,
           },
         },
@@ -380,6 +386,28 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               />
               <small>设为 0 则不启用缺货和低库存预警；大于 0 时，库存小于或等于此数量会提醒补货。</small>
             </label>
+          </ProductFormSection>
+          <ProductFormSection title="校验提醒（可选）">
+            <label>校验日期
+              <input type="date" aria-label="校验日期" value={form.inspection_date || ''} onChange={e => {
+                change('inspection_date', e.target.value);
+                if (!e.target.value) change('inspection_interval', 0);
+              }} />
+              <small>到期当天起在首页显示待校验物料；留空不提醒。</small>
+            </label>
+            <div className="form-grid">
+              <label>校验周期
+                <input type="number" aria-label="校验周期" min="1" max="999" step="1" disabled={!form.inspection_date} placeholder="留空则手动设置日期" value={form.inspection_interval || ''} onChange={e => change('inspection_interval', e.target.value)} />
+              </label>
+              <label>周期单位
+                <Select aria-label="周期单位" disabled={!form.inspection_date} value={form.inspection_unit || 'month'} onChange={e => change('inspection_unit', e.target.value)}>
+                  {Object.entries(inspectionUnits).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </Select>
+              </label>
+            </div>
+            <small>点击「已校验」后，从当天按周期计算下次日期；未设置周期时，需手动填写下次日期。</small>
+          </ProductFormSection>
+          <ProductFormSection title="同步到其他仓库">
             <ProductSync warehouses={warehouses} warehouseId={warehouseId} targets={syncTargets} setTargets={setSyncTargets} disabled={busy || readingImage} />
           </ProductFormSection>
           {!product && (

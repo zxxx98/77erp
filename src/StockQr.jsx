@@ -1,3 +1,4 @@
+import { contactMatchesDirection } from '../shared/contacts.js';
 import { useQuery } from './queries.js';
 import { lookupProductCode, useProductSelection } from './product-query.js';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
@@ -629,10 +630,10 @@ export function StockQrManager({
                   扫码后将直接生成整张单据并更新全部物料库存。
                 </p>
               )}
-              <ContactPicker contacts={(data.contacts || []).filter(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer"))}
+              <ContactPicker contacts={(data.contacts || []).filter(c => c.active && contactMatchesDirection(c, form.type))}
                 label="往来单位" value={form.partner} selectedId={form.partner_id} required disabled={busy}
                 onChange={partner => {
-                  const contact = (data.contacts || []).find(c => c.active && c.role === (form.type === "in" ? "supplier" : "customer") && c.name === partner);
+                  const contact = (data.contacts || []).find(c => c.active && contactMatchesDirection(c, form.type) && c.name === partner);
                   setForm({ ...form, partner, partner_id: contact?.id });
                 }}
                 onSelect={contact => setForm({ ...form, partner: contact.name, partner_id: contact.id })} />

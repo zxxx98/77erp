@@ -1,5 +1,6 @@
 import { validQuantity, addQuantity } from "../shared/quantity.js";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
+import { contactMatchesDirection } from '../shared/contacts.js';
 import { resolveContact } from "./commerce.js";
 import { createOrder } from "./orders.js";
 import { operationRequest, saveOperationRequest } from "./operations.js";
@@ -268,7 +269,7 @@ export function installStockQr(app, db) {
     if (
       !c ||
       !c.active ||
-      c.role !== (q.type === "in" ? "supplier" : "customer")
+      !contactMatchesDirection(c, q.type)
     )
       fail("PARTNER_CHANGED", "往来单位已停用或类型不匹配，请修改配置。");
     view.partner_name = c.name;
@@ -639,8 +640,7 @@ export function validateStockQrBackup(data) {
       ![0, 1].includes(q.require_confirmation) ||
       !integer(q.version, 1, Number.MAX_SAFE_INTEGER) ||
       !contacts.has(q.partner_id) ||
-      contacts.get(q.partner_id).role !==
-        (q.type === "in" ? "supplier" : "customer") ||
+      !contactMatchesDirection(contacts.get(q.partner_id), q.type) ||
       !text(q.partner_name, 100) ||
       !text(q.note, 500, true) ||
       !actor(q, "created_by") ||
@@ -744,7 +744,7 @@ export function validateStockQrBackup(data) {
       !o ||
       o.warehouse_id !== q.warehouse_id ||
       o.type !== q.type ||
-      o.kind !== "normal" ||
+      !["normal", "internal"].includes(o.kind) ||
       orderIds.has(o.id) ||
       usageKeys.has(key) ||
       !integer(u.scan_number, 1, q.used_scans) ||

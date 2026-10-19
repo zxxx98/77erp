@@ -38,6 +38,67 @@ async function fixture(t) {
   return { db, request, admin, staff, grant, command, warehouse, category, product, order };
 }
 
+test('update checks are read-only, warehouse-scoped and ignore sessions and rolled-back writes', async (t) => {
+  const f = await fixture(t);
+  const other = await f.warehouse('更新检查分仓');
+  const local = await f.product({ name: '本仓物料', barcode: 'UPDATE-LOCAL' });
+  const remote = await f.product({ name: '分仓物料', barcode: 'UPDATE-REMOTE' }, other);
+  const revision = async (warehouse = 1, cookie = f.admin) => {
+    const response = await f.request(cookie, '/updates', 'GET', undefined, warehouse);
+    assert.equal(response.status, 200);
+    assert.deepEqual(Object.keys(response.data).sort(), ['revision', 'user_id']);
+    return response.data.revision;
+  };
+  assert.equal((await f.request(null, '/updates')).status, 401);
+  const initial = await revision();
+  assert.equal((await f.request(f.admin, '/workspace')).data.revision, initial);
+  await f.request(f.admin, '/products');
+  await f.request(f.admin, '/dashboard');
+  await f.request(null, '/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' });
+  assert.equal(await revision(), initial);
+  // A real business mutation in a different warehouse does not invalidate this one.
+  const otherInitial = await revision(other);
+  f.db.prepare('UPDATE products SET name=? WHERE id=?').run('分仓改名', remote.id);
+  assert.equal(await revision(), initial);
+  assert.notEqual(await revision(other), otherInitial);
+  f.db.exec('BEGIN');
+  f.db.prepare('UPDATE products SET stock=stock+1 WHERE id=?').run(local.id);
+  f.db.exec('ROLLBACK');
+  assert.equal(await revision(), initial);
+  f.db.prepare('UPDATE products SET name=name WHERE id=?').run(local.id);
+  assert.equal(await revision(), initial);
+  f.db.prepare('UPDATE products SET name=? WHERE id=?').run('本仓改名', local.id);
+  assert.notEqual(await revision(), initial);
+  const beforeUnits = await revision();
+  f.db.prepare("UPDATE app_metadata SET value=? WHERE key='product_units'").run(JSON.stringify(['件', '个', '套']));
+  assert.notEqual(await revision(), beforeUnits);
+  const beforeDelete = await revision();
+  f.db.prepare('DELETE FROM products WHERE id=?').run(local.id);
+  assert.notEqual(await revision(), beforeDelete);
+  f.db.prepare("INSERT INTO app_metadata(key,value) VALUES ('stock_expression',?)").run(JSON.stringify({ left: 1, terms: [{ op: '-', warehouse_id: other }] }));
+  const beforeComparisonChange = await revision();
+  f.db.prepare('UPDATE products SET stock=stock+1 WHERE id=?').run(remote.id);
+  assert.notEqual(await revision(), beforeComparisonChange);
+});
+
+test('update checks include team announcements and only the current user permissions and read receipts', async (t) => {
+  const f = await fixture(t);
+  const revision = async cookie => (await f.request(cookie, '/updates')).data.revision;
+  const adminBefore = await revision(f.admin), staffBefore = await revision(f.staff);
+  await f.grant(['purchase']);
+  assert.equal(await revision(f.admin), adminBefore);
+  assert.notEqual(await revision(f.staff), staffBefore);
+  const staffGranted = await revision(f.staff);
+  const notice = await f.request(f.admin, '/announcements', 'POST', { title: '数据更新通知', content: '请查看更新。', pinned: false });
+  assert.equal(notice.status, 201);
+  assert.notEqual(await revision(f.admin), adminBefore);
+  assert.notEqual(await revision(f.staff), staffGranted);
+  const adminPublished = await revision(f.admin), staffPublished = await revision(f.staff);
+  await f.request(f.staff, `/announcements/${notice.data.id}/read`, 'POST', { content_version: notice.data.content_version });
+  assert.equal(await revision(f.admin), adminPublished);
+  assert.notEqual(await revision(f.staff), staffPublished);
+});
+
 test('product queries page, search and filter on the server, and respect permissions and warehouses', async (t) => {
   const f = await fixture(t);
   const parent = await f.category('餐厨');

@@ -106,7 +106,7 @@ export function notifyOrder(db, req, id, event, before = []) {
   const order = db.prepare('SELECT * FROM orders WHERE id=?').get(id);
   const items = db.prepare(`SELECT i.product_id,i.name,i.barcode,i.quantity,i.price,i.amount_cents,p.unit
     FROM order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=? ORDER BY i.id`).all(id);
-  queueNotification(db, req, event, {
+  if (order.kind !== 'internal' || event === 'order_void') queueNotification(db, req, event, {
     order_id: id, number: order.number, type: order.type, kind: order.kind, partner: order.partner,
     total_cents: Math.round(order.total * 100),
     source_number: order.source_order_id ? db.prepare('SELECT number FROM orders WHERE id=?').get(order.source_order_id)?.number : undefined,
@@ -175,7 +175,7 @@ export function queueDailySummary(db, now = new Date()) {
       out_of_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND active!=0 AND threshold>0 AND stock=0').get(w.id).n,
     }));
     const byWarehouse = new Map(rows.map(w => [w.id, w]));
-    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,created_at FROM orders WHERE status='active' AND kind!='transfer' AND created_at>=? AND created_at<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
+    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,created_at FROM orders WHERE status='active' AND kind NOT IN ('transfer','internal') AND created_at>=? AND created_at<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
       const row = byWarehouse.get(o.warehouse_id);
       if (!row || localParts(new Date(o.created_at), config.timezone).day !== day) continue;
       const returns = o.kind === 'return';

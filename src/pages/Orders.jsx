@@ -75,7 +75,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
   useEffect(() => setPageNum(1), [query, days, tab]);
   const direction = type || tab;
   const list = useQuery(queryPath('/orders', { limit: 8, offset: (pageNum - 1) * 8, q: query,
-    business: ['in', 'out'].includes(direction) ? direction : null, kind: direction === 'transfer' ? 'transfer' : null,
+    business: ['in', 'out'].includes(direction) ? direction : null, kind: ['transfer', 'internal'].includes(direction) ? direction : null,
     from: days === 'all' ? null : new Date(Date.now() - Number(days) * 86400000).toISOString().slice(0, 10),
   }), data, query ? 250 : 0);
   const filtered = list.result?.orders || [];
@@ -96,9 +96,9 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
         title={title}
         description={
           type === "in"
-            ? "记录采购物料和成本，确认入库后库存自动增加。"
+            ? "选择供应商或内部单位入库，确认后库存自动增加。内部流转不计入采购额。"
             : type === "out"
-              ? "扫描物料、确认数量，完成销售的同时自动扣减库存。"
+              ? "选择客户或内部单位出库，确认后库存自动扣减。内部流转不计入销售额。"
               : "查看全部入出库单据，追溯物料、数量和往来单位。"
         }
       >
@@ -119,7 +119,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
       <div className="order-summary">
         <div>
           <span>
-            筛选内净额（不含作废，扣除退货）
+            筛选内净额（不含作废、调拨及内部流转，扣除退货）
           </span>
           <strong>
             <small>¥ </small>
@@ -161,6 +161,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                   ["in", "采购入库"],
                   ["out", "销售出库"],
                   ["transfer", "仓库调拨"],
+                  ["internal", "内部流转"],
                 ]
             ).map(([id, name]) => (
               <button
@@ -250,7 +251,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                     {o.kind === "transfer" ? (
                       <span className="muted">不涉及金额</span>
                     ) : (
-                      `¥ ${money(o.total)}`
+                      `${o.kind === "internal" ? "参考 " : ""}¥ ${money(o.total)}`
                     )}
                   </td>
                   <td className="muted">{dateTime(o.created_at)}</td>

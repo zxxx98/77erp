@@ -1,3 +1,4 @@
+import { contactMatchesDirection } from '../../shared/contacts.js';
 import { usePermissions } from '../permissions.jsx';
 import { useState, useRef } from 'react';
 import { useBusiness } from '../business-api.js';
@@ -124,11 +125,12 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     setTemplateRevision(value => value + 1);
     setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
   });
-  const partners = (data.contacts || []).filter(c => c.active && c.role === (type === "in" ? "supplier" : "customer"));
+  const partners = (data.contacts || []).filter(c => c.active && contactMatchesDirection(c, type));
+  const internal = partners.find(c => c.id === partnerId)?.role === 'internal';
   const matches = selection.matches.slice(0, 6);
   return (
     <Modal
-      title={type === "in" ? "新建采购入库" : "新建销售出库"}
+      title={internal ? (type === "in" ? "新建内部入库" : "新建内部出库") : type === "in" ? "新建采购入库" : "新建销售出库"}
       subtitle={`确认后将${type === "in" ? "增加" : "扣减"}库存，并生成可追溯的${type === "in" ? "入库" : "出库"}单据`}
       onClose={busy || templateAction.busy ? () => {} : onClose}
       wide
@@ -156,7 +158,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           <div className="form-grid">
             <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable
               label={type === "in" ? "供应商" : "客户 / 往来单位"}
-              placeholder={type === "in" ? "选择供应商" : "选择客户"}
+              placeholder={type === "in" ? "选择供应商或内部单位" : "选择客户或内部单位"}
               required disabled={busy || templateAction.busy}
               onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
             <label>
@@ -164,6 +166,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               <input value={data.settings.warehouse_name} disabled />
             </label>
           </div>
+          {internal && <p className="info-box">内部流转仅调整库存，不计入采购额、销售额、利润及应收应付。入库单价用于库存计价。</p>}
           <div className="order-scan-row">
             <Button
               type="button"

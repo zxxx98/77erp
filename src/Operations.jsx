@@ -115,7 +115,7 @@ export function OrderActions({ order, onSaved }) {
           onChange={(e) => setReason(e.target.value)}
         />
       </label>
-      {order.kind !== "return" && (
+      {order.kind === "normal" && (
         <>
           <p>退货沿用原单价格；数量留空或为 0 表示不退此物料。</p>
           {order.items.map((i) => (

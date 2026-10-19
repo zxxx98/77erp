@@ -11,12 +11,13 @@ const string = { type: 'string' }, integer = { type: 'integer' }, number = { typ
 const tool = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { ...object(properties), required } } });
 const tools = [
   tool('warehouses', '列出仓库及编号', {}),
+  tool('search_contacts', '查找往来单位，返回编号、类型和启用状态。内部单位可入库和出库，不计入采购销售及应收应付；同名单位必须用编号区分。', { query: string }),
   tool('count_products', '查询指定仓库当前物料档案数量，按物料记录计数，每个仓库单独统计；返回总数及启用、停用数量，不受列表分页或50条搜索上限影响。用户问“有多少种物料/商品”时优先调用。不返回财务信息。', { warehouse_id: integer }),
   tool('search_products', '在指定仓库查找物料，名称可能重名，需核对条码、规格；最多返回50条。不返回财务成本。', { warehouse_id: integer, query: string }),
   tool('compare_stock', '比较两个仓库同一物料数量，以源物料编号、同步关联或条码匹配；找不到不能视为零库存，单位不同时不能相减。', { product_id: integer, warehouse_a: integer, warehouse_b: integer }),
   tool('search_orders', '查询指定仓库最近20张单据，不返回财务信息。', { warehouse_id: integer }),
   tool('preview_orders', '生成批量入库/出库预览，绝不直接执行。必须由用户提供或明确确认往来单位、数量、单价、方向、仓库；不猜测。最多20张单据、合计100行。', {
-    orders: { type: 'array', items: { ...object({ warehouse_id: integer, type: { type: 'string', enum: ['in', 'out'] }, partner: string, note: string,
+    orders: { type: 'array', items: { ...object({ warehouse_id: integer, type: { type: 'string', enum: ['in', 'out'] }, partner: string, partner_id: integer, note: string,
       items: { type: 'array', items: { ...object({ product_id: integer, quantity: number, price: number }), required: ['product_id', 'quantity', 'price'] } } }), required: ['warehouse_id', 'type', 'partner', 'items'] } },
   }),
   tool('preview_transfer', '生成仓库调拨预览，不直接执行。必须明确调出仓库、调入仓库、物料、数量及原因。目标仓库未建档时会新建，预览需明确告知用户。每次1–100种物料。', {
@@ -95,7 +96,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (!payload.orders) return digest({ warehouse: warehouse(payload.warehouse_id), rows: payload.rows });
     return digest(payload.orders.map(o => ({ warehouse: warehouse(o.warehouse_id),
       products: o.items.map(i => db.prepare('SELECT * FROM products WHERE id=?').get(i.product_id)),
-      contacts: db.prepare('SELECT * FROM contacts WHERE name=?').all(o.partner),
+      contacts: db.prepare('SELECT * FROM contacts WHERE name=? OR id=?').all(o.partner, o.partner_id ?? null),
     })));
   }
   function writeAccess(req, kind, payload) {
@@ -136,6 +137,10 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     conversation(req, cid);
     if (!args || typeof args !== 'object' || Array.isArray(args)) fail('工具参数无效。');
     if (name === 'warehouses') return db.prepare('SELECT id,name FROM warehouses ORDER BY id').all();
+    if (name === 'search_contacts') {
+      if (typeof args.query !== 'string' || args.query.length > 100) fail('请输入最多100字的往来单位名称。');
+      return db.prepare('SELECT id,role,name,active FROM contacts WHERE instr(name,?)>0 ORDER BY active DESC,name,id LIMIT 50').all(args.query);
+    }
     if (name === 'count_products') {
       warehouse(args.warehouse_id);
       return db.prepare('SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN active=1 THEN 1 ELSE 0 END),0) AS active, COALESCE(SUM(CASE WHEN active=0 THEN 1 ELSE 0 END),0) AS inactive FROM products WHERE warehouse_id=?').get(args.warehouse_id);
@@ -162,9 +167,12 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (name === 'preview_orders') {
       if (!Array.isArray(args.orders) || !args.orders.length || args.orders.length > 20 || args.orders.some(o => !o || !Array.isArray(o.items)) || args.orders.reduce((n,o) => n + o.items.length, 0) > 100) fail('每批最多20张单据，合计100行物料。');
       // Drop all model-supplied identity/administrative fields.
-      const payload = { orders: args.orders.map(o => ({ warehouse_id: o.warehouse_id, type: o.type, partner: o.partner, note: o.note ?? '', items: o.items.map(i => ({ product_id: i.product_id, quantity: i.quantity, price: i.price })) })) };
+      const payload = { orders: args.orders.map(o => ({ warehouse_id: o.warehouse_id, type: o.type, partner: o.partner, ...(o.partner_id != null ? { partner_id: o.partner_id } : {}), note: o.note ?? '', items: o.items.map(i => ({ product_id: i.product_id, quantity: i.quantity, price: i.price })) })) };
       const projected = new Map();
-      const display = payload.orders.map(o => ({ ...o, warehouse_name: warehouse(o.warehouse_id).name, items: o.items.map(i => {
+      const display = payload.orders.map(o => ({ ...o, kind: (o.partner_id != null
+        ? db.prepare('SELECT role FROM contacts WHERE id=?').get(o.partner_id)?.role
+        : db.prepare("SELECT role FROM contacts WHERE name=? AND role='internal'").get(o.partner)?.role) === 'internal' ? 'internal' : 'normal',
+        warehouse_name: warehouse(o.warehouse_id).name, items: o.items.map(i => {
         const p = db.prepare('SELECT name,barcode,specification,unit,stock FROM products WHERE id=?').get(i.product_id);
         if (!p) fail('物料不存在。');
         const stock = projected.get(i.product_id) ?? p.stock;

@@ -83,17 +83,18 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
           <p>{order.note || "无备注"}</p>
         </div>
         <p className="muted">开单人：{order.created_by_name || '历史记录，操作人未知'}</p>
+        {order.kind === "internal" && <p className="info-box">内部流转不计入采购、销售、利润及应收应付；金额仅供库存流转参考。</p>}
         {transfer && (
           <div className="info-box">
             仓库间调拨不涉及金额，两个仓库的库存已同步调整。请在有调出记录的仓库，通过「业务管理 → 仓库调拨」撤销。
           </div>
         )}
-        {!transfer && can('finance') && <Payments order={order} />}
+        {!transfer && order.kind !== 'internal' && can('finance') && <Payments order={order} />}
         {!transfer && can('corrections') && <OrderActions order={order} onSaved={onSaved} />}
       </div>
       <div className="modal-footer order-form-footer">
         <div>
-          <small>{transfer ? "调拨成本" : "合计金额"}</small>
+          <small>{transfer ? "调拨成本" : order.kind === "internal" ? "参考金额" : "合计金额"}</small>
           <strong>
             {transfer ? (costs ? `¥ ${money(costTotal)}` : "—") : <><span>¥ </span>{money(order.total)}</>}
           </strong>

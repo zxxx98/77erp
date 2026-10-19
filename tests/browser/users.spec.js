@@ -130,7 +130,7 @@ test('administrator configures employee modules including AI and changes take ef
     await page.goto(f.base);
     await expect(page.getByRole('button', { name: '业务管理', exact: true })).toHaveCount(1);
     await page.getByRole('button', { name: '业务管理', exact: true }).click();
-    for (const name of ['供应商与客户', '单据模板', '收付款与欠款', '成本与毛利', '库存盘点', '批量导入'])
+    for (const name of ['往来单位', '单据模板', '收付款与欠款', '成本与毛利', '库存盘点', '批量导入'])
       await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '备份与恢复', exact: false })).toHaveCount(0);
     await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
@@ -152,7 +152,7 @@ test('administrator configures employee modules including AI and changes take ef
     await expect(employeePage.getByRole('button', { name: '业务管理', exact: true })).toBeVisible();
     await employeePage.getByRole('button', { name: '业务管理', exact: true }).click();
     await expect(employeePage.getByRole('button', { name: '单据模板', exact: true })).toBeVisible();
-    for (const name of ['供应商与客户', '收付款与欠款', '成本与毛利', '库存盘点', '批量导入'])
+    for (const name of ['往来单位', '收付款与欠款', '成本与毛利', '库存盘点', '批量导入'])
       await expect(employeePage.getByRole('button', { name, exact: true })).toHaveCount(0);
     await employeePage.getByRole('button', { name: '关闭弹窗', exact: true }).click();
 
@@ -186,7 +186,7 @@ test('administrator configures employee modules including AI and changes take ef
     await employeePage.getByRole('link', { name: '物料管理', exact: true }).click();
     await expect(employeePage.getByRole('button', { name: '新增物料', exact: true })).toHaveCount(0);
     await employeePage.getByRole('button', { name: '业务管理', exact: true }).click();
-    await expect(employeePage.getByRole('button', { name: '供应商与客户', exact: true })).toBeVisible();
+    await expect(employeePage.getByRole('button', { name: '往来单位', exact: true })).toBeVisible();
     await expect(employeePage.getByRole('button', { name: '收付款与欠款', exact: true })).toBeVisible();
     await expect(employeePage.getByRole('button', { name: '库存盘点', exact: true })).toBeVisible();
     await expect(employeePage.getByRole('button', { name: '批量导入', exact: true })).toBeVisible();

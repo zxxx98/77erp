@@ -1,3 +1,4 @@
+import { contactRoleLabels } from '../shared/contacts.js';
 import { LoadingIndicator } from './Loading.jsx';
 import React, { Children, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -171,7 +172,7 @@ export function ContactPicker({ contacts, value = "", selectedId, onSelect, onCh
   placeholder = "选择往来单位，或输入名称、联系人、电话搜索", ...props }) {
   const options = contacts.map(contact => ({ value: contact.id, label: contact.name,
     searchText: `${contact.name} ${contact.person} ${contact.phone}`, contact,
-    content: <><span className={`dropdown-role dropdown-role-${contact.role}`}>{contact.role === "supplier" ? "供应商" : "客户"}</span>
+    content: <><span className={`dropdown-role dropdown-role-${contact.role}`}>{contactRoleLabels[contact.role]}</span>
       <span className="dropdown-contact-copy"><strong>{contact.name}{!contact.active && <small>已停用</small>}</strong>
         {(contact.person || contact.phone) && <span>{[contact.person, contact.phone].filter(Boolean).join(" · ")}</span>}
       </span></> }));

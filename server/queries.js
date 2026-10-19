@@ -1,6 +1,7 @@
 import { orderLineAmount } from '../shared/money.js';
 import { hasPermission } from '../shared/permissions.js';
 import { settlementFromPaid } from './commerce.js';
+import { inspectionToday } from '../shared/inspection.js';
 
 const fail = (message) => {
   throw new Error(message);
@@ -98,12 +99,17 @@ export function installQueries(app, db) {
       const { limit, offset } = paging(req.query);
       const status = choice(req.query.status, ['all', 'active', 'inactive'], 'all');
       const stock = choice(req.query.stock, ['all', 'low', 'empty'], 'all');
+      const inspection = choice(req.query.inspection, ['due'], null);
       const query = search(req.query.q);
       const clauses = ['warehouse_id=?'], params = [req.warehouse.id];
       if (status === 'active') clauses.push('active!=0');
       if (status === 'inactive') clauses.push('active=0');
       if (stock === 'low') clauses.push('threshold>0 AND stock<=threshold');
       if (stock === 'empty') clauses.push('threshold>0 AND stock=0');
+      if (inspection === 'due') {
+        clauses.push("active!=0 AND inspection_date!='' AND inspection_date<=?");
+        params.push(inspectionToday());
+      }
       if (req.query.category_id !== undefined && req.query.category_id !== '' && req.query.category_id !== 'all') {
         const raw = String(req.query.category_id);
         if (!/^\d+$/.test(raw)) fail('分类筛选无效。');
@@ -120,7 +126,7 @@ export function installQueries(app, db) {
       const where = clauses.join(' AND ');
       const total = db.prepare(`SELECT COUNT(*) AS n FROM products WHERE ${where}`).get(...params).n;
       const rows = db
-        .prepare(`SELECT * FROM products WHERE ${where} ORDER BY id LIMIT ? OFFSET ?`)
+        .prepare(`SELECT * FROM products WHERE ${where} ORDER BY ${inspection ? 'inspection_date,' : ''}id LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
       if (hidesCosts(req)) for (const row of rows) delete row.inventory_value_cents;
       return { products: rows, total, has_more: offset + rows.length < total, next_offset: offset + rows.length };
@@ -132,7 +138,7 @@ export function installQueries(app, db) {
     route((req) => {
       const { limit, offset } = paging(req.query);
       const type = choice(req.query.type, ['in', 'out'], null);
-      const kind = choice(req.query.kind, ['normal', 'return', 'transfer'], null);
+      const kind = choice(req.query.kind, ['normal', 'return', 'transfer', 'internal'], null);
       const status = choice(req.query.status, ['active', 'void'], null);
       const business = choice(req.query.business, ['in', 'out'], null);
       const from = dateKey(req.query.from, null), to = dateKey(req.query.to, null);
@@ -142,8 +148,8 @@ export function installQueries(app, db) {
       if (type) { clauses.push('o.type=?'); params.push(type); }
       if (kind) { clauses.push('o.kind=?'); params.push(kind); }
       // Business direction folds returns into the side they correct, like the UI.
-      if (business === 'in') clauses.push("((o.kind='normal' AND o.type='in') OR (o.kind='return' AND o.type='out'))");
-      if (business === 'out') clauses.push("((o.kind='normal' AND o.type='out') OR (o.kind='return' AND o.type='in'))");
+      if (business === 'in') clauses.push("((o.kind IN ('normal','internal') AND o.type='in') OR (o.kind='return' AND o.type='out'))");
+      if (business === 'out') clauses.push("((o.kind IN ('normal','internal') AND o.type='out') OR (o.kind='return' AND o.type='in'))");
       if (status) { clauses.push('o.status=?'); params.push(status); }
       if (from) { clauses.push('substr(o.created_at,1,10)>=?'); params.push(from); }
       if (to) { clauses.push('substr(o.created_at,1,10)<=?'); params.push(to); }
@@ -160,14 +166,14 @@ export function installQueries(app, db) {
         .prepare(`SELECT o.* FROM orders o WHERE ${where} ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
       const aggregate = db.prepare(`SELECT
-        COALESCE(SUM(CASE WHEN o.status='active' AND o.kind!='transfer' THEN CASE WHEN o.kind='return' THEN -o.total ELSE o.total END ELSE 0 END),0) AS net_total,
+        COALESCE(SUM(CASE WHEN o.status='active' AND o.kind NOT IN ('transfer','internal') THEN CASE WHEN o.kind='return' THEN -o.total ELSE o.total END ELSE 0 END),0) AS net_total,
         COALESCE(SUM(o.status='active'),0) AS active_count,
         COALESCE(SUM(CASE WHEN o.status='active' THEN (SELECT SUM(i.quantity) FROM order_items i WHERE i.order_id=o.id) ELSE 0 END),0) AS quantity
         FROM orders o WHERE ${where}`).get(...params);
       const counts = db.prepare(`SELECT COUNT(*) AS all_count,
-        SUM((kind='normal' AND type='in') OR (kind='return' AND type='out')) AS in_count,
-        SUM((kind='normal' AND type='out') OR (kind='return' AND type='in')) AS out_count,
-        SUM(kind='transfer') AS transfer_count FROM orders WHERE warehouse_id=?`).get(req.warehouse.id);
+        SUM((kind IN ('normal','internal') AND type='in') OR (kind='return' AND type='out')) AS in_count,
+        SUM((kind IN ('normal','internal') AND type='out') OR (kind='return' AND type='in')) AS out_count,
+        SUM(kind='transfer') AS transfer_count, SUM(kind='internal') AS internal_count FROM orders WHERE warehouse_id=?`).get(req.warehouse.id);
       const summary = itemSummary(rows.map((order) => order.id));
       const orders = withSettlement(req, rows.map((order) => ({ ...order, ...(summary.get(order.id) || { item_count: 0, item_quantity: 0, item_names: [] }) })));
       return { orders, total, aggregate, counts, has_more: offset + orders.length < total, next_offset: offset + orders.length };
@@ -218,7 +224,7 @@ export function installQueries(app, db) {
       const trading = db
         .prepare("SELECT type,kind,total,created_at,status FROM orders WHERE warehouse_id=? AND substr(created_at,1,10)>=?")
         .all(req.warehouse.id, since)
-        .filter((order) => order.status === 'active' && order.kind !== 'transfer')
+        .filter((order) => order.status === 'active' && !['transfer', 'internal'].includes(order.kind))
         .map((order) => ({
           day: order.created_at.slice(0, 10),
           type: order.kind === 'return' ? (order.type === 'in' ? 'out' : 'in') : order.type,

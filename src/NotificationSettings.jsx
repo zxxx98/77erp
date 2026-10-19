@@ -10,6 +10,8 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
   const [url, setUrl] = useState(''), [secret, setSecret] = useState('');
   const [clearUrl, setClearUrl] = useState(false), [clearSecret, setClearSecret] = useState(false);
   const [logs, setLogs] = useState([]), [busy, setBusy] = useState(false);
+  const [logsChanged, setLogsChanged] = useState(false);
+  const logsSnapshot = useRef(null);
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
   const lock = useRef(false);
   const dirty = !!config && (JSON.stringify(config) !== saved || !!url || !!secret || clearUrl || clearSecret);
@@ -24,7 +26,16 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
   useEffect(() => {
     if (!active) return;
     let live = true;
-    const load = () => api('/settings/notifications/deliveries').then(value => { if (live) setLogs(value); }).catch(e => { if (live) setError(e.message); });
+    const load = async () => {
+      const snapshot = logsSnapshot.current;
+      try {
+        const value = await api('/settings/notifications/deliveries');
+        if (!live || snapshot !== logsSnapshot.current) return;
+        const next = JSON.stringify(value);
+        if (snapshot === null) { logsSnapshot.current = next; setLogs(value); }
+        else setLogsChanged(next !== snapshot);
+      } catch (e) { if (live && snapshot === null) setError(e.message); }
+    };
     void load(); const timer = setInterval(load, 5000);
     return () => { live = false; clearInterval(timer); };
   }, [active]);
@@ -36,7 +47,10 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
   };
   const field = (key, value) => { setConfig(c => ({ ...c, [key]: value })); setNotice(''); };
   const toggle = (key, value) => field(key, config[key].includes(value) ? config[key].filter(v => v !== value) : [...config[key], value]);
-  const refreshLogs = async () => setLogs(await api('/settings/notifications/deliveries'));
+  const refreshLogs = async () => {
+    const value = await api('/settings/notifications/deliveries');
+    logsSnapshot.current = JSON.stringify(value); setLogs(value); setLogsChanged(false);
+  };
   return <section className="notification-settings" aria-label="通知设置">
     <div className="settings-section-heading"><h3>Webhook 通知</h3><p>选择需要接收的通知类型。配置由所有设备共用，仅管理员可修改。</p></div>
     {config ? <>
@@ -68,6 +82,7 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
         <small>先保存再测试；测试通知不受总开关、类型和仓库筛选限制。机器人关键词可配置为「77 ERP」。</small>
       </div>
       <div className="notification-log-heading"><h3>最近发送记录</h3><button type="button" className="btn" disabled={busy} onClick={() => void run(refreshLogs)}>刷新记录</button></div>
+      {logsChanged && <div className="data-update-notice" role="status">发送记录有变更，点击“刷新记录”查看。</div>}
       <p className="notification-help">失败后自动重试，最多发送 5 次。显示最近 50 条，已发送及已取消记录保留 30 天。</p>
       <div className="notification-logs">{logs.length ? logs.map(log => <article key={log.id} data-delivery-id={log.id}>
         <div><strong>{labelsFor(log.event)}</strong><span>{notificationStatuses[log.status] || log.status}</span></div>

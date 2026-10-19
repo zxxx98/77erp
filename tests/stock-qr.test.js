@@ -141,6 +141,32 @@ async function fixture(t) {
   };
 }
 
+test('internal units work with receipt and issue QR codes and survive backup restore', async t => {
+  const f = await fixture(t);
+  const contact = await f.request('/contacts', 'POST', { request_id: randomUUID(), role: 'internal', name: '扫码产线', person: '', phone: '', address: '', note: '', active: 1 });
+  assert.equal(contact.status, 200);
+  const items = [{ product_id: f.products[0].id, quantity: 2, price_cents: 1000 }];
+  for (const type of ['in', 'out']) {
+    const qr = await f.create({ type, partner: '扫码产线', partner_id: contact.data.id, items });
+    const preview = await f.preview(qr);
+    assert.equal(preview.status, 200);
+    const executed = await f.execute(qr, preview.data);
+    assert.equal(executed.status, 201);
+    const order = f.db.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT 1').get();
+    assert.equal(order.kind, 'internal');
+    assert.equal(order.partner_id, contact.data.id);
+    assert.equal(order.settlement_tracked, 0);
+  }
+  assert.equal(f.stocks()[0].stock, 0);
+  const summary = (await f.request('/dashboard')).data;
+  assert.equal(summary.today.purchase_cents, 0);
+  assert.equal(summary.today.sales_cents, 0);
+  const backup = (await f.request('/backup')).data;
+  const preview = await f.request('/backup/preview', 'POST', { backup });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal((await f.request('/backup/restore', 'POST', { backup, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA', request_id: randomUUID() })).status, 200);
+});
+
 test("fractional QR receipts and sales round line amounts and survive backup restore", async (t) => {
   const f = await fixture(t);
   const items = [{ product_id: f.products[0].id, quantity: 0.125, price_cents: 123 }];
@@ -472,7 +498,7 @@ test("backup v7 preserves multi-item history, restore rotates labels and disable
     q = await f.create();
   await f.execute(q, (await f.preview(q)).data);
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 13);
+  assert.equal(backup.version, 15);
   const restore = async (value) => {
     const p = await f.request("/backup/preview", "POST", { backup: value });
     assert.equal(p.status, 200, JSON.stringify(p.data));

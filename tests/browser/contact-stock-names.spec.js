@@ -39,7 +39,7 @@ for (const mobile of [false, true]) {
         const name = role === 'supplier' ? '可删除供应商' : '可删除客户';
         await ensureContact(context.request, name, { role });
         await page.goto('/?manage=data');
-        await page.getByRole('button', { name: '供应商与客户', exact: true }).click();
+        await page.getByRole('button', { name: '往来单位', exact: true }).click();
         await page.getByRole('combobox', { name: '搜索往来单位', exact: true }).click();
         await page.getByRole('listbox', { name: '往来单位', exact: true }).getByText(name, { exact: true }).click();
         page.once('dialog', dialog => dialog.accept());

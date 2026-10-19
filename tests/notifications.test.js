@@ -46,6 +46,25 @@ async function fixture(t, options = {}, path = ':memory:') {
   return { ...instance, sent, request, configure, product, order, command, events, close };
 }
 
+test('internal stock movements retain stock alerts and stay out of purchase/sale notifications and daily totals', async t => {
+  const f = await fixture(t);
+  await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
+  const id = await f.product();
+  const contact = await f.command('/contacts', { role: 'internal', name: '通知内部产线', person: '', phone: '', address: '', note: '', active: 1 });
+  assert.equal(contact.status, 200);
+  await f.configure({ events: ['purchase_in', 'sale_out', 'out_of_stock', 'daily_summary'], daily_time: '00:00', timezone: 'UTC', include_amounts: true });
+  assert.equal((await f.order(id, 'in', 2, { partner: '通知内部产线', partner_id: contact.data.id })).status, 201);
+  assert.equal((await f.order(id, 'out', 2, { partner: '通知内部产线', partner_id: contact.data.id })).status, 201);
+  assert.ok(!f.events().some(row => ['purchase_in', 'sale_out'].includes(row.event)));
+  assert.ok(f.events().some(row => row.event === 'out_of_stock'));
+  queueDailySummary(f.db, new Date());
+  const summary = f.events().find(row => row.event === 'daily_summary').payload.data.warehouses[0];
+  assert.equal(summary.purchase_cents, 0);
+  assert.equal(summary.sales_cents, 0);
+  assert.equal(summary.purchase_count, 0);
+  assert.equal(summary.sales_count, 0);
+});
+
 test('notification settings are admin-only, versioned, validated, redact credentials and survive reset/backup restore', async t => {
   const f = await fixture(t);
   const initial = (await f.request('/settings/notifications')).data;

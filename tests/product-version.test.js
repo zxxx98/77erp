@@ -134,6 +134,7 @@ test('existing databases gain versions without losing products and revisions sur
   const path = join(folder, 'legacy.sqlite');
   let { db } = createApp(path);
   const before = db.prepare('SELECT name,stock FROM products WHERE id=1').get();
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'data_revision_*'").all()) db.exec(`DROP TRIGGER ${name}`);
   db.exec("DROP TRIGGER product_version_insert; DROP TRIGGER product_version_update; ALTER TABLE products DROP COLUMN version; DELETE FROM app_metadata WHERE key='product_version'");
   db.close();
   ({ db } = createApp(path));

@@ -101,7 +101,7 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
   page.on("pageerror", (e) => errors.push(e.message));
   try {
     await page.goto(f.base + "/?manage=data");
-    await page.getByRole("button", { name: "供应商与客户", exact: true }).click();
+    await page.getByRole("button", { name: "往来单位", exact: true }).click();
     await page.getByLabel("单位名称", { exact: true }).fill("常用供应商");
     await page.getByLabel("联系人", { exact: true }).fill("王先生");
     await page.getByLabel("联系电话", { exact: true }).fill("13812345678");
@@ -131,7 +131,7 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
     ).toBe(0);
     const template = f.db.prepare("SELECT * FROM templates").get();
     await page.getByRole("button", { name: "业务管理", exact: true }).click();
-  await page.getByRole("button", { name: "供应商与客户", exact: true }).click();
+  await page.getByRole("button", { name: "往来单位", exact: true }).click();
     await page.getByRole("button", { name: "单据模板", exact: true }).click();
     await page
       .getByRole("button", { name: `使用模板 #${template.id}`, exact: true })
@@ -181,7 +181,7 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
       },
     });
     await page.getByRole("button", { name: "业务管理", exact: true }).click();
-  await page.getByRole("button", { name: "供应商与客户", exact: true }).click();
+  await page.getByRole("button", { name: "往来单位", exact: true }).click();
     await page.getByRole("button", { name: "成本与毛利", exact: true }).click();
     await expect(page.getByText(/已知毛利 ¥ 40.00/)).toBeVisible();
     await page
@@ -209,7 +209,7 @@ test("contact search stays collapsed, filters in a dropdown and selects without 
       await page.request.post(f.base + "/api/contacts", { data: { request_id: `contact-${name}`, role, name, person, phone, address: "", note: "", active } });
     }
     await page.goto(f.base + "/?manage=data");
-    await page.getByRole("button", { name: "供应商与客户", exact: true }).click();
+    await page.getByRole("button", { name: "往来单位", exact: true }).click();
     const search = page.getByRole("combobox", { name: "搜索往来单位", exact: true });
     const list = page.getByRole("listbox", { name: "往来单位" });
     await expect(search).toHaveAttribute("aria-expanded", "false");

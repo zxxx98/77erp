@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { categoryPaths, productDetails, splitLegacyCategories } from "./catalog.js";
 import { notificationMutation } from './notifications.js';
 import { installTransfers } from './transfers.js';
+import { validInspectionDate } from '../shared/inspection.js';
 
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -144,7 +145,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       mutation(req, () => {
         const reason = reasonOf(req.body),
           source = originalOrder(req.params.id);
-        if (source.kind !== "normal") fail("退货单不能再次退货。");
+        if (source.kind !== "normal") fail("此单据不支持采购或销售退货，请作废或另开出入库单。");
         const selected = req.body.items;
         if (
           !Array.isArray(selected) ||
@@ -371,7 +372,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,inspection_date,inspection_interval,inspection_unit,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...values, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       const p = product(Number(result.lastInsertRowid));
@@ -418,7 +419,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 13,
+    version: 15,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -426,11 +427,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 15) for (const p of data.products || []) {
+      p.inspection_date = ''; p.inspection_interval = 0; p.inspection_unit = 'month'; p.last_inspected_on = '';
+    }
     if (value.version < 13) data.product_changes = [];
     if (value.version < 11) for (const item of data.order_items || []) {
       if (item && !('amount_cents' in item)) item.amount_cents = null;
@@ -519,7 +523,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const categoryMap = categoryPaths(data.categories);
     const categoryOwners = new Map(data.categories.map(c => [c.id, c.warehouse_id]));
     const contacts = new Map(data.contacts.map(c => [c.id,c]));
-    for (const c of data.contacts) if (!['supplier','customer'].includes(c.role) || !text(c.name,100) || ![0,1].includes(c.active) || !Number.isSafeInteger(c.version) || c.version < 1 || ['person','phone','address','note'].some(k => typeof c[k] !== 'string' || c[k].length > ({person:100,phone:50,address:300,note:500})[k])) fail('备份往来单位无效。');
+    for (const c of data.contacts) if (!['supplier','customer','internal'].includes(c.role) || !text(c.name,100) || ![0,1].includes(c.active) || !Number.isSafeInteger(c.version) || c.version < 1 || ['person','phone','address','note'].some(k => typeof c[k] !== 'string' || c[k].length > ({person:100,phone:50,address:300,note:500})[k])) fail('备份往来单位无效。');
     const contactKeys = new Set(data.contacts.map(c => `${c.role}:${c.name}`));
     if (contactKeys.size !== data.contacts.length) fail('备份往来单位重复。');
     const products = new Map(data.products.map((p) => [p.id, p])),
@@ -528,6 +532,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const p of data.products) {
       productValues(p);
       productDetails(p);
+      if (p.last_inspected_on !== '' && !validInspectionDate(p.last_inspected_on)) fail('备份上次校验日期无效。');
       if (!Number.isSafeInteger(p.version) || p.version < 1) fail('备份物料版本无效。');
       if (![0,1].includes(p.active)) fail("备份物料使用状态无效。");
       if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category || categoryOwners.get(p.category_id) !== p.warehouse_id) fail("备份物料分类关联无效。");
@@ -548,7 +553,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !text(o.number, 100) ||
         numbers.has(o.number) ||
         !["in", "out"].includes(o.type) ||
-        !["normal", "return", "transfer"].includes(o.kind) ||
+        !["normal", "return", "transfer", "internal"].includes(o.kind) ||
         !["active", "void"].includes(o.status) ||
         !text(o.partner, 100) ||
         typeof o.note !== "string" ||
@@ -564,6 +569,8 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !(o.voided_at === null || text(o.voided_at, 100))
       )
         fail("备份单据内容无效。");
+      if ((o.kind === 'internal') !== (contacts.get(o.partner_id)?.role === 'internal') ||
+          (o.kind === 'internal' && o.settlement_tracked !== 0)) fail('备份内部流转类型或收付款设置无效。');
       numbers.add(o.number);
       if (o.kind === "transfer") {
         if (o.source_order_id !== null || o.settlement_tracked !== 0 || Math.round(o.total * 100) !== 0 ||
@@ -621,7 +628,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         Math.abs(i.price * 100 - Math.round(i.price * 100)) > 0.00001
       )
         fail("备份单据明细无效。");
-      if (orders.get(i.order_id).kind === 'normal' && orderLineAmount(i) !== Math.round(i.quantity * i.price * 100))
+      if (['normal', 'internal'].includes(orders.get(i.order_id).kind) && orderLineAmount(i) !== Math.round(i.quantity * i.price * 100))
         fail('备份原单明细金额无效。');
       keys.add(key);
       originalItems.set(key, i);

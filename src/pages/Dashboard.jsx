@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { InspectionPanel } from '../InspectionPanel.jsx';
 import { sameDay, shortDate, money, count, dateTime } from '../app/format.js';
 import { usePermissions } from '../permissions.jsx';
 import { useQuery, queryPath } from '../queries.js';
@@ -321,6 +322,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           </section>
         ))}
       </div>
+      <InspectionPanel key={data.warehouse_id} data={data} />
       <div className="dashboard-middle">
         <Panel
           title="采购与销售趋势"
@@ -477,7 +479,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                     </td>
                     <td>{o.partner}</td>
                     <td className="number-cell amount-cell">
-                      ¥ {money(o.total)}
+                      {o.kind === "internal" ? "参考 ¥ " : "¥ "}{money(o.total)}
                     </td>
                     <td>
                       <Badge>已完成</Badge>
@@ -555,7 +557,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           </button>
           <div className="warning-bottom">
             <ShieldCheck size={13} />
-            库存变化实时更新
+            数据变更后会提示刷新
           </div>
         </Panel>
       </div>

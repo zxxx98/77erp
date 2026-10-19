@@ -1,0 +1,6 @@
+.data-update-notice { display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:16px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;color:#1e40af;font-size:14px; }
+.data-update-notice>span { flex:1;min-width:180px; }
+.data-update-notice button { display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:8px 12px;border:0;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer; }
+.data-update-notice button:disabled { opacity:.6;cursor:default; }
+.data-update-notice small { flex-basis:100%; }
+.sync-state.pending i { background:#e59a2f; }

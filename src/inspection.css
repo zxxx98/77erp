@@ -1,0 +1,13 @@
+.inspection-panel { background: #fff; border: 1px solid var(--border, #e9ecf1); border-radius: 12px; padding: 20px; margin: 20px 0; }
+.inspection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.inspection-heading h2 { margin: 0; font-size: 18px; }
+.inspection-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border, #e9ecf1); margin-top: 12px; }
+.inspection-row > div { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.inspection-row small { color: #7e8798; }
+.inspection-row span { font-size: 13px; color: #91600b; }
+.inspection-row > button { flex-shrink: 0; }
+.inspection-success { color: #148468; font-size: 14px; }
+.mw-shell .inspection-panel { padding: 16px; margin: 0; }
+.mw-shell .inspection-row { align-items: flex-start; gap: 10px; }
+.mw-shell .inspection-heading h2 { font-size: 17px; }
+.mw-shell .inspection-panel button { min-height: 44px; }

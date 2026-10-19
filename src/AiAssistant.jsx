@@ -1,3 +1,4 @@
+import { orderLabel } from './order-utils.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { api, getWarehouseId } from './api.js';
 import { parseCSV } from './data-files.js';
@@ -49,7 +50,8 @@ function ActionCard({ action, busy, confirm }) {
   return <section className="ai-action">
     <h3>{{ orders: '批量出入库预览', import: '新增物料预览', transfer: '仓库调拨预览', stocktake: '库存盘点预览' }[action.kind]} · {action.result ? '已完成' : expired ? '已过期' : '待确认'}</h3>
     {p.orders?.map((o, index) => <div key={index}>
-      <p><strong>{o.warehouse_name} · {o.type === 'in' ? '采购入库' : '销售出库'}</strong> · {o.partner}</p>
+      <p><strong>{o.warehouse_name} · {orderLabel(o)}</strong> · {o.partner}</p>
+      {o.kind === "internal" && <p>内部流转不计入采购、销售、利润及应收应付。</p>}
       {o.note && <p>备注：{o.note}</p>}
       <div className="ai-table"><table><thead><tr>{['物料 / 条码', '规格', '数量', '单价', '金额', '库存变化'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{o.items.map((i, n) => <tr key={n}><td>{i.name}<small>{i.barcode}</small></td><td>{i.specification || '—'}</td><td>{i.quantity} {i.unit}</td><td>{i.price.toFixed(2)}</td><td>{(i.quantity * i.price).toFixed(2)}</td><td>{i.stock} → {i.after_stock}</td></tr>)}</tbody></table></div>
       <p>合计：¥{(o.items.reduce((n, i) => n + Math.round(i.quantity * i.price * 100), 0) / 100).toFixed(2)}</p>

@@ -22,7 +22,7 @@ export const paymentLabel = {
 export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onUse, onRefresh, initialTab }) {
   const { can, manage } = usePermissions();
   const available = [
-    ...(can('business') ? [['contacts', '供应商与客户']] : []),
+    ...(can('business') ? [['contacts', '往来单位']] : []),
     ['templates', '单据模板'],
     ...(can('finance') ? [['finance', '收付款与欠款'], ['profit', '成本与毛利']] : []),
     ...(can('transfer') ? [['transfer', '仓库调拨']] : []),
@@ -74,7 +74,7 @@ function Contacts({ onRefresh }) {
     <div>
       {busy && <p><LoadingStatus>正在保存往来单位…</LoadingStatus></p>}
       <p>
-        同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。未关联单据、模板或出入库二维码的单位可删除。
+        同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。未关联单据、模板或出入库二维码的单位可删除。支持供应商、客户和内部单位；内部单位可用于入库和出库，不计入采购销售及应收应付。
       </p>
       <ContactPicker contacts={contacts} value={form.id ? form.name : ""} selectedId={form.id}
         label="搜索往来单位" searchable loading={loading} disabled={busy} onSelect={setForm} />
@@ -89,12 +89,14 @@ function Contacts({ onRefresh }) {
       <label>
         往来类型
         <Select
+          aria-label="往来类型"
           value={form.role}
           disabled={busy || !!form.id}
           onChange={(e) => setForm({ ...form, role: e.target.value })}
         >
           <option value="supplier">供应商</option>
           <option value="customer">客户</option>
+          <option value="internal">内部单位</option>
         </Select>
       </label>
       {[
