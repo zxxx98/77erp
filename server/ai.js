@@ -28,8 +28,8 @@ const tools = [
     warehouse_id: integer, reason: string,
     items: { type: 'array', items: { ...object({ product_id: integer, counted: number }), required: ['product_id', 'counted'] } },
   }),
-  tool('preview_import', '把当前对话上传的Excel/CSV新增为物料档案。只映射列，不生成或改写数据。mapping的值为从0开始的列号；缺失可省略的列会明确按默认值展示。name和unit必须映射。缺少分类时使用未分类，缺少数值时使用0；必须提醒用户核对默认值。数量列含义不明确时先询问是否是期初库存。不会覆盖已有物料。', {
-    warehouse_id: integer, mapping: object(Object.fromEntries(['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note'].map(k => [k, integer]))),
+  tool('preview_import', '把当前对话上传的Excel/CSV新增为物料档案。只映射列，不生成或改写数据。mapping的值为从0开始的列号；缺失可省略的列会明确按默认值展示。name和unit必须映射。缺少分类时使用未分类，缺少数值时使用0；必须提醒用户核对默认值。数量列含义不明确时先询问是否是期初库存。is_fixed_asset为固定资产列，可识别是/否、true/false、1/0等，未映射时默认为否。不会覆盖已有物料。', {
+    warehouse_id: integer, mapping: object(Object.fromEntries(['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note', 'is_fixed_asset'].map(k => [k, integer]))),
   }),
 ];
 
@@ -222,10 +222,16 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
       const c = conversation(req, cid), table = c.attachment && JSON.parse(c.attachment);
       if (!table) fail('请先上传 Excel 或 CSV 文件。');
       const mapping = args.mapping;
-      const fields = ['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note'];
+      const fields = ['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note', 'is_fixed_asset'];
       if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping) || !Number.isInteger(mapping.name) || !Number.isInteger(mapping.unit) || Object.entries(mapping).some(([k,v]) => !fields.includes(k) || !Number.isInteger(v) || v < 0 || v >= table[0].length)) fail('列映射无效；必须指定物料名称和单位。');
       const rows = table.slice(1).map((cells, index) => Object.fromEntries(fields.map(key => {
-        const raw = mapping[key] === undefined ? (['cost','price','threshold','stock'].includes(key) ? 0 : key === 'category' ? '未分类' : '') : cells[mapping[key]];
+        const raw = mapping[key] === undefined ? (['cost','price','threshold','stock'].includes(key) ? 0 : key === 'category' ? '未分类' : key === 'is_fixed_asset' ? 0 : '') : cells[mapping[key]];
+        if (key === 'is_fixed_asset') {
+          const s = String(raw ?? '').trim().toLowerCase();
+          if (s === '' || ['否','不是','no','n','false','0','非固定资产','普通'].includes(s)) return [key, 0];
+          if (['是','yes','y','true','1','固定资产'].includes(s)) return [key, 1];
+          fail(`第 ${index + 2} 行的固定资产标记无法识别，请使用是/否、true/false 或 1/0。`);
+        }
         if (['cost','price','threshold','stock'].includes(key)) {
           const s = String(raw ?? '').trim();
           if (!/^\d+(\.\d+)?$/.test(s)) fail(`第 ${index + 2} 行的 ${key} 不是有效非负数字。`);

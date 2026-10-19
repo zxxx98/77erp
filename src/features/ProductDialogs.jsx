@@ -24,9 +24,9 @@ function ProductFormSection({ title, children }) {
 }
 
 const productSnapshot = (form, targets) => JSON.stringify([
-  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'inspection_date', 'inspection_interval', 'inspection_unit']
+  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'is_fixed_asset', 'inspection_date', 'inspection_interval', 'inspection_unit']
     .map(key => ['category_id', 'cost', 'price', 'threshold', 'inspection_interval'].includes(key) && form[key] !== '' && form[key] != null
-      ? Number(form[key]) : String(form[key] ?? '')),
+      ? Number(form[key]) : key === 'is_fixed_asset' ? (form[key] ? 1 : 0) : String(form[key] ?? '')),
   [...targets].sort((a, b) => a - b),
 ]);
 
@@ -121,6 +121,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
     ["安全库存", `${count(product.threshold)} ${product.unit}`],
     ["库存状态", stockStatus(product)],
     ["使用状态", product.active === 0 ? "已停用" : "已启用"],
+    ["固定资产", product.is_fixed_asset ? "是" : "否"],
     ["校验日期", product.inspection_date || '未配置'],
     ["校验周期", inspectionCycleLabel(product)],
     ["上次校验", product.last_inspected_on || '暂无记录'],
@@ -181,6 +182,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       cost: "",
       price: "",
       threshold: 20,
+      is_fixed_asset: 0,
       inspection_date: '', inspection_interval: 0, inspection_unit: 'month',
     },
   );
@@ -215,6 +217,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             cost: Number(form.cost),
             price: Number(form.price),
             threshold: Number(form.threshold),
+            is_fixed_asset: form.is_fixed_asset ? 1 : 0,
             inspection_interval: Number(form.inspection_interval || 0),
             sync_warehouse_ids: syncTargets,
           },
@@ -340,6 +343,15 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               </label>
               {mobileDevice && priceFields}
             </div>
+            <label className="product-fixed-asset">
+              <input
+                type="checkbox"
+                checked={!!form.is_fixed_asset}
+                onChange={(e) => change("is_fixed_asset", e.target.checked ? 1 : 0)}
+              />
+              固定资产
+              <small>勾选后该物料标记为固定资产，导出时可选择只导出固定资产。</small>
+            </label>
             {!mobileDevice && specificationField}
           </ProductFormSection>
           <ProductFormSection title="图片与说明">

@@ -9,6 +9,7 @@ export const productExportHeaders = [
   "当前库存",
   "规格型号",
   "备注",
+  "固定资产",
   "状态",
 ];
 
@@ -39,6 +40,7 @@ export function warehouseSheet(warehouse, products) {
     number(p.stock),
     String(p.specification ?? ""),
     String(p.note ?? ""),
+    p.is_fixed_asset ? "是" : "否",
     p.active === 0 ? "停用" : "启用",
   ]);
   return {

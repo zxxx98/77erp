@@ -44,7 +44,7 @@ export function AiSettings({ onBusy = () => {} }) {
   </section>;
 }
 
-const fields = { name: '物料名称', barcode: '条码', category: '分类', unit: '单位', cost: '参考采购价', price: '参考销售价', threshold: '安全库存', stock: '期初库存', specification: '规格型号', note: '备注' };
+const fields = { name: '物料名称', barcode: '条码', category: '分类', unit: '单位', cost: '参考采购价', price: '参考销售价', threshold: '安全库存', stock: '期初库存', specification: '规格型号', note: '备注', is_fixed_asset: '固定资产' };
 function ActionCard({ action, busy, confirm }) {
   const p = action.preview, expired = action.expires_at < Date.now();
   return <section className="ai-action">
@@ -69,8 +69,8 @@ function ActionCard({ action, busy, confirm }) {
     {p.rows && <>
       <p>{p.warehouse_name} · 新增 {p.rows.length} 个物料，不覆盖已有物料。期初库存会直接计入库存。</p>
       <p>列对应：{Object.entries(p.mapping).map(([k, v]) => `${fields[k]} ← ${v}`).join('；')}</p>
-      {!!p.defaults.length && <p>未提供：{p.defaults.map(k => `${fields[k]}=${['cost', 'price', 'stock', 'threshold'].includes(k) ? '0' : k === 'category' ? '未分类' : k === 'barcode' ? '自动生成' : '空'}`).join('；')}。请核对这些默认值。</p>}
-      <div className="ai-table"><table><thead><tr>{Object.values(fields).map(v => <th key={v}>{v}</th>)}</tr></thead><tbody>{p.rows.map((row, index) => <tr key={index}>{Object.keys(fields).map(k => <td key={k}>{row[k]}</td>)}</tr>)}</tbody></table></div>
+      {!!p.defaults.length && <p>未提供：{p.defaults.map(k => `${fields[k]}=${['cost', 'price', 'stock', 'threshold'].includes(k) ? '0' : k === 'category' ? '未分类' : k === 'barcode' ? '自动生成' : k === 'is_fixed_asset' ? '否' : '空'}`).join('；')}。请核对这些默认值。</p>}
+      <div className="ai-table"><table><thead><tr>{Object.values(fields).map(v => <th key={v}>{v}</th>)}</tr></thead><tbody>{p.rows.map((row, index) => <tr key={index}>{Object.keys(fields).map(k => <td key={k}>{k === 'is_fixed_asset' ? (row[k] ? '是' : '否') : row[k]}</td>)}</tr>)}</tbody></table></div>
     </>}
     {action.result ? <p role="status">已完成{action.result.orders ? `：${action.result.orders.map(o => o.number).join('、')}` : action.kind === 'transfer' ? `：${action.result.number} / ${action.result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : `，新增 ${action.result.count} 个物料`}。</p> : <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，库存变化需重新生成。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>确认执行本批操作</button></>}
   </section>;

@@ -45,14 +45,27 @@ test('export endpoint returns enabled products of the requested warehouse', asyn
   assert.deepEqual(second.products.map(p => p.barcode), ['EXP-002']);
 });
 
+test('export endpoint can filter to fixed assets only', async t => {
+  const f = await fixture(t);
+  await f.product({ name: '普通物料', barcode: 'FA-001' });
+  await f.product({ name: '电脑', barcode: 'FA-002', is_fixed_asset: 1 });
+
+  const all = (await f.request('/products/export')).data;
+  assert.equal(all.products.find(p => p.barcode === 'FA-002').is_fixed_asset, 1);
+  assert.equal(all.products.find(p => p.barcode === 'FA-001').is_fixed_asset, 0);
+
+  const fixed = (await f.request('/products/export?fixed=1')).data;
+  assert.deepEqual(fixed.products.map(p => p.barcode), ['FA-002']);
+});
+
 test('warehouseSheet builds import-compatible rows in the fixed column order', () => {
   const sheet = warehouseSheet({ name: '主仓库' }, [{
     name: '螺丝', barcode: 'EXP-001', category: '五金 / 紧固件', unit: '件', cost: 10, price: 20,
-    threshold: 5, stock: 3, specification: 'M3', note: '常用', active: 1,
+    threshold: 5, stock: 3, specification: 'M3', note: '常用', active: 1, is_fixed_asset: 1,
   }]);
   assert.equal(sheet.stickyRowsCount, 1);
   assert.deepEqual(sheet.data[0], productExportHeaders);
-  assert.deepEqual(sheet.data[1], ['螺丝', 'EXP-001', '五金 / 紧固件', '件', 10, 20, 5, 3, 'M3', '常用', '启用']);
+  assert.deepEqual(sheet.data[1], ['螺丝', 'EXP-001', '五金 / 紧固件', '件', 10, 20, 5, 3, 'M3', '常用', '是', '启用']);
   assert.equal(sheet.data.length, 2);
 });
 

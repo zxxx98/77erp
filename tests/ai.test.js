@@ -152,6 +152,27 @@ test('Excel column mapping imports exact full table after confirmation, preserve
   assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /条码重复/);
 });
 
+test('Excel mapping recognises a fixed-asset column and stores the flag on import', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const table = [['名称','单位','固定资产'], ['巡检仪','台','是'], ['螺丝','个','否'], ['电脑','台','true'], ['扳手','把','']];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1, is_fixed_asset: 2 } });
+  const r = await f.chat(f.staff, { table });
+  assert.equal(r.status, 200); const a = r.data.actions[0]; assert.ok(a, JSON.stringify(f.calls.at(-1).body.messages));
+  assert.deepEqual(a.preview.rows.map(row => row.is_fixed_asset), [1, 0, 1, 0]);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: a.id })).status, 200);
+  const flags = Object.fromEntries(f.db.prepare('SELECT name,is_fixed_asset FROM products').all().map(p => [p.name, p.is_fixed_asset]));
+  assert.equal(flags['巡检仪'], 1); assert.equal(flags['螺丝'], 0); assert.equal(flags['电脑'], 1); assert.equal(flags['扳手'], 0);
+});
+
+test('Excel mapping rejects an unrecognised fixed-asset value', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const table = [['名称','单位','固定资产'], ['螺丝','个','也许']];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1, is_fixed_asset: 2 } });
+  const r = await f.chat(f.staff, { table });
+  assert.equal(r.status, 200);
+  assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /固定资产标记无法识别/);
+});
+
 test('permissions and sessions are revalidated after model latency, and quotas are enforced', async t => {
   const f = await fixture(t); await f.permissions(['ai','purchase']);
   f.replies.push(async () => {

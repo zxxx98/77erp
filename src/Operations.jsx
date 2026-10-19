@@ -482,6 +482,7 @@ export function ProductExport({ warehouses = [], warehouseId }) {
   const [selected, setSelected] = useState(() =>
     warehouseId ? [warehouseId] : warehouses.map((w) => w.id),
   );
+  const [fixedOnly, setFixedOnly] = useState(false);
   const [progress, setProgress] = useState("");
   const [done, setDone] = useState("");
   const toggle = (id) =>
@@ -499,7 +500,10 @@ export function ProductExport({ warehouses = [], warehouseId }) {
       let total = 0;
       for (const w of targets) {
         setProgress(`正在读取「${w.name}」…`);
-        const data = await api("/products/export", { warehouseId: w.id });
+        const data = await api(
+          `/products/export${fixedOnly ? "?fixed=1" : ""}`,
+          { warehouseId: w.id },
+        );
         total += data.products.length;
         sheets.push(warehouseSheet({ ...w, name: sheetName(w.name, used) }, data.products));
       }
@@ -530,6 +534,15 @@ export function ProductExport({ warehouses = [], warehouseId }) {
           </label>
         ))}
       </fieldset>
+      <label className="export-fixed-asset">
+        <input
+          type="checkbox"
+          checked={fixedOnly}
+          disabled={busy}
+          onChange={(e) => setFixedOnly(e.target.checked)}
+        />
+        只导出固定资产
+      </label>
       <button
         type="button"
         className="btn btn-primary"

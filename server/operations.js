@@ -372,7 +372,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,inspection_date,inspection_interval,inspection_unit,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,inspection_date,inspection_interval,inspection_unit,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...values, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       const p = product(Number(result.lastInsertRowid));

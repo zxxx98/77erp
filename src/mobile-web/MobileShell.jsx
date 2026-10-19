@@ -237,7 +237,7 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
   };
   return <Modal title="物料详情" onClose={busy ? () => {} : onClose}><div className="form-body mw-stack">
     <Notice>{error}</Notice><section className="mw-card mw-stack"><h2>{product.name}</h2><p className="mw-muted">{product.barcode}</p>{product.image && <ProductImage src={product.image} alt={product.name} className="mw-detail-image" />}<StockBadge product={product} />
-      { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
+      { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['固定资产', product.is_fixed_asset ? '是' : '否'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
     <section className="mw-card mw-stack"><DetailRow label="校验日期">{product.inspection_date || '未配置'}</DetailRow><DetailRow label="校验周期">{inspectionCycleLabel(product)}</DetailRow><DetailRow label="上次校验">{product.last_inspected_on || '暂无记录'}</DetailRow></section>
     <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{money(product.price)}</DetailRow></section>
     <ProductHistory key={product.id} product={product} onViewOrder={id => openOrderDetail?.(id)} />
