@@ -122,7 +122,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
     ["库存状态", stockStatus(product)],
     ["使用状态", product.active === 0 ? "已停用" : "已启用"],
     ["固定资产", product.is_fixed_asset ? "是" : "否"],
-    ["校验日期", product.inspection_date || '未配置'],
+    ["下次校验日期", product.inspection_date || '未配置'],
     ["校验周期", inspectionCycleLabel(product)],
     ["上次校验", product.last_inspected_on || '暂无记录'],
   ];
@@ -412,7 +412,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 <input type="number" aria-label="校验周期" min="1" max="999" step="1" disabled={!form.inspection_date} placeholder="留空则手动设置日期" value={form.inspection_interval || ''} onChange={e => change('inspection_interval', e.target.value)} />
               </label>
               <label>周期单位
-                <Select aria-label="周期单位" disabled={!form.inspection_date} value={form.inspection_unit || 'month'} onChange={e => change('inspection_unit', e.target.value)}>
+                <Select className="inspection-unit-select" aria-label="周期单位" disabled={!form.inspection_date} value={form.inspection_unit || 'month'} onChange={e => change('inspection_unit', e.target.value)}>
                   {Object.entries(inspectionUnits).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </Select>
               </label>
