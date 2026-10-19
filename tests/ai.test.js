@@ -152,6 +152,25 @@ test('Excel column mapping imports exact full table after confirmation, preserve
   assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /条码重复/);
 });
 
+test('a second upload in the same conversation uses the new table and drops the previous mapping context', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const first = [['名称','单位','数量'], ['甲','个',1]];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1, stock: 2 } });
+  const r1 = await f.chat(f.staff, { table: first, message: '导入上传表' });
+  const cid = r1.data.conversation_id;
+  const second = [['编码','物料名称','单位','数量'], ['B001','乙','台',5]];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 1, barcode: 0, unit: 2, stock: 3 } });
+  const from = f.calls.length;
+  const r2 = await f.chat(f.staff, { table: second, conversation_id: cid, message: '再导入这个上传表' });
+  const latest = r2.data.actions.at(-1).preview.rows;
+  assert.deepEqual(latest.map(r => r.name), ['乙']);
+  assert.equal(latest[0].barcode, 'B001');
+  const context = f.calls[from].body.messages;
+  assert.ok(!context.some(m => m.role === 'tool'), 'previous import tool results must be dropped from the model context');
+  assert.ok(!context.some(m => m.role === 'assistant' && m.tool_calls?.some(c => c.function?.name === 'preview_import')), 'previous import tool calls must be dropped');
+  assert.ok(context.find(m => m.role === 'system').content.includes('B001'), 'system prompt must expose the newly uploaded sample');
+});
+
 test('Excel mapping recognises a fixed-asset column and stores the flag on import', async t => {
   const f = await fixture(t); await f.permissions(['ai','data_io']);
   const table = [['名称','单位','固定资产'], ['巡检仪','台','是'], ['螺丝','个','否'], ['电脑','台','true'], ['扳手','把','']];
