@@ -28,6 +28,10 @@ Android Chrome 菜单中的 **Install（安装）** 与 **Create shortcut（创�
 
 支持跨仓库库存对比、批量入出库、仓库调拨、库存盘点预览和 Excel / CSV 物料录入，写操作由当前用户确认，沿用业务权限并记录审计。默认关闭，在「系统设置 → AI 助手」配置模型连接；部署时需设置 `AI_ENCRYPTION_KEY`。详见 [AI 助手配置与使用说明](docs/ai-assistant.md)。
 
+## 公告与版本更新
+
+桌面侧栏和手机顶栏提供「公告中心」，管理员可发布、编辑、置顶和删除全员公告，阅读状态按账号跨设备同步。升级后自动生成对应版本的更新公告，同一版本只发布一次。详见 [公告系统说明](docs/announcements.md)，更新内容维护在 [版本更新记录](shared/release-notes.json)。
+
 ## 启动
 
 ```bash

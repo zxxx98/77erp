@@ -59,6 +59,7 @@ test('product images fit a simple overlay; closing preserves the editor and rest
   await expect(page.getByRole('textbox', { name: '物料备注' })).toHaveValue('未保存的修改');
   await expect(editorPreview).toBeFocused();
   expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: '取消', exact: true }).click();
   expect(errors).toEqual([]);
 

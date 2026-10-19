@@ -5022,3 +5022,94 @@ table {
 button[hidden], .operation-panel > div[hidden] { display: none !important; }
 
 .business-modal .operation-panel { padding: 0; border: 0; margin: 0; }
+
+/* Opt-in desktop drawers; mobile sheets keep their existing DOM and styles. */
+html:not(.mobile-device) .drawer-backdrop {
+  padding: 0;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+html:not(.mobile-device) .modal-drawer {
+  --drawer-width: 680px;
+  width: min(var(--drawer-width), calc(100vw - 48px));
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0;
+  border-left: 1px solid var(--border);
+  box-shadow: -16px 0 64px #17243c26;
+  animation: drawer-in .2s ease-out;
+  outline: none;
+}
+html:not(.mobile-device) .drawer-wide { --drawer-width: 1000px; }
+html:not(.mobile-device) .modal-drawer > .modal-header {
+  flex: 0 0 auto;
+  position: static;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
+  border-radius: 0;
+}
+html:not(.mobile-device) .modal-drawer .modal-header-title { flex: 1; }
+html:not(.mobile-device) .modal-drawer .modal-header h2 { font-size: 19px; }
+html:not(.mobile-device) .modal-drawer .modal-header p { font-size: 12px; margin-top: 6px; }
+html:not(.mobile-device) .modal-drawer > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+html:not(.mobile-device) .modal-drawer > .form-body,
+html:not(.mobile-device) .modal-drawer > form > .form-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 24px;
+}
+html:not(.mobile-device) .modal-drawer .modal-footer {
+  flex: 0 0 auto;
+  position: static;
+  padding: 16px 24px;
+  flex-wrap: wrap;
+  border-radius: 0;
+}
+html:not(.mobile-device) .modal-drawer .modal-footer .btn { white-space: normal; }
+html:not(.mobile-device) .modal-drawer .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html:not(.mobile-device) .modal-drawer .form-body label { font-size: 13px; }
+html:not(.mobile-device) .modal-drawer .form-body label > small { font-size: 12px; line-height: 1.6; }
+html:not(.mobile-device) .modal-drawer .table-scroll { flex-shrink: 0; max-width: 100%; }
+html:not(.mobile-device) .modal-drawer .detail-table { min-width: 650px; }
+html:not(.mobile-device) .modal-drawer .detail-table td:first-child { white-space: normal; min-width: 150px; overflow-wrap: anywhere; }
+html:not(.mobile-device) .modal-drawer .detail-meta > div { min-width: 0; overflow-wrap: anywhere; }
+html:not(.mobile-device) .modal-drawer .detail-note p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.drawer-form-section { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.drawer-form-section + .drawer-form-section { padding-top: 24px; border-top: 1px solid var(--border); }
+.drawer-form-section h3 { margin: 0; font-size: 14px; color: #17243c; }
+.drawer-header-back { flex-shrink: 0; }
+html:not(.mobile-device) .modal-drawer .stock-qr-manager { display: block; }
+html:not(.mobile-device) .modal-drawer .stock-qr-line > div { min-width: 0; }
+html:not(.mobile-device) .modal-drawer .stock-qr-line > div:last-child { flex-shrink: 0; text-align: right; }
+@media (max-width: 767px) {
+  html:not(.mobile-device) .modal-drawer { width: 100vw; border-left: 0; }
+  html:not(.mobile-device) .modal-drawer > .modal-header { flex-wrap: wrap; padding: 16px; gap: 12px; }
+  html:not(.mobile-device) .modal-drawer .drawer-header-back { order: 3; flex-basis: 100%; }
+  html:not(.mobile-device) .modal-drawer > .form-body,
+  html:not(.mobile-device) .modal-drawer > form > .form-body { padding: 16px; }
+  html:not(.mobile-device) .modal-drawer .modal-footer { padding: 14px 16px; }
+  html:not(.mobile-device) .modal-drawer .form-grid,
+  html:not(.mobile-device) .modal-drawer .product-detail-fields { grid-template-columns: 1fr; }
+  html:not(.mobile-device) .modal-drawer .order-form-footer { flex-direction: row; align-items: center; }
+  html:not(.mobile-device) .modal-drawer .stock-qr-line { flex-wrap: wrap; }
+}
+@keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  html:not(.mobile-device) .drawer-backdrop,
+  html:not(.mobile-device) .modal-drawer { animation: none; }
+}

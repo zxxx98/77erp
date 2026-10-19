@@ -230,6 +230,9 @@ test('business backups preserve actor names and same-server template owners, but
 const routeRoles = new Map(Object.entries({
   'get /api/auth/status': 'public', 'post /api/auth/setup': 'public', 'post /api/auth/login': 'public', 'post /api/auth/logout': 'public',
   'post /api/auth/password': 'employee',
+  'get /api/announcements': 'employee', 'get /api/announcements/unread-count': 'employee',
+  'get /api/announcements/:announcementId': 'employee', 'post /api/announcements/:announcementId/read': 'employee',
+  'post /api/announcements': 'admin', 'put /api/announcements/:announcementId': 'admin', 'delete /api/announcements/:announcementId': 'admin',
   'get /api/users': 'admin', 'post /api/users': 'admin', 'put /api/users/:id': 'admin', 'post /api/users/:id/password': 'admin', 'put /api/users/:id/permissions': 'admin',
   'get /api/warehouses': 'employee', 'post /api/warehouses': 'admin', 'put /api/warehouses/:id': 'admin', 'delete /api/warehouses/:id': 'admin',
   'get /api/categories': 'employee', 'post /api/categories': 'admin', 'put /api/categories/:id': 'admin', 'post /api/categories/:id/delete': 'admin',
@@ -280,7 +283,7 @@ test('every API route declares its role, and employee access matches that declar
     // Logout ends the session under test, so it is asserted separately below.
     if (key === 'post /api/auth/logout') continue;
     const [method, path] = key.split(' ');
-    const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
+    const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':announcementId', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
     const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
     assert.equal(response.status === 403, ['admin', 'ai'].includes(role), `${key} 返回 ${response.status}`);
   }

@@ -17,6 +17,9 @@ export const StockQrManager = deferred(() => import('./StockQr.jsx'), 'StockQrMa
 export const StockQrExecution = deferred(() => import('./StockQr.jsx'), 'StockQrExecution');
 
 export const Dashboard = deferred(() => import('./pages/Dashboard.jsx'), 'Dashboard');
+export const Announcements = deferred(() => import('./pages/Announcements.jsx'), 'Announcements');
+export const AnnouncementDetail = deferred(() => import('./pages/Announcements.jsx'), 'AnnouncementDetail');
+export const AnnouncementEditor = deferred(() => import('./pages/Announcements.jsx'), 'AnnouncementEditor');
 export const Products = deferred(() => import('./pages/Products.jsx'), 'Products');
 export const Inventory = deferred(() => import('./pages/Inventory.jsx'), 'Inventory');
 export const Orders = deferred(() => import('./pages/Orders.jsx'), 'Orders');

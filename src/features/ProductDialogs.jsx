@@ -16,6 +16,18 @@ import { ProductSync } from '../Warehouses.jsx';
 import { ProductConflict } from '../ProductConflict.jsx';
 import { useBusiness } from '../business-api.js';
 import { parseQuantity } from '../../shared/quantity.js';
+import { mobileDevice } from '../device.js';
+
+function ProductFormSection({ title, children }) {
+  return mobileDevice ? <>{children}</> : <section className="drawer-form-section"><h3>{title}</h3>{children}</section>;
+}
+
+const productSnapshot = (form, targets) => JSON.stringify([
+  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold']
+    .map(key => ['category_id', 'cost', 'price', 'threshold'].includes(key) && form[key] !== '' && form[key] != null
+      ? Number(form[key]) : String(form[key] ?? '')),
+  [...targets].sort((a, b) => a - b),
+]);
 
 function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, manageStockQr }) {
   const [format, setFormat] = useState("barcode");
@@ -109,7 +121,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
     ["库存状态", stockStatus(product)],
     ["使用状态", product.active === 0 ? "已停用" : "已启用"],
   ];
-  return <Modal title="物料详情" subtitle="查看物料档案与当前库存" onClose={onClose}>
+  return <Modal title="物料详情" subtitle="查看物料档案与当前库存" onClose={onClose} presentation="drawer">
     <div className="form-body product-detail">
       <div className="product-detail-heading">
         <ProductArt product={product} size="large" />
@@ -172,6 +184,17 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   const change = (key, value) => setForm(current => ({ ...current, [key]: value }));
   const [readingImage, setReadingImage] = useState(false);
   const imageInputRef = useRef(null);
+  const errorRef = useRef(null);
+  const baseline = useRef(productSnapshot(form, []));
+  const close = () => {
+    if (busy || readingImage) return;
+    if (!mobileDevice && productSnapshot(form, syncTargets) !== baseline.current &&
+      !window.confirm('物料信息尚未保存，确定放弃修改并关闭？')) return;
+    onClose();
+  };
+  useEffect(() => {
+    if (!mobileDevice && error) errorRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [error, conflict]);
   const submit = async (e) => {
     e.preventDefault();
     if (busy || readingImage || conflict) return;
@@ -191,6 +214,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           },
         },
       );
+      baseline.current = productSnapshot(form, syncTargets);
       await onSaved(
         product ? "物料信息已更新" : `物料已创建 · 条码 ${result.barcode}`,
       );
@@ -204,142 +228,160 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       setBusy(false);
     }
   };
+  const priceFields = (
+    <>
+      <label>
+        参考采购价（元） <span>*</span>
+        <input
+          type="number"
+          required
+          min="0"
+          max="99999999"
+          step="0.01"
+          placeholder="0.00"
+          value={form.cost}
+          onChange={(e) => change("cost", e.target.value)}
+        />
+      </label>
+      <label>
+        参考销售价（元） <span>*</span>
+        <input
+          type="number"
+          required
+          min="0"
+          max="99999999"
+          step="0.01"
+          placeholder="0.00"
+          value={form.price}
+          onChange={(e) => change("price", e.target.value)}
+        />
+      </label>
+    </>
+  );
+  const specificationField = (
+    <label>规格型号
+      <input maxLength={500} placeholder="例如：3 芯 / 1.5 mm² / 额定电压 300/500V" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
+    </label>
+  );
   return (
     <Modal
       title={product ? "编辑物料" : "新增物料"}
       subtitle="填写物料信息；条码选填，新增时留空自动生成"
-      onClose={busy || readingImage ? () => {} : onClose}
+      onClose={close}
+      presentation="drawer"
     >
       <form onSubmit={submit}>
         <div className="form-body">
-          <label>
-            物料名称 <span>*</span>
-            <input
-              required
-              maxLength={100}
-              placeholder="例如：RVV 护套电线"
-              value={form.name}
-              onChange={(e) => change("name", e.target.value)}
-            />
-          </label>
-          <label>
-            物料条码（选填）
-            <div className="input-with-icon">
-              <ScanLine size={17} />
+          <ProductFormSection title="基础信息">
+            <label>
+              物料名称 <span>*</span>
               <input
-                pattern="[A-Za-z0-9_.\-]{3,64}"
-                maxLength={64}
-                title="3–64 位字母、数字或 ._-"
-                placeholder="扫描或输入条码，可留空"
-                value={form.barcode}
-                onChange={(e) => change("barcode", e.target.value)}
+                required
+                data-autofocus
+                maxLength={100}
+                placeholder="例如：RVV 护套电线"
+                value={form.name}
+                onChange={(e) => change("name", e.target.value)}
               />
+            </label>
+            <label>
+              物料条码（选填）
+              <div className="input-with-icon">
+                <ScanLine size={17} />
+                <input
+                  pattern="[A-Za-z0-9_.\-]{3,64}"
+                  maxLength={64}
+                  title="3–64 位字母、数字或 ._-"
+                  placeholder="扫描或输入条码，可留空"
+                  value={form.barcode}
+                  onChange={(e) => change("barcode", e.target.value)}
+                />
+              </div>
+              <small>
+                {product
+                  ? "可扫描或手动输入条码；留空保存将保留当前条码。"
+                  : "可扫描或手动输入条码；留空保存时自动生成唯一条码。"}
+              </small>
+            </label>
+            <div className="form-grid">
+              <label>
+                物料分类 <span>*</span>
+                <Select
+                  required
+                  value={form.category_id || ''}
+                  onChange={(e) => {
+                    const c = options.find(c => c.id === Number(e.target.value));
+                    setForm(current => ({ ...current, category_id: c?.id || '', category: c?.path || '' }));
+                  }}
+                >
+                  <option value="" disabled>请选择分类</option>
+                  {options.map(c => <option key={c.id} value={c.id}>{'　'.repeat(c.depth)}{c.path}</option>)}
+                </Select>
+                {!options.length && <small>请先在物料管理的「管理分类」中添加分类。</small>}
+              </label>
+              <label>
+                计量单位 <span>*</span>
+                <Select
+                  required
+                  value={form.unit}
+                  onChange={(e) => change("unit", e.target.value)}
+                >
+                  {[...new Set([...units, form.unit])].map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </Select>
+                <small>可在「设置 → 基础设置 → 计量单位」中配置。</small>
+              </label>
+              {mobileDevice && priceFields}
             </div>
-            <small>
-              {product
-                ? "可扫描或手动输入条码；留空保存将保留当前条码。"
-                : "可扫描或手动输入条码；留空保存时自动生成唯一条码。"}
-            </small>
-          </label>
-          <div className="form-grid">
-            <label>
-              物料分类 <span>*</span>
-              <Select
-                required
-                value={form.category_id || ''}
-                onChange={(e) => {
-                  const c = options.find(c => c.id === Number(e.target.value));
-                  setForm(current => ({ ...current, category_id: c?.id || '', category: c?.path || '' }));
-                }}
-              >
-                <option value="" disabled>请选择分类</option>
-                {options.map(c => <option key={c.id} value={c.id}>{'　'.repeat(c.depth)}{c.path}</option>)}
-              </Select>
-              {!options.length && <small>请先在物料管理的「管理分类」中添加分类。</small>}
+            {!mobileDevice && specificationField}
+          </ProductFormSection>
+          <ProductFormSection title="图片与说明">
+            <div className="product-image-editor" role="group" aria-label="物料图片">
+              <div className="product-image-label">物料图片</div>
+              <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传物料图片"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    setReadingImage(true); setError('');
+                    try { change('image', await readProductImage(file)); }
+                    catch (e) { setError(e.message); }
+                    finally { setReadingImage(false); }
+                  }} />
+              <button type="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
+                <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoadingIndicator size={22} /> : <ImagePlus size={22} />}</span>
+                <span className="product-image-upload-copy">
+                  <strong>{readingImage ? '正在上传图片…' : form.image ? '更换物料图片' : '上传物料图片'}</strong>
+                  <span>{readingImage ? '正在压缩并上传，请稍候' : '点击选择图片，支持 JPEG、PNG、WebP'}</span>
+                </span>
+                {!readingImage && <Plus size={18} aria-hidden="true" />}
+              </button>
+              <small className="product-image-hint">单张图片不超过 10 MB，上传时自动压缩。</small>
+              {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="物料图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
+            </div>
+            {mobileDevice && specificationField}
+            <label>物料备注
+              <textarea maxLength={2000} rows={3} placeholder="填写物料补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
             </label>
+          </ProductFormSection>
+          <ProductFormSection title="价格与库存设置">
+            {!mobileDevice && <div className="form-grid">{priceFields}</div>}
             <label>
-              计量单位 <span>*</span>
-              <Select
-                required
-                value={form.unit}
-                onChange={(e) => change("unit", e.target.value)}
-              >
-                {[...new Set([...units, form.unit])].map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </Select>
-              <small>可在「设置 → 基础设置 → 计量单位」中配置。</small>
-            </label>
-            <label>
-              参考采购价（元） <span>*</span>
+              安全库存 <span>*</span>
               <input
                 type="number"
                 required
                 min="0"
                 max="99999999"
-                step="0.01"
-                placeholder="0.00"
-                value={form.cost}
-                onChange={(e) => change("cost", e.target.value)}
+                step="0.000001"
+                value={form.threshold}
+                onChange={(e) => change("threshold", e.target.value)}
               />
+              <small>设为 0 则不启用缺货和低库存预警；大于 0 时，库存小于或等于此数量会提醒补货。</small>
             </label>
-            <label>
-              参考销售价（元） <span>*</span>
-              <input
-                type="number"
-                required
-                min="0"
-                max="99999999"
-                step="0.01"
-                placeholder="0.00"
-                value={form.price}
-                onChange={(e) => change("price", e.target.value)}
-              />
-            </label>
-          </div>
-          <div className="product-image-editor" role="group" aria-label="物料图片">
-            <div className="product-image-label">物料图片</div>
-            <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传物料图片"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
-                  if (!file) return;
-                  setReadingImage(true); setError('');
-                  try { change('image', await readProductImage(file)); }
-                  catch (e) { setError(e.message); }
-                  finally { setReadingImage(false); }
-                }} />
-            <button type="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
-              <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoadingIndicator size={22} /> : <ImagePlus size={22} />}</span>
-              <span className="product-image-upload-copy">
-                <strong>{readingImage ? '正在上传图片…' : form.image ? '更换物料图片' : '上传物料图片'}</strong>
-                <span>{readingImage ? '正在压缩并上传，请稍候' : '点击选择图片，支持 JPEG、PNG、WebP'}</span>
-              </span>
-              {!readingImage && <Plus size={18} aria-hidden="true" />}
-            </button>
-            <small className="product-image-hint">单张图片不超过 10 MB，上传时自动压缩。</small>
-            {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="物料图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
-          </div>
-          <label>规格型号
-            <input maxLength={500} placeholder="例如：3 芯 / 1.5 mm² / 额定电压 300/500V" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
-          </label>
-          <label>物料备注
-            <textarea maxLength={2000} rows={3} placeholder="填写物料补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
-          </label>
-          <label>
-            安全库存 <span>*</span>
-            <input
-              type="number"
-              required
-              min="0"
-              max="99999999"
-              step="0.000001"
-              value={form.threshold}
-              onChange={(e) => change("threshold", e.target.value)}
-            />
-            <small>设为 0 则不启用缺货和低库存预警；大于 0 时，库存小于或等于此数量会提醒补货。</small>
-          </label>
-          <ProductSync warehouses={warehouses} warehouseId={warehouseId} targets={syncTargets} setTargets={setSyncTargets} disabled={busy || readingImage} />
+            <ProductSync warehouses={warehouses} warehouseId={warehouseId} targets={syncTargets} setTargets={setSyncTargets} disabled={busy || readingImage} />
+          </ProductFormSection>
           {!product && (
             <div className="info-box">
               <Package size={17} />
@@ -347,7 +389,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             </div>
           )}
           {error && (
-            <div className="form-error" role="alert">
+            <div ref={errorRef} className="form-error" role="alert">
               <TriangleAlert size={16} />
               {error}
             </div>
@@ -368,6 +410,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             {latest && <Button type="button" disabled={busy || readingImage} onClick={() => {
               if (!window.confirm('使用最新信息替换当前填写内容，并清空同步仓库选择？')) return;
               setForm(latest.product);
+              baseline.current = productSnapshot(latest.product, []);
               setCurrentCategories(latest.categories);
               setSyncTargets([]);
               setConflict(false);
@@ -377,7 +420,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           </>}
         </div>
         <div className="modal-footer">
-          <Button type="button" onClick={onClose} disabled={busy || readingImage}>
+          <Button type="button" onClick={close} disabled={busy || readingImage}>
             取消
           </Button>
           <Button

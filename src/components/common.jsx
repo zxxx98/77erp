@@ -185,7 +185,9 @@ function ProductArt({ product, size = "normal", preview = true }) {
   );
 }
 
-function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions }) {
+function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions,
+  presentation = 'dialog', drawerSize = 'standard', headerNavigation, footer }) {
+  const drawer = presentation === 'drawer' && !mobileDevice;
   const titleId = useId();
   const ref = useRef();
   const closeRef = useRef(onClose);
@@ -194,13 +196,28 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
     const old = document.activeElement;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // Disable the page without disabling portals opened above this drawer.
+    const backgrounds = [];
+    if (drawer) {
+      let branch = ref.current.parentElement;
+      while (branch && branch !== document.body) {
+        for (const sibling of branch.parentElement.children) {
+          if (sibling === branch || !(sibling instanceof HTMLElement) || sibling.matches('script, style, link')) continue;
+          backgrounds.push([sibling, sibling.inert]);
+          sibling.inert = true;
+        }
+        branch = branch.parentElement;
+      }
+    }
     // Focusing the dialog keeps mobile keyboards closed until a field is tapped.
-    const first = mobileDevice ? ref.current :
+    const first = mobileDevice ? ref.current : drawer ?
+      ref.current.querySelector('[data-autofocus]') || ref.current :
       ref.current.querySelector("[data-autofocus]") ||
       [...ref.current.querySelectorAll("input:not(:disabled)")].find((el) => el.offsetParent !== null) ||
       ref.current.querySelector("button:not(:disabled)");
-    first?.focus({ preventScroll: mobileDevice });
+    first?.focus({ preventScroll: mobileDevice || drawer });
     const key = (e) => {
+      if (e.defaultPrevented || document.querySelector('.image-viewer, .camera-scanner-immersive')) return;
       if ([...document.querySelectorAll('.modal[role="dialog"]')].at(-1) !== ref.current) return;
       if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
@@ -229,23 +246,29 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
     };
     if (mobileDevice) window.addEventListener('erp:back-modal', back);
     return () => {
+      for (const [element, inert] of backgrounds) element.inert = inert;
       document.body.style.overflow = overflow;
       document.removeEventListener("keydown", key);
       window.removeEventListener('erp:back-modal', back);
-      old?.focus();
+      if (old?.isConnected) old.focus({ preventScroll: drawer });
+      else if (drawer) {
+        const page = document.querySelector('main');
+        if (page) { page.tabIndex = -1; page.focus({ preventScroll: true }); }
+      }
     };
   }, []);
   return (
-    <div className="modal-backdrop">
+    <div className={`modal-backdrop${drawer ? ' drawer-backdrop' : ''}`}>
       <section
         ref={ref}
-        className={`modal ${wide ? "modal-wide" : ""} ${className}`}
+        className={`modal ${wide ? "modal-wide" : ""} ${drawer ? `modal-drawer drawer-${drawerSize}` : ''} ${className}`}
         role="dialog"
         tabIndex={-1}
         aria-modal="true"
         aria-labelledby={titleId}
       >
         <div className="modal-header">
+          {drawer && headerNavigation}
           <div className="modal-header-title">
             <h2 id={titleId}>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
@@ -253,6 +276,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
           <div className="modal-header-actions">
           {headerActions}
           <button
+            type="button"
             className="icon-button"
             onClick={onClose}
             aria-label="关闭弹窗"
@@ -262,6 +286,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
           </div>
         </div>
         {children}
+        {drawer && footer}
       </section>
     </div>
   );

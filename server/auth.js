@@ -232,6 +232,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
+    if ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
+        (post && /^\/announcements\/\d+\/read$/.test(path))) return next();
     if ((read && (path === '/ai/conversations' || /^\/ai\/conversations\/[0-9a-f-]+$/.test(path)) ||
          post && ['/ai/chat', '/ai/confirm'].includes(path)) && hasPermission(req.user, 'ai')) return next();
     const legacyAllowed = (read && (

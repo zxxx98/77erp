@@ -1,7 +1,7 @@
 import { useQuery, usePagedQuery, queryPath } from '../queries.js';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, FilePenLine, History, LayoutDashboard, LogOut, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, FilePenLine, History, LayoutDashboard, LogOut, Megaphone, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
 import { flattenCategories } from '../catalog.js';
 import { api } from '../api.js';
@@ -17,7 +17,7 @@ import './mobile.css';
 
 const tabs = [['overview', '工作台', LayoutDashboard], ['products', '物料', Box], ['inventory', '库存', Warehouse], ['history', '单据', History], ['more', '更多', Settings]];
 
-export function MobileShell({ user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner }) {
+export function MobileShell({ user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, announcementCount }) {
   const { online } = usePwa();
   const [updated, setUpdated] = useState(null);
   const dataRef = useRef(data);
@@ -54,6 +54,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
       {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label="返回工作台" onClick={() => navigate('overview')} /><strong className="mw-modal-title">扫码工作台</strong></> : <>
         <strong className="mw-wordmark">77 <span>ERP</span></strong>
         <button type="button" className="mw-warehouse" disabled={!ready || loading || switching} aria-label="切换仓库" onClick={() => openModal({ kind: 'warehousePicker' })}>{data.settings.warehouse_name} ▾</button>
+        <button type="button" className="mw-icon announcement-entry" aria-label="公告中心" onClick={() => navigate('announcements')} disabled={!ready}><Megaphone size={22} />{announcementCount > 0 && <span className="announcement-entry-count" aria-label={`${announcementCount} 条未读公告`}>{announcementCount > 99 ? '99+' : announcementCount}</span>}</button>
         <MobileIcon icon={ScanLine} label="打开扫码工作台" onClick={() => navigate('scanner')} disabled={!ready} />
       </>}
     </header>
@@ -68,6 +69,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
           {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} />}
           {page === 'more' && <More user={user} data={data} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'scanner' && renderScanner()}
+          {page === 'announcements' && renderAnnouncements()}
           <div className="mw-refresh"><span className="mw-muted">{updated ? `读取于 ${updated.toLocaleTimeString('zh-CN', { hour12: false })}` : '数据保存在服务器'}</span><button type="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}刷新数据</button></div>
         </>}
       </>}

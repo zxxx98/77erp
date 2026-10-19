@@ -50,7 +50,7 @@ for (const width of [1440, 390]) {
       await control.click();
       await control.press("Tab");
       await expect(menu).toHaveCount(0);
-      await expect(page.getByRole("spinbutton", { name: /参考采购价/ })).toBeFocused();
+      await expect(page.getByRole("textbox", { name: "规格型号", exact: true })).toBeFocused();
       await control.click();
       await page.getByPlaceholder("例如：RVV 护套电线").click();
       await expect(menu).toHaveCount(0);

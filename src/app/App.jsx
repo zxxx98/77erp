@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Search,
   Bell,
+  Megaphone,
   TriangleAlert,
   CircleHelp,
   LogOut,
@@ -27,12 +28,17 @@ import { useState, useEffect, useRef } from 'react';
 import { api, setWarehouseId, getWarehouseId } from '../api.js';
 import { hasPermission, canManage } from '../../shared/permissions.js';
 import { useQuery } from '../queries.js';
+import { announcementsChanged, useAnnouncementQuery } from '../announcement-query.js';
+import '../announcement-entry.css';
 import { PermissionContext } from '../permissions.jsx';
 import { LoadingIndicator } from '../Loading.jsx';
 import {
   MobileShell,
   Scanner,
   Dashboard,
+  Announcements,
+  AnnouncementDetail,
+  AnnouncementEditor,
   Products,
   Inventory,
   Orders,
@@ -68,6 +74,7 @@ const navItems = [
   { id: "inventory", name: "库存管理", icon: Warehouse },
   { id: "scanner", name: "扫码工作台", icon: ScanLine },
   { id: "history", name: "操作记录", icon: History },
+  { id: "announcements", name: "公告中心", icon: Megaphone },
   ...(mobileDevice ? [{ id: 'more', name: '工作空间', icon: Settings }] : []),
 ];
 
@@ -230,6 +237,9 @@ function App({ admin, onLogout }) {
   const can = key => hasPermission(user, key);
   const manage = key => canManage(user, key);
   const summaryQuery = useQuery(mobileDevice ? null : '/dashboard', data);
+  const announcementQuery = useAnnouncementQuery('/announcements/unread-count', data, true);
+  const announcementCount = announcementQuery.result?.count || 0;
+  const announcementSaved = message => { setModal(null); announcementsChanged(); notify(message); };
   const low = summaryQuery.result?.products.low_stock_products || [];
   const lowCount = (summaryQuery.result?.products.low_stock || 0) + (summaryQuery.result?.products.out_of_stock || 0);
   // Order details are fetched by id so trimmed or paged lists stay correct.
@@ -258,6 +268,8 @@ function App({ admin, onLogout }) {
         showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={openOrderDetail}
         switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
         loggingOut={loggingOut} logout={logout}
+        announcementCount={announcementCount}
+        renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>
@@ -315,7 +327,7 @@ function App({ admin, onLogout }) {
         </nav>
         <div className="nav-label second-label">效率工具</div>
         <nav aria-label="效率工具">
-          {navItems.slice(5, 7).map(({ id, name, icon: Icon }) => (
+          {navItems.slice(5, 8).map(({ id, name, icon: Icon }) => (
             <a
               key={id}
               href={`#${id}`}
@@ -326,6 +338,7 @@ function App({ admin, onLogout }) {
             >
               <Icon size={19} strokeWidth={1.8} />
               <span>{name}</span>
+              {id === 'announcements' && announcementCount > 0 && <span className="announcement-entry-count" aria-label={`${announcementCount} 条未读公告`}>{announcementCount > 99 ? '99+' : announcementCount}</span>}
             </a>
           ))}
         </nav>
@@ -489,6 +502,7 @@ function App({ admin, onLogout }) {
                   showDetail={openOrderDetail}
                 />
               )}
+              {page === 'announcements' && <Announcements data={data} openModal={setModal} />}
               {page === "products" && (
                 <Products
                   data={data}
@@ -568,6 +582,8 @@ function App({ admin, onLogout }) {
           onSaved={saved}
         />
       )}
+      {modal?.kind === 'announcementDetail' && <AnnouncementDetail id={modal.id} data={data} onClose={() => setModal(null)} onEdit={item => setModal({ kind: 'announcementEditor', item })} onSaved={announcementSaved} />}
+      {modal?.kind === 'announcementEditor' && user.role === 'admin' && <AnnouncementEditor key={modal.item?.id || 'new'} item={modal.item} onClose={() => setModal(null)} onSaved={announcementSaved} />}
       {modal?.kind === "detail" && (
         mobileDevice ? <MobileOrderDetail order={modal.order} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}

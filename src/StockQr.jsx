@@ -2,13 +2,21 @@ import { useQuery } from './queries.js';
 import { lookupProductCode, useProductSelection } from './product-query.js';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import { Select, ContactPicker } from "./Dropdown.jsx";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
+import { mobileDevice } from './device.js';
 import { api } from "./api.js";
 import { stockQrPayload, newRequestId } from "./stock-qr-client.js";
 import { download } from "./data-files.js";
 import "./stock-qr.css";
 const money = (n) => `¥${(n / 100).toFixed(2)}`;
 const button = "btn";
+const configSnapshot = form => JSON.stringify([
+  ...['name', 'type', 'partner', 'partner_id', 'note']
+    .map(key => String(form[key] ?? '')),
+  form.max_scans === null ? null : form.max_scans === '' ? '' : Number(form.max_scans),
+  Boolean(form.require_confirmation), Boolean(form.enabled),
+  form.items.map(item => [item.product_id, item.quantity === '' ? '' : Number(item.quantity), item.price === '' ? '' : Number(item.price)]),
+]);
 function Lines({ items }) {
   return (
     <div className="stock-qr-lines">
@@ -107,6 +115,8 @@ export function StockQrManager({
   CameraScanner,
   onClose,
 }) {
+  const formId = useId();
+  const contentRef = useRef(null), errorRef = useRef(null), baseline = useRef(null);
   const [rows, setRows] = useState([]),
     [total, setTotal] = useState(0),
     [page, setPage] = useState(1),
@@ -190,8 +200,7 @@ export function StockQrManager({
     setRecords(null);
     setError("");
     setSymbol(null);
-    setForm(
-      q
+    const nextForm = q
         ? {
             ...q,
             partner: q.partner_name,
@@ -211,8 +220,9 @@ export function StockQrManager({
             partner: "",
             note: "",
             items: initialProduct ? [line(initialProduct)] : [],
-          },
-    );
+          };
+    baseline.current = configSnapshot(nextForm);
+    setForm(nextForm);
   };
   const add = (p) => {
     selection.remember(p);
@@ -322,7 +332,10 @@ export function StockQrManager({
       setRecordPage(n);
       setRecords(r);
     });
+  const canLeave = () => mobileDevice || !form || configSnapshot(form) === baseline.current ||
+    window.confirm('二维码配置尚未保存，确定放弃修改？');
   const back = () => {
+    if (busy || !canLeave()) return;
     setSelected(null);
     setForm(null);
     setRecords(null);
@@ -330,8 +343,18 @@ export function StockQrManager({
     setError("");
   };
   const close = () => {
-    if (!busy) onClose();
+    if (!busy && canLeave()) onClose();
   };
+  const view = form ? 'edit' : records ? 'records' : selected ? 'label' : 'list';
+  useEffect(() => {
+    if (mobileDevice) return;
+    contentRef.current?.scrollTo(0, 0);
+    const target = contentRef.current?.querySelector('[data-autofocus]') || contentRef.current?.closest('.modal');
+    target?.focus({ preventScroll: true });
+  }, [view, selected?.qr_id, recordKind, recordPage, page]);
+  useEffect(() => {
+    if (!mobileDevice && error) errorRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [error]);
   const title = form
     ? selected
       ? "编辑出入库二维码"
@@ -344,21 +367,32 @@ export function StockQrManager({
         ? "出入库二维码标签"
         : "管理出入库二维码";
   return (
-    <Modal title={title} onClose={close} wide>
-      <div className="form-body stock-qr-manager" aria-busy={busy}>
+    <Modal title={title} onClose={close} wide presentation="drawer" drawerSize="wide"
+      headerNavigation={(selected || form) && <button type="button" className={`${button} drawer-header-back`} disabled={busy} onClick={back}>返回列表</button>}
+      footer={<div className="modal-footer">
+        {form ? <>
+          <button type="button" className={button} disabled={busy} onClick={back}>取消编辑</button>
+          <button className="btn btn-primary" type="submit" form={formId} disabled={busy} aria-busy={busy}>
+            {busy && <LoadingIndicator size={20} />}保存二维码
+          </button>
+        </> : <button type="button" className={button} disabled={busy} onClick={close}>关闭</button>}
+      </div>}
+    >
+      <div ref={contentRef} className="form-body stock-qr-manager" aria-busy={busy}>
         {busy && <p><LoadingStatus>正在处理出入库二维码…</LoadingStatus></p>}
-        {(selected || form) && (
+        {mobileDevice && (selected || form) && (
           <button className={button} disabled={busy} onClick={back}>
             返回列表
           </button>
         )}
         {error && (
-          <p className="form-error" role="alert">
+          <p ref={errorRef} className="form-error" role="alert">
             {error}
           </p>
         )}
         {form ? (
           <form
+            id={formId}
             onSubmit={(e) => {
               e.preventDefault();
               save();
@@ -369,6 +403,7 @@ export function StockQrManager({
                 二维码名称
                 <input
                   required
+                  data-autofocus
                   maxLength={60}
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -619,9 +654,9 @@ export function StockQrManager({
                 />
                 启用
               </label>
-              <button className="btn btn-primary" type="submit">
+              {mobileDevice && <button className="btn btn-primary" type="submit">
                 保存二维码
-              </button>
+              </button>}
             </fieldset>
           </form>
         ) : records ? (

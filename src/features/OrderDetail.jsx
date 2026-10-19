@@ -17,6 +17,8 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
       title={`${orderLabel(order)}单详情`}
       subtitle={order.number}
       onClose={onClose}
+      presentation="drawer"
+      drawerSize="wide"
       wide
     >
       <div className="form-body">

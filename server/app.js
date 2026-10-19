@@ -1,4 +1,5 @@
 import { installR2Backup } from './r2-backup.js';
+import { installAnnouncements } from './announcements.js';
 import { migrateProductChanges, recordProductChange } from './product-changes.js';
 import { installAi } from './ai.js';
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
@@ -274,6 +275,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   app.use("/api/ai", express.json({ limit: "1mb" }));
   app.use(express.json({ limit: "100kb" }));
   const { sessionUser } = installAuth(app, db, options);
+  installAnnouncements(app, db);
   migrateProductChanges(db);
   const { warehouses } = installWarehouses(app, db);
   installProductHistory(app, db);
