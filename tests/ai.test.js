@@ -171,6 +171,20 @@ test('a second upload in the same conversation uses the new table and drops the 
   assert.ok(context.find(m => m.role === 'system').content.includes('B001'), 'system prompt must expose the newly uploaded sample');
 });
 
+test('uploaded table metadata is shown in the transcript, persisted for reopening and stripped from the model payload', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const table = [['名称','单位'], ['甲','个'], ['乙','个']];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1 } });
+  const r = await f.chat(f.staff, { table, table_name: '进货明细.xlsx', message: '导入上传表' });
+  const user = r.data.messages.find(m => m.role === 'user');
+  assert.deepEqual(user.attachment, { name: '进货明细.xlsx', rows: 2 });
+  assert.ok(f.calls.every(call => call.body.messages.every(m => m.attachment === undefined)), 'attachment metadata must never be sent to the model');
+  const reopened = await f.request(f.staff, `/ai/conversations/${r.data.conversation_id}`);
+  assert.deepEqual(reopened.data.messages.find(m => m.role === 'user').attachment, { name: '进货明细.xlsx', rows: 2 });
+  const named = await f.chat(f.staff, { table, message: '再导入' });
+  assert.equal(named.data.messages.find(m => m.role === 'user').attachment.name, '表格');
+});
+
 test('Excel mapping recognises a fixed-asset column and stores the flag on import', async t => {
   const f = await fixture(t); await f.permissions(['ai','data_io']);
   const table = [['名称','单位','固定资产'], ['巡检仪','台','是'], ['螺丝','个','否'], ['电脑','台','true'], ['扳手','把','']];
