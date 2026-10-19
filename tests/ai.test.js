@@ -206,6 +206,41 @@ test('Excel mapping rejects an unrecognised fixed-asset value', async t => {
   assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /固定资产标记无法识别/);
 });
 
+test('AI reads the full uploaded table, writes back a cleaned table and imports from it', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const raw = [
+    ['2026年6月进货清单', null, null],
+    ['说明：仅统计本月新增', null, null],
+    ['品名', '单位', '数量'],
+    ['螺丝', '个', 5],
+    ['合计', null, 5],
+    ['垫片', '盒', 3],
+  ];
+  f.use('read_import_table', {});
+  f.use('replace_import_table', { rows: [['物料名称', '单位', '期初库存'], ['螺丝', '个', 5], ['垫片', '盒', 3]] });
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1, stock: 2 } });
+  const r = await f.chat(f.staff, { table: raw, message: '去掉标题和合计行，整理后导入' });
+  const readResult = JSON.parse(f.calls.find(c => c.body.messages.some(m => m.role === 'tool' && /品名/.test(m.content)))?.body.messages.find(m => m.role === 'tool' && /品名/.test(m.content)).content);
+  assert.equal(readResult.row_count, 5);
+  assert.equal(readResult.rows[0][0], '2026年6月进货清单');
+  const a = r.data.actions.at(-1);
+  assert.deepEqual(a.preview.rows.map(row => row.name), ['螺丝', '垫片']);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: a.id })).status, 200);
+  assert.equal(f.db.prepare("SELECT stock FROM products WHERE name='垫片'").get().stock, 3);
+});
+
+test('replace_import_table rejects an invalid table and requires data_io permission', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const raw = [['名称', '单位'], ['螺丝', '个']];
+  f.use('replace_import_table', { rows: [['']] });
+  await f.chat(f.staff, { table: raw, message: '整理' });
+  assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /表格需为表头加1–1000行/);
+  await f.permissions(['ai']);
+  f.use('read_import_table', {});
+  const denied = await f.chat(f.staff, { table: raw, message: '整理' });
+  assert.equal(denied.status, 403);
+});
+
 test('AI import assigns an existing category chosen by id for rows without a category column', async t => {
   const f = await fixture(t); await f.permissions(['ai','data_io']);
   f.use('categories', { warehouse_id: 1 }); await f.chat(f.staff);
