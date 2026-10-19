@@ -173,6 +173,87 @@ test('Excel mapping rejects an unrecognised fixed-asset value', async t => {
   assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /固定资产标记无法识别/);
 });
 
+test('AI import assigns an existing category chosen by id for rows without a category column', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  f.use('categories', { warehouse_id: 1 }); await f.chat(f.staff);
+  const categories = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  const office = categories.find(c => c.path === '办公文具');
+  assert.ok(office);
+  const table = [['名称','单位'], ['订书机', '个'], ['文件夹', '个']];
+  f.use('preview_import', { warehouse_id: 1, default_category_id: office.id, mapping: { name: 0, unit: 1 } });
+  const r = await f.chat(f.staff, { table });
+  const a = r.data.actions[0]; assert.ok(a, JSON.stringify(f.calls.at(-1).body.messages));
+  assert.equal(a.preview.default_category.path, '办公文具');
+  assert.deepEqual(a.preview.rows.map(row => row.category), ['办公文具', '办公文具']);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: a.id })).status, 200);
+  assert.equal(f.db.prepare("SELECT category FROM products WHERE name='订书机'").get().category, '办公文具');
+  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM categories WHERE warehouse_id=1").get().n, 3);
+});
+
+test('AI import matches a category column against existing categories and reports new ones', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const table = [['名称','单位','分类'], ['蓝牙耳机','个','数码配件'], ['键盘','个','电脑外设'], ['鼠标','个','数码配件']];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1, category: 2 } });
+  const r = await f.chat(f.staff, { table });
+  const a = r.data.actions[0]; assert.ok(a, JSON.stringify(f.calls.at(-1).body.messages));
+  assert.deepEqual(a.preview.rows.map(row => row.category), ['数码配件', '电脑外设', '数码配件']);
+  assert.deepEqual(a.preview.created_categories, ['电脑外设']);
+  const existing = f.db.prepare("SELECT category_id FROM products WHERE id=2").get().category_id;
+  assert.equal(a.preview.rows[0].category_id, existing);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: a.id })).status, 200);
+  assert.equal(f.db.prepare("SELECT category FROM products WHERE name='蓝牙耳机'").get().category, '数码配件');
+  assert.equal(f.db.prepare("SELECT category_id FROM products WHERE name='蓝牙耳机'").get().category_id, existing);
+  assert.equal(f.db.prepare("SELECT category FROM products WHERE name='键盘'").get().category, '电脑外设');
+});
+
+test('AI import rejects an unknown default category and an over-long category name', async t => {
+  const f = await fixture(t); await f.permissions(['ai','data_io']);
+  const table = [['名称','单位'], ['订书机', '个']];
+  f.use('preview_import', { warehouse_id: 1, default_category_id: 999, mapping: { name: 0, unit: 1 } });
+  await f.chat(f.staff, { table });
+  assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /默认分类不存在/);
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1, category: 2 } });
+  const long = '超'.repeat(101);
+  const wide = [['名称', '单位', '分类'], ['订书机', '个', long]];
+  await f.chat(f.staff, { table: wide });
+  assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /分类名称超过100字/);
+});
+
+test('AI lists due inspections and only flags products that already reached the inspection date', async t => {
+  const f = await fixture(t); await f.permissions(['ai','products']);
+  f.db.prepare("UPDATE products SET inspection_date='2020-01-01',inspection_interval=1,inspection_unit='month' WHERE id=1").run();
+  f.db.prepare("UPDATE products SET inspection_date='2999-01-01',inspection_interval=0 WHERE id=2").run();
+  f.use('search_inspections', { warehouse_id: 1, due: true });
+  await f.chat(f.staff);
+  const due = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.equal(due.total, 1); assert.equal(due.products[0].id, 1);
+  const mark = { warehouse_id: 1, items: [{ product_id: 2 }] };
+  f.use('preview_mark_inspected', mark); await f.chat(f.staff);
+  assert.match(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content, /尚未到校验日期/);
+  f.use('preview_mark_inspected', { warehouse_id: 1, items: [{ product_id: 1 }] });
+  const r = await f.chat(f.staff);
+  const a = r.data.actions[0]; assert.ok(a, JSON.stringify(f.calls.at(-1).body.messages));
+  assert.equal(a.preview.items[0].after_date, '2026-11-19');
+});
+
+test('AI sets an inspection reminder and marks inspections, rejecting non-products permissions and unreachable items', async t => {
+  const f = await fixture(t); await f.permissions(['ai','products']);
+  f.use('preview_inspection', { warehouse_id: 1, items: [{ product_id: 1, inspection_date: '2030-05-01', inspection_interval: 6, inspection_unit: 'month' }] });
+  const r = await f.chat(f.staff);
+  const a = r.data.actions[0]; assert.ok(a, JSON.stringify(f.calls.at(-1).body.messages));
+  assert.equal(a.preview.items[0].after_date, '2030-05-01');
+  assert.equal(f.db.prepare('SELECT inspection_date FROM products WHERE id=1').get().inspection_date, ''); // nothing written before confirmation
+  const confirmed = await f.request(f.staff, '/ai/confirm', { action_id: a.id });
+  assert.equal(confirmed.status, 200);
+  assert.equal(f.db.prepare('SELECT inspection_date FROM products WHERE id=1').get().inspection_date, '2030-05-01');
+  assert.deepEqual((await f.request(f.staff, '/ai/confirm', { action_id: a.id })).data, confirmed.data);
+  await f.permissions(['ai']);
+  f.use('preview_inspection', { warehouse_id: 1, items: [{ product_id: 1, inspection_date: '2031-01-01' }] });
+  const denied = await f.chat(f.staff);
+  assert.equal(denied.status, 403);
+  assert.match(denied.data.error, /权限/);
+});
+
 test('permissions and sessions are revalidated after model latency, and quotas are enforced', async t => {
   const f = await fixture(t); await f.permissions(['ai','purchase']);
   f.replies.push(async () => {

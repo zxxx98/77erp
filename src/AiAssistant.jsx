@@ -48,7 +48,7 @@ const fields = { name: '物料名称', barcode: '条码', category: '分类', un
 function ActionCard({ action, busy, confirm }) {
   const p = action.preview, expired = action.expires_at < Date.now();
   return <section className="ai-action">
-    <h3>{{ orders: '批量出入库预览', import: '新增物料预览', transfer: '仓库调拨预览', stocktake: '库存盘点预览' }[action.kind]} · {action.result ? '已完成' : expired ? '已过期' : '待确认'}</h3>
+    <h3>{{ orders: '批量出入库预览', import: '新增物料预览', transfer: '仓库调拨预览', stocktake: '库存盘点预览', inspection: '设置校验提醒预览', mark_inspected: '标记已校验预览' }[action.kind]} · {action.result ? '已完成' : expired ? '已过期' : '待确认'}</h3>
     {p.orders?.map((o, index) => <div key={index}>
       <p><strong>{o.warehouse_name} · {orderLabel(o)}</strong> · {o.partner}</p>
       {o.kind === "internal" && <p>内部流转不计入采购、销售、利润及应收应付。</p>}
@@ -69,10 +69,17 @@ function ActionCard({ action, busy, confirm }) {
     {p.rows && <>
       <p>{p.warehouse_name} · 新增 {p.rows.length} 个物料，不覆盖已有物料。期初库存会直接计入库存。</p>
       <p>列对应：{Object.entries(p.mapping).map(([k, v]) => `${fields[k]} ← ${v}`).join('；')}</p>
-      {!!p.defaults.length && <p>未提供：{p.defaults.map(k => `${fields[k]}=${['cost', 'price', 'stock', 'threshold'].includes(k) ? '0' : k === 'category' ? '未分类' : k === 'barcode' ? '自动生成' : k === 'is_fixed_asset' ? '否' : '空'}`).join('；')}。请核对这些默认值。</p>}
+      {p.default_category && <p>未映射分类的行统一归入已有分类：{p.default_category.path}。</p>}
+      {!!p.created_categories?.length && <p>以下分类当前不存在，将新建为一级分类：{p.created_categories.join('、')}。请确认名称无误。</p>}
+      {!!p.defaults.length && <p>未提供：{p.defaults.map(k => `${fields[k]}=${['cost', 'price', 'stock', 'threshold'].includes(k) ? '0' : k === 'barcode' ? '自动生成' : k === 'is_fixed_asset' ? '否' : '空'}`).join('；')}。请核对这些默认值。</p>}
       <div className="ai-table"><table><thead><tr>{Object.values(fields).map(v => <th key={v}>{v}</th>)}</tr></thead><tbody>{p.rows.map((row, index) => <tr key={index}>{Object.keys(fields).map(k => <td key={k}>{k === 'is_fixed_asset' ? (row[k] ? '是' : '否') : row[k]}</td>)}</tr>)}</tbody></table></div>
     </>}
-    {action.result ? <p role="status">已完成{action.result.orders ? `：${action.result.orders.map(o => o.number).join('、')}` : action.kind === 'transfer' ? `：${action.result.number} / ${action.result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : `，新增 ${action.result.count} 个物料`}。</p> : <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，库存变化需重新生成。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>确认执行本批操作</button></>}
+    {p.warehouse_name && p.items && p.items.some(i => 'after_date' in i) && <>
+      <p><strong>{p.warehouse_name}</strong> · {action.kind === 'inspection' ? `设置校验提醒 · ${p.items.length} 种物料` : `标记已校验 · 校验日 ${p.last_inspected_on}`}</p>
+      <div className="ai-table"><table><thead><tr>{['物料 / 条码', '单位', '原校验日期', action.kind === 'inspection' ? '新校验日期' : '下次校验日期', '校验周期'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{p.items.map(i => <tr key={i.product_id}><td>{i.name}<small>{i.barcode}</small></td><td>{i.unit}</td><td>{i.before_date || '未配置'}</td><td>{i.after_date}</td><td>{i.interval ? `每 ${i.interval} ${{ day: '天', month: '月', year: '年' }[i.interval_unit] || '月'}` : '手动设置日期'}</td></tr>)}</tbody></table></div>
+      <p>{action.kind === 'inspection' ? '确认后按以上日期和周期更新校验提醒。' : `确认后记录今天（${p.last_inspected_on}）已校验，有周期的物料自动续期。`}</p>
+    </>}
+    {action.result ? <p role="status">已完成{action.result.orders ? `：${action.result.orders.map(o => o.number).join('、')}` : action.kind === 'transfer' ? `：${action.result.number} / ${action.result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : action.kind === 'inspection' ? `，已更新 ${action.result.count} 种物料的校验提醒` : action.kind === 'mark_inspected' ? `，已标记 ${action.result.count} 种物料为已校验` : `，新增 ${action.result.count} 个物料`}。</p> : <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，库存变化需重新生成。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>确认执行本批操作</button></>}
   </section>;
 }
 
