@@ -115,6 +115,50 @@ test('one-off inspection requires a manually entered future date; permissions an
   assert.equal(f.current(p.id).last_inspected_on, inspectionToday());
 });
 
+test('backdated inspections validate actual dates and renew configured periods from the selected date even when still overdue', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2030-03-05T12:00:00Z') });
+  const f = await fixture(t);
+  for (const [inspected_on, inspection_interval, inspection_unit, expected] of [
+    ['2030-01-31', 1, 'month', '2030-02-28'],
+    ['2028-02-29', 1, 'year', '2029-02-28'],
+    ['2030-03-02', 7, 'day', '2030-03-09'],
+  ]) {
+    const p = await f.create({ inspection_date: '2000-01-01', inspection_interval, inspection_unit });
+    for (const invalid of ['', null, 20300301, '2030-02-30', '0000-01-01', '2030-03-06']) {
+      const rejected = await f.request(`/products/${p.id}/inspect`, 'POST', { version: p.version, inspected_on: invalid });
+      assert.equal(rejected.status, 400);
+      assert.match(rejected.data.error, /实际校验日期/);
+      assert.deepEqual(f.current(p.id), p);
+    }
+    const body = { version: p.version, inspected_on };
+    const result = await f.request(`/products/${p.id}/inspect`, 'POST', body);
+    assert.equal(result.status, 200);
+    assert.equal(result.data.last_inspected_on, inspected_on);
+    assert.equal(result.data.inspection_date, expected);
+    const saved = f.current(p.id);
+    assert.deepEqual({ ...saved }, { ...p, version: saved.version, last_inspected_on: inspected_on, inspection_date: expected });
+    assert.ok(saved.version > p.version);
+    assert.equal((await f.request(`/products/${p.id}/inspect`, 'POST', body)).status, 409);
+    const due = (await f.request('/products?inspection=due')).data.products;
+    assert.equal(due.some(row => row.id === p.id), expected <= inspectionToday());
+  }
+});
+
+test('manual backdated inspection requires the next date to follow the actual date and can remain overdue', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2030-03-05T12:00:00Z') });
+  const f = await fixture(t), p = await f.create({ inspection_date: '2000-01-01' });
+  const body = { version: p.version, inspected_on: '2030-02-01' };
+  for (const next_date of ['', '2030-01-31', '2030-02-01', '2030-02-30']) {
+    assert.equal((await f.request(`/products/${p.id}/inspect`, 'POST', { ...body, next_date })).status, 400);
+    assert.deepEqual(f.current(p.id), p);
+  }
+  const result = await f.request(`/products/${p.id}/inspect`, 'POST', { ...body, next_date: '2030-03-01' });
+  assert.equal(result.status, 200);
+  assert.equal(f.current(p.id).last_inspected_on, body.inspected_on);
+  assert.equal(f.current(p.id).inspection_date, '2030-03-01');
+  assert.equal((await f.request('/products?inspection=due')).data.total, 1);
+});
+
 test('calendar periods clamp month ends and leap days without overflowing into the next month', () => {
   assert.equal(nextInspectionDate('2028-02-28', 1, 'day'), '2028-02-29');
   assert.equal(nextInspectionDate('2026-01-31', 1, 'month'), '2026-02-28');

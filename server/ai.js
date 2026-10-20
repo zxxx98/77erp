@@ -1,5 +1,5 @@
 import { addQuantity, validQuantity } from '../shared/quantity.js';
-import { inspectionToday, nextInspectionDate, validInspectionDate, inspectionConfig } from '../shared/inspection.js';
+import { inspectionToday, inspectionCompletion, inspectionConfig } from '../shared/inspection.js';
 import { categoryPaths } from './catalog.js';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { hasPermission } from '../shared/permissions.js';
@@ -44,10 +44,10 @@ const tools = [
     warehouse_id: integer,
     items: { type: 'array', items: { ...object({ product_id: integer, inspection_date: string, inspection_interval: integer, inspection_unit: { type: 'string', enum: ['day', 'month', 'year'] } }), required: ['product_id'] } },
   }),
-  tool('preview_mark_inspected', '生成“已校验”预览，绝不直接执行。将已到校验日期且未停用的物料标记为今天已校验，并按周期自动续期；无周期物料需提供晚于今天的下次校验日期。必须在用户明确确认已校验后才能调用。每次1–100种物料。', {
-    warehouse_id: integer, next_date: string,
+  tool('preview_mark_inspected', '生成“已校验”预览，绝不直接执行。将已到校验日期且未停用的物料标记为已校验。inspected_on 为实际校验日期（YYYY-MM-DD），默认今天，可按用户明确提供的过去日期补录，不得晚于今天；下次日期从实际校验日期按配置周期顺延，无周期物料需提供晚于实际校验日期的 next_date。必须在用户明确确认已校验后才能调用。每次1–100种物料。', {
+    warehouse_id: integer, inspected_on: string, next_date: string,
     items: { type: 'array', items: { ...object({ product_id: integer }), required: ['product_id'] } },
-  }),
+  }, ['warehouse_id', 'items']),
   tool('preview_orders', '生成批量入库/出库预览，绝不直接执行。必须由用户提供或明确确认往来单位、数量、单价、方向、仓库；不猜测。最多20张单据、合计100行。', {
     orders: { type: 'array', items: { ...object({ warehouse_id: integer, type: { type: 'string', enum: ['in', 'out'] }, partner: string, partner_id: integer, note: string,
       items: { type: 'array', items: { ...object({ product_id: integer, quantity: number, price: number }), required: ['product_id', 'quantity', 'price'] } } }), required: ['warehouse_id', 'type', 'partner', 'items'] } },
@@ -167,14 +167,12 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
       return { ok: true, count: payload.inspection.items.length, inspection_date: payload.inspection.items.map(i => ({ product_id: i.product_id, inspection_date: i.inspection_date })) };
     }
     if (kind === 'mark_inspected') {
-      const today = inspectionToday();
       const next = payload.mark_inspected.items.map(item => {
         const product = db.prepare('SELECT inspection_interval,inspection_unit FROM products WHERE id=?').get(item.product_id);
-        const date = product.inspection_interval ? nextInspectionDate(today, product.inspection_interval, product.inspection_unit) : payload.mark_inspected.next_date;
-        return { product_id: item.product_id, inspection_date: date };
+        return { product_id: item.product_id, ...inspectionCompletion(product, payload.mark_inspected) };
       });
-      for (const item of next) db.prepare('UPDATE products SET inspection_date=?,last_inspected_on=? WHERE id=?').run(item.inspection_date, today, item.product_id);
-      return { ok: true, count: next.length, last_inspected_on: today, next };
+      for (const item of next) db.prepare('UPDATE products SET inspection_date=?,last_inspected_on=? WHERE id=?').run(item.inspection_date, item.last_inspected_on, item.product_id);
+      return { ok: true, count: next.length, last_inspected_on: next[0].last_inspected_on, next };
     }
     return { orders: payload.orders.map(order => createOrder(db, { ...req, warehouse: warehouse(order.warehouse_id) }, order)) };
   }
@@ -311,7 +309,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
       requirePermission(req, 'products');
       const target = warehouse(args.warehouse_id);
       if (!Array.isArray(args.items) || !args.items.length || args.items.length > 100) fail('每次请选择1–100种物料。');
-      const today = inspectionToday(), next_date = args.next_date ?? '', seen = new Set();
+      const today = inspectionToday(), inspected_on = args.inspected_on === undefined ? today : args.inspected_on, next_date = args.next_date ?? '', seen = new Set();
       const products = args.items.map(item => {
         if (!Number.isSafeInteger(item?.product_id) || seen.has(item.product_id)) fail('物料编号无效或重复。');
         seen.add(item.product_id);
@@ -321,11 +319,14 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
         if (!p.inspection_date || p.inspection_date > today) fail(`${p.name} 尚未到校验日期。`);
         return p;
       });
-      if (products.some(p => !p.inspection_interval) && (!validInspectionDate(next_date) || next_date <= today)) fail('无校验周期的物料需要填写晚于今天的下次校验日期。');
       const items = products.map(p => ({ product_id: p.id }));
-      const display = products.map(p => ({ product_id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, before_date: p.inspection_date, last_inspected_on: today,
-        after_date: p.inspection_interval ? nextInspectionDate(today, p.inspection_interval, p.inspection_unit) : next_date }));
-      return preview(req, cid, 'mark_inspected', { warehouse_id: target.id, mark_inspected: { items, next_date } }, { warehouse_name: target.name, last_inspected_on: today, items: display });
+      const display = products.map(p => {
+        let completion;
+        try { completion = inspectionCompletion(p, { inspected_on, next_date }); } catch (e) { fail(`${p.name}：${e.message}`); }
+        return { product_id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, before_date: p.inspection_date, last_inspected_on: completion.last_inspected_on,
+          after_date: completion.inspection_date, interval: p.inspection_interval, interval_unit: p.inspection_unit };
+      });
+      return preview(req, cid, 'mark_inspected', { warehouse_id: target.id, mark_inspected: { items, inspected_on, next_date } }, { warehouse_name: target.name, last_inspected_on: inspected_on, items: display });
     }
     if (name === 'read_import_table') {
       requirePermission(req, 'data_io');

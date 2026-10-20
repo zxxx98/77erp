@@ -34,5 +34,17 @@ export function nextInspectionDate(from, interval, unit) {
   return result;
 }
 
+export function inspectionCompletion(product, body = {}) {
+  const today = inspectionToday();
+  const inspectedOn = body.inspected_on === undefined ? today : body.inspected_on;
+  if (!validInspectionDate(inspectedOn) || inspectedOn > today)
+    throw new Error('请填写不晚于今天的实际校验日期。');
+  const next = product.inspection_interval
+    ? nextInspectionDate(inspectedOn, product.inspection_interval, product.inspection_unit) : body.next_date;
+  if (!validInspectionDate(next) || next <= inspectedOn)
+    throw new Error('请填写晚于实际校验日期的下次校验日期。');
+  return { inspection_date: next, last_inspected_on: inspectedOn };
+}
+
 export const inspectionCycleLabel = product => product.inspection_interval
   ? `每 ${product.inspection_interval} ${inspectionUnits[product.inspection_unit]}` : '手动设置日期';

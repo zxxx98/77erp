@@ -400,8 +400,8 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             </label>
           </ProductFormSection>
           <ProductFormSection title="校验提醒（可选）">
-            <label>校验日期
-              <input type="date" aria-label="校验日期" value={form.inspection_date || ''} onChange={e => {
+            <label>下次校验日期
+              <input type="date" aria-label="下次校验日期" value={form.inspection_date || ''} onChange={e => {
                 change('inspection_date', e.target.value);
                 if (!e.target.value) change('inspection_interval', 0);
               }} />
@@ -417,7 +417,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 </Select>
               </label>
             </div>
-            <small>点击「已校验」后，从当天按周期计算下次日期；未设置周期时，需手动填写下次日期。</small>
+            <small>点击「已校验」后可选择实际校验日期（默认今天），按配置周期计算下次日期；未设置周期时，需手动填写下次日期。</small>
           </ProductFormSection>
           <ProductFormSection title="同步到其他仓库">
             <ProductSync warehouses={warehouses} warehouseId={warehouseId} targets={syncTargets} setTargets={setSyncTargets} disabled={busy || readingImage} />

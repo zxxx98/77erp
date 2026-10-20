@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
+import { inspectionToday, nextInspectionDate } from '../shared/inspection.js';
 
 async function fixture(t) {
   const calls = [], replies = [];
@@ -355,7 +356,64 @@ test('AI lists due inspections and only flags products that already reached the 
   f.use('preview_mark_inspected', { warehouse_id: 1, items: [{ product_id: 1 }] });
   const r = await f.chat(f.staff);
   const a = r.data.actions[0]; assert.ok(a, JSON.stringify(f.calls.at(-1).body.messages));
-  assert.equal(a.preview.items[0].after_date, '2026-11-19');
+  assert.equal(a.preview.last_inspected_on, inspectionToday());
+  assert.equal(a.preview.items[0].after_date, nextInspectionDate(inspectionToday(), 1, 'month'));
+});
+
+test('AI backdates inspections with the same dates in preview and confirmation, including manual and overdue schedules', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2030-03-05T12:00:00Z') });
+  const f = await fixture(t); await f.permissions(['ai', 'products']);
+  f.db.prepare("UPDATE products SET inspection_date='2000-01-01',inspection_interval=1,inspection_unit='month' WHERE id=1").run();
+  f.db.prepare("UPDATE products SET inspection_date='2000-01-01',inspection_interval=0 WHERE id=2").run();
+  const before = f.db.prepare('SELECT * FROM products WHERE id IN (1,2) ORDER BY id').all();
+  const args = { warehouse_id: 1, items: [{ product_id: 1 }, { product_id: 2 }], inspected_on: '2030-01-31', next_date: '2030-04-01' };
+  f.use('preview_mark_inspected', args);
+  const response = await f.chat(f.staff), action = response.data.actions[0];
+  assert.ok(action, JSON.stringify(response.data));
+  assert.equal(action.preview.last_inspected_on, args.inspected_on);
+  assert.deepEqual(action.preview.items.map(item => item.after_date), ['2030-02-28', '2030-04-01']);
+  assert.equal(action.preview.items[0].interval, 1);
+  assert.deepEqual(f.db.prepare('SELECT * FROM products WHERE id IN (1,2) ORDER BY id').all(), before);
+  const confirmed = await f.request(f.staff, '/ai/confirm', { action_id: action.id });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.data.last_inspected_on, args.inspected_on);
+  assert.deepEqual(f.db.prepare('SELECT inspection_date,last_inspected_on FROM products WHERE id IN (1,2) ORDER BY id').all().map(row => ({ ...row })), [
+    { inspection_date: '2030-02-28', last_inspected_on: args.inspected_on },
+    { inspection_date: '2030-04-01', last_inspected_on: args.inspected_on },
+  ]);
+  assert.deepEqual((await f.request(f.staff, '/ai/confirm', { action_id: action.id })).data, confirmed.data);
+});
+
+test('AI rejects invalid or future actual inspection dates and manual dates at or before the actual date', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2030-03-05T12:00:00Z') });
+  const f = await fixture(t); await f.permissions(['ai', 'products']);
+  f.db.prepare("UPDATE products SET inspection_date='2000-01-01',inspection_interval=0 WHERE id=1").run();
+  for (const extra of [
+    { inspected_on: '' }, { inspected_on: null }, { inspected_on: '2030-02-30' }, { inspected_on: '2030-03-06' },
+    { inspected_on: '2030-02-01', next_date: '2030-02-01' },
+    { inspected_on: '2030-02-01', next_date: '2030-01-31' },
+  ]) {
+    f.use('preview_mark_inspected', { warehouse_id: 1, items: [{ product_id: 1 }], next_date: '2030-04-01', ...extra });
+    const response = await f.chat(f.staff);
+    assert.deepEqual(response.data.actions, []);
+    assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content, /实际校验日期/);
+    assert.equal(f.db.prepare('SELECT last_inspected_on FROM products WHERE id=1').get().last_inspected_on, '');
+  }
+});
+
+test('AI default inspection date stays fixed when confirming after midnight', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2030-03-05T23:59:00Z') });
+  const f = await fixture(t); await f.permissions(['ai', 'products']);
+  f.db.prepare("UPDATE products SET inspection_date='2000-01-01',inspection_interval=1,inspection_unit='month' WHERE id=1").run();
+  f.use('preview_mark_inspected', { warehouse_id: 1, items: [{ product_id: 1 }] });
+  const response = await f.chat(f.staff), action = response.data.actions[0];
+  assert.ok(action, JSON.stringify(response.data));
+  assert.equal(action.preview.last_inspected_on, '2030-03-05');
+  t.mock.timers.setTime(new Date('2030-03-06T00:01:00Z').getTime());
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: action.id })).status, 200);
+  const saved = f.db.prepare('SELECT inspection_date,last_inspected_on FROM products WHERE id=1').get();
+  assert.equal(saved.last_inspected_on, '2030-03-05');
+  assert.equal(saved.inspection_date, '2030-04-05');
 });
 
 test('AI sets an inspection reminder and marks inspections, rejecting non-products permissions and unreachable items', async t => {

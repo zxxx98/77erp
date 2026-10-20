@@ -5,7 +5,7 @@ import { installAi } from './ai.js';
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
 import { installProductHistory } from './product-history.js';
 import { validQuantity } from '../shared/quantity.js';
-import { inspectionToday, nextInspectionDate, validInspectionDate } from '../shared/inspection.js';
+import { inspectionToday, inspectionCompletion } from '../shared/inspection.js';
 import { hasPermission } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
 import { migrateProductVersions } from './product-version.js';
@@ -504,13 +504,11 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       const today = inspectionToday();
       if (!product.active || !product.inspection_date || product.inspection_date > today)
         throw new Error('此物料尚未到校验日期或已停用，请刷新待校验列表。');
-      const next = product.inspection_interval
-        ? nextInspectionDate(today, product.inspection_interval, product.inspection_unit) : req.body.next_date;
-      if (!validInspectionDate(next) || next <= today) throw new Error('请手动填写晚于今天的下次校验日期。');
-      db.prepare('UPDATE products SET inspection_date=?,last_inspected_on=? WHERE id=?').run(next, today, product.id);
+      const { inspection_date, last_inspected_on } = inspectionCompletion(product, req.body);
+      db.prepare('UPDATE products SET inspection_date=?,last_inspected_on=? WHERE id=?').run(inspection_date, last_inspected_on, product.id);
       const saved = db.prepare('SELECT version FROM products WHERE id=?').get(product.id);
       db.exec('COMMIT');
-      res.json({ ok: true, inspection_date: next, last_inspected_on: today, version: saved.version });
+      res.json({ ok: true, inspection_date, last_inspected_on, version: saved.version });
     } catch (error) {
       if (db.isTransaction) db.exec('ROLLBACK');
       res.status(400).json({ error: error.message });

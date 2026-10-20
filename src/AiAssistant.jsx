@@ -77,7 +77,7 @@ function ActionCard({ action, busy, confirm }) {
     {p.warehouse_name && p.items && p.items.some(i => 'after_date' in i) && <>
       <p><strong>{p.warehouse_name}</strong> · {action.kind === 'inspection' ? `设置校验提醒 · ${p.items.length} 种物料` : `标记已校验 · 校验日 ${p.last_inspected_on}`}</p>
       <div className="ai-table"><table><thead><tr>{['物料 / 条码', '单位', '原校验日期', action.kind === 'inspection' ? '新校验日期' : '下次校验日期', '校验周期'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{p.items.map(i => <tr key={i.product_id}><td>{i.name}<small>{i.barcode}</small></td><td>{i.unit}</td><td>{i.before_date || '未配置'}</td><td>{i.after_date}</td><td>{i.interval ? `每 ${i.interval} ${{ day: '天', month: '月', year: '年' }[i.interval_unit] || '月'}` : '手动设置日期'}</td></tr>)}</tbody></table></div>
-      <p>{action.kind === 'inspection' ? '确认后按以上日期和周期更新校验提醒。' : `确认后记录今天（${p.last_inspected_on}）已校验，有周期的物料自动续期。`}</p>
+      <p>{action.kind === 'inspection' ? '确认后按以上日期和周期更新校验提醒。' : `确认后将上次校验日期记为 ${p.last_inspected_on}，有周期的物料从该日期按配置周期顺延。`}</p>
     </>}
     {action.result ? <p role="status">已完成{action.result.orders ? `：${action.result.orders.map(o => o.number).join('、')}` : action.kind === 'transfer' ? `：${action.result.number} / ${action.result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : action.kind === 'inspection' ? `，已更新 ${action.result.count} 种物料的校验提醒` : action.kind === 'mark_inspected' ? `，已标记 ${action.result.count} 种物料为已校验` : `，新增 ${action.result.count} 个物料`}。</p> : <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，库存变化需重新生成。继续聊天会取消本批未确认预览。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>确认执行本批操作</button></>}
   </section>;
