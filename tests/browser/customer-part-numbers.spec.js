@@ -1,0 +1,100 @@
+import { test, expect, devices } from '@playwright/test';
+import { ensureContact } from './contact-helpers.js';
+import { chooseOption } from './dropdown-helpers.js';
+
+for (const device of ['desktop', 'Android', 'iOS PWA']) {
+  test(`${device}: configure, confirm, display and search customer part numbers`, async ({ browser }, testInfo) => {
+    const mobile = device !== 'desktop';
+    const pwa = device === 'iOS PWA';
+    const context = await browser.newContext({ ...(mobile ? devices[pwa ? 'iPhone 13' : 'Pixel 7'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: pwa ? 'allow' : 'block' });
+    try {
+      if (pwa) await context.addInitScript(() => {
+        const original = window.matchMedia.bind(window);
+        window.matchMedia = query => query === '(display-mode: standalone)' ? { ...original(query), matches: true, addEventListener() {}, removeEventListener() {} } : original(query);
+        Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+      });
+      await context.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
+      expect((await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
+      const suffix = `${device.replace(/\W/g, '')}-${Date.now()}`;
+      const name = `客户料号物料-${suffix}`;
+      const customerName = `客户-${suffix}`;
+      const otherName = `第二客户-${suffix}`;
+      const customer = await ensureContact(context.request, customerName, { role: 'customer' });
+      const other = await ensureContact(context.request, otherName, { role: 'customer' });
+      const supplier = `供应商-${suffix}`;
+      await ensureContact(context.request, supplier);
+      const part = `CPN-${suffix}`;
+      const longPart = `LONG-${'1234567890'.repeat(9)}`;
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.goto('/#products');
+      await page.getByRole('button', { name: '新增物料', exact: true }).first().click();
+      const form = page.getByRole('dialog', { name: '新增物料', exact: true });
+      await form.getByRole('textbox', { name: /物料名称/ }).fill(name);
+      await form.getByRole('spinbutton', { name: /参考采购价/ }).fill('10');
+      await form.getByRole('spinbutton', { name: /参考销售价/ }).fill('20');
+      const editor = form.getByRole('region', { name: '客户料号配置', exact: true });
+      await editor.getByRole('button', { name: '增加客户料号' }).click();
+      await expect(editor.getByRole('textbox', { name: '客户料号 1', exact: true })).toHaveValue('');
+      const confirm = editor.getByRole('button', { name: '确认客户料号 1', exact: true });
+      expect((await confirm.textContent()).trim()).toBe('');
+      await confirm.click();
+      await expect(editor.getByRole('alert')).toContainText('请选择客户并填写客户料号');
+      await editor.getByRole('combobox', { name: '客户 1', exact: true }).click();
+      await expect(page.getByRole('listbox', { name: '客户 1', exact: true })).not.toContainText(supplier);
+      await page.getByRole('listbox', { name: '客户 1', exact: true }).getByText(customerName, { exact: true }).click();
+      await editor.getByRole('textbox', { name: '客户料号 1', exact: true }).fill(part);
+      await form.getByRole('button', { name: '保存物料', exact: true }).click();
+      await expect(form.getByRole('alert')).toContainText('请先点击勾选确认客户料号');
+      await confirm.click();
+      await expect(editor.getByRole('button', { name: '编辑客户料号 1', exact: true })).toBeVisible();
+      await editor.getByRole('button', { name: '增加客户料号' }).click();
+      await chooseOption(editor.getByRole('combobox', { name: '客户 2', exact: true }), String(customer.id));
+      await editor.getByRole('textbox', { name: '客户料号 2', exact: true }).fill(part);
+      await editor.getByRole('button', { name: '确认客户料号 2', exact: true }).click();
+      await expect(editor.getByRole('alert')).toContainText('同一客户的料号不能重复');
+      await chooseOption(editor.getByRole('combobox', { name: '客户 2', exact: true }), String(other.id));
+      await editor.getByRole('textbox', { name: '客户料号 2', exact: true }).fill(longPart);
+      await page.screenshot({ path: testInfo.outputPath('customer-part-input.png') });
+      await editor.getByRole('button', { name: '确认客户料号 2', exact: true }).click();
+      expect(await form.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath('customer-part-form.png') });
+      await form.getByRole('button', { name: '保存物料', exact: true }).click();
+      await expect(form).toHaveCount(0);
+      await page.reload();
+      const search = mobile ? page.getByRole('searchbox', { name: '搜索名称、条码、规格或客户料号' }) : page.getByRole('textbox', { name: '筛选物料' });
+      await search.fill(part.slice(4));
+      const rows = page.locator(mobile ? '.mw-product-list .mw-product-row' : '.product-table tbody tr');
+      await expect(rows).toHaveCount(1);
+      await rows.getByRole('button', { name: mobile ? `${name}，库存 0 个` : `查看 ${name} 物料详情`, exact: true }).click();
+      const detail = page.getByRole('dialog', { name: '物料详情', exact: true });
+      const partsDetail = detail.getByRole('region', { name: '客户料号', exact: true });
+      await expect(partsDetail).toContainText(customerName);
+      await expect(partsDetail).toContainText(otherName);
+      await expect(partsDetail).toContainText(part);
+      await expect(partsDetail).toContainText(longPart);
+      expect(await partsDetail.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await partsDetail.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath('customer-part-detail.png') });
+      if (mobile) await detail.getByRole('button', { name: '编辑物料', exact: true }).click();
+      else {
+        await detail.getByRole('button', { name: '关闭', exact: true }).last().click();
+        await rows.getByRole('button', { name: '编辑', exact: true }).click();
+      }
+      const editForm = page.getByRole('dialog', { name: '编辑物料', exact: true });
+      await editForm.getByRole('button', { name: '编辑客户料号 1', exact: true }).click();
+      await expect(editForm.getByRole('textbox', { name: '客户料号 1', exact: true })).toHaveValue(part);
+      await editForm.getByRole('textbox', { name: '客户料号 1', exact: true }).fill(`${part}-UPDATED`);
+      await editForm.getByRole('button', { name: '确认客户料号 1', exact: true }).click();
+      await editForm.getByRole('button', { name: '移除客户料号 2', exact: true }).click();
+      await editForm.getByRole('button', { name: '保存物料', exact: true }).click();
+      await expect(editForm).toHaveCount(0);
+      await search.fill(longPart);
+      await expect(rows).toHaveCount(0);
+      await search.fill(`${part}-UPDATED`);
+      await expect(rows).toHaveCount(1);
+      expect(errors).toEqual([]);
+    } finally { await context.close(); }
+  });
+}

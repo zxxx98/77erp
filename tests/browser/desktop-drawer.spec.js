@@ -45,7 +45,7 @@ test('product drawer keeps actions visible, protects edits and restores page int
   await page.keyboard.press('Shift+Tab');
   await expect(save).toBeFocused();
   // The portalled select stays usable and consumes its own Escape key.
-  const unit = dialog.getByRole('combobox').last();
+  const unit = dialog.getByRole('combobox', { name: /计量单位/ });
   await unit.click();
   await expect(page.getByRole('listbox')).toBeVisible();
   await page.keyboard.press('Escape');

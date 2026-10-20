@@ -87,7 +87,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
               <Search size={16} />
               <input
                 aria-label="筛选物料"
-                placeholder="搜索名称、条码或规格型号"
+                placeholder="搜索名称、条码、规格或客户料号"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />

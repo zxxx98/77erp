@@ -1,3 +1,4 @@
+import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount } from "../shared/money.js";
 import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.js';
@@ -346,6 +347,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           fail("条码重复或已存在，不会覆盖已有物料。");
         if (values[1]) seen.add(values[1]);
         productDetails(row);
+        customerPartNumbersValue(db, row);
         if (row.category_id != null && row.category_id !== '' && (!Number.isSafeInteger(row.category_id) || !db.prepare("SELECT 1 FROM categories WHERE id=? AND warehouse_id=?").get(row.category_id, warehouseId))) fail("分类不存在或不属于当前仓库。");
         normalized.push({ values, stock: row.stock, index });
       } catch (error) {
@@ -372,7 +374,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,inspection_date,inspection_interval,inspection_unit,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...values, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       const p = product(Number(result.lastInsertRowid));
@@ -419,7 +421,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 15,
+    version: 16,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -427,11 +429,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 16) for (const p of data.products || []) p.customer_part_numbers ??= '[]';
     if (value.version < 15) for (const p of data.products || []) {
       p.inspection_date = ''; p.inspection_interval = 0; p.inspection_unit = 'month'; p.last_inspected_on = '';
     }
@@ -532,6 +535,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const p of data.products) {
       productValues(p);
       productDetails(p);
+      if (typeof p.customer_part_numbers !== 'string') fail('备份客户料号格式无效。');
+      const parts = JSON.parse(p.customer_part_numbers);
+      const normalizedParts = validateCustomerPartNumbers(parts, contacts, parts);
+      if (JSON.stringify(parts) !== JSON.stringify(normalizedParts)) fail('备份客户料号格式无效。');
       if (p.last_inspected_on !== '' && !validInspectionDate(p.last_inspected_on)) fail('备份上次校验日期无效。');
       if (!Number.isSafeInteger(p.version) || p.version < 1) fail('备份物料版本无效。');
       if (![0,1].includes(p.active)) fail("备份物料使用状态无效。");

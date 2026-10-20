@@ -22,6 +22,8 @@ after(async () => {
   db.close();
 });
 async function request(path, method = "GET", body) {
+  // API clients send arrays; raw SQLite fixtures store this field as JSON.
+  if (method === 'PUT' && /^\/products\/\d+$/.test(path) && typeof body?.customer_part_numbers === 'string') body = { ...body, customer_part_numbers: JSON.parse(body.customer_part_numbers) };
   const res = await fetch(base + path, {
     method,
     headers: { "Content-Type": "application/json", Cookie: cookie },

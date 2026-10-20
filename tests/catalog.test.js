@@ -79,11 +79,69 @@ test('invalid product metadata or category cannot create a product or orphan cat
   assert.deepEqual(after.products, before.products);
 });
 
+test('customer part numbers are validated, searchable, versioned and preserved across legacy edits, sync and backups', async t => {
+  const f = await fixture(t);
+  await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
+  await f.request('/contacts', 'POST', { request_id: randomUUID(), name: '客户料号测试客户', role: 'customer', active: 1, person: '', phone: '', address: '', note: '' });
+  const customer = (await f.request('/contacts')).data.find(c => c.name === '客户料号测试客户');
+  const parts = [{ customer_id: customer.id, part_number: ' CPN_%甲-001 ' }, { customer_id: customer.id, part_number: '乙-002' }];
+  const warehouse = (await f.request('/warehouses', 'POST', { name: '客户料号分仓' })).data.id;
+  const created = await f.request('/products', 'POST', { ...product, category: '料号分类', customer_part_numbers: parts, sync_warehouse_ids: [warehouse] });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const path = `/products/${created.data.id}`;
+  const initial = (await f.request(path)).data.product;
+  assert.deepEqual(initial.customer_part_numbers, parts.map(p => ({ ...p, part_number: p.part_number.trim(), customer_name: customer.name })));
+  assert.deepEqual((await f.request(`/products/barcode/${created.data.barcode}`)).data.customer_part_numbers, initial.customer_part_numbers);
+  assert.deepEqual((await f.request('/data')).data.products[0].customer_part_numbers, initial.customer_part_numbers);
+  assert.deepEqual((await f.request('/dashboard')).data.products.low_stock_products[0].customer_part_numbers, initial.customer_part_numbers);
+  for (const q of ['CPN_%', '乙-002']) {
+    const found = (await f.request(`/products?q=${encodeURIComponent(q)}`)).data;
+    assert.equal(found.total, 1);
+    assert.equal(found.products[0].id, created.data.id);
+  }
+  assert.equal((await f.request('/products?q=CPNxx')).data.total, 0);
+  const target = f.db.prepare('SELECT * FROM products WHERE warehouse_id=?').get(warehouse);
+  assert.deepEqual(JSON.parse(target.customer_part_numbers), parts.map(p => ({ customer_id: p.customer_id, part_number: p.part_number.trim() })));
+  const { customer_part_numbers, ...legacy } = initial;
+  assert.equal((await f.request(path, 'PUT', { ...legacy, name: '旧客户端编辑' })).status, 200);
+  let current = (await f.request(path)).data.product;
+  assert.deepEqual(current.customer_part_numbers, customer_part_numbers);
+  const savedVersion = current.version;
+  assert.equal((await f.request(path, 'PUT', { ...current, customer_part_numbers: [{ customer_id: customer.id, part_number: '新料号' }] })).status, 200);
+  current = (await f.request(path)).data.product;
+  assert.ok(current.version > savedVersion);
+  assert.equal((await f.request(path, 'PUT', { ...initial, customer_part_numbers: [] })).status, 409);
+  for (const invalid of [null, '[]', [{}], [{ customer_id: 999999, part_number: '无效' }], [{ customer_id: customer.id, part_number: ' ' }], [{ customer_id: customer.id, part_number: 'x'.repeat(101) }], Array(101).fill(parts[0]), [parts[0], parts[0]]]) {
+    assert.equal((await f.request(path, 'PUT', { ...current, customer_part_numbers: invalid })).status, 400);
+    assert.equal((await f.request(path)).data.product.version, current.version);
+  }
+  assert.equal((await f.request(`/contacts/${customer.id}/delete`, 'POST', { request_id: randomUUID(), version: customer.version })).status, 400);
+  const inactiveCustomer = { ...customer, name: '改名后的客户', active: 0 };
+  assert.equal((await f.request('/contacts', 'POST', { ...inactiveCustomer, request_id: randomUUID() })).status, 200);
+  assert.equal((await f.request(path)).data.product.customer_part_numbers[0].customer_name, inactiveCustomer.name);
+  assert.equal((await f.request(path, 'PUT', current)).status, 200);
+  assert.equal((await f.request(path, 'PUT', { ...current, customer_part_numbers: parts })).status, 400);
+  const backup = (await f.request('/backup')).data;
+  const preview = (await f.request('/backup/preview', 'POST', { backup })).data;
+  assert.equal((await f.request('/backup/restore', 'POST', { backup, ...preview, request_id: randomUUID(), confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
+  assertRestoredBusiness((await f.request('/backup')).data.data, backup.data);
+  const broken = structuredClone(backup);
+  broken.data.products.find(p => p.id === current.id).customer_part_numbers = JSON.stringify([{ customer_id: 999999, part_number: '无效关联' }]);
+  assert.equal((await f.request('/backup/preview', 'POST', { backup: broken })).status, 400);
+  const oldBackup = structuredClone(backup);
+  oldBackup.version = 15;
+  for (const p of oldBackup.data.products) delete p.customer_part_numbers;
+  assert.equal((await f.request('/backup/preview', 'POST', { backup: oldBackup })).status, 200);
+  current = (await f.request(path)).data.product;
+  assert.equal((await f.request(path, 'PUT', { ...current, customer_part_numbers: [] })).status, 200);
+  assert.deepEqual((await f.request(path)).data.product.customer_part_numbers, []);
+});
+
 test('v11 backups restore a tree and product details independently of current category IDs; malformed trees and references fail', async t => {
   const f = await fixture(t), root = await f.category('食材'), child = await f.category('调味品', root);
   await f.request('/products', 'POST', { ...product, category_id: child, image, specification: '500g', note: '避光保存' });
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 15);
+  assert.equal(backup.version, 16);
   await f.request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
   const newRoot = await f.category('不同的当前分类');
   assert.equal((await f.request(`/categories/${newRoot}`, 'PUT', { name: '当前分类', parent_id: null })).status, 200);
@@ -125,11 +183,12 @@ test('existing flat category database migrates idempotently without changing sto
   // Downgrade fixtures must also remove triggers that did not exist in the legacy schema.
   for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'data_revision_*'").all()) db.exec(`DROP TRIGGER ${name}`);
   db.exec('DROP TRIGGER product_version_update');
-  for (const key of ['category_id', 'image', 'specification', 'note']) db.exec(`ALTER TABLE products DROP COLUMN ${key}`);
+  for (const key of ['category_id', 'image', 'specification', 'note', 'customer_part_numbers']) db.exec(`ALTER TABLE products DROP COLUMN ${key}`);
   db.exec('DROP TABLE categories'); db.close();
   ({ db } = createApp(path));
   assert.deepEqual(db.prepare('SELECT id,name,barcode,category,stock FROM products ORDER BY id').all(), original);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM products WHERE category_id IS NULL').get().n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM products WHERE customer_part_numbers!='[]'").get().n, 0);
   db.prepare('UPDATE products SET specification=?,note=?,image=? WHERE id=1').run('350ml', '迁移后录入', image);
   const categories = db.prepare('SELECT * FROM categories ORDER BY id').all(); db.close();
   ({ db } = createApp(path));

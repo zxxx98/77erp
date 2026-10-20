@@ -72,7 +72,7 @@ test('category trees, edits, product references and imports are isolated by ware
   assert.deepEqual((await f.request('/backup')).data.data, before);
   assert.equal((await f.request(`/categories/${root}`, 'PUT', { name: '主仓餐厨' })).status, 200);
   assert.equal((await f.request('/products/barcode/WH-001')).data.category, '主仓餐厨 / 杯具');
-  assert.deepEqual((await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data, before.products.find(p => p.id === remote));
+  assert.deepEqual((await f.request('/products/barcode/WH-001', 'GET', undefined, w)).data, { ...before.products.find(p => p.id === remote), customer_part_numbers: [] });
   assert.equal((await f.request('/data')).data.categories.every(c => c.warehouse_id === 1), true);
   assert.equal((await f.request('/data', 'GET', undefined, w)).data.categories.every(c => c.warehouse_id === w), true);
   assert.equal(f.db.prepare('SELECT category_id FROM products WHERE id=?').get(main).category_id, child);
@@ -244,7 +244,7 @@ test('v11 backups round trip multiple warehouses and sync groups, reject crossed
   await f.order(remote.id, 'in', 3, w);
   await f.command('/templates', { name: '常用模板', type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: 1, price: 10 }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 15);
+  assert.equal(backup.version, 16);
   for (const corrupt of ['warehouse', 'item', 'template', 'sync', 'barcode', 'category-owner', 'category-parent', 'category-warehouse']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;
@@ -306,7 +306,7 @@ test('legacy backups v3 through v9 migrate shared trees into independent warehou
     const restore = await f.command('/backup/restore', { backup: legacy, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' });
     assert.equal(restore.status, 200, `v${version}: ${JSON.stringify(restore.data)}`);
     const restored = (await f.request('/backup')).data;
-    assert.equal(restored.version, 15);
+    assert.equal(restored.version, 16);
     for (const warehouseId of [1, w, empty]) {
       const rows = (await f.request('/categories', 'GET', undefined, warehouseId)).data;
       assert.equal(rows.length, 3);

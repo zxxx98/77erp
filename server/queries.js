@@ -1,3 +1,4 @@
+import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount } from '../shared/money.js';
 import { hasPermission } from '../shared/permissions.js';
 import { settlementFromPaid } from './commerce.js';
@@ -90,7 +91,7 @@ export function installQueries(app, db) {
     const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
     if (!product) return res.status(404).json({ error: '物料不存在。' });
     if (hidesCosts(req)) delete product.inventory_value_cents;
-    res.json({ product });
+    res.json({ product: withCustomerPartNumbers(db, [product])[0] });
   });
 
   app.get(
@@ -119,9 +120,9 @@ export function installQueries(app, db) {
         params.push(...branch);
       }
       if (query) {
-        clauses.push(`(name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\' OR specification LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\')`);
+        clauses.push(`(name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\' OR specification LIKE ? ESCAPE '\\' OR note LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM json_each(products.customer_part_numbers) cp WHERE json_extract(cp.value, '$.part_number') LIKE ? ESCAPE '\\'))`);
         const value = pattern(query);
-        params.push(value, value, value, value, value);
+        params.push(value, value, value, value, value, value);
       }
       const where = clauses.join(' AND ');
       const total = db.prepare(`SELECT COUNT(*) AS n FROM products WHERE ${where}`).get(...params).n;
@@ -129,7 +130,7 @@ export function installQueries(app, db) {
         .prepare(`SELECT * FROM products WHERE ${where} ORDER BY ${inspection ? 'inspection_date,' : ''}id LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
       if (hidesCosts(req)) for (const row of rows) delete row.inventory_value_cents;
-      return { products: rows, total, has_more: offset + rows.length < total, next_offset: offset + rows.length };
+      return { products: withCustomerPartNumbers(db, rows), total, has_more: offset + rows.length < total, next_offset: offset + rows.length };
     }),
   );
 
@@ -252,10 +253,10 @@ export function installQueries(app, db) {
           active_value_cents: hidesCosts(req) ? undefined : counts.active_value || 0,
           low_stock: counts.low_stock || 0, out_of_stock: counts.out_of_stock || 0,
           inventory_value_cents: hidesCosts(req) ? undefined : counts.inventory_value_cents,
-          low_stock_products: db
+          low_stock_products: withCustomerPartNumbers(db, db
             .prepare('SELECT * FROM products WHERE warehouse_id=? AND active!=0 AND threshold>0 AND stock<=threshold ORDER BY stock,id LIMIT 5')
             .all(req.warehouse.id)
-            .map((product) => { if (hidesCosts(req)) delete product.inventory_value_cents; return product; }),
+            .map((product) => { if (hidesCosts(req)) delete product.inventory_value_cents; return product; })),
         },
         today: { day: new Date().toISOString().slice(0, 10), ...totalsOf(trading.filter((row) => row.day === new Date().toISOString().slice(0, 10))) },
         trend,

@@ -10,6 +10,8 @@ async function fixture(t) {
   t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); });
   let cookie;
   const request = async (path, body, method = body === undefined ? 'GET' : 'POST', warehouse = 1, auth = cookie) => {
+    // API clients send arrays; raw SQLite fixtures store this field as JSON.
+    if (method === 'PUT' && /^\/products\/\d+$/.test(path) && typeof body?.customer_part_numbers === 'string') body = { ...body, customer_part_numbers: JSON.parse(body.customer_part_numbers) };
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, {
       method, headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(auth ? { Cookie: auth } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -85,7 +87,7 @@ test('price audit survives backup restore, validates records, supports legacy ba
   const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
   await f.request(`/products/${f.product}`, { ...product, price: 21 }, 'PUT');
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 15);
+  assert.equal(backup.version, 16);
   assert.equal(backup.data.product_changes.length, 1);
   for (const patch of [{ after_cost: -1 }, { product_id: 999999 }, { created_by: -1 }, { created_by_name: '' }]) {
     const invalid = structuredClone(backup);

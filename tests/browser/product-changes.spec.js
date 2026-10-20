@@ -25,7 +25,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} defer
     await expect(page.getByRole('heading', { name: '物料管理', exact: true })).toBeVisible();
     expect(scripts.filter(url => /\/(AiAssistant|CameraScanner|Barcode|StockQr|Encoder)-/.test(url))).toEqual([]);
     if (mobile) {
-      await page.getByRole('searchbox', { name: '搜索物料名称、条码或分类', exact: true }).fill(name);
+      await page.getByRole('searchbox', { name: '搜索名称、条码、规格或客户料号', exact: true }).fill(name);
       await page.locator('.mw-product-list button').filter({ hasText: name }).click();
     } else {
       await page.getByRole('textbox', { name: '筛选物料', exact: true }).fill(name);

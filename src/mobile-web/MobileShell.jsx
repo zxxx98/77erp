@@ -10,6 +10,7 @@ import { OfflineNotice, PwaActions, usePwa } from '../pwa/Pwa.jsx';
 import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
 import { download } from '../data-files.js';
 import { ProductImage } from '../ProductImage.jsx';
+import { CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
 import { ProductHistory } from '../ProductHistory.jsx';
 import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
 import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
@@ -119,7 +120,7 @@ function Products({ data, inventory, showProduct, openModal }) {
   return <div className="mw-stack">
     <div className="mw-between"><div><h1>{inventory ? '库存管理' : '物料管理'}</h1><p className="mw-muted">共 {result ? result.total : '—'} 种物料 · 已加载 {products.length} 种</p></div>{!inventory && can('products') && <MobileIcon icon={Plus} label="新增物料" onClick={() => openModal({ kind: 'product' })} />}</div>
     {!inventory && manage('products') && <Button onClick={() => openModal({ kind: 'categories' })}>管理分类</Button>}
-    <SearchField value={query} onChange={setQuery} />
+    <SearchField value={query} onChange={setQuery} label="搜索名称、条码、规格或客户料号" />
     <Chips label={inventory ? '库存筛选' : '使用状态'} value={filter} onChange={setFilter} options={inventory ? [['all', '全部库存'], ['low', '库存预警'], ['empty', '缺货']] : [['all', '全部状态'], ['active', '已启用'], ['inactive', '已停用']]} />
     <label className="mw-field"><span>物料分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
     <Notice>{error}</Notice>{error && <Button onClick={retry}>重新加载</Button>}
@@ -238,6 +239,7 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
   return <Modal title="物料详情" onClose={busy ? () => {} : onClose}><div className="form-body mw-stack">
     <Notice>{error}</Notice><section className="mw-card mw-stack"><h2>{product.name}</h2><p className="mw-muted">{product.barcode}</p>{product.image && <ProductImage src={product.image} alt={product.name} className="mw-detail-image" />}<StockBadge product={product} />
       { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['固定资产', product.is_fixed_asset ? '是' : '否'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
+    {product.customer_part_numbers?.length > 0 && <div className="mw-card"><CustomerPartNumbersDetail value={product.customer_part_numbers} /></div>}
     <section className="mw-card mw-stack"><DetailRow label="下次校验日期">{product.inspection_date || '未配置'}</DetailRow><DetailRow label="校验周期">{inspectionCycleLabel(product)}</DetailRow><DetailRow label="上次校验">{product.last_inspected_on || '暂无记录'}</DetailRow></section>
     <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{money(product.price)}</DetailRow></section>
     <ProductHistory key={product.id} product={product} onViewOrder={id => openOrderDetail?.(id)} />

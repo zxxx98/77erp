@@ -22,6 +22,8 @@ async function fixture(t, options = {}, path = ':memory:') {
   t.after(close);
   let cookie;
   const request = async (path, method = 'GET', body, warehouse = 1, session = cookie) => {
+    // API clients send arrays; raw SQLite fixtures store this field as JSON.
+    if (method === 'PUT' && /^\/products\/\d+$/.test(path) && typeof body?.customer_part_numbers === 'string') body = { ...body, customer_part_numbers: JSON.parse(body.customer_part_numbers) };
     const r = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, {
       method, headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(session ? { Cookie: session } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),

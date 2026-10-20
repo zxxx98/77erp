@@ -1,5 +1,6 @@
 import { validateImageUrl, validateProductImage } from './imagebed.js';
 import { inspectionConfig } from '../shared/inspection.js';
+import { customerPartNumbersValue } from './customer-part-numbers.js';
 
 export function productDetails(body, existing = {}) {
   const values = {};
@@ -56,6 +57,7 @@ export function migrateCatalog(db) {
   for (const [key, definition] of Object.entries({active: 'INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1))', category_id: 'INTEGER REFERENCES categories(id)', image: "TEXT NOT NULL DEFAULT ''", specification: "TEXT NOT NULL DEFAULT ''", note: "TEXT NOT NULL DEFAULT ''", is_fixed_asset: 'INTEGER NOT NULL DEFAULT 0 CHECK(is_fixed_asset IN (0,1))', inspection_date: "TEXT NOT NULL DEFAULT ''", inspection_interval: 'INTEGER NOT NULL DEFAULT 0', inspection_unit: "TEXT NOT NULL DEFAULT 'month'", last_inspected_on: "TEXT NOT NULL DEFAULT ''"}))
     if (!columns.has(key)) db.exec(`ALTER TABLE products ADD COLUMN ${key} ${definition}`);
   const scoped = db.prepare('PRAGMA table_info(categories)').all().some(c => c.name === 'warehouse_id');
+  if (!columns.has('customer_part_numbers')) db.exec("ALTER TABLE products ADD COLUMN customer_part_numbers TEXT NOT NULL DEFAULT '[]'");
   for (const p of db.prepare(`SELECT id,category${scoped ? ',warehouse_id' : ''} FROM products WHERE category_id IS NULL`).all()) {
     let c = scoped
       ? db.prepare('SELECT id FROM categories WHERE warehouse_id=? AND parent_id IS NULL AND name=?').get(p.warehouse_id, p.category)
@@ -161,7 +163,7 @@ export function installCatalog(app, db) {
     const { image, specification, note, is_fixed_asset, inspection_date, inspection_interval, inspection_unit } = productDetails(body, existing);
     validateProductImage(db, image, existing?.image);
     const id = resolveCategory(body, warehouseId);
-    return { path: paths(warehouseId).get(id), values: [id, image, specification, note, is_fixed_asset, inspection_date, inspection_interval, inspection_unit] };
+    return { path: paths(warehouseId).get(id), values: [id, image, specification, note, is_fixed_asset, inspection_date, inspection_interval, inspection_unit, customerPartNumbersValue(db, body, existing)] };
   }
   const mutate = fn => (req, res) => {
     try {

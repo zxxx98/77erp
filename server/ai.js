@@ -1,3 +1,4 @@
+import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { addQuantity, validQuantity } from '../shared/quantity.js';
 import { inspectionToday, inspectionCompletion, inspectionConfig } from '../shared/inspection.js';
 import { categoryPaths } from './catalog.js';
@@ -36,7 +37,7 @@ const tools = [
   tool('categories', '列出指定仓库的物料分类及编号和完整路径（如“电子 / 传感器”）。用户要指定导入物料的分类、或询问有哪些分类时调用。', { warehouse_id: integer }),
   tool('search_contacts', '查找往来单位，返回编号、类型和启用状态。内部单位可入库和出库，不计入采购销售及应收应付；同名单位必须用编号区分。', { query: string }),
   tool('count_products', '查询指定仓库当前物料档案数量，按物料记录计数，每个仓库单独统计；返回总数及启用、停用数量，不受列表分页或50条搜索上限影响。用户问“有多少种物料/商品”时优先调用。不返回财务信息。', { warehouse_id: integer }),
-  tool('search_products', '在指定仓库查找物料，名称可能重名，需核对条码、规格；最多返回50条。不返回财务成本。', { warehouse_id: integer, query: string }),
+  tool('search_products', '在指定仓库按名称、条码、规格或客户料号查找物料，名称和客户料号可能重名，需核对客户、条码、规格；最多返回50条。不返回财务成本。', { warehouse_id: integer, query: string }),
   tool('compare_stock', '比较两个仓库同一物料数量，以源物料编号、同步关联或条码匹配；找不到不能视为零库存，单位不同时不能相减。', { product_id: integer, warehouse_a: integer, warehouse_b: integer }),
   tool('search_orders', '查询指定仓库最近20张单据，不返回财务信息。', { warehouse_id: integer }),
   tool('search_inspections', '查询指定仓库的物料校验情况。due=true只返回已到校验日期且未停用的待校验物料；返回总数及当前页物料，包含校验日期、周期和上次校验日期。用户问“有哪些物料要校验/到期了”时调用。不返回财务信息。', { warehouse_id: integer, due: { type: 'boolean' } }),
@@ -208,7 +209,8 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (name === 'search_products') {
       warehouse(args.warehouse_id);
       if (typeof args.query !== 'string' || args.query.length > 100) fail('物料查询条件无效。');
-      return db.prepare(`SELECT id,warehouse_id,name,barcode,specification,unit,stock,active FROM products WHERE warehouse_id=? AND (instr(name,?)>0 OR barcode=? OR instr(specification,?)>0) ORDER BY id LIMIT 50`).all(args.warehouse_id, args.query, args.query, args.query);
+      const products = db.prepare(`SELECT id,warehouse_id,name,barcode,specification,unit,stock,active,customer_part_numbers FROM products WHERE warehouse_id=? AND (instr(name,?)>0 OR barcode=? OR instr(specification,?)>0 OR EXISTS (SELECT 1 FROM json_each(products.customer_part_numbers) cp WHERE instr(json_extract(cp.value,'$.part_number'),?)>0)) ORDER BY id LIMIT 50`).all(args.warehouse_id, args.query, args.query, args.query, args.query);
+      return withCustomerPartNumbers(db, products);
     }
     if (name === 'compare_stock') {
       const a = warehouse(args.warehouse_a), b = warehouse(args.warehouse_b);

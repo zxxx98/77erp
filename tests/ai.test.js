@@ -66,6 +66,25 @@ test('cross-warehouse comparison matches identity and distinguishes absent produ
   assert.equal(JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content).b.stock, null);
 });
 
+test('AI material search resolves customer part numbers with customer identity and warehouse scope', async t => {
+  const f = await fixture(t);
+  const customer = (await f.request(f.admin, '/contacts', { request_id: randomUUID(), role: 'customer', name: '料号客户', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  const parts = [{ customer_id: customer.id, part_number: 'CPN-AI-001' }];
+  const created = await f.request(f.admin, '/products', { name: '料号搜索物料', category: '测试', unit: '件', cost: 10, price: 20, threshold: 0, customer_part_numbers: parts });
+  assert.equal(created.status, 201);
+  f.use('search_products', { warehouse_id: 1, query: 'CPN-AI' });
+  assert.equal((await f.chat(f.admin)).status, 200);
+  const found = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, created.data.id);
+  assert.deepEqual(found[0].customer_part_numbers, [{ ...parts[0], customer_name: '料号客户' }]);
+  assert.equal(found[0].cost, undefined);
+  const other = (await f.request(f.admin, '/warehouses', { name: '无料号仓库' })).data;
+  f.use('search_products', { warehouse_id: other.id, query: 'CPN-AI' });
+  await f.chat(f.admin);
+  assert.deepEqual(JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content), []);
+});
+
 test('AI identifies internal units and preserves their identity and accounting through preview and confirmation', async t => {
   const f = await fixture(t);
   const contact = await f.request(f.admin, '/contacts', { request_id: randomUUID(), role: 'internal', name: 'AI内部产线', person: '', phone: '', address: '', note: '', active: 1 });

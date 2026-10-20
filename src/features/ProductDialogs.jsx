@@ -18,6 +18,7 @@ import { useBusiness } from '../business-api.js';
 import { parseQuantity } from '../../shared/quantity.js';
 import { mobileDevice } from '../device.js';
 import { inspectionCycleLabel, inspectionUnits } from '../../shared/inspection.js';
+import { CustomerPartNumbersEditor, CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
 
 function ProductFormSection({ title, children }) {
   return mobileDevice ? <>{children}</> : <section className="drawer-form-section"><h3>{title}</h3>{children}</section>;
@@ -28,6 +29,7 @@ const productSnapshot = (form, targets) => JSON.stringify([
     .map(key => ['category_id', 'cost', 'price', 'threshold', 'inspection_interval'].includes(key) && form[key] !== '' && form[key] != null
       ? Number(form[key]) : key === 'is_fixed_asset' ? (form[key] ? 1 : 0) : String(form[key] ?? '')),
   [...targets].sort((a, b) => a - b),
+  (form.customer_part_numbers || []).map(row => [row.customer_id, row.part_number, !!row._editing]),
 ]);
 
 function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, manageStockQr }) {
@@ -137,6 +139,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
         <div className="product-detail-full"><dt>规格型号</dt><dd>{product.specification || "—"}</dd></div>
         <div className="product-detail-full"><dt>备注</dt><dd>{product.note || "—"}</dd></div>
       </dl>
+      <CustomerPartNumbersDetail value={product.customer_part_numbers} />
       <ProductHistory key={product.id} product={product} onViewOrder={onViewOrder} />
       <section className="product-other-stock">
         <h4>其他仓库库存</h4>
@@ -208,12 +211,14 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
     setBusy(true);
     setError("");
     try {
+      if (form.customer_part_numbers?.some(row => row._editing)) throw new Error('请先点击勾选确认客户料号，或移除未录入的条目。');
       const result = await api(
         product ? `/products/${product.id}` : "/products",
         {
           method: product ? "PUT" : "POST",
           body: {
             ...form,
+            customer_part_numbers: (form.customer_part_numbers || []).map(({ customer_id, part_number }) => ({ customer_id, part_number })),
             cost: Number(form.cost),
             price: Number(form.price),
             threshold: Number(form.threshold),
@@ -354,6 +359,9 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             </label>
             {!mobileDevice && specificationField}
           </ProductFormSection>
+          <div className="drawer-form-section">
+            <CustomerPartNumbersEditor value={form.customer_part_numbers} onChange={value => change('customer_part_numbers', value)} disabled={busy || conflict} />
+          </div>
           <ProductFormSection title="图片与说明">
             <div className="product-image-editor" role="group" aria-label="物料图片">
               <div className="product-image-label">物料图片</div>

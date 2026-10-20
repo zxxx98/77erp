@@ -1,3 +1,4 @@
+import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { installR2Backup } from './r2-backup.js';
 import { installAnnouncements } from './announcements.js';
 import { migrateProductChanges, recordProductChange } from './product-changes.js';
@@ -306,7 +307,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     const orders = warehouseOrders(db, req.warehouse.id, { financial, hideCosts });
     res.json({
       user: req.user,
-      products,
+      products: withCustomerPartNumbers(db, products),
       categories: db.prepare("SELECT * FROM categories WHERE warehouse_id=? ORDER BY name,id").all(req.warehouse.id),
       contacts: db.prepare("SELECT * FROM contacts ORDER BY active DESC,name,id").all(),
       orders,
@@ -346,7 +347,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         .status(404)
         .json({ error: "未找到该条码对应的物料，请先建立物料档案。" });
     if (!hasPermission(req.user, 'finance') && !req.user.legacy_permissions) delete product.inventory_value_cents;
-    res.json(product);
+    res.json(withCustomerPartNumbers(db, [product])[0]);
   });
   app.get("/api/products/:id/other-warehouses", (req, res) => {
     const product = db
@@ -428,7 +429,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (!v[1]) v[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,inspection_date,inspection_interval,inspection_unit,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids, req.user);
@@ -475,7 +476,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       v[2] = catalog.path;
       if (!v[1]) v[1] = existing.barcode;
       db.prepare(
-        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,inspection_date=?,inspection_interval=?,inspection_unit=? WHERE id=? AND version=?",
+        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=? WHERE id=? AND version=?",
       ).run(...v, ...catalog.values, req.params.id, existing.version);
       recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
       syncProduct(db, existing.id, req.body.sync_warehouse_ids, req.user);

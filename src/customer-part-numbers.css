@@ -1,0 +1,32 @@
+.customer-parts-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.customer-parts-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.customer-parts-heading h3 { margin: 0; font-size: 14px; }
+.customer-parts-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.customer-parts-list { display: flex; flex-direction: column; gap: 10px; }
+.customer-parts-row, .customer-parts-labels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px; gap: 8px; align-items: center; }
+.customer-parts-labels { font-size: 12px; color: var(--muted); }
+.customer-parts-row { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 10px; }
+.customer-parts-row .dropdown { min-width: 0; }
+.customer-parts-row input { min-width: 0; width: 100%; }
+.customer-parts-row > input { border: 1px solid #e3eaf3; border-radius: 8px; min-height: 42px; padding: 10px 12px; background: white; color: #304563; font-size: 13px; line-height: 1.5; }
+.customer-parts-row .dropdown-field > label { display: none; }
+.customer-parts-name, .customer-parts-number { overflow-wrap: anywhere; font-size: 13px; }
+.customer-parts-actions { display: flex; gap: 4px; }
+.customer-parts-actions .icon-button { width: 36px; height: 36px; flex: 0 0 36px; }
+.customer-parts-actions .icon-button:first-child { color: var(--accent); }
+.customer-parts-detail { min-width: 0; }
+.customer-parts-detail h4 { margin: 0 0 12px; font-size: 14px; }
+.customer-parts-detail dl { margin: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.customer-parts-detail dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; padding: 12px 14px; }
+.customer-parts-detail dl > div + div { border-top: 1px solid var(--border); }
+.customer-parts-detail dt, .customer-parts-detail dd { margin: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.customer-parts-detail dt { color: var(--muted); }
+.customer-parts-detail dd { font-weight: 600; }
+@media (max-width: 480px) {
+  .customer-parts-row, .customer-parts-labels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 88px; gap: 6px; }
+  .customer-parts-row { padding: 8px; }
+  .customer-parts-actions { gap: 0; }
+  .customer-parts-actions .icon-button { width: 44px; height: 44px; flex-basis: 44px; }
+}
+
+.product-detail > .customer-parts-detail { margin-top: 24px; }
