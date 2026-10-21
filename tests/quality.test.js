@@ -1123,3 +1123,62 @@ test('deleted acceptance IDs are never reused or returned for an earlier save re
   assert.equal((await f.save(p,sample,{request_id})).status,404);
   assert.equal((await f.request('/quality/acceptances')).data.total,1);
 });
+
+test('manual source corrections reparse types, preserve originals, validate addresses and isolate sheets',()=>{
+  const original=structuredClone(workbook),uploaded=structuredClone(workbook);
+  const def=validateDefinition({sheetName:'Sheet1',fields:[
+    {id:'budget',name:'预算',type:'number',labelRegion:'A5',valueRegion:'B5',required:true},
+    {id:'date',name:'日期',type:'date',labelRegion:'A4',valueRegion:'B4',required:true}
+  ]},original);
+  uploaded.sheets[0].cells.B5={text:'十二元',value:'十二元',error:'无缓存值'};
+  uploaded.sheets[0].cells.B4={text:'2026-10-20',value:'2026-10-20',date:'2026-10-20'};
+  const second=structuredClone(uploaded.sheets[0]);second.name='第二批';uploaded.sheets.push(second);
+  const corrections=[{sheetName:'Sheet1',address:'B5',text:'12'},{sheetName:'Sheet1',address:'B4',text:'2026-10-21'}];
+  const parsed=parseAcceptance(def,original,uploaded,{sheetNames:['Sheet1','第二批'],corrections});
+  assert.equal(parsed.value.Sheet1.预算,12);assert.equal(parsed.value.Sheet1.日期,'2026-10-21');
+  assert.equal(parsed.sheets[0].issues.length,0);assert.ok(parsed.sheets[1].issues.length);
+  assert.deepEqual(parsed.sheets[0].manualCorrections,[{address:'B5',original:'十二元',text:'12'},{address:'B4',original:'2026-10-20',text:'2026-10-21'}]);
+  assert.equal(uploaded.sheets[0].cells.B5.text,'十二元');assert.equal(uploaded.sheets[0].cells.B4.date,'2026-10-20');
+  for(const invalid of [null,{},[...corrections,corrections[0]],[{sheetName:'不存在',address:'B5',text:'1'}],
+    [{sheetName:'Sheet1',address:'B5:B6',text:'1'}],[{sheetName:'Sheet1',address:'B2000',text:'1'}],
+    [{sheetName:'Sheet1',address:'C8',text:'1'}],[{sheetName:'Sheet1',address:'B5',text:12}],
+    [{sheetName:'第二批',address:'B5',text:'1'}],[{sheetName:'Sheet1',address:'B5',text:'x'.repeat(10001)}]])
+    assert.throws(()=>parseAcceptance(def,original,uploaded,{sheetNames:['Sheet1'],corrections:invalid}));
+  assert.ok(parseAcceptance(def,original,uploaded,{sheetNames:['Sheet1'],corrections:[{sheetName:'Sheet1',address:'B5',text:'仍然无效'}]}).issues.length);
+  const noop=parseAcceptance(def,original,original,{sheetNames:['Sheet1'],corrections:[{sheetName:'Sheet1',address:'B5',text:original.sheets[0].cells.B5.text}]});
+  assert.equal(noop.sheets[0].manualCorrections,undefined);
+});
+
+test('manual corrections persist with server-derived originals, immutable downloads, idempotency and backup verification',async t=>{
+  const def=definition();def.fields[0].properties[2]={...def.fields[0].properties[2],type:'number',required:true};
+  const f=await publishedAcceptanceFixture(t,def);
+  const file=await filledWorkbook(sheet=>{sheet.getCell('C18').value='十二台';});
+  const corrections=JSON.stringify([{sheetName:'Sheet1',address:'C18',text:'12',original:'伪造原值'}]);
+  const request_id=randomUUID();
+  const response=await f.request('/quality/acceptances',f.body(file,{name:'手动修正验收单',request_id,sheet_names:'["Sheet1"]',corrections}));
+  assert.equal(response.status,200,JSON.stringify(response.data));const saved=response.data;
+  assert.equal(saved.result.value.Sheet1.采购明细[0].数量,12);
+  assert.deepEqual(saved.result.sheets[0].manualCorrections,[{address:'C18',original:'十二台',text:'12'}]);
+  assert.deepEqual((await f.request(`/quality/acceptances/${saved.id}`)).data.result,saved.result);
+  assert.deepEqual((await f.request(`/quality/acceptances/${saved.id}/download`)).data,file);
+  const chart=await f.request('/quality/charts/preview',{name:'修正后的数量',template_id:f.row.id,revision_id:f.row.published_revision,
+    config:{schemaVersion:1,kind:'ordinary',chartType:'bar',objectId:'items',x:{fieldId:'items',propertyId:'p0'},dateField:null,bucket:'day',groupBy:null,metric:{aggregation:'sum',value:{fieldId:'items',propertyId:'p2'}}}});
+  assert.equal(chart.status,200,JSON.stringify(chart.data));assert.equal(chart.data.rows.find(row=>row.x==='机架式服务器').value,12);
+  const repeat=await f.request('/quality/acceptances',f.body(file,{name:'手动修正验收单',request_id,sheet_names:'["Sheet1"]',corrections}));
+  assert.equal(repeat.data.id,saved.id);
+  const changed=await f.request('/quality/acceptances',f.body(file,{name:'手动修正验收单',request_id,sheet_names:'["Sheet1"]',corrections:JSON.stringify([{sheetName:'Sheet1',address:'C18',text:'13'}])}));
+  assert.equal(changed.status,400);
+  for(const changes of ['{}','null','not json',JSON.stringify([{sheetName:'Sheet1',address:'C18',text:'仍然无效'}]),JSON.stringify([{sheetName:'其他页',address:'C18',text:'12'}])]){
+    const bad=await f.request('/quality/acceptances',f.body(file,{name:'错误修正',request_id:randomUUID(),sheet_names:'["Sheet1"]',corrections:changes}));
+    assert.equal(bad.status,400,JSON.stringify(bad.data));
+  }
+  const backup=(await f.request('/backup')).data;
+  const preview=await f.request('/backup/preview',{backup});assert.equal(preview.status,200,JSON.stringify(preview.data));
+  const restored=await f.request('/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA',request_id:randomUUID()});
+  assert.equal(restored.status,200,JSON.stringify(restored.data));
+  assert.deepEqual((await f.request(`/quality/acceptances/${saved.id}`)).data.result,saved.result);
+  for(const change of [result=>{result.sheets[0].manualCorrections[0].original='篡改';},result=>{result.value.Sheet1.采购明细[0].数量=99;},result=>{delete result.sheets[0].manualCorrections;}]){
+    const tampered=structuredClone(backup),row=tampered.data.quality_acceptances.find(row=>row.id===saved.id),result=JSON.parse(row.result);change(result);row.result=JSON.stringify(result);
+    assert.equal((await f.request('/backup/preview',{backup:tampered})).status,400);
+  }
+});

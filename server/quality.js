@@ -106,6 +106,8 @@ export function validateQualityBackup(data) {
     const snapshot = JSON.parse(a.result);
     if(!snapshot || snapshot.schemaVersion===2&&!Array.isArray(snapshot.sheets))throw error('备份验收单工作表结果无效。');
     const options = snapshot.schemaVersion===2 ? {sheetNames:snapshot.sheets.map(sheet=>sheet.sheetName)} : {};
+    options.corrections = (snapshot.sheets || [{sheetName:JSON.parse(r.definition).sheetName,...snapshot}]).flatMap(sheet =>
+      (sheet.manualCorrections || []).map(({address,text}) => ({sheetName:sheet.sheetName,address,text})));
     const parsed = parseAcceptance(JSON.parse(r.definition), JSON.parse(files.get(r.file_id).workbook), JSON.parse(f.workbook),options);
     if(![0,1].includes(a.checks_acknowledged)||needsQualityReview(parsed)&&a.checks_acknowledged!==1)throw error('备份验收单缺少核对确认。');
     if (parsed.issues.length || !isDeepStrictEqual(snapshot, parsed)) throw error('备份验收单解析数据不一致。');
@@ -209,9 +211,9 @@ export function installQuality(app, db, options = {}) {
     if(!Array.isArray(names)||!names.length||names.length>20||new Set(names).size!==names.length||names.some(name=>typeof name!=='string'||!file.workbook.sheets.some(sheet=>sheet.name===name)))throw error('请选择上传文件中的 1–20 个不重复的数据工作表。');
     return file.workbook.sheets.filter(sheet=>names.includes(sheet.name)).map(sheet=>sheet.name);
   };
-  const parseFile = (revision, file, sheetNames) => {
+  const parseFile = (revision, file, sheetNames, corrections) => {
     const original = db.prepare('SELECT workbook FROM quality_template_files WHERE id=?').get(revision.file_id);
-    const parsed = parseAcceptance(JSON.parse(revision.definition),JSON.parse(original.workbook),file.workbook,{sheetNames});
+    const parsed = parseAcceptance(JSON.parse(revision.definition),JSON.parse(original.workbook),file.workbook,{sheetNames,corrections});
     if(Buffer.byteLength(JSON.stringify(parsed))>5*1024*1024)throw error('解析结果超过 5 MB，请减少填写内容或模板字段范围。');
     return parsed;
   };
@@ -303,13 +305,18 @@ export function installQuality(app, db, options = {}) {
   }));
   router.post('/acceptances',multipart,run(async req=>{
     const file=await readFile(req),sheetNames=dataSheets(req,file);
+    let corrections;
+    if(req.body.corrections!==undefined){
+      try { corrections=JSON.parse(req.body.corrections); } catch { throw error('手动修正数据格式无效。'); }
+      if(!Array.isArray(corrections))throw error('手动修正数据必须是数组。');
+    }
     const bindingRevision=req.body.bindings===undefined?null:db.prepare('SELECT definition FROM quality_template_revisions WHERE id=?').get(Number(req.body.revision_id));
     const choices=req.body.bindings===undefined?undefined:bindingChoices(req.body.bindings,sheetNames||[bindingRevision?JSON.parse(bindingRevision.definition).sheetName:'']);
     const name=String(req.body.name||'').trim(),note=String(req.body.note||'').trim();
     if(!name||name.length>100||note.length>1000)throw error('请输入 1–100 字验收单名称，备注不超过 1000 字。');
     // Idempotent retries can return an already saved record after preview expiry or a newer publication.
     const checksAcknowledged=req.body.checks_acknowledged==='true';
-    const body={...(checksAcknowledged?{checks_acknowledged:true}:{}),template_id:Number(req.body.template_id),revision_id:Number(req.body.revision_id),name,note,sha256:file.sha256,request_id:req.body.request_id,...(sheetNames===undefined?{}:{sheet_names:sheetNames}),...(choices===undefined?{}:{bindings:choices})};
+    const body={...(checksAcknowledged?{checks_acknowledged:true}:{}),...(corrections===undefined?{}:{corrections}),template_id:Number(req.body.template_id),revision_id:Number(req.body.revision_id),name,note,sha256:file.sha256,request_id:req.body.request_id,...(sheetNames===undefined?{}:{sheet_names:sheetNames}),...(choices===undefined?{}:{bindings:choices})};
     const previewToken=req.body.preview_token;req.body=body;
     let request=operationRequest(db,req);
     if(request.previous)return acceptanceDetail(acceptance({...req,params:{id:request.previous.id}}));
@@ -317,8 +324,8 @@ export function installQuality(app, db, options = {}) {
     // Local previews need no server credential. Keep validation for legacy clients
     // that explicitly submit a signed token; all clients are reparsed below.
     if(previewToken!==undefined){req.body.preview_token=previewToken;verifyPreview(req,file,revision);delete req.body.preview_token;}
-    const result=parseFile(revision,file,sheetNames);
-    if(result.issues.length)throw error('验收单仍有解析错误，请修正 Excel 并重新上传。');
+    const result=parseFile(revision,file,sheetNames,corrections);
+    if(result.issues.length)throw error('验收单仍有解析错误，请在定位面板手动修正，或修正 Excel 并重新上传。');
     if(needsQualityReview(result)&&!checksAcknowledged)throw error('请先核对系统发现的差异及待确认项，再确认保留原报告结果。');
     resolveBindings(req.warehouse.id,JSON.parse(revision.definition),result,choices);
     const c=config(),key=`${c.excel_prefix||'excel'}/${db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value}/acceptances/${randomUUID()}.xlsx`;

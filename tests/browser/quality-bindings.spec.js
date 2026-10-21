@@ -86,3 +86,26 @@ test('templates without a unique key support manual binding and opt-out without 
   await page.getByRole('button',{name:'确认保存验收单'}).click();await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();
   await expect(first).toContainText('BIND-NOKEY');await expect(second).toContainText('此 Sheet 不绑定物料');
 });
+
+test('manual corrections refresh automatic key matches per sheet and retain deliberate material choices',async({page})=>{
+  const a=await product(page,{name:'修正匹配物料甲',barcode:'CORRECT-KEY-A'}),b=await product(page,{name:'修正匹配物料乙',barcode:'CORRECT-KEY-B'});
+  await start(page,'修正唯一KEY绑定','uniqueKey',[a.barcode,a.barcode]);
+  const first=page.getByRole('region',{name:'物料绑定 一批到货',exact:true}),second=page.getByRole('region',{name:'物料绑定 二批到货',exact:true});
+  await expect(first).toContainText(a.barcode);await expect(second).toContainText(a.barcode);
+  await page.getByRole('button',{name:'查看上传表格',exact:true}).click();
+  const modal=page.getByRole('dialog',{name:'上传文件单元格定位',exact:true});
+  await modal.locator('[data-address=B11]').click();await modal.getByLabel('修正内容').fill(b.barcode);await modal.getByRole('button',{name:'应用手动修正'}).click();
+  await expect(modal.getByRole('button',{name:'恢复原始内容'})).toBeVisible();
+  await modal.getByRole('button',{name:'关闭弹窗',exact:true}).click();
+  await expect(first).toContainText(b.barcode);await expect(first).toContainText('自动匹配');await expect(second).toContainText(a.barcode);
+  await selectProduct(page,'一批到货',a.barcode);await openSheetResults(page,'一批到货');
+  await page.getByRole('region',{name:'手动修正记录',exact:true}).getByRole('button',{name:'B11 · 定位',exact:true}).click();
+  await modal.getByLabel('修正内容').fill('无法匹配的新KEY');await modal.getByRole('button',{name:'应用手动修正'}).click();
+  await expect(modal.locator('[data-address=B11]')).toContainText('无法匹配的新KEY');
+  await expect(modal.getByRole('button',{name:'恢复原始内容'})).toBeEnabled();
+  await modal.getByRole('button',{name:'关闭弹窗',exact:true}).click();await closeSheetResults(page);
+  await expect(first).toContainText(a.barcode);await expect(first).toContainText('手动选择');
+  const response=page.waitForResponse(r=>r.url().endsWith('/api/quality/acceptances')&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'确认保存验收单'}).click();const saved=await(await response).json();
+  expect(saved.bindings[0].product_id).toBe(a.id);expect(saved.bindings[0].keyValue).toBe('无法匹配的新KEY');expect(saved.bindings[1].product_id).toBe(a.id);
+});

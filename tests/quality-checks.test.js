@@ -77,3 +77,13 @@ test('unfinished editor check configurations show a review message rather than a
   const def=structuredClone(definition);def.checks[0].bounds=[{name:'未完成',min:null,max:null}];
   const result=previewDefinition(def,workbook);assert.equal(result.checks.length,1);assert.equal(result.checks[0].status,'review');assert.match(result.checks[0].message,/公差上下限/);
 });
+
+test('manual source corrections recalculate system checks and preserve the reported verdict',()=>{
+  const uploaded=structuredClone(workbook);uploaded.sheets[0].cells.H15={text:'2065//2060',value:'2065//2060'};
+  const name=uploaded.sheets[0].name;
+  const run=text=>parseAcceptance(definition,workbook,uploaded,{sheetNames:[name],corrections:[{sheetName:name,address:'H15',text}]}).sheets[0];
+  const outOfRange=run('2100');assert.deepEqual(outOfRange.issues,[]);assert.equal(find(outOfRange,'length').status,'fail');
+  const corrected=run('2065/2061/2060');assert.deepEqual(corrected.issues,[]);assert.equal(find(corrected,'length').status,'pass');
+  assert.equal(corrected.value.最终判定,'合格');assert.equal(corrected.manualCorrections[0].original,'2065//2060');
+  assert.equal(uploaded.sheets[0].cells.H15.text,'2065//2060');
+});

@@ -1,6 +1,7 @@
 import { getWarehouseId } from '../api.js';
 import { Badge, Button } from '../components/common.jsx';
 import { cellAddress, hasTextProcessing, objectOrientation, preprocessText, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
+import { isManuallyCorrected } from '../../shared/quality-acceptance.js';
 
 export const qualityUid = () => crypto.randomUUID?.() || Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16)).join('-');
 export function QualityNavigation({area,onChange,disabled}) {
@@ -35,12 +36,12 @@ const statusLabel=result=>result.status==='not_applicable'?'不适用':result.st
 export function PreviewTable({preview,field}) {
   const result=preview?.results?.find(r=>r.id===field.id);
   if(!result)return null;
-  if(field.type!=='object')return <div className="quality-value-preview"><span>原始内容</span><pre>{result.raw||'（空）'}</pre><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/><span>解析值</span><pre>{statusLabel(result)||JSON.stringify(result.value)}</pre></div>;
+  if(field.type!=='object')return <div className="quality-value-preview"><span>{isManuallyCorrected(preview,field.valueRegion)?'修正后内容':'原始内容'}</span><pre>{result.raw||'（空）'}</pre><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/><span>解析值</span><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre></div>;
   const vertical=objectOrientation(field)==='vertical';
   return <div className="quality-preview-table"><table><thead><tr><th>{vertical?'源列':'源行'}</th>{field.properties.map(p=><th key={p.id}>{p.name}</th>)}</tr></thead><tbody>{result.rows.map(row=><tr key={vertical?row.column:row.row}><th>{vertical?cellAddress(1,row.column).slice(0,-1):row.row}</th>{row.cells.map(c=>{
     const property=field.properties.find(p=>p.id===c.id),rule=property?.itemRules?.[c.ruleIndex],config=rule?.config||property;
     const invalid=preview.issues?.some(issue=>issue.fieldId===field.id&&issue.propertyId===c.id&&issue.region===c.region);
-    return <td key={c.id}>{invalid?'（无效）':statusLabel(c)||(c.value===null||c.value===''?'（未填写）':Array.isArray(c.value)?JSON.stringify(c.value):String(c.value))}{rule&&<small className="quality-rule-match">项目规则：{rule.equals} · {qualityTypeLabels[config.type]}</small>}{c.status&&<small>原文：{c.raw}</small>}<ProcessedTextPreview field={config} raw={c.raw} compact/><ChoiceSplitPreview field={config} raw={c.raw} compact/></td>;
+    return <td key={c.id}>{invalid?'（无效）':statusLabel(c)||(c.value===null||c.value===''?'（未填写）':Array.isArray(c.value)?JSON.stringify(c.value):String(c.value))}{isManuallyCorrected(preview,c.region)&&<small className="quality-manual-marker">手动修正</small>}{rule&&<small className="quality-rule-match">项目规则：{rule.equals} · {qualityTypeLabels[config.type]}</small>}{c.status&&<small>原文：{c.raw}</small>}<ProcessedTextPreview field={config} raw={c.raw} compact/><ChoiceSplitPreview field={config} raw={c.raw} compact/></td>;
   })}</tr>)}</tbody></table>{!result.rows.length&&<p className="quality-empty">值区域尚无填写记录。</p>}</div>;
 }
 
@@ -73,6 +74,7 @@ export function WorkbookResults({definition,preview,compact=false,renderSheet,on
     return <section key={config.sheetName} className="quality-sheet-results" aria-label={`工作表 ${config.sheetName}`}>
       {preview?.sheets&&<div className="quality-sheet-result-heading"><h2>{config.sheetName}</h2><span className="muted">{definition.fields.length} 个字段{parsed?.issues.length?` · ${parsed.issues.length} 处问题`:''}</span></div>}
       {renderSheet?.(config.sheetName)}
+      {!!parsed.manualCorrections?.length&&<section className="panel quality-correction-history" aria-label="手动修正记录"><h3>手动修正记录 · {parsed.manualCorrections.length} 处</h3><p className="muted">以下数据经过手动修正；原始 Excel 保留不变，解析及图表使用修正后的数据。</p><div className="quality-preview-table"><table><thead><tr><th>位置</th><th>原始内容</th><th>修正后内容</th></tr></thead><tbody>{parsed.manualCorrections.map(c=><tr key={c.address}><td>{onLocate?<Button onClick={()=>onLocate(config.sheetName,c.address)}>{c.address} · 定位</Button>:c.address}<small className="quality-manual-marker">手动修正</small></td><td><pre>{c.original||'（空）'}</pre></td><td><pre>{c.text||'（空）'}</pre></td></tr>)}</tbody></table></div></section>}
       <QualityCheckResults checks={parsed.checks} onLocate={onLocate?region=>onLocate(config.sheetName,region):undefined}/>
       {definition.fields.map(field=><section className={compact?'quality-sheet-preview-field':'panel quality-acceptance-result'} key={field.id}>
         <div className="quality-acceptance-result-heading"><h3>{field.name}</h3><span className="muted">{qualityTypeLabels[field.type]} · {config.sheetName}!{field.valueRegion}</span>{field.type==='object'&&<Badge tone="blue">{parsed?.results?.find(r=>r.id===field.id)?.rows.length||0} 条记录</Badge>}</div>

@@ -603,6 +603,8 @@ test('quality permission grants chart tools without unrelated business writes or
   assert.match(call.messages[0].content, /验收单模板需在桌面品质管理页面配置/);
   assert.match(call.messages[0].content, /字符串和数字字段可配置正则表达式及替换内容/);
   assert.match(call.messages[0].content, /在浏览器本地解析预览，确认保存时才上传原文件并由服务端重新校验/);
+  assert.match(call.messages[0].content, /解析问题可在单元格定位面板手动修正，修正仍须按模板校验/);
+  assert.match(call.messages[0].content, /AI不能代替用户修正或确认验收数据/);
   assert.match(call.messages[0].content, /品质图表在桌面品质管理页面配置/);
   assert.match(call.messages[0].content, /合格率直接读取模板数字字段，不自动计算/);
   assert.match(call.messages[0].content, /模板仅配置一个工作表的规则，导入验收数据时可选择多个工作表复用同一套规则解析/);
