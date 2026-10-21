@@ -2,9 +2,21 @@ import { readQualityWorkbook } from '../shared/quality-workbook.js';
 import { parseAcceptance } from '../shared/quality-acceptance.js';
 import { acceptanceSheetResults, sheetUniqueKey } from '../shared/quality-bindings.js';
 import { createOnlineWorkbook } from '../shared/quality-online.js';
+import { readDesignerWorkbook, writeDesignerWorkbook } from '../shared/quality-designer.js';
 
 self.onmessage = async ({data}) => {
   try {
+    if(data.designer){
+      const source=data.file?new Uint8Array(await data.file.arrayBuffer()):null;
+      if(source)await readQualityWorkbook(source);
+      if(data.designer.action==='load')self.postMessage({result:{model:await readDesignerWorkbook(source)}});
+      else if(data.designer.action==='save'){
+        const buffer=await writeDesignerWorkbook(source,data.designer.commands);
+        const file=new File([buffer],data.designer.filename||'在线模板.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        self.postMessage({result:{file,filename:file.name,workbook:await readQualityWorkbook(buffer)}});
+      }else throw new Error('不支持的模板编辑操作。');
+      return;
+    }
     let {file}=data;
     const {template,sheetNames='*',corrections,online}=data;
     if(!/\.xlsx$/i.test(file.name))throw new Error('请选择 .xlsx 文件。');

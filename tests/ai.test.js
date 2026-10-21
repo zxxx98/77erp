@@ -633,9 +633,10 @@ test('quality permission grants chart tools without unrelated business writes or
   const response = await f.chat(f.staff);
   assert.equal(response.status, 200);
   const call = f.calls.at(-1).body;
-  assert.match(call.messages[0].content, /验收单模板需在桌面品质管理页面配置/);
+  assert.match(call.messages[0].content, /验收单模板可在桌面或移动 Web \/ PWA 的品质管理 → 模板配置中在线新建/);
+  assert.match(call.messages[0].content, /已启用模板在线填写/);
   assert.match(call.messages[0].content, /字符串和数字字段可配置正则表达式及替换内容/);
-  assert.match(call.messages[0].content, /在浏览器本地解析预览，确认保存时才上传原文件并由服务端重新校验/);
+  assert.match(call.messages[0].content, /在浏览器本地解析预览，确认保存时才上传文件并由服务端重新校验/);
   assert.match(call.messages[0].content, /解析问题可在单元格定位面板手动修正，修正仍须按模板校验/);
   assert.match(call.messages[0].content, /AI不能代替用户修正或确认验收数据/);
   assert.match(call.messages[0].content, /品质图表在桌面品质管理页面配置/);

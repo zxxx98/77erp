@@ -240,12 +240,36 @@ test('template CRUD, immutable published downloads, file replacement, R2 errors 
   const revision=f.db.prepare('SELECT definition FROM quality_template_revisions WHERE id=?').get(row.published_revision);
   assert.equal(JSON.parse(revision.definition).fields[0].properties[2].type,'string');
   await f.configure({excel_prefix:'forms'});assert.deepEqual((await f.request(`/quality/templates/${row.id}/download`)).data,sample);
-  const replace=f.upload(undefined,sample,{version:row.version});const next=await f.request(`/quality/templates/${row.id}/file`,replace);assert.equal(next.status,200,JSON.stringify(next.data));
+  const replace=f.upload(undefined,sample,{version:row.version});replace.delete('definition');const next=await f.request(`/quality/templates/${row.id}/file`,replace);assert.equal(next.status,200,JSON.stringify(next.data));
   row=next.data;assert.equal(row.definition.fields.length,0);assert.equal(row.has_draft,true);assert.equal(f.objects.size,2);
   assert.match([...f.objects.keys()][1],/erp-backups:forms\//);assert.deepEqual((await f.request(`/quality/templates/${row.id}/download`)).data,sample);
   assert.equal((await f.request(`/quality/templates/${row.id}/publish`,{version:row.version})).status,400);
   assert.equal((await f.request(`/quality/templates/${row.id}/copy`,{})).status,200);
   f.objects.clear();assert.equal((await f.request(`/quality/templates/${row.id}/download`)).status,502);
+});
+test('online spreadsheet edits save file, metadata and validated fields together while retaining published versions',async t=>{
+  const f=await fixture(t);await f.configure(credentials);
+  let row=(await f.request('/quality/templates',f.upload())).data;
+  row=(await f.request(`/quality/templates/${row.id}/publish`,{version:row.version})).data;
+  const revision=row.published_revision,book=new ExcelJS.Workbook();await book.xlsx.load(sample);
+  book.worksheets[0].getCell('A1').value='网页修改标题';book.worksheets[0].getCell('A1').font={size:24,bold:true};
+  const edited=await book.xlsx.writeBuffer();
+  const body=f.upload(row.definition,edited,{version:row.version,name:'在线修改模板',note:'保留原字段'});
+  const response=await f.request(`/quality/templates/${row.id}/file`,body);
+  assert.equal(response.status,200,JSON.stringify(response.data));const saved=response.data;
+  assert.equal(saved.name,'在线修改模板');assert.equal(saved.note,'保留原字段');assert.equal(saved.version,row.version+1);
+  assert.deepEqual(saved.definition,row.definition);assert.equal(saved.has_draft,true);
+  assert.deepEqual((await f.request(`/quality/templates/${row.id}/draft/download`)).data,Buffer.from(edited));
+  assert.deepEqual((await f.request(`/quality/templates/${row.id}/download`)).data,sample);
+  assert.equal((await f.request(`/quality/templates/${row.id}/file`,body)).status,409);
+  for(const changes of [{definition:'{'},{definition:JSON.stringify({...saved.definition,sheetName:'不存在'})},{name:''},{note:'x'.repeat(1001)}]){
+    const invalid=f.upload(saved.definition,edited,{version:saved.version,...changes});
+    assert.equal((await f.request(`/quality/templates/${row.id}/file`,invalid)).status,400);
+    assert.equal(f.objects.size,2);assert.equal((await f.request(`/quality/templates/${row.id}`)).data.version,saved.version);
+  }
+  const published=await f.request(`/quality/templates/${row.id}/publish`,{version:saved.version});assert.equal(published.status,200);
+  assert.deepEqual((await f.request(`/quality/templates/${row.id}/download`)).data,Buffer.from(edited));
+  assert.deepEqual((await f.request(`/quality/templates/${row.id}/revisions/${revision}/download`)).data,sample);
 });
 test('permission and warehouse checks protect all quality endpoints, including raw files',async t=>{
   const f=await fixture(t);await f.configure(credentials);const row=(await f.request('/quality/templates',f.upload())).data;

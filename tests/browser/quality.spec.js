@@ -454,14 +454,19 @@ test('unique KEY has one shared slot, releases it on type change and persists on
   await page.locator('.quality-field').filter({hasText:'采购明细'}).click();
   await expect(editor.locator('.quality-property-item').first()).toContainText('唯一 KEY');
 });
-test('mobile has no quality navigation or editor entry',async({browser})=>{
+test('mobile quality navigation opens acceptance and online template editors',async({browser})=>{
   const context=await browser.newContext({...devices['iPhone 13'],baseURL:'http://127.0.0.1:3199'});
   try{
     await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});const page=await context.newPage();
-    await page.goto('/#quality');await expect(page.getByRole('heading',{name:'工作台',exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'更多',exact:true}).click();
-    await expect(page.getByRole('link',{name:'品质管理',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'品质管理',exact:true})).toHaveCount(0);
-    await expect(page.getByRole('heading',{name:'验收单模板',exact:true})).toHaveCount(0);
+    await page.goto('/#quality');await expect(page.getByRole('heading',{name:'验收单',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'在线新建验收单',exact:true})).toBeVisible();
+    await page.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'模板配置',exact:true}).click();
+    await page.getByRole('button',{name:'在线新建模板',exact:true}).click();
+    await expect(page.getByRole('table',{name:'在线模板表格',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'返回',exact:true}).click();
+    await page.getByRole('navigation',{name:'移动端主导航'}).getByRole('button',{name:'更多',exact:true}).click();
+    await page.getByRole('button',{name:'品质管理 · 在线验收',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'验收单',exact:true})).toBeVisible();
   }finally{await context.close();}
 });
 

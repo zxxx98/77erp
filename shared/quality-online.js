@@ -55,7 +55,7 @@ export function onlineChoiceText(selected, config) {
 }
 
 const rgb = color => /^[A-F\d]{8}$/i.test(color?.argb || '') ? `#${color.argb.slice(2)}` : undefined;
-function cellStyle(cell) {
+export function cellStyle(cell) {
   const { font = {}, alignment = {}, fill = {}, border = {} } = cell;
   const style = { fontFamily: font.name, fontSize: font.size ? `${font.size}pt` : undefined, fontWeight: font.bold ? 'bold' : undefined,
     fontStyle: font.italic ? 'italic' : undefined, textDecoration: font.underline ? 'underline' : undefined, color: rgb(font.color),

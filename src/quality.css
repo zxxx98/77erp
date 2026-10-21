@@ -280,7 +280,31 @@
 .quality-acceptance-upload .quality-check { margin-top: 12px; }
 .mobile-device .quality-page .quality-acceptance-footer { bottom: calc(68px + env(safe-area-inset-bottom)); }
 .mobile-device .quality-page .quality-acceptance-footer > .muted { display: none; }
+.quality-designer { min-width: 0; overflow: hidden; }
+.quality-designer-meta { display: flex; gap: 16px; padding: 16px; margin-bottom: 16px; align-items: end; flex-wrap: wrap; }
+.quality-designer-meta > label:first-child { flex: 1; min-width: 180px; }
+.quality-designer-meta select, .quality-designer-controls select { padding: 8px; min-height: 38px; max-width: 100%; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: inherit; }
+.quality-designer-controls { border: 0; padding: 14px; min-width: 0; margin: 0; display: grid; gap: 14px; }
+.quality-designer-toolbar, .quality-designer-dimensions { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
+.quality-designer-controls label { font-size: 12px; font-weight: 400; min-width: 0; }
+.quality-designer-controls input:not([type=checkbox]) { width: 95px; }
+.quality-designer-controls input[type=color] { width: 42px; height: 38px; padding: 3px; }
+.quality-designer-toolbar .btn { min-height: 38px; }
+.quality-designer-toolbar [aria-pressed=true] { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+.quality-designer-content { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr); gap: 16px; align-items: center; }
+.quality-designer-content textarea { font-size: 15px; resize: vertical; box-sizing: border-box; }
+.quality-designer-content p { font-size: 12px; line-height: 1.8; }
+.quality-designer-scroll { overflow: auto; max-height: 60vh; overscroll-behavior: contain; border-block: 1px solid var(--border); }
+.quality-designer-scroll table { min-width: 100%; }
+.quality-designer-scroll th button { background: transparent; border: 0; color: inherit; width: 100%; min-height: 30px; padding: 0; }
+.quality-designer-scroll .quality-cell { touch-action: pan-x pan-y; height: auto; padding: 2px 8px; overflow: hidden; }
+.quality-designer-scroll .quality-selected { background-color: #edf4ff; outline: 2px solid var(--accent); outline-offset: -2px; }
+.quality-designer-page .page-heading, .quality-designer-page .heading-actions { flex-wrap: wrap; }
+.quality-designer-dimensions { border-top: 1px solid var(--border); }
 @media (max-width: 700px) {
+  .quality-designer-content { grid-template-columns: minmax(0,1fr); gap: 4px; }
+  .quality-designer-meta > label:first-child { min-width: 0; flex-basis: 100%; }
+  .quality-designer-controls { padding: 10px; }
   .quality-online-field-list { grid-template-columns: minmax(0,1fr); }
   .quality-online-fields { padding: 16px; }
   .quality-meta { grid-template-columns: minmax(0,1fr); padding: 16px; }

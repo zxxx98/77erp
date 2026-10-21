@@ -415,7 +415,10 @@ export function installQuality(app, db, options = {}) {
   router.post('/templates/:id/file',multipart,run(async req=>{
     const row=get(req);versionOf(req,row);
     const file=await readFile(req),c=config(),key=`${c.excel_prefix||'excel'}/${db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value}/templates/${randomUUID()}.xlsx`;
-    const definition={schemaVersion:1,sheetName:file.workbook.sheets[0].name,fields:[]};
+    const definition=req.body.definition===undefined?{schemaVersion:1,sheetName:file.workbook.sheets[0].name,fields:[]}:validateDefinition(JSON.parse(req.body.definition),file.workbook);
+    const name=req.body.name===undefined?row.name:typeof req.body.name==='string'?req.body.name.trim():'';
+    const note=req.body.note===undefined?row.note:req.body.note;
+    if(!name||name.length>60||typeof note!=='string'||note.length>1000)throw error('模板名称或说明无效。');
     try{await store.put(c,key,req.file.buffer);}catch{throw error('Excel 上传 R2 失败，原模板未修改。',502);}
     let committed=false;
     try{
@@ -423,7 +426,7 @@ export function installQuality(app, db, options = {}) {
       return transaction(()=>{
         const current=get(req);versionOf(req,current);
         const now=new Date().toISOString(),fid=Number(db.prepare('INSERT INTO quality_template_files(warehouse_id,account_id,bucket,object_key,filename,size,sha256,workbook,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(req.warehouse.id,c.account_id,c.bucket,key,file.filename,req.file.size,file.sha256,JSON.stringify(file.workbook),now).lastInsertRowid);
-        db.prepare('UPDATE quality_templates SET file_id=?,definition=?,version=version+1,updated_at=?,updated_by_name=? WHERE id=?').run(fid,JSON.stringify(definition),now,owner(req),row.id);
+        db.prepare('UPDATE quality_templates SET file_id=?,definition=?,name=?,note=?,version=version+1,updated_at=?,updated_by_name=? WHERE id=?').run(fid,JSON.stringify(definition),name,note,now,owner(req),row.id);
         event(req,row.id,'save',row.version+1);committed=true;return detail(get(req));
       });
     }finally{if(!committed)await store.remove(c,key).catch(()=>{});}

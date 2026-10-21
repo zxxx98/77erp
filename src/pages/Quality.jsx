@@ -1,4 +1,4 @@
-import { parseQualityFile } from '../quality-local.js';
+import { parseQualityFile, designQualityFile } from '../quality-local.js';
 import { QualityChecksEditor } from './QualityChecksEditor.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, FileSpreadsheet, Plus, Upload, Download, Save, Check, X, MousePointer2 } from 'lucide-react';
@@ -9,7 +9,9 @@ import { usePermissions } from '../permissions.jsx';
 import { adjacentRegion, cellAddress, containsCell, logicalRegion, objectHeaders, objectOrientation, objectRecords, parseRegion, previewDefinition, qualityTypeLabels, regionAddress, regionText, validateDefinition } from '../../shared/quality-template.js';
 import { TypeRules, ObjectProperties, RuleSection } from './QualityFieldRules.jsx';
 import { sheetPreviewBounds } from '../../shared/quality-sheet-view.js';
-import { downloadExcel, PreviewTable, WorkbookResults, QualityNavigation } from './quality-shared.jsx';
+import { downloadExcel, fetchQualityExcel, PreviewTable, WorkbookResults, QualityNavigation } from './quality-shared.jsx';
+import { designerDefinition } from '../../shared/quality-designer.js';
+import { QualityTemplateDesigner } from './QualityTemplateDesigner.jsx';
 import { QualityAcceptances } from './QualityAcceptances.jsx';
 import { QualityCharts } from './QualityCharts.jsx';
 import '../quality.css';
@@ -27,11 +29,12 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
   const [keySelections,setKeySelections]=useState([]),[batch,setBatch]=useState(null);
   const [fieldTab,setFieldTab]=useState('config');
   const [showPreview,setShowPreview]=useState(false),[revision,setRevision]=useState(0);
+  const [designer,setDesigner]=useState(null);
   const configInputRef=useRef(), inputRef=useRef(), replaceInputRef=useRef(), lock=useRef(false), saved=useRef(''), drag=useRef(null), selectionRef=useRef(null), menuRef=useRef(), sheetRef=useRef(), selectionErrorRef=useRef();
   const requestRef=useRef(null);
   const sheet=workbook?.sheets.find(s=>s.name===form?.definition.sheetName);
-  const dirty=!!form&&(!form.id||saved.current!==JSON.stringify(editable(form)));
-  const interrupted=dirty||!!wizard||!!fieldDraft||!!batch;
+  const dirty=!!form&&(!form.id||!!sourceFile||saved.current!==JSON.stringify(editable(form)));
+  const interrupted=dirty||!!wizard||!!fieldDraft||!!batch||!!designer;
   useEffect(()=>{if(error&&wizard&&['properties','values'].includes(wizard.step))selectionErrorRef.current?.scrollIntoView({block:'nearest'});},[error,wizard?.step]);
   useEffect(()=>{
     const unload=e=>{if(interrupted){e.preventDefault();e.returnValue='';}};
@@ -211,6 +214,9 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
       if(requestRef.current?.signature!==signature)requestRef.current={signature,id:uid()};
       body.append('request_id',requestRef.current.id);result=await api('/quality/templates',{method:'POST',body});
       if(form.note)result=await api(`/quality/templates/${result.id}/draft`,{method:'PUT',body:{name:result.name,note:form.note,definition:result.definition,version:result.version}});
+    }else if(sourceFile){
+      const body=new FormData();body.append('file',sourceFile);body.append('version',String(form.version));body.append('name',form.name);body.append('note',form.note||'');body.append('definition',JSON.stringify(form.definition));
+      result=await api(`/quality/templates/${form.id}/file`,{method:'POST',body});
     }else result=await api(`/quality/templates/${form.id}/draft`,{method:'PUT',body:{...editable(form),version:form.version}});
     apply(result);return result;
   };
@@ -221,6 +227,25 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
     saved.current='';requestRef.current=null;setRegion(null);setBatch(null);setFieldDraft(null);setWizard(null);setMessage('已读取 Excel，可直接添加自定义 Key，或右键单元格添加字段或对象 Key；按住 Shift 点选多个普通 Key 可批量添加。');
   });
   const open=id=>run(async()=>apply(await api(`/quality/templates/${id}`)));
+  const openDesigner=(blank=false)=>run(async()=>{
+    if(!blank&&(wizard||fieldDraft||picking||batch))throw new Error('请先完成或取消当前字段配置。');
+    const file=blank?null:sourceFile||await fetchQualityExcel(`/templates/${form.id}/draft/download`);
+    const {model}=await designQualityFile(file,{action:'load'});
+    setDesigner({file,model,hasFields:!blank&&!!form?.definition.fields.length});
+  });
+  const applyDesigner=({commands,definition:starter,keepFields,name})=>run(async()=>{
+    name=name.trim();if(!name||name.length>60)throw new Error('请输入 1–60 字模板名称。');
+    const filename=`${name.replace(/[\x00-\x1f\x7f/\\]/g,'_')}.xlsx`;
+    const result=await designQualityFile(designer.file,{action:'save',commands,filename});
+    const base=form?.definition||starter||{schemaVersion:1,sheetName:designer.model.sheets[0].name,fields:[]};
+    const mapped=designerDefinition(base,commands);
+    let definition;
+    try{definition=validateDefinition(keepFields?mapped:{schemaVersion:1,sheetName:mapped.sheetName,fields:[]},result.workbook);}
+    catch(e){throw new Error(`表格与现有字段配置不一致：${e.message} 请调整表格，或取消“保留字段配置”后重新配置。`);}
+    setWorkbook(result.workbook);setSourceFile(result.file);setForm(v=>({...v,name,note:v?.note||'',filename:result.filename,definition,revisions:v?.revisions||[]}));
+    setDesigner(null);setRegion(null);setSelectedId(null);setFieldDraft(null);setWizard(null);setBatch(null);setMenu(null);requestRef.current=null;
+    setMessage('表格已生成，可继续配置字段并保存草稿；保存后再发布，供在线填写验收单。');
+  });
   const close=()=>{if(interrupted&&!window.confirm('配置尚未保存，确定返回列表？'))return;setForm(null);setWorkbook(null);setFieldDraft(null);setWizard(null);setBatch(null);setRegion(null);setSourceFile(null);setMenu(null);setError('');setMessage('');setRevision(v=>v+1);};
   const menuExisting=!multiSelected&&selection&&form?.definition.fields.find(f=>f.labelRegion===regionAddress(selection));
   const safeRect=region=>{try{return parseRegion(region);}catch{return null;}};
@@ -258,13 +283,14 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
 
   if(area==='acceptances')return <QualityAcceptances data={data} onTemplates={()=>setArea('templates')} onAreaChange={setArea}/>;
   if(area==='charts')return <section className="quality-page"><QualityCharts data={data} onAreaChange={setArea}/></section>;
+  if(designer)return <QualityTemplateDesigner designer={designer} name={form?.name} busy={busy} error={error} onApply={applyDesigner} onClose={()=>{setDesigner(null);setError('');}}/>;
   return <section className="quality-page">
     <input ref={replaceInputRef} type="file" accept=".xlsx" hidden onChange={e=>{const file=e.target.files[0];e.target.value='';if(file)void run(async()=>{const body=new FormData();body.append('file',file);body.append('version',String(form.version));apply(await api(`/quality/templates/${form.id}/file`,{method:'POST',body}));setMessage('草稿已更换原始 Excel，请重新配置字段；已发布版本保留。');});}}/>
     <input ref={inputRef} aria-label="上传模板 Excel" type="file" accept=".xlsx" hidden onChange={e=>{const file=e.target.files[0];e.target.value='';if(file)void importFile(file);}}/>
     {!form?<>
       <QualityNavigation area="templates" onChange={setArea} disabled={busy}/>
-      <PageHeading title="品质管理" description="配置模板、导入填写后的 Excel，并保留验收数据及原文件。"><Button kind="primary" icon={Upload} busy={busy} onClick={()=>inputRef.current.click()}>上传 Excel 新建模板</Button></PageHeading>
-      {storage&&!storage.ready&&<div className="info-box quality-storage">尚未配置 R2，可以先上传预览并配置字段；保存前需管理员完成 R2 连接设置。{user?.role==='admin'&&<Button onClick={onConfigure}>配置 R2</Button>}</div>}
+      <PageHeading title="品质管理" description="在线制作模板、填写验收单，或导入已有 Excel，保留验收数据及文件。"><Button kind="primary" icon={Plus} busy={busy} onClick={()=>openDesigner(true)}>在线新建模板</Button><Button icon={Upload} busy={busy} onClick={()=>inputRef.current.click()}>上传 Excel 新建模板</Button></PageHeading>
+      {storage&&!storage.ready&&<div className="info-box quality-storage">尚未配置 R2，可以先在线制作模板或上传预览并配置字段；保存前需管理员完成 R2 连接设置。{user?.role==='admin'&&<Button onClick={onConfigure}>配置 R2</Button>}</div>}
       <section className="panel"><div className="table-toolbar"><h2>验收单模板</h2><div className="quality-toolbar"><input aria-label="搜索验收单模板" placeholder="搜索模板名称" value={q} onChange={e=>{setQ(e.target.value);setOffset(0);}}/><Select aria-label="模板状态" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}>{[['all','全部状态'],['draft','草稿'],['enabled','已启用'],['disabled','已停用']].map(([v,t])=><option key={v} value={v}>{t}</option>)}</Select></div></div>
       <div className="quality-list-scroll"><table className="quality-list"><thead><tr><th>模板名称</th><th>原始文件 / 工作表</th><th>字段</th><th>状态</th><th>更新人</th><th>操作</th></tr></thead><tbody>{list.map(t=><tr key={t.id}><td><strong>{t.name}</strong>{t.has_draft&&t.revision&&<small>有未发布草稿</small>}</td><td>{t.filename}<small>{t.sheetName}</small></td><td>{t.fields}</td><td><Badge tone={t.enabled?'green':'orange'}>{t.status==='draft'?'草稿':t.enabled?`已启用 v${t.revision}`:'已停用'}</Badge></td><td>{t.updated_by_name}<small>{new Date(t.updated_at).toLocaleString()}</small></td><td><div className="quality-actions"><Button disabled={busy} onClick={()=>open(t.id)}>编辑</Button><Button disabled={busy||!t.enabled} onClick={()=>run(()=>downloadExcel(`/templates/${t.id}/download`))}>下载 Excel</Button><Button disabled={busy} onClick={()=>run(async()=>apply(await api(`/quality/templates/${t.id}/copy`,{method:'POST',body:{}})))}>复制</Button>{t.revision&&<Button disabled={busy} onClick={()=>run(async()=>{await api(`/quality/templates/${t.id}/status`,{method:'POST',body:{version:t.version,enabled:!t.enabled}});setRevision(v=>v+1);})}>{t.enabled?'停用':'启用'}</Button>}</div></td></tr>)}</tbody></table></div>
       {!list.length&&<div className="quality-empty"><FileSpreadsheet size={30}/><p>暂无匹配的验收单模板</p><Button onClick={()=>inputRef.current.click()}>选择 Excel 文件</Button></div>}
@@ -272,6 +298,7 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
       </section>
     </>:<>
       <div className="quality-heading"><div><Button icon={ArrowLeft} disabled={busy} onClick={close}>返回模板列表</Button><h1>{form.id?'编辑验收单模板':'新建验收单模板'}</h1><span className="muted">{dirty?'有未保存修改':form.enabled?'已启用':'草稿'}{form.revisions?.length?` · 已发布 ${form.revisions.length} 个版本`:''}</span></div><div className="quality-actions">
+        <Button disabled={busy||!!wizard||!!fieldDraft||picking||!!batch} onClick={()=>openDesigner()}>编辑表格内容与格式</Button>
         <Button icon={Download} disabled={busy||!form.id} onClick={()=>run(()=>downloadExcel(`/templates/${form.id}/draft/download`))}>下载原始 Excel</Button>
         <Button icon={Save} busy={busy} disabled={!!wizard||!!fieldDraft||picking||!!batch} onClick={()=>run(async()=>{await persist();setMessage('模板草稿已保存，原始 Excel 保留在 R2。');})}>保存草稿</Button>
         <Button kind="primary" icon={Check} disabled={busy||!!wizard||!!fieldDraft||picking||!!batch||!!form.published_revision&&!dirty&&!form.has_draft} onClick={()=>run(async()=>{const current=dirty?await persist():form;const result=await api(`/quality/templates/${current.id}/publish`,{method:'POST',body:{version:current.version}});apply(result);setMessage('模板已启用，用户可以下载原始 Excel 填写。');})}>{form.published_revision?'发布新版本':'启用模板'}</Button>
