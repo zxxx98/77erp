@@ -2,7 +2,7 @@ import { acceptanceSheetResults } from '../../shared/quality-bindings.js';
 import { parseQualityFile } from '../quality-local.js';
 import { needsQualityReview } from '../../shared/quality-checks.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { ArrowLeft, Check, Download, FileSpreadsheet, Upload, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { Button, Modal, PageHeading } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
@@ -91,6 +91,13 @@ export function QualityAcceptances({data,onTemplates,onAreaChange}) {
     const saved=await api('/quality/acceptances',{method:'POST',body});
     setDetail(saved);setDraft(null);setParsed(null);setRefresh(v=>v+1);setMessage('验收单已保存，解析数据、模板版本和上传原始 Excel 已保留。');
   });
+  const remove=row=>{
+    if(!window.confirm(`确定删除验收单“${row.name}”（${row.number}）？删除后无法在页面恢复，该单将不再参与图表统计。`))return;
+    void run(async()=>{
+      await api(`/quality/acceptances/${row.id}`,{method:'DELETE',body:{}});
+      setDetail(null);setSource(null);setOffset(value=>Math.max(0,value-(list.length===1?20:0)));setRefresh(value=>value+1);setMessage('验收单已删除。');
+    });
+  };
   const preview=useMemo(()=>{
     const source=draft?parsed?.preview:detail?.result;
     if(!source||!draft)return source;
@@ -110,14 +117,14 @@ export function QualityAcceptances({data,onTemplates,onAreaChange}) {
     <QualityNavigation area="acceptances" disabled={busy} onChange={area=>{if(area==='templates')leave(onTemplates);else if(area==='charts')leave(()=>onAreaChange('charts'));}}/>
     <PageHeading title={title} description={draft?'选择已启用的模板版本，上传填写后的 Excel，检查解析结果后保存。':detail?`${detail.number} · ${detail.template_name} v${detail.revision}`:'下载已发布模板，填写后上传解析，保留每次验收的原文件与结果。'}>
       {(draft||detail)?<Button icon={ArrowLeft} disabled={busy} onClick={()=>leave()}>返回验收单列表</Button>:<Button kind="primary" icon={Upload} disabled={!templates.length} onClick={start}>导入验收单</Button>}
-      {detail&&<Button icon={Download} busy={busy} onClick={()=>run(()=>downloadExcel(`/acceptances/${detail.id}/download`))}>下载上传原文件</Button>}
+      {detail&&<><Button icon={Download} busy={busy} onClick={()=>run(()=>downloadExcel(`/acceptances/${detail.id}/download`))}>下载上传原文件</Button><Button icon={Trash2} disabled={busy} onClick={()=>remove(detail)}>删除验收单</Button></>}
     </PageHeading>
     {error&&<div className="form-error quality-notice" role="alert">{error}</div>}
     {message&&<div className="quality-success quality-notice" role="status">{message}</div>}
     {!draft&&!detail&&<>
       {!templates.length&&<div className="info-box quality-storage">暂无已启用的模板，请先在模板配置中发布一个版本。<Button onClick={onTemplates}>前往模板配置</Button></div>}
       <section className="panel"><div className="table-toolbar"><h2>已保存验收单</h2><div className="quality-toolbar"><input aria-label="搜索验收单" placeholder="搜索名称或单号" value={q} onChange={e=>{setQ(e.target.value);setOffset(0);}}/><span className="muted">共 {total} 张</span></div></div>
-        <div className="quality-list-scroll"><table className="quality-list"><thead><tr><th>验收单 / 名称</th><th>模板版本</th><th>上传文件</th><th>提交人 / 时间</th><th>操作</th></tr></thead><tbody>{list.map(row=><tr key={row.id}><td><strong>{row.name}</strong><small>{row.number}</small></td><td>{row.template_name}<small>v{row.revision}</small></td><td>{row.filename}</td><td>{row.created_by_name}<small>{new Date(row.created_at).toLocaleString()}</small></td><td><div className="quality-actions"><Button disabled={busy} onClick={()=>run(async()=>{setDetail(await api(`/quality/acceptances/${row.id}`));setMessage('');})}>查看详情</Button><Button disabled={busy} onClick={()=>run(()=>downloadExcel(`/acceptances/${row.id}/download`))}>下载原文件</Button></div></td></tr>)}</tbody></table></div>
+        <div className="quality-list-scroll"><table className="quality-list"><thead><tr><th>验收单 / 名称</th><th>模板版本</th><th>上传文件</th><th>提交人 / 时间</th><th>操作</th></tr></thead><tbody>{list.map(row=><tr key={row.id}><td><strong>{row.name}</strong><small>{row.number}</small></td><td>{row.template_name}<small>v{row.revision}</small></td><td>{row.filename}</td><td>{row.created_by_name}<small>{new Date(row.created_at).toLocaleString()}</small></td><td><div className="quality-actions"><Button disabled={busy} onClick={()=>run(async()=>{setDetail(await api(`/quality/acceptances/${row.id}`));setMessage('');})}>查看详情</Button><Button disabled={busy} onClick={()=>run(()=>downloadExcel(`/acceptances/${row.id}/download`))}>下载原文件</Button><Button icon={Trash2} disabled={busy} onClick={()=>remove(row)}>删除</Button></div></td></tr>)}</tbody></table></div>
         {!list.length&&<div className="quality-empty"><FileSpreadsheet size={30}/><p>暂无匹配的验收单</p></div>}
         {total>20&&<div className="quality-toolbar quality-pagination"><Button disabled={offset===0} onClick={()=>setOffset(v=>v-20)}>上一页</Button><span>{offset+1}–{Math.min(offset+20,total)} / {total}</span><Button disabled={offset+20>=total} onClick={()=>setOffset(v=>v+20)}>下一页</Button></div>}
       </section>

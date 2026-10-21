@@ -1,11 +1,14 @@
+import { chartTypeLabels, metricLabels } from '../shared/quality-charts.js';
 import { orderLabel } from './order-utils.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { api, getWarehouseId } from './api.js';
 import { parseCSV } from './data-files.js';
-import { Sparkles, Plus, ArrowUp, ArrowUpRight, PackageSearch, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { Sparkles, Plus, ArrowUp, ArrowUpRight, PackageSearch, ChartColumn, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './ai.css';
+
+const AiChartView=React.lazy(()=>import('./pages/QualityChartView.jsx').then(module=>({default:module.QualityChartView})));
 
 const AI_STAGES = ['正在理解你的需求…', '正在查询业务数据…', '正在核对并整理回答…'];
 
@@ -48,7 +51,24 @@ const fields = { name: '物料名称', barcode: '条码', category: '分类', un
 function ActionCard({ action, busy, confirm }) {
   const p = action.preview, expired = action.expires_at < Date.now();
   return <section className="ai-action">
-    <h3>{{ orders: '批量出入库预览', import: '新增物料预览', transfer: '仓库调拨预览', stocktake: '库存盘点预览', inspection: '设置校验提醒预览', mark_inspected: '标记已校验预览' }[action.kind]} · {action.result ? '已完成' : expired ? '已过期' : '待确认'}</h3>
+    <h3>{{ orders: '批量出入库预览', import: '新增物料预览', transfer: '仓库调拨预览', stocktake: '库存盘点预览', inspection: '设置校验提醒预览', mark_inspected: '标记已校验预览', quality_chart: '品质图表配置预览' }[action.kind]} · {action.result ? '已完成' : expired ? '已过期' : '待确认'}</h3>
+    {action.kind==='quality_chart'&&<>
+      <p><strong>{p.name}</strong> · {p.warehouse_name}</p>
+      <dl className="ai-chart-config">
+        <div><dt>数据模板</dt><dd>{p.template_name} v{p.revision}</dd></div>
+        <div><dt>图表分类 / 类型</dt><dd>{p.config.kind==='material'?'物料图表':'普通图表'} · {chartTypeLabels[p.config.chartType]}</dd></div>
+        <div><dt>记录口径</dt><dd>{p.object_label}</dd></div>
+        <div><dt>横轴</dt><dd>{p.x_label}</dd></div>
+        <div><dt>统计值</dt><dd>{metricLabels[p.config.metric.aggregation]}{p.config.metric.value?` · ${p.metric_label}`:''}</dd></div>
+        <div><dt>分组</dt><dd>{p.group_label}</dd></div>
+        <div><dt>日期筛选 / 汇总</dt><dd>{p.date_label} · {{day:'按日',week:'按周',month:'按月'}[p.config.bucket]}</dd></div>
+        {p.product&&<div><dt>预览物料</dt><dd>{p.product.name} · {p.product.barcode}</dd></div>}
+      </dl>
+      {p.warning&&<p>{p.warning}</p>}
+      {!!p.rows.length&&<React.Suspense fallback={<p>正在加载图表预览…</p>}><AiChartView result={{rows:p.rows,unit:p.unit,xType:p.x_type}} type={p.config.chartType} title={p.name}/></React.Suspense>}
+      {p.stats&&<p>已保存数据：{p.stats.sheets} 个工作表 · {p.stats.records} 条记录；预览显示 {p.rows.length} / {p.total_groups} 项统计。{p.stats.incompatibleSheets?`另有 ${p.stats.incompatibleSheets} 个工作表字段不兼容。`:''}{p.stats.excluded?`${p.stats.excluded} 条记录未参与统计。`:''}</p>}
+      <details><summary>查看图表配置</summary><pre className="ai-chart-json">{JSON.stringify(p.config,null,2)}</pre></details>
+    </>}
     {p.orders?.map((o, index) => <div key={index}>
       <p><strong>{o.warehouse_name} · {orderLabel(o)}</strong> · {o.partner}</p>
       {o.kind === "internal" && <p>内部流转不计入采购、销售、利润及应收应付。</p>}
@@ -66,7 +86,7 @@ function ActionCard({ action, busy, confirm }) {
       <div className="ai-table"><table><thead><tr>{['物料 / 条码', '规格', '单位', '账面库存', '实盘数量', '差额'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{p.stocktake.items.map(i => <tr key={i.product_id}><td>{i.name}<small>{i.barcode}</small></td><td>{i.specification || '—'}</td><td>{i.unit}</td><td>{i.before_stock}</td><td>{i.counted}</td><td>{i.difference > 0 ? '+' : ''}{i.difference}</td></tr>)}</tbody></table></div>
       <p>确认后将以上物料库存调整为实盘数量；未列出的物料不变。请确认实盘数量是总数，并非增减数量。</p>
     </>}
-    {p.rows && <>
+    {action.kind==='import'&&p.rows && <>
       <p>{p.warehouse_name} · 新增 {p.rows.length} 个物料，不覆盖已有物料。期初库存会直接计入库存。</p>
       <p>列对应：{Object.entries(p.mapping).map(([k, v]) => `${fields[k]} ← ${v}`).join('；')}</p>
       {p.default_category && <p>未映射分类的行统一归入已有分类：{p.default_category.path}。</p>}
@@ -79,7 +99,7 @@ function ActionCard({ action, busy, confirm }) {
       <div className="ai-table"><table><thead><tr>{['物料 / 条码', '单位', '原校验日期', action.kind === 'inspection' ? '新校验日期' : '下次校验日期', '校验周期'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{p.items.map(i => <tr key={i.product_id}><td>{i.name}<small>{i.barcode}</small></td><td>{i.unit}</td><td>{i.before_date || '未配置'}</td><td>{i.after_date}</td><td>{i.interval ? `每 ${i.interval} ${{ day: '天', month: '月', year: '年' }[i.interval_unit] || '月'}` : '手动设置日期'}</td></tr>)}</tbody></table></div>
       <p>{action.kind === 'inspection' ? '确认后按以上日期和周期更新校验提醒。' : `确认后将上次校验日期记为 ${p.last_inspected_on}，有周期的物料从该日期按配置周期顺延。`}</p>
     </>}
-    {action.result ? <p role="status">已完成{action.result.orders ? `：${action.result.orders.map(o => o.number).join('、')}` : action.kind === 'transfer' ? `：${action.result.number} / ${action.result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : action.kind === 'inspection' ? `，已更新 ${action.result.count} 种物料的校验提醒` : action.kind === 'mark_inspected' ? `，已标记 ${action.result.count} 种物料为已校验` : `，新增 ${action.result.count} 个物料`}。</p> : <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，库存变化需重新生成。继续聊天会取消本批未确认预览。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>确认执行本批操作</button></>}
+    {action.result ? <p role="status">已完成{action.result.orders ? `：${action.result.orders.map(o => o.number).join('、')}` : action.kind === 'quality_chart' ? `，已保存图表“${action.result.name}”，可在品质管理的图表中查看` : action.kind === 'transfer' ? `：${action.result.number} / ${action.result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : action.kind === 'inspection' ? `，已更新 ${action.result.count} 种物料的校验提醒` : action.kind === 'mark_inspected' ? `，已标记 ${action.result.count} 种物料为已校验` : `，新增 ${action.result.count} 个物料`}。</p> : <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，业务数据变化需重新生成。继续聊天会取消本批未确认预览。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>{action.kind==='quality_chart'?'确认保存图表':'确认执行本批操作'}</button></>}
   </section>;
 }
 
@@ -191,6 +211,7 @@ export function AiAssistant({ onChanged, userId, warehouseName }) {
           <div className="ai-suggestions">{[
             [PackageSearch, '查询物料数量', '当前仓库有多少种物料？'],
             [ArrowLeftRight, '查询跨仓库库存', '我想对比不同仓库的物料库存，请先列出仓库。'],
+            [ChartColumn, '推荐品质图表', '请查看当前仓库已保存的验收数据，推荐可以生成哪些品质图表，并说明统计口径。'],
             [FileSpreadsheet, '上传表格，新增物料', '我想上传表格新增物料档案，请帮我核对列对应关系。'],
           ].map(([Icon, label, value]) => <button key={label} onClick={() => suggest(value)}><Icon size={19} /><span>{label}</span><ArrowUpRight size={15} /></button>)}</div>
         </div>}

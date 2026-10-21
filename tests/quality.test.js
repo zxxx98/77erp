@@ -43,6 +43,40 @@ test('explicit directions respect merge boundaries, preserve adjacent blanks and
   assert.equal(adjacentRegion(sheet,'A8','right'),'B8:F8');
   assert.throws(()=>parseRegion('A0'));assert.throws(()=>parseRegion('CW2001'));
 });
+test('custom keys read values without a label anchor and retain normal validation',()=>{
+  const input={sheetName:'Sheet1',fields:[{id:'company',name:'公司名',customKey:true,valueRegion:'B8:F8',type:'string',required:true}]};
+  const original=structuredClone(workbook);original.sheets[0].cells.B8={text:'某某公司',value:'某某公司'};
+  const def=validateDefinition(input,original,{publish:true});
+  assert.deepEqual(validateDefinition(def,original,{publish:true}),def);
+  assert.equal(def.fields[0].labelRegion,undefined);
+  assert.equal(previewDefinition(def,original).value.公司名,'某某公司');
+  const filled=structuredClone(original);filled.sheets[0].cells.B8={text:'另一家公司',value:'另一家公司'};
+  const parsed=parseAcceptance(def,original,filled);
+  assert.equal(parsed.value.公司名,'另一家公司');assert.deepEqual(parsed.issues,[]);
+  filled.sheets[0].cells.B8={text:'',value:''};
+  assert.match(parseAcceptance(def,original,filled).issues[0].message,/必填/);
+  filled.sheets[0].merges=filled.sheets[0].merges.filter(region=>region!=='B8:F8');
+  assert.ok(parseAcceptance(def,original,filled).issues.some(issue=>/合并单元格/.test(issue.message)));
+  for(const change of [{name:''},{valueRegion:''},{valueRegion:'A2000'},{direction:'right'},{type:'object'},{customKey:false}])
+    assert.throws(()=>validateDefinition({...input,fields:[{...input.fields[0],...change}]},original));
+  assert.throws(()=>validateDefinition({...input,fields:[...input.fields,{...input.fields[0],id:'duplicate'}]},original),/名称不能重复/);
+  const withLabel=validateDefinition({sheetName:'Sheet1',fields:[{id:'label',name:'单号',labelRegion:'A8',valueRegion:'B8:F8',type:'string'}]},original);
+  filled.sheets[0].cells.A8={text:'改过的标题',value:'改过的标题'};
+  assert.ok(parseAcceptance(withLabel,original,filled).issues.some(issue=>/字段标题/.test(issue.message)));
+});
+test('custom keys survive template save, publish, copy and reload',async t=>{
+  const f=await fixture(t);await f.configure(credentials);
+  const input={sheetName:'Sheet1',fields:[{id:'company',name:'公司名',customKey:true,valueRegion:'B8:F8',type:'string'}]};
+  const created=await f.request('/quality/templates',f.upload(input));assert.equal(created.status,200);
+  let row=created.data;
+  const saved=await f.request(`/quality/templates/${row.id}/draft`,{name:row.name,note:row.note,version:row.version,definition:row.definition},'PUT');
+  assert.equal(saved.status,200);row=saved.data;
+  const published=await f.request(`/quality/templates/${row.id}/publish`,{version:row.version});assert.equal(published.status,200);
+  for(const result of [published,await f.request(`/quality/templates/${row.id}`),await f.request(`/quality/templates/${row.id}/copy`,{})]){
+    assert.equal(result.status,200);assert.equal(result.data.definition.fields[0].customKey,true);
+    assert.equal(result.data.definition.fields[0].labelRegion,undefined);
+  }
+});
 test('unique KEY preserves text and shares one template-wide slot with object properties',()=>{
   const key={id:'code',name:'单号',labelRegion:'A8',valueRegion:'B8:F8',type:'uniqueKey'};
   const wb=structuredClone(workbook);wb.sheets[0].cells.B8={text:'00128',value:128};
@@ -1048,4 +1082,44 @@ test('regex rules on object properties and item configs persist through publish,
   const copy=await f.request(`/quality/templates/${f.row.id}/copy`,{});assert.equal(copy.status,200);assert.equal(copy.data.definition.fields[0].properties[0].regexReplacement,'物料-$1');
   assert.equal(copy.data.definition.fields[0].properties[1].itemRules[0].config.regexPattern,'^(.+)$');
   const backup=(await f.request('/backup')).data;assert.equal((await f.request('/backup/preview',{backup})).status,200);
+});
+
+test('acceptance deletion is permission and warehouse scoped, excludes chart data and preserves backup originals',async t=>{
+  const f=await publishedAcceptanceFixture(t,chartDefinition());
+  const first=await chartAcceptance(f,95),second=await chartAcceptance(f,99);
+  const path=`/quality/acceptances/${second.id}`;
+  const warehouse=(await f.request('/warehouses',{name:'删除隔离仓'})).data.id;
+  assert.equal((await f.request(path,{},'DELETE',warehouse)).status,404);
+  assert.equal((await f.request(path,{},'DELETE',1,'')).status,401);
+  const id=(await f.request('/users',{username:'delete-worker',password:'Test-worker-123'})).data.id;
+  const employee=(await f.request('/auth/login',{username:'delete-worker',password:'Test-worker-123'},'POST',1,'')).cookie;
+  assert.equal((await f.request(path,{},'DELETE',1,employee)).status,403);
+  const user=(await f.request('/users')).data.find(user=>user.id===id);
+  await f.request(`/users/${id}/permissions`,{version:user.permissions_version,permissions:['quality']},'PUT');
+  const backup=(await f.request('/backup')).data,objects=f.objects.size;
+  assert.equal((await f.request(path,{},'DELETE',1,employee)).status,200);
+  assert.equal((await f.request(path)).status,404);
+  assert.equal((await f.request(`${path}/download`)).status,404);
+  assert.equal((await f.request(path,{},'DELETE')).status,404);
+  assert.equal((await f.request('/quality/acceptances')).data.total,1);
+  assert.equal((await f.request(`/quality/acceptances/${first.id}`)).status,200);
+  assert.deepEqual((await f.request(`/quality/chart-acceptances?template_id=${f.row.id}`)).data.acceptances.map(row=>row.id),[first.id]);
+  const chart=await f.request('/quality/charts/preview',{name:'删除后统计',template_id:f.row.id,revision_id:f.row.published_revision,config:chartConfig()});
+  assert.equal(chart.status,200);assert.equal(chart.data.rows[0].value,95);
+  assert.equal(f.objects.size,objects);
+  assert.equal((await f.request(`/quality/templates/${f.row.id}/download`)).status,200);
+  const after=(await f.request('/backup')).data;
+  assert.equal(after.data.quality_acceptances.length,1);
+  assert.equal((await f.request('/backup/preview',{backup:after})).status,200);
+  const p=await f.request('/backup/preview',{backup});
+  assert.equal((await f.request('/backup/restore',{backup,...p.data,confirmation:'RESTORE_BUSINESS_DATA',request_id:randomUUID()})).status,200);
+  assert.equal((await f.request(`${path}/download`)).status,200);
+});
+test('deleted acceptance IDs are never reused or returned for an earlier save retry',async t=>{
+  const f=await publishedAcceptanceFixture(t),p=(await f.preview()).data,request_id=randomUUID();
+  const saved=await f.save(p,sample,{request_id});assert.equal(saved.status,200);
+  assert.equal((await f.request(`/quality/acceptances/${saved.data.id}`,{},'DELETE')).status,200);
+  const next=await f.save(p);assert.equal(next.status,200);assert.ok(next.data.id>saved.data.id);
+  assert.equal((await f.save(p,sample,{request_id})).status,404);
+  assert.equal((await f.request('/quality/acceptances')).data.total,1);
 });

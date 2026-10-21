@@ -197,7 +197,9 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
     const name = cleanText(field.name, 60, '字段名称');
     if (names.has(name)) fail('顶层字段名称不能重复。');
     names.add(name);
-    const base = { id: idOf(field.id), name, labelRegion: regionOf(field.labelRegion), labelText: regionText(sheet,regionOf(field.labelRegion)), valueRegion: regionOf(field.valueRegion), configured: field.configured !== false };
+    if (field.customKey === true && field.type === 'object') fail('自定义 Key 仅支持普通字段。');
+    const label = field.customKey === true ? { customKey: true } : { labelRegion: regionOf(field.labelRegion), labelText: regionText(sheet,regionOf(field.labelRegion)) };
+    const base = { id: idOf(field.id), name, ...label, valueRegion: regionOf(field.valueRegion), configured: field.configured !== false };
     if (publish && !base.configured) fail(`请完成“${name}”的配置。`);
     if (field.type === 'object') {
       const propertyRegion = regionOf(field.propertyRegion), headers = parseRegion(propertyRegion), values = parseRegion(base.valueRegion);
@@ -247,6 +249,7 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
     if (publish && ['single', 'multi'].includes(config.type) && (!config.checkChar || !config.options)) fail('选择类型请配置勾选字符和允许选项。');
     if (publish && ['single', 'multi'].includes(config.type)) choiceRules(config);
     const direction = ['up','down','left','right'].includes(field.direction) ? field.direction : null;
+    if (direction && base.customKey) fail('自定义 Key 请直接配置取值区域。');
     if (direction && adjacentRegion(sheet,base.labelRegion,direction)!==base.valueRegion) fail('方向与取值区域不一致，请重新选择或改为自定义区域。');
     return { ...base, ...config, selectionMode: direction ? 'direction' : 'manual', direction };
   });

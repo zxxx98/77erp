@@ -333,12 +333,22 @@ export function installQuality(app, db, options = {}) {
         const now=new Date().toISOString();
         const fid=Number(db.prepare('INSERT INTO quality_template_files(warehouse_id,account_id,bucket,object_key,filename,size,sha256,workbook,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(req.warehouse.id,c.account_id,c.bucket,key,file.filename,req.file.size,file.sha256,JSON.stringify(file.workbook),now).lastInsertRowid);
         const number=`QA-${now.slice(0,10).replaceAll('-','')}-${randomBytes(6).toString('hex').toUpperCase()}`;
-        const id=Number(db.prepare('INSERT INTO quality_acceptances(warehouse_id,number,name,note,template_id,revision_id,file_id,result,created_by_name,created_at,bindings,checks_acknowledged) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(req.warehouse.id,number,name,note,revision.template_id,revision.id,fid,JSON.stringify(result),owner(req),now,JSON.stringify(bindings),checksAcknowledged?1:0).lastInsertRowid);
+        // Deleted IDs must not be reused: saved operation requests still refer to them.
+        const lastDeletedId=Number(db.prepare("SELECT value FROM app_metadata WHERE key='quality_acceptance_last_deleted_id'").get()?.value||0);
+        const id=Math.max(lastDeletedId,db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM quality_acceptances').get().id)+1;
+        db.prepare('INSERT INTO quality_acceptances(id,warehouse_id,number,name,note,template_id,revision_id,file_id,result,created_by_name,created_at,bindings,checks_acknowledged) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,req.warehouse.id,number,name,note,revision.template_id,revision.id,fid,JSON.stringify(result),owner(req),now,JSON.stringify(bindings),checksAcknowledged?1:0);
         const saved={id};saveOperationRequest(db,request,saved);committed=true;return saved;
       });
       return acceptanceDetail(acceptance({...req,params:{id:saved.id}}));
     }finally{if(!committed)await store.remove(c,key).catch(()=>{});}
   }));
+  router.delete('/acceptances/:id',run(req=>transaction(()=>{
+    const row=acceptance(req);
+    db.prepare("INSERT INTO app_metadata(key,value) VALUES ('quality_acceptance_last_deleted_id',?) ON CONFLICT(key) DO UPDATE SET value=CAST(MAX(CAST(value AS INTEGER),CAST(excluded.value AS INTEGER)) AS TEXT)").run(String(row.id));
+    // Keep originals for existing backups, as with reset and template replacement.
+    db.prepare('DELETE FROM quality_acceptances WHERE id=?').run(row.id);
+    return {ok:true};
+  })));
   router.get('/acceptances/:id',run(req=>acceptanceDetail(acceptance(req))));
   router.get('/acceptances/:id/download',run(async(req,res)=>{
     const row=acceptance(req),file=db.prepare('SELECT * FROM quality_template_files WHERE id=?').get(row.file_id);

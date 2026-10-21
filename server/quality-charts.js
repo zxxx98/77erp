@@ -22,12 +22,35 @@ export function validateQualityChartsBackup(data) {
     if(JSON.stringify(config)!==JSON.stringify(normalized))throw error('备份品质图表配置无效。');
   }
 }
+export function qualityChartRevision(db,warehouseId,id) {
+  const row=db.prepare(`SELECT r.*,t.warehouse_id FROM quality_template_revisions r JOIN quality_templates t ON t.id=r.template_id WHERE r.id=? AND t.warehouse_id=?`).get(Number(id),warehouseId);
+  if(!row)throw error('模板发布版本不存在或不属于当前仓库。',404);
+  return row;
+}
+export function qualityChartEntries(db,warehouseId,templateId,filters={}) {
+  const clauses=['a.warehouse_id=?','a.template_id=?'],args=[warehouseId,templateId];
+  if(filters.acceptanceId){clauses.push('a.id=?');args.push(filters.acceptanceId);}
+  if(filters.productId){clauses.push("EXISTS (SELECT 1 FROM json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=?)");args.push(filters.productId);}
+  const rows=db.prepare(`SELECT a.id,a.number,a.name,a.result,a.bindings,r.definition FROM quality_acceptances a JOIN quality_template_revisions r ON r.id=a.revision_id WHERE ${clauses.join(' AND ')} ORDER BY a.id LIMIT 2001`).all(...args);
+  if(rows.length>2000)throw error('验收单超过 2000 张，请先选择单张验收单缩小统计范围。');
+  return rows.map(row=>({...row,result:JSON.parse(row.result),bindings:JSON.parse(row.bindings),definition:JSON.parse(row.definition)}));
+}
+export function normalizeQualityChart(db,warehouseId,input) {
+  const name=typeof input.name==='string'?input.name.trim():'';
+  if(!name||name.length>60)throw error('请输入 1–60 字的图表名称。');
+  const base=qualityChartRevision(db,warehouseId,input.revision_id);
+  if(Number(input.template_id)!==base.template_id)throw error('模板与发布版本不匹配。');
+  return {name,templateId:base.template_id,revisionId:base.id,config:validateChart(input.config,JSON.parse(base.definition))};
+}
+export function createQualityChart(db,warehouseId,chart,owner) {
+  // Revalidate through the same path used by the editor before every insertion.
+  chart=normalizeQualityChart(db,warehouseId,{name:chart.name,template_id:chart.templateId,revision_id:chart.revisionId,config:chart.config});
+  const now=new Date().toISOString();
+  const id=Number(db.prepare('INSERT INTO quality_charts(warehouse_id,template_id,revision_id,name,config,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(warehouseId,chart.templateId,chart.revisionId,chart.name,JSON.stringify(chart.config),owner,owner,now,now).lastInsertRowid);
+  return {id,name:chart.name};
+}
 export function installQualityCharts(router,db,{run,transaction,owner}) {
-  const revision=(req,id)=>{
-    const row=db.prepare(`SELECT r.*,t.warehouse_id FROM quality_template_revisions r JOIN quality_templates t ON t.id=r.template_id WHERE r.id=? AND t.warehouse_id=?`).get(Number(id),req.warehouse.id);
-    if(!row)throw error('模板发布版本不存在或不属于当前仓库。',404);
-    return row;
-  };
+  const revision=(req,id)=>qualityChartRevision(db,req.warehouse.id,id);
   const get=req=>{
     const row=db.prepare('SELECT * FROM quality_charts WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id);
     if(!row)throw error('图表不存在或不属于当前仓库。',404);return row;
@@ -40,14 +63,7 @@ export function installQualityCharts(router,db,{run,transaction,owner}) {
     const row=db.prepare('SELECT id,name,barcode,specification,unit FROM products WHERE id=? AND warehouse_id=?').get(id,req.warehouse.id);
     if(!row)throw error('物料不存在或不属于当前仓库。',404);return row;
   };
-  const entries=(req,templateId,filters)=>{
-    const clauses=['a.warehouse_id=?','a.template_id=?'],args=[req.warehouse.id,templateId];
-    if(filters.acceptanceId){clauses.push('a.id=?');args.push(filters.acceptanceId);}
-    if(filters.productId){clauses.push("EXISTS (SELECT 1 FROM json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=?)");args.push(filters.productId);}
-    const rows=db.prepare(`SELECT a.id,a.number,a.name,a.result,a.bindings,r.definition FROM quality_acceptances a JOIN quality_template_revisions r ON r.id=a.revision_id WHERE ${clauses.join(' AND ')} ORDER BY a.id LIMIT 2001`).all(...args);
-    if(rows.length>2000)throw error('验收单超过 2000 张，请先选择单张验收单缩小统计范围。');
-    return rows.map(row=>({...row,result:JSON.parse(row.result),bindings:JSON.parse(row.bindings),definition:JSON.parse(row.definition)}));
-  };
+  const entries=(req,templateId,filters)=>qualityChartEntries(db,req.warehouse.id,templateId,filters);
   const query=(req,row,input,trace=null)=>{
     const base=revision(req,row.revision_id),definition=JSON.parse(base.definition),config=validateChart(JSON.parse(row.config),definition);
     const sample=input.sample===true;
@@ -60,13 +76,7 @@ export function installQualityCharts(router,db,{run,transaction,owner}) {
     }else data=entries(req,base.template_id,filters);
     return {...aggregateQualityChart(config,definition,data,filters,trace),sample,product:selectedProduct};
   };
-  const normalized=req=>{
-    const name=typeof req.body.name==='string'?req.body.name.trim():'';
-    if(!name||name.length>60)throw error('请输入 1–60 字的图表名称。');
-    const base=revision(req,req.body.revision_id);
-    if(Number(req.body.template_id)!==base.template_id)throw error('模板与发布版本不匹配。');
-    return {name,templateId:base.template_id,revisionId:base.id,config:validateChart(req.body.config,JSON.parse(base.definition))};
-  };
+  const normalized=req=>normalizeQualityChart(db,req.warehouse.id,req.body);
   router.get('/chart-sources',run(req=>({sources:db.prepare(`SELECT t.id AS template_id,r.id AS revision_id,r.name,r.revision FROM quality_templates t
     JOIN quality_template_revisions r ON r.id=t.published_revision WHERE t.warehouse_id=? ORDER BY t.updated_at DESC,t.id DESC`).all(req.warehouse.id)})));
   router.get('/chart-sources/:revision',run(req=>source(revision(req,req.params.revision))));
@@ -94,8 +104,7 @@ export function installQualityCharts(router,db,{run,transaction,owner}) {
   }));
   router.post('/charts',run(req=>transaction(()=>{
     const request=operationRequest(db,req);if(request.previous)return detail(req,db.prepare('SELECT * FROM quality_charts WHERE id=? AND warehouse_id=?').get(request.previous.id,req.warehouse.id)||(()=>{throw error('原图表已删除，请使用新的操作标识。',409);})());
-    const chart=normalized(req),now=new Date().toISOString();
-    const id=Number(db.prepare('INSERT INTO quality_charts(warehouse_id,template_id,revision_id,name,config,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(req.warehouse.id,chart.templateId,chart.revisionId,chart.name,JSON.stringify(chart.config),owner(req),owner(req),now,now).lastInsertRowid);
+    const chart=normalized(req),{id}=createQualityChart(db,req.warehouse.id,chart,owner(req));
     saveOperationRequest(db,request,{id});return detail(req,db.prepare('SELECT * FROM quality_charts WHERE id=?').get(id));
   })));
   router.get('/charts/:id',run(req=>detail(req,get(req))));

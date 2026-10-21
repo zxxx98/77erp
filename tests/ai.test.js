@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -6,7 +7,7 @@ import { inspectionToday, nextInspectionDate } from '../shared/inspection.js';
 
 async function fixture(t) {
   const calls = [], replies = [];
-  const { app, db } = createApp(':memory:', { aiEncryptionKey: 'ab'.repeat(32), aiFetch: async (url, options) => {
+  const { app, db } = createApp(':memory:', { aiEncryptionKey: 'ab'.repeat(32), qualityStorage:{async put(){},async head(){},async get(){return Buffer.alloc(0);},async remove(){}}, aiFetch: async (url, options) => {
     calls.push({ url, body: JSON.parse(options.body) });
     const reply = replies.shift();
     if (typeof reply === 'function') return await reply();
@@ -14,8 +15,8 @@ async function fixture(t) {
   } });
   const server = app.listen(0, '127.0.0.1'); await new Promise(r => server.once('listening', r));
   t.after(async () => { server.closeAllConnections(); await new Promise(r => server.close(r)); db.close(); });
-  const request = async (cookie, path, body, method = body === undefined ? 'GET' : 'POST') => {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const request = async (cookie, path, body, method = body === undefined ? 'GET' : 'POST', warehouseId=1) => {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { ...(body instanceof FormData?{}:{'Content-Type': 'application/json'}), 'X-Warehouse-ID':String(warehouseId), ...(cookie ? { Cookie: cookie } : {}) }, body: body === undefined ? undefined : body instanceof FormData?body:JSON.stringify(body) });
     return { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
   };
   const admin = (await request(null, '/auth/setup', { username: 'owner', password: 'Strong-password-123' })).cookie;
@@ -593,7 +594,7 @@ test('conversation history only lists the current user and current permission co
   assert.equal((await f.request(f.staff, `/ai/conversations/${own.data.conversation_id}`)).status, 403);
 });
 
-test('quality permission does not grant AI business writes or template tools', async t => {
+test('quality permission grants chart tools without unrelated business writes or template editing', async t => {
   const f = await fixture(t);
   await f.permissions(['ai', 'quality']);
   const response = await f.chat(f.staff);
@@ -607,8 +608,119 @@ test('quality permission does not grant AI business writes or template tools', a
   assert.match(call.messages[0].content, /模板仅配置一个工作表的规则，导入验收数据时可选择多个工作表复用同一套规则解析/);
   assert.match(call.messages[0].content, /整个模板含对象属性最多配置一个/);
   assert.match(call.messages[0].content, /每个验收数据工作表可独立选择是否绑定物料/);
-  assert.ok(!call.tools.some(tool => /quality|publish|preview_orders|preview_import/.test(tool.function.name)));
+  assert.ok(!call.tools.some(tool => /publish|preview_orders|preview_import/.test(tool.function.name)));
+  for(const name of ['quality_chart_templates','quality_chart_data','preview_quality_chart'])assert.ok(call.tools.some(tool=>tool.function.name===name));
   assert.match(call.messages[0].content, /不适用须由配置明确指定/);
   assert.match(call.messages[0].content, /核对结果与原报告判定独立/);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_templates').get().n, 0);
+});
+
+async function qualityAiFixture(t,{save=true}={}) {
+  const f=await fixture(t);
+  const config=(await f.request(f.admin,'/settings/r2-backup')).data;
+  assert.equal((await f.request(f.admin,'/settings/r2-backup',{...config,account_id:'a'.repeat(32),bucket:'erp-backups',access_key:'key',secret_key:'secret'},'PUT')).status,200);
+  const excel=new ExcelJS.Workbook(),sheet=excel.addWorksheet('检验');
+  sheet.getCell('A1').value='2026-10-20';sheet.getCell('B1').value=95;sheet.getCell('C1').value='某某公司';
+  sheet.getCell('A2').value='检验明细';
+  for(const [i,value] of ['项目','数量','日期'].entries())sheet.getCell(3,i+1).value=value;
+  for(const [i,values] of [['尺寸',2,'2026-10-20'],['外观',0,'2026-10-21']].entries())for(const [j,value] of values.entries())sheet.getCell(i+4,j+1).value=value;
+  const bytes=Buffer.from(await excel.xlsx.writeBuffer());
+  const definition={sheetName:'检验',fields:[{id:'date',name:'日期',type:'date',customKey:true,valueRegion:'A1'},
+    {id:'rate',name:'合格率',type:'number',unit:'%',customKey:true,valueRegion:'B1'},
+    {id:'company',name:'公司名',type:'string',customKey:true,valueRegion:'C1'},
+    {id:'items',name:'检验明细',type:'object',labelRegion:'A2',propertyRegion:'A3:C3',valueRegion:'A4:C5',properties:[{id:'item',name:'项目',type:'string'},{id:'quantity',name:'数量',type:'number'},{id:'itemDate',name:'日期',type:'date'}]}]};
+  const body=new FormData();body.append('file',new Blob([bytes]),'检验.xlsx');body.append('name','品质检验模板');body.append('definition',JSON.stringify(definition));body.append('request_id',randomUUID());
+  const created=await f.request(f.admin,'/quality/templates',body);assert.equal(created.status,200,JSON.stringify(created.data));
+  const published=await f.request(f.admin,`/quality/templates/${created.data.id}/publish`,{version:created.data.version});assert.equal(published.status,200);
+  const row=published.data;
+  let acceptance;
+  if(save){
+    const form=new FormData();form.append('file',new Blob([bytes]),'检验.xlsx');form.append('name','十月检验');form.append('template_id',row.id);form.append('revision_id',row.published_revision);form.append('request_id',randomUUID());
+    const saved=await f.request(f.admin,'/quality/acceptances',form);assert.equal(saved.status,200,JSON.stringify(saved.data));acceptance=saved.data;
+  }
+  const chart={name:'合格率趋势',revision_id:row.published_revision,config:{schemaVersion:1,kind:'ordinary',chartType:'line',objectId:null,x:{fieldId:'date'},dateField:{fieldId:'date'},bucket:'day',groupBy:null,metric:{aggregation:'avg',value:{fieldId:'rate'}}}};
+  const toolResult=()=>JSON.parse(f.calls.at(-1).body.messages.filter(m=>m.role==='tool').at(-1).content);
+  return {...f,row,chart,acceptance,toolResult};
+}
+test('AI recommends charts from scoped saved data and never saves during recommendation',async t=>{
+  const f=await qualityAiFixture(t);
+  f.use('quality_chart_templates',{});assert.equal((await f.chat(f.admin)).status,200);
+  assert.equal(f.toolResult().templates[0].acceptance_count,1);
+  f.use('quality_chart_data',{revision_id:f.row.published_revision});await f.chat(f.admin);
+  const data=f.toolResult();assert.equal(data.acceptance_count,1);assert.ok(data.recommendations.some(r=>r.config.chartType==='line'));
+  assert.ok(data.recommendations.some(r=>r.config.objectId==='items'));
+  assert.equal(data.scopes.find(s=>s.id==='items').records,2);
+  assert.deepEqual(data.scopes[0].fields.find(f=>f.ref.fieldId==='rate').samples,['95']);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,0);
+  const other=(await f.request(f.admin,'/warehouses',{name:'图表隔离仓'})).data.id;
+  f.use('quality_chart_templates',{});
+  await f.request(f.admin,'/ai/chat',{message:'当前仓库模板'},'POST',other);assert.deepEqual(f.toolResult().templates,[]);
+  f.use('quality_chart_data',{revision_id:f.row.published_revision});
+  await f.request(f.admin,'/ai/chat',{message:'不可跨仓读模板'},'POST',other);assert.match(f.toolResult().error,/不属于当前仓库/);
+});
+test('AI chart previews confirm once and support every existing chart type and object scope',async t=>{
+  const f=await qualityAiFixture(t);
+  for(const chartType of ['line','bar','table']){
+    const chart=structuredClone(f.chart);chart.config.chartType=chartType;
+    if(chartType==='table'){chart.config.objectId='items';chart.config.x={fieldId:'items',propertyId:'item'};chart.config.metric={aggregation:'sum',value:{fieldId:'items',propertyId:'quantity'}};}
+    f.use('preview_quality_chart',chart);const response=await f.chat(f.admin);assert.equal(response.status,200);
+    const action=response.data.actions[0];assert.equal(action.kind,'quality_chart');assert.equal(action.preview.template_name,'品质检验模板');
+    assert.ok(action.preview.rows.length);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,['line','bar','table'].indexOf(chartType));
+    const confirmed=await f.request(f.admin,'/ai/confirm',{action_id:action.id});assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));
+    assert.deepEqual((await f.request(f.admin,'/ai/confirm',{action_id:action.id})).data,confirmed.data);
+    const stored=(await f.request(f.admin,`/quality/charts/${confirmed.data.id}`)).data;
+    assert.equal(stored.config.chartType,chartType);assert.equal(stored.source.revision_id,f.row.published_revision);
+    assert.equal(stored.created_by_name,'owner');
+  }
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,3);
+});
+test('AI chart tools enforce quality permission, write switch and schema validation',async t=>{
+  const f=await qualityAiFixture(t);await f.permissions(['ai']);
+  await f.chat(f.staff);assert.ok(!f.calls.at(-1).body.tools.some(t=>/quality_chart/.test(t.function.name)));
+  f.use('quality_chart_data',{revision_id:f.row.published_revision});assert.equal((await f.chat(f.staff)).status,403);
+  await f.permissions(['ai','quality']);
+  for(const config of [{...f.chart.config,chartType:'pie'},{...f.chart.config,x:{fieldId:'invented'}},{...f.chart.config,metric:{aggregation:'avg',value:{fieldId:'company'}}}]){
+    f.use('preview_quality_chart',{...f.chart,config});const response=await f.chat(f.staff);assert.deepEqual(response.data.actions,[]);assert.ok(f.toolResult().error);
+  }
+  await f.request(f.admin,'/settings/ai',{...f.settings,writes:false},'PUT');
+  f.use('quality_chart_data',{revision_id:f.row.published_revision});await f.chat(f.staff);assert.ok(f.toolResult().recommendations.length);
+  assert.ok(!f.calls.at(-1).body.tools.some(t=>t.function.name==='preview_quality_chart'));
+  f.use('preview_quality_chart',f.chart);assert.equal((await f.chat(f.staff)).status,403);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,0);
+});
+test('AI chart confirmation rejects changed data, changed warehouse and superseded previews',async t=>{
+  const f=await qualityAiFixture(t);
+  f.use('preview_quality_chart',f.chart);let response=await f.chat(f.admin),action=response.data.actions[0];
+  const other=(await f.request(f.admin,'/warehouses',{name:'确认隔离仓'})).data.id;
+  assert.equal((await f.request(f.admin,'/ai/confirm',{action_id:action.id},'POST',other)).status,409);
+  await f.request(f.admin,`/quality/acceptances/${f.acceptance.id}`,{},'DELETE');
+  const stale=await f.request(f.admin,'/ai/confirm',{action_id:action.id});assert.equal(stale.status,409);assert.match(stale.data.error,/验收数据已变化/);
+  f.use('preview_quality_chart',f.chart);response=await f.chat(f.admin);action=response.data.actions[0];assert.match(action.preview.warning,/没有/);
+  await f.chat(f.admin,{conversation_id:response.data.conversation_id,message:'继续讨论'});
+  assert.equal((await f.request(f.admin,'/ai/confirm',{action_id:action.id})).status,409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,0);
+});
+test('AI makes no data recommendations when only a template sample exists',async t=>{
+  const f=await qualityAiFixture(t,{save:false});f.use('quality_chart_data',{revision_id:f.row.published_revision});await f.chat(f.admin);
+  assert.equal(f.toolResult().acceptance_count,0);assert.deepEqual(f.toolResult().recommendations,[]);assert.match(f.toolResult().note,/没有已保存/);
+});
+
+test('AI material chart preview uses only the chosen material while saved rules remain reusable',async t=>{
+  const f=await qualityAiFixture(t);
+  const create=await f.request(f.admin,'/products',{name:'品质物料',barcode:'AI-QUALITY-MATERIAL',category:'未分类',unit:'件',cost:0,price:0,threshold:0});
+  assert.equal(create.status,201,JSON.stringify(create.data));const productId=create.data.id;
+  const bindings=[{sheetName:'检验',mode:'manual',product_id:productId,keyValue:'',product:{id:productId,name:'品质物料',barcode:'AI-QUALITY-MATERIAL',specification:'',unit:'件'}}];
+  f.db.prepare('UPDATE quality_acceptances SET bindings=? WHERE id=?').run(JSON.stringify(bindings),f.acceptance.id);
+  const args={...f.chart,config:{...f.chart.config,kind:'material'}};
+  f.use('preview_quality_chart',args);let response=await f.chat(f.admin);
+  assert.deepEqual(response.data.actions[0].preview.rows,[]);assert.match(response.data.actions[0].preview.warning,/未指定预览物料/);
+  f.use('preview_quality_chart',{...args,product_id:productId});response=await f.chat(f.admin);
+  const action=response.data.actions[0];assert.equal(action.preview.product.id,productId);assert.equal(action.preview.rows[0].value,95);
+  const confirmed=await f.request(f.admin,'/ai/confirm',{action_id:action.id});assert.equal(confirmed.status,200);
+  const stored=(await f.request(f.admin,`/quality/charts/${confirmed.data.id}`)).data;
+  assert.equal(stored.config.kind,'material');assert.equal(stored.config.product_id,undefined);
+  const data=await f.request(f.admin,`/quality/charts/${confirmed.data.id}/data?product_id=${productId}`);assert.equal(data.status,200);assert.equal(data.data.rows[0].value,95);
+  const other=(await f.request(f.admin,'/warehouses',{name:'其他预览物料仓'})).data.id;
+  const foreign=await f.request(f.admin,'/products',{name:'外仓物料',barcode:'FOREIGN-AI-MAT',category:'未分类',unit:'件',cost:0,price:0,threshold:0},'POST',other);assert.equal(foreign.status,201);
+  f.use('preview_quality_chart',{...args,product_id:foreign.data.id});response=await f.chat(f.admin);assert.deepEqual(response.data.actions,[]);assert.match(f.toolResult().error,/不属于当前仓库/);
 });

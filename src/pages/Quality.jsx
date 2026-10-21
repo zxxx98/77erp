@@ -104,7 +104,7 @@ export function Quality({data,onConfigure}) {
   const activePreview=useMemo(()=>{if(!activeField||!form)return null;try{return previewDefinition({...form.definition,fields:[activeField]},workbook);}catch{return null;}},[activeField,workbook,form?.definition.sheetName]);
   const fieldSourceTexts=useMemo(()=>{
     if(!activeField||!sheet)return {};
-    const read=region=>regionText(sheet,region,{preserveLines:true});
+    const read=region=>{try{return regionText(sheet,region,{preserveLines:true});}catch{return '';}};
     if(activeField.type!=='object')return {[activeField.id]:[read(activeField.valueRegion)]};
     try {const records=objectRecords(sheet,activeField);return Object.fromEntries(activeField.properties.map((p,i)=>[p.id,records.map(record=>read(regionAddress(record.cells[i])))]));}catch{return {};}
   },[activeField,sheet]);
@@ -192,7 +192,8 @@ export function Quality({data,onConfigure}) {
   const editField=field=>{
     if(!requireIdle())return;
     setFieldDraft(structuredClone(field));setSelectedId(field.id);setFieldTab('config');setError('');setMenu(null);
-    const r=parseRegion(field.labelRegion);setRegion(r);
+    if(!field.labelRegion&&!field.valueRegion){setRegion(null);return;}
+    const r=parseRegion(field.labelRegion||field.valueRegion);setRegion(r);
     sheetRef.current?.querySelector(`[data-address="${cellAddress(r.r1,r.c1)}"]`)?.scrollIntoView({block:'nearest',inline:'nearest'});
   };
   const startField=direction=>{
@@ -212,6 +213,11 @@ export function Quality({data,onConfigure}) {
     const field={id:uid(),name:regionText(sheet,labelRegion).slice(0,60),labelRegion,labelText:regionText(sheet,labelRegion),valueRegion,type:'string',direction,selectionMode:'direction',configured:false,required:false};
     updateDefinition({...form.definition,fields:[...form.definition.fields,field]});setFieldDraft(field);setSelectedId(field.id);setFieldTab('config');setError('');
   };
+  const startCustomField=()=>{
+    setMenu(null);if(!requireIdle())return;
+    const field={id:uid(),name:'',customKey:true,valueRegion:'',type:'string',direction:null,selectionMode:'manual',configured:false,required:false};
+    setFieldDraft(field);setSelectedId(field.id);setFieldTab('config');setRegion(null);setError('');
+  };
   const startObject=()=>{
     setMenu(null);if(!requireIdle())return;
     const labelRegion=regionAddress(selection),labelText=regionText(sheet,labelRegion);
@@ -224,13 +230,13 @@ export function Quality({data,onConfigure}) {
     }catch(e){setError(e.message);}
   };
   const finishField=()=>{
-    try{const definition=validateDefinition({...form.definition,fields:form.definition.fields.map(f=>f.id===fieldDraft.id?{...fieldDraft,configured:true}:f)},workbook);
+    try{const definition=validateDefinition({...form.definition,fields:form.definition.fields.some(f=>f.id===fieldDraft.id)?form.definition.fields.map(f=>f.id===fieldDraft.id?{...fieldDraft,configured:true}:f):[...form.definition.fields,{...fieldDraft,configured:true}]},workbook);
       updateDefinition(definition);setFieldDraft(null);setPicking(false);setError('');setMessage('字段配置已更新，可继续编辑其他字段或保存模板草稿。');
     }catch(e){setError(e.message);}
   };
   const cancelField=()=>{
     const original=form.definition.fields.find(f=>f.id===fieldDraft.id);
-    if(JSON.stringify(original)!==JSON.stringify(fieldDraft)&&!window.confirm('当前字段的修改尚未应用，确定放弃修改并返回字段列表？'))return;
+    if(original&&JSON.stringify(original)!==JSON.stringify(fieldDraft)&&!window.confirm('当前字段的修改尚未应用，确定放弃修改并返回字段列表？'))return;
     setFieldDraft(null);setPicking(false);setError('');
   };
   const cancelWizard=()=>{
@@ -254,7 +260,7 @@ export function Quality({data,onConfigure}) {
     if(!file)return;
     const result=await parseQualityFile(file);
     setWorkbook(result.workbook);setSourceFile(file);setForm({name:file.name.replace(/\.xlsx$/i,'').slice(0,60),note:'',filename:result.filename,definition:{schemaVersion:1,sheetName:result.workbook.sheets[0].name,fields:[]},revisions:[]});
-    saved.current='';requestRef.current=null;setRegion(null);setBatch(null);setFieldDraft(null);setWizard(null);setMessage('已读取 Excel，请右键单元格添加字段或对象 Key；按住 Shift 点选多个普通 Key 可批量添加。');
+    saved.current='';requestRef.current=null;setRegion(null);setBatch(null);setFieldDraft(null);setWizard(null);setMessage('已读取 Excel，可直接添加自定义 Key，或右键单元格添加字段或对象 Key；按住 Shift 点选多个普通 Key 可批量添加。');
   });
   const open=id=>run(async()=>apply(await api(`/quality/templates/${id}`)));
   const close=()=>{if(interrupted&&!window.confirm('配置尚未保存，确定返回列表？'))return;setForm(null);setWorkbook(null);setFieldDraft(null);setWizard(null);setBatch(null);setRegion(null);setSourceFile(null);setMenu(null);setError('');setMessage('');setRevision(v=>v+1);};
@@ -266,6 +272,7 @@ export function Quality({data,onConfigure}) {
     if(f.propertyRegion)highlights.push({rect:safeRect(f.propertyRegion),kind:'property',name:f.name});
     highlights.push({rect:safeRect(f.valueRegion),kind:'value',name:f.name});
   }
+  if(fieldDraft?.customKey&&!form.definition.fields.some(f=>f.id===fieldDraft.id))highlights.push({rect:safeRect(fieldDraft.valueRegion),kind:'value',name:fieldDraft.name});
   if(wizard){highlights.push({rect:safeRect(wizard.labelRegion),kind:'key',name:wizard.name});if(wizard.propertyRegion)highlights.push({rect:safeRect(wizard.propertyRegion),kind:'property'});if(wizard.valueRegion)highlights.push({rect:safeRect(wizard.valueRegion),kind:'value'});}
   const merged=useMemo(()=>{const map=new Map();for(const region of sheet?.merges||[]){const r=parseRegion(region);for(let row=r.r1;row<=r.r2;row++)for(let col=r.c1;col<=r.c2;col++)map.set(cellAddress(row,col),r);}return map;},[sheet]);
   const cells=()=>Array.from({length:sheet.rows},(_,i)=>{
@@ -336,11 +343,11 @@ export function Quality({data,onConfigure}) {
         }} aria-label="Excel 模板表格" style={{width:sheet.widths.reduce((a,b)=>a+b,42)}}><colgroup><col style={{width:42}}/>{sheet.widths.map((width,i)=><col key={i} style={{width}}/>)}</colgroup><thead><tr><th></th>{Array.from({length:sheet.cols},(_,i)=><th key={i}>{cellAddress(1,i+1).replace('1','')}</th>)}</tr></thead><tbody>{cells()}</tbody></table></div><div className="quality-legend"><span>蓝色：Key</span><span>橙色：对象属性</span><span>绿色：取值区域</span><span>按住 Shift 点选多个普通 Key，再右键批量添加；再次点选可取消。</span></div>
       </section><aside className={`panel quality-fields${fieldDraft?' quality-fields-detail':''}`} aria-label={fieldDraft?'字段独立编辑':'字段列表'}>
         {fieldDraft?<>
-          <div className="quality-field-detail-heading"><Button icon={ArrowLeft} onClick={cancelField}>返回字段列表</Button><div><h2>{fieldDraft.name||'未命名字段'}</h2><small>{qualityTypeLabels[fieldDraft.type]} · Key {fieldDraft.labelRegion}</small></div></div>
+          <div className="quality-field-detail-heading"><Button icon={ArrowLeft} onClick={cancelField}>返回字段列表</Button><div><h2>{fieldDraft.name||'未命名字段'}</h2><small>{qualityTypeLabels[fieldDraft.type]} · {fieldDraft.customKey?'自定义 Key':`Key ${fieldDraft.labelRegion}`}</small></div></div>
           <div className="quality-field-tabs" role="tablist" aria-label="字段编辑视图">{[['config','字段设置'],['preview','解析预览']].map(([id,label])=><button key={id} type="button" id={`quality-field-tab-${id}`} role="tab" aria-selected={fieldTab===id} aria-controls="quality-field-editor-content" onClick={()=>setFieldTab(id)}>{label}</button>)}</div>
           <div className="quality-field-body" id="quality-field-editor-content" role="tabpanel" aria-labelledby={`quality-field-tab-${fieldTab}`}>
             {fieldTab==='config'?<div className="quality-field-form">
-              <label>字段名称<input aria-label="字段名称" value={fieldDraft.name} maxLength={60} onChange={e=>setFieldDraft(v=>({...v,name:e.target.value}))}/></label>
+              <label>字段名称<input aria-label="字段名称" placeholder={fieldDraft.customKey?'例如：公司名':undefined} value={fieldDraft.name} maxLength={60} onChange={e=>setFieldDraft(v=>({...v,name:e.target.value}))}/></label>
               {fieldDraft.type==='object'?<>
                 <p className="quality-field-regions">{fieldDraft.headerMode==='multi'&&<>多级表头 · {objectOrientation(fieldDraft)==='vertical'?'竖向':'横向'}<br/></>}属性字段：{fieldDraft.propertyRegion}<br/>属性值区域：{fieldDraft.valueRegion}</p>
                 <Button onClick={()=>{const previous=fieldDraft;setFieldDraft(null);setWizard({...previous,editorDraft:previous,previousProperties:previous.properties,step:'properties'});setRegion(null);}}>重新选择属性和值区域</Button>
@@ -348,16 +355,18 @@ export function Quality({data,onConfigure}) {
                 <h3>对象属性（{fieldDraft.properties.length}）</h3>
                 {fieldDraft.properties.map((p,i)=><details className="quality-property-form" key={p.id}><summary>{p.name} · {qualityTypeLabels[p.type]}</summary><label>属性名称<input value={p.name} maxLength={60} onChange={e=>setFieldDraft(v=>({...v,properties:v.properties.map((x,j)=>j===i?{...x,name:e.target.value}:x)}))}/></label>{p.headerPath&&<p className="quality-header-path">原始表头：{p.headerPath.map(node=>`${node.text||'（空白）'}（${node.region}）`).join(' → ')}</p>}<TypeRules field={p} sourceTexts={fieldSourceTexts[p.id]} uniqueKeyOwner={uniqueKeyOwner} onChange={change=>setFieldDraft(v=>({...v,properties:v.properties.map((x,j)=>j===i?{...x,...change}:x)}))}/><ItemRules property={p} properties={fieldDraft.properties} sourceTexts={fieldSourceTexts[p.id]} onChange={change=>setFieldDraft(v=>({...v,properties:v.properties.map((x,j)=>j===i?{...x,...change}:x)}))}/></details>)}
               </>:<>
+                {fieldDraft.customKey&&<p className="muted">无需选择标题单元格，填写字段名称并指定内容所在的取值区域即可。</p>}
                 <label>取值区域<div className="quality-inline"><input aria-label="取值区域" value={fieldDraft.valueRegion} onChange={e=>setFieldDraft(v=>({...v,valueRegion:e.target.value.toUpperCase(),direction:null,selectionMode:'manual'}))}/><Button disabled={picking} onClick={()=>setPicking(true)}>框选</Button></div></label>
                 <TypeRules field={fieldDraft} sourceTexts={fieldSourceTexts[fieldDraft.id]} uniqueKeyOwner={uniqueKeyOwner} onChange={change=>setFieldDraft(v=>({...v,...change}))}/>
               </>}
             </div>:<div className="quality-field-preview"><PreviewTable field={fieldDraft} preview={activePreview}/>{activePreview?.issues.map((issue,i)=><p key={i} className="form-error">{issue.region}：{issue.message}</p>)}</div>}
             {error&&<p className="form-error quality-field-error" role="alert">{error}</p>}
           </div>
-          <div className="quality-field-detail-actions"><Button onClick={cancelField}>取消编辑</Button><Button kind="primary" disabled={picking} onClick={finishField}>完成配置</Button></div>
+          <div className="quality-field-detail-actions">{fieldDraft.customKey&&form.definition.fields.some(f=>f.id===fieldDraft.id)&&<Button onClick={()=>{updateDefinition({...form.definition,fields:form.definition.fields.filter(f=>f.id!==fieldDraft.id)});setFieldDraft(null);setSelectedId(null);setPicking(false);setRegion(null);setError('');}}>移除字段</Button>}<Button onClick={cancelField}>取消编辑</Button><Button kind="primary" disabled={picking} onClick={finishField}>完成配置</Button></div>
         </>:<>
           <div className="quality-fields-heading"><h2>字段配置</h2><span>{form.definition.fields.filter(f=>f.configured!==false).length} / {form.definition.fields.length} 已配置</span></div>
-          <div className="quality-field-list">{!form.definition.fields.length&&<p className="muted">在左侧表格中右键单元格，添加普通 Key 或对象 Key。</p>}{form.definition.fields.map(f=><button key={f.id} type="button" disabled={!!wizard||picking} className={selectedId===f.id?'quality-field active':'quality-field'} onClick={()=>editField(f)}><span>{f.name||'未命名字段'}<small>{qualityTypeLabels[f.type]} · {f.valueRegion}{f.type==='object'?` · ${f.properties.length} 个属性`:''}</small></span><span>{f.configured===false?'待配置':'已配置'}</span></button>)}</div>
+          <div className="quality-custom-key-actions"><Button icon={Plus} disabled={busy||!!wizard||picking||!!batch} onClick={startCustomField}>添加自定义 Key</Button></div>
+          <div className="quality-field-list">{!form.definition.fields.length&&<p className="muted">可直接添加自定义 Key 并指定取值区域；也可在表格中右键单元格，添加普通 Key 或对象 Key。</p>}{form.definition.fields.map(f=><button key={f.id} type="button" disabled={!!wizard||picking} className={selectedId===f.id?'quality-field active':'quality-field'} onClick={()=>editField(f)}><span>{f.name||'未命名字段'}<small>{qualityTypeLabels[f.type]} · {f.valueRegion}{f.type==='object'?` · ${f.properties.length} 个属性`:''}</small></span><span>{f.configured===false?'待配置':'已配置'}</span></button>)}</div>
           <div className="quality-bottom-actions"><Button disabled={!form.definition.fields.length||!!wizard} onClick={()=>setShowPreview(true)}>查看完整解析预览</Button></div>
         </>}
       </aside></div>

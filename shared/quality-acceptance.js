@@ -13,7 +13,7 @@ export function parseAcceptance(definition, templateWorkbook, workbook, { sheetN
       const headers = field.type !== 'object' ? [] : field.headerMode === 'multi'
         ? objectHeaders(template,field.propertyRegion,field.orientation,field.headerMode).paths.flat().map(regionAddress)
         : field.properties.map(property => property.headerCell);
-      const anchors = [...new Set([field.labelRegion,...headers])];
+      const anchors = [...new Set([field.labelRegion,...headers].filter(Boolean))];
       for (const region of anchors) if (regionText(template, region) !== regionText(sheet, region))
         issues.push({ fieldId: field.id, region, message: '字段标题或对象属性与模板不一致，请勿移动或修改这些单元格。' });
       const regions = [...anchors, field.valueRegion].map(parseRegion);

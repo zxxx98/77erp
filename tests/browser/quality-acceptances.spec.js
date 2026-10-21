@@ -109,3 +109,25 @@ test('twenty sheets stay compact and show only the requested sheet in a result d
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.screenshot({path:'output/ui-preview/quality-compact-sheets.png',fullPage:true});
 });
+
+test('acceptances can be deleted from the list and detail after confirmation',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const name='验收单删除模板',t=await template(page,name),saved=[];
+  for(const suffix of ['列表删除','详情删除']){
+    const response=await page.request.post('/api/quality/acceptances',{multipart:{file:{name:'验收.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:original},template_id:String(t.id),revision_id:String(t.published_revision),name:`${name}-${suffix}`,request_id:`delete-${suffix}-${Date.now()}`}});
+    expect(response.ok()).toBe(true);saved.push(await response.json());
+  }
+  await page.goto('/#quality');await page.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'验收单',exact:true}).click();
+  await page.getByLabel('搜索验收单').fill(name);
+  const row=page.getByRole('row').filter({hasText:`${name}-列表删除`});
+  page.once('dialog',dialog=>dialog.dismiss());await row.getByRole('button',{name:'删除',exact:true}).click();
+  await expect(row).toBeVisible();expect((await page.request.get(`/api/quality/acceptances/${saved[0].id}`)).ok()).toBe(true);
+  page.once('dialog',dialog=>dialog.accept());await row.getByRole('button',{name:'删除',exact:true}).click();
+  await expect(row).toHaveCount(0);await expect(page.getByRole('status')).toContainText('验收单已删除');
+  await page.getByRole('row').filter({hasText:`${name}-详情删除`}).getByRole('button',{name:'查看详情'}).click();
+  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'删除验收单',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'已保存验收单',exact:true})).toBeVisible();
+  await expect(page.getByText('暂无匹配的验收单')).toBeVisible();
+  for(const row of saved)expect((await page.request.get(`/api/quality/acceptances/${row.id}`)).status()).toBe(404);
+  expect(errors).toEqual([]);
+});

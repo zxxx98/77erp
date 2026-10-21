@@ -3,7 +3,14 @@ export async function aiFetch(url, options) {
   if (url !== 'https://ai.77erp.test/v1/chat/completions') throw new Error('Unexpected AI destination');
   const { messages } = JSON.parse(options.body), last = messages.at(-1);
   let message = { content: '连接成功。' };
-  if (last.role === 'tool') message = { content: '已生成预览，请核对后确认。' };
+  if (last.role === 'tool') {
+    const result=JSON.parse(last.content);
+    message = { content: result.recommendations ? `当前有 ${result.acceptance_count} 张验收单，可生成：${result.recommendations.map(r=>r.name).join('、')}。${result.note}` : '已生成预览，请核对后确认。' };
+  }
+  else if (/^(图表|推荐图表)参数：/.test(last.content)) {
+    const name=last.content.startsWith('推荐')?'quality_chart_data':'preview_quality_chart';
+    message={content:null,tool_calls:[{id:name,type:'function',function:{name,arguments:last.content.split('参数：')[1]}}]};
+  }
   else if (/^(调拨|盘点)参数：/.test(last.content)) {
     const name = last.content.startsWith('调拨') ? 'preview_transfer' : 'preview_stocktake';
     message = { content: null, tool_calls: [{ id: name, type: 'function', function: { name, arguments: last.content.split('参数：')[1] } }] };

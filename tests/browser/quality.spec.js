@@ -98,6 +98,37 @@ test('object wizard requires attributes and values, reads three string records, 
   await expect(page.getByRole('dialog').getByText('网络交换机',{exact:true})).toBeVisible();
   expect(errors).toEqual([]);
 });
+test('custom Key can be added without selecting a label, previewed, saved and edited',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const excel=new ExcelJS.Workbook(),sheet=excel.addWorksheet('公司');sheet.getCell('A1').value='某某公司';
+  await page.goto('/#quality');
+  await page.getByLabel('上传模板 Excel').setInputFiles({name:'自定义公司.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(await excel.xlsx.writeBuffer())});
+  await page.getByRole('button',{name:'添加自定义 Key',exact:true}).click();
+  const editor=page.getByRole('complementary',{name:'字段独立编辑'});
+  await editor.getByLabel('字段名称',{exact:true}).fill('公司名');
+  await editor.getByRole('button',{name:'完成配置',exact:true}).click();
+  await expect(editor.getByRole('alert')).toContainText('区域格式');
+  await editor.getByRole('button',{name:'框选',exact:true}).click();
+  await selectRange(page,'A1','A1');
+  await expect(editor.getByLabel('取值区域',{exact:true})).toHaveValue('A1');
+  await editor.getByRole('tab',{name:'解析预览'}).click();
+  await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('"某某公司"');
+  await editor.getByRole('button',{name:'完成配置',exact:true}).click();
+  await expect(page.locator('.quality-cell-marker')).toHaveCount(0);
+  await page.getByRole('button',{name:'保存草稿',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'草稿已保存'})).toBeVisible();
+  await page.reload();
+  await page.getByRole('row').filter({hasText:'自定义公司'}).getByRole('button',{name:'编辑',exact:true}).click();
+  await page.locator('.quality-field').filter({hasText:'公司名'}).click();
+  await expect(editor.getByLabel('字段名称',{exact:true})).toHaveValue('公司名');
+  await expect(editor.getByLabel('取值区域',{exact:true})).toHaveValue('A1');
+  await expect(editor).toContainText('自定义 Key');
+  await editor.getByRole('button',{name:'移除字段',exact:true}).click();
+  await expect(page.locator('.quality-field')).toHaveCount(0);
+  await page.getByRole('button',{name:'添加自定义 Key',exact:true}).click();
+  await editor.getByRole('button',{name:'取消编辑',exact:true}).click();
+  await expect(page.locator('.quality-field')).toHaveCount(0);expect(errors).toEqual([]);
+});
 test('normal key directions, custom values and object cancel keep explicit choices',async({page})=>{
   await newEditor(page);
   await page.locator('[data-address=A8]').click({button:'right'});
