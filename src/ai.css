@@ -26,4 +26,11 @@
 .ai-message-attachment>span{overflow-wrap:anywhere;min-width:0}
 .ai-message-attachment>svg{flex-shrink:0}
 
+.ai-turn { display:grid; gap:16px; min-width:0; }
+.ai-turn .ai-actions { margin-top:0; margin-left:39px; min-width:0; }
+.ai-action-result { display:grid; gap:8px; min-width:0; padding:12px 14px; border:1px solid #dce9df; border-radius:10px; background:#f6fbf7; }
+.ai-action-result > p { margin:0; color:#39714d; font-size:13px; }
+.ai-result-toggle { justify-self:start; border:0; background:transparent; padding:4px 0; color:#56759b; font:inherit; font-size:12px; cursor:pointer; }
+@media(max-width:700px){.ai-turn .ai-actions{margin-left:0}.ai-result-toggle{min-height:40px}}
+
 .ai-chart-config{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0}.ai-chart-config div{min-width:0}.ai-chart-config dt{color:var(--muted);font-size:11px}.ai-chart-config dd{margin:4px 0 0;overflow-wrap:anywhere}.ai-chart-json{white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto}.ai-action .quality-chart-view{min-width:0;max-width:100%}@media(max-width:640px){.ai-chart-config{grid-template-columns:1fr}}

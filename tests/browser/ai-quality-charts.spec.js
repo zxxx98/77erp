@@ -53,9 +53,24 @@ for(const device of [null,'Pixel 7','iPhone 13'])test(`${device||'desktop'} AI r
     expect((await(await context.request.get('/api/quality/charts',{headers})).json()).total).toBe(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
     await action.getByRole('button',{name:'确认保存图表',exact:true}).click();
-    await expect(action).toContainText('已保存图表“每日合格率趋势”');
+    await expect(action).toHaveCount(0);
+    await expect(page.locator('.ai-action-result')).toContainText('已保存图表“每日合格率趋势”');
+    await page.getByRole('button',{name:'查看图表与详情',exact:true}).click();
+    await expect(action.getByRole('img',{name:'每日合格率趋势',exact:true})).toBeVisible();
+    await action.getByRole('button',{name:'全屏查看',exact:true}).click();
+    await expect(fullscreen.getByRole('img',{name:'每日合格率趋势',exact:true})).toBeVisible();
+    await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();
+    await page.getByRole('button',{name:'收起详情',exact:true}).click();
+    await page.getByLabel('你的需求').fill('保存好了，继续聊天');await page.getByRole('button',{name:'发送',exact:true}).click();
+    await expect(page.getByLabel('你的需求')).toBeEnabled();
+    await expect(page.locator('.ai-turn').last()).toContainText('保存好了，继续聊天');
+    await expect(page.locator('.ai-turn').nth(1).locator('.ai-action-result')).toContainText('已保存图表');
+    await expect(page.locator('.ai-turn').last().locator('.ai-action-result')).toHaveCount(0);
     const charts=await(await context.request.get('/api/quality/charts',{headers})).json();expect(charts.total).toBe(1);expect(charts.charts[0].config.chartType).toBe('line');
     await page.reload();if(device)await page.getByRole('button',{name:'更多',exact:true}).click();await page.getByRole('button',{name:'AI 助手',exact:true}).click();
-    await expect(page.locator('.ai-action')).toContainText('品质图表配置预览 · 已完成');expect(errors).toEqual([]);
+    await expect(page.locator('.ai-action-result')).toContainText('已保存图表“每日合格率趋势”');
+    await expect(page.locator('.ai-turn').nth(1).locator('.ai-action-result')).toHaveCount(1);
+    await expect(page.locator('.ai-turn').last()).toContainText('保存好了，继续聊天');
+    await expect(page.locator('.ai-action')).toHaveCount(0);expect(errors).toEqual([]);
   }finally{await context.close();}
 });

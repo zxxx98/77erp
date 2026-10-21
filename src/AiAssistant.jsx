@@ -48,7 +48,22 @@ export function AiSettings({ onBusy = () => {} }) {
 }
 
 const fields = { name: '物料名称', barcode: '条码', category: '分类', unit: '单位', cost: '参考采购价', price: '参考销售价', threshold: '安全库存', stock: '期初库存', specification: '规格型号', note: '备注', is_fixed_asset: '固定资产' };
+function ActionResult({ action }) {
+  const p = action.preview, result = action.result;
+  return <p role="status">已完成{result.orders ? `：${result.orders.map(o => o.number).join('、')}` : action.kind === 'quality_chart' ? `，已保存图表“${result.name}”，可在品质管理的图表中查看` : action.kind === 'transfer' ? `：${result.number} / ${result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : action.kind === 'inspection' ? `，已更新 ${result.count} 种物料的校验提醒` : action.kind === 'mark_inspected' ? `，已标记 ${result.count} 种物料为已校验` : `，新增 ${result.count} 个物料`}。</p>;
+}
+
 function ActionCard({ action, busy, confirm }) {
+  const [expanded, setExpanded] = useState(false);
+  if (action.result) return <section className="ai-action-result">
+    <ActionResult action={action}/>
+    <button type="button" className="ai-result-toggle" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '收起详情' : action.kind === 'quality_chart' ? '查看图表与详情' : '查看操作详情'}</button>
+    {expanded && <ActionPreview action={action} busy={busy} confirm={confirm}/>}
+  </section>;
+  return <ActionPreview action={action} busy={busy} confirm={confirm}/>;
+}
+
+function ActionPreview({ action, busy, confirm }) {
   const p = action.preview, expired = action.expires_at < Date.now();
   return <section className="ai-action">
     <h3>{{ orders: '批量出入库预览', import: '新增物料预览', transfer: '仓库调拨预览', stocktake: '库存盘点预览', inspection: '设置校验提醒预览', mark_inspected: '标记已校验预览', quality_chart: '品质图表配置预览' }[action.kind]} · {action.result ? '已完成' : expired ? '已过期' : '待确认'}</h3>
@@ -99,7 +114,7 @@ function ActionCard({ action, busy, confirm }) {
       <div className="ai-table"><table><thead><tr>{['物料 / 条码', '单位', '原校验日期', action.kind === 'inspection' ? '新校验日期' : '下次校验日期', '校验周期'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{p.items.map(i => <tr key={i.product_id}><td>{i.name}<small>{i.barcode}</small></td><td>{i.unit}</td><td>{i.before_date || '未配置'}</td><td>{i.after_date}</td><td>{i.interval ? `每 ${i.interval} ${{ day: '天', month: '月', year: '年' }[i.interval_unit] || '月'}` : '手动设置日期'}</td></tr>)}</tbody></table></div>
       <p>{action.kind === 'inspection' ? '确认后按以上日期和周期更新校验提醒。' : `确认后将上次校验日期记为 ${p.last_inspected_on}，有周期的物料从该日期按配置周期顺延。`}</p>
     </>}
-    {action.result ? <p role="status">已完成{action.result.orders ? `：${action.result.orders.map(o => o.number).join('、')}` : action.kind === 'quality_chart' ? `，已保存图表“${action.result.name}”，可在品质管理的图表中查看` : action.kind === 'transfer' ? `：${action.result.number} / ${action.result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : action.kind === 'inspection' ? `，已更新 ${action.result.count} 种物料的校验提醒` : action.kind === 'mark_inspected' ? `，已标记 ${action.result.count} 种物料为已校验` : `，新增 ${action.result.count} 个物料`}。</p> : <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，业务数据变化需重新生成。继续聊天会取消本批未确认预览。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>{action.kind==='quality_chart'?'确认保存图表':'确认执行本批操作'}</button></>}
+    {!action.result && <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，业务数据变化需重新生成。继续聊天会取消本批未确认预览。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>{action.kind==='quality_chart'?'确认保存图表':'确认执行本批操作'}</button></>}
   </section>;
 }
 
@@ -193,6 +208,16 @@ export function AiAssistant({ onChanged, userId, warehouseName }) {
     try { await navigator.clipboard.writeText(content); setCopied(index); }
     catch { setError('无法复制，请选择回复文字手动复制。'); }
   };
+  const turns = [];
+  for (const message of thread.messages) {
+    if (message.role === 'user' || !turns.length) turns.push({ messages: [], actions: [] });
+    turns.at(-1).messages.push(message);
+  }
+  for (const action of thread.actions) {
+    if (pending && !action.result) continue;
+    const index = Number.isInteger(action.turn_index) ? action.turn_index : 0;
+    (turns[index] || turns[0])?.actions.push(action);
+  }
   return <div className="ai-assistant">
     <aside className={`ai-sidebar ${showHistory ? 'is-open' : ''}`} aria-label="对话历史">
       <div className="ai-brand"><span>77</span>ERP <button className="ai-icon ai-history-close" aria-label="关闭历史对话" onClick={() => setShowHistory(false)}><X size={18} /></button></div>
@@ -216,16 +241,18 @@ export function AiAssistant({ onChanged, userId, warehouseName }) {
           ].map(([Icon, label, value]) => <button key={label} onClick={() => suggest(value)}><Icon size={19} /><span>{label}</span><ArrowUpRight size={15} /></button>)}</div>
         </div>}
         <div className="ai-messages" aria-live="polite" aria-busy={busy}>
-          {thread.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
+          {turns.map((turn, turnIndex) => <div className="ai-turn" key={turnIndex}>
+          {turn.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
             {m.role !== 'user' && <div className="ai-avatar"><Sparkles size={17} /></div>}
             <div className="ai-message-body">{m.role !== 'user' && <div className="ai-author">AI 助手</div>}
-              {m.role === 'user' ? <UserMessage content={m.content} attachment={m.attachment} /> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><button className="ai-copy" onClick={() => copy(m.content, i)}>{copied === i ? <Check size={13} /> : <Copy size={13} />}{copied === i ? '已复制' : '复制'}</button></>}
+              {m.role === 'user' ? <UserMessage content={m.content} attachment={m.attachment} /> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><button className="ai-copy" onClick={() => copy(m.content, `${turnIndex}:${i}`)}>{copied === `${turnIndex}:${i}` ? <Check size={13} /> : <Copy size={13} />}{copied === `${turnIndex}:${i}` ? '已复制' : '复制'}</button></>}
             </div>
+          </div>)}
+          {!!turn.actions.length && <div className="ai-actions">{turn.actions.map(action => <ActionCard key={action.id} action={action} busy={busy} confirm={confirm}/>)}</div>}
           </div>)}
           {pending && <div className="ai-message ai-user"><div className="ai-message-body">{typeof pending === 'object' ? <UserMessage content={pending.content} attachment={pending.attachment} /> : <p>{pending}</p>}</div></div>}
           {busy && <div className="ai-processing" role="status"><LoaderCircle size={16} />{AI_STAGES[stage]}</div>}
         </div>
-        <div className="ai-actions">{thread.actions.filter(a => !pending || a.result).map(a => <ActionCard key={a.id} action={a} busy={busy} confirm={confirm} />)}</div>
       </div>
       <div className="ai-compose-area">
         {error && <p className="form-error" role="alert">{error}</p>}

@@ -2,12 +2,15 @@ import ExcelJS from 'exceljs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createApp } from '../server/app.js';
 import { inspectionToday, nextInspectionDate } from '../shared/inspection.js';
 
-async function fixture(t) {
+async function fixture(t, dbPath = ':memory:') {
   const calls = [], replies = [];
-  const { app, db } = createApp(':memory:', { aiEncryptionKey: 'ab'.repeat(32), qualityStorage:{async put(){},async head(){},async get(){return Buffer.alloc(0);},async remove(){}}, aiFetch: async (url, options) => {
+  const { app, db } = createApp(dbPath, { aiEncryptionKey: 'ab'.repeat(32), qualityStorage:{async put(){},async head(){},async get(){return Buffer.alloc(0);},async remove(){}}, aiFetch: async (url, options) => {
     calls.push({ url, body: JSON.parse(options.body) });
     const reply = replies.shift();
     if (typeof reply === 'function') return await reply();
@@ -136,6 +139,7 @@ test('continuing a conversation supersedes unconfirmed previews while preserving
   const before = f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock;
   f.use('preview_orders', { orders: [f.order()] });
   const first = (await f.chat(f.staff)).data, old = first.actions[0];
+  assert.equal(old.turn_index, 0);
   const cid = first.conversation_id;
   assert.equal((await f.chat(f.staff, { conversation_id: cid, message: ' ' })).status, 400);
   await f.chat(f.staff); // A new, unrelated conversation must leave the original preview available.
@@ -146,6 +150,7 @@ test('continuing a conversation supersedes unconfirmed previews while preserving
   assert.equal(next.status, 200);
   assert.equal(next.data.actions.length, 1);
   const replacement = next.data.actions[0];
+  assert.equal(replacement.turn_index, 1);
   assert.notEqual(replacement.id, old.id);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before);
   const cancelled = await f.request(f.staff, '/ai/confirm', { action_id: old.id });
@@ -158,6 +163,8 @@ test('continuing a conversation supersedes unconfirmed previews while preserving
   const continued = await f.chat(f.staff, { conversation_id: cid, message: '谢谢' });
   assert.equal(continued.data.actions.length, 1);
   assert.deepEqual(continued.data.actions[0].result, confirmed.data);
+  assert.equal(continued.data.actions[0].turn_index, 1);
+  assert.equal((await f.request(f.staff, `/ai/conversations/${cid}`)).data.actions[0].turn_index, 1);
   assert.deepEqual((await f.request(f.staff, '/ai/confirm', { action_id: replacement.id })).data, confirmed.data);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before + 3);
 });
@@ -180,6 +187,7 @@ test('provider failures do not restore superseded previews or discard previews f
   const regenerated = await f.chat(f.admin, { conversation_id: first.conversation_id, message: '重新生成' });
   assert.match(regenerated.data.error, /AI 服务连接失败/);
   assert.equal(regenerated.data.actions.length, 1);
+  assert.equal(regenerated.data.actions[0].turn_index, 2);
   assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: regenerated.data.actions[0].id })).status, 200);
 });
 
@@ -244,6 +252,31 @@ test('a second upload in the same conversation uses the new table and drops the 
   assert.ok(!context.some(m => m.role === 'tool'), 'previous import tool results must be dropped from the model context');
   assert.ok(!context.some(m => m.role === 'assistant' && m.tool_calls?.some(c => c.function?.name === 'preview_import')), 'previous import tool calls must be dropped');
   assert.ok(context.find(m => m.role === 'system').content.includes('B001'), 'system prompt must expose the newly uploaded sample');
+});
+
+test('older completed imports recover their original turns after upload context replacement and restart', async t => {
+  const directory = mkdtempSync(join(tmpdir(), '77erp-ai-turns-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const dbPath = join(directory, 'app.sqlite'), f = await fixture(t, dbPath);
+  // This conversation has a text-only turn before either action.
+  const start = await f.chat(f.admin, { message: '准备导入物料' }), cid = start.data.conversation_id;
+  const table = [['名称','单位'], ['甲','个']];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1 } });
+  const first = await f.chat(f.admin, { table, conversation_id: cid });
+  const old = first.data.actions[0];assert.equal(old.turn_index, 1);
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: old.id })).status, 200);
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1 } });
+  const next = await f.chat(f.admin, { table: [['名称','单位'], ['乙','台']], conversation_id: cid });
+  assert.deepEqual(next.data.actions.map(action => action.turn_index), [1, 2]);
+  const stored = JSON.parse(f.db.prepare('SELECT messages FROM ai_conversations WHERE id=?').get(cid).messages);
+  assert.ok(!stored.some(message => message.role === 'tool' && JSON.parse(message.content).action_id === old.id));
+  // Simulate the schema before turn associations were introduced.
+  f.db.exec('ALTER TABLE ai_actions DROP COLUMN turn_index');
+  const { db: reopened } = createApp(dbPath);
+  t.after(() => reopened.close());
+  const recovered = await f.request(f.admin, `/ai/conversations/${cid}`);
+  assert.deepEqual(recovered.data.actions.map(action => action.turn_index), [1, 2]);
+  assert.ok(recovered.data.actions[0].result);
 });
 
 test('uploaded table metadata is shown in the transcript, persisted for reopening and stripped from the model payload', async t => {

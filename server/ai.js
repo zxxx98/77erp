@@ -91,6 +91,26 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
   `);
   if (!db.prepare('PRAGMA table_info(ai_actions)').all().some(column => column.name === 'superseded_at'))
     db.exec('ALTER TABLE ai_actions ADD COLUMN superseded_at TEXT');
+  if (!db.prepare('PRAGMA table_info(ai_actions)').all().some(column => column.name === 'turn_index')) {
+    db.exec('SAVEPOINT ai_action_turns');
+    try {
+      db.exec('ALTER TABLE ai_actions ADD COLUMN turn_index INTEGER');
+      // Older transcripts may have dropped import tool messages after another upload.
+      // Audit entries retain the originating chat turn even for those completed cards.
+      const turns = new Map(), update = db.prepare('UPDATE ai_actions SET turn_index=? WHERE id=?');
+      for (const entry of db.prepare("SELECT conversation_id,tool,status,detail FROM ai_audit WHERE (tool='chat' AND status='started') OR (tool LIKE 'preview_%' AND status='success') ORDER BY rowid").all()) {
+        if (entry.tool === 'chat') turns.set(entry.conversation_id, (turns.get(entry.conversation_id) ?? -1) + 1);
+        else {
+          const id = JSON.parse(entry.detail).action_id;
+          if (id && turns.has(entry.conversation_id)) update.run(turns.get(entry.conversation_id), id);
+        }
+      }
+      db.exec('RELEASE ai_action_turns');
+    } catch (error) {
+      db.exec('ROLLBACK TO ai_action_turns; RELEASE ai_action_turns');
+      throw error;
+    }
+  }
   const config = () => db.prepare('SELECT * FROM ai_settings WHERE id=1').get();
   const publicConfig = () => { const { secret, ...c } = config(); return { ...c, enabled: !!c.enabled, writes: !!c.writes, has_secret: !!secret, encryption_ready: /^[a-fA-F0-9]{64}$/.test(aiEncryptionKey || '') }; };
   function encryptionKey() {
@@ -128,7 +148,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (row.auth_context !== authContext(req.user)) fail('权限已变化，请开始新对话。', 403);
     return row;
   }
-  const actions = id => db.prepare('SELECT id,kind,preview,result,expires_at FROM ai_actions WHERE conversation_id=? AND superseded_at IS NULL ORDER BY rowid').all(id)
+  const actions = id => db.prepare('SELECT id,kind,preview,result,expires_at,turn_index FROM ai_actions WHERE conversation_id=? AND superseded_at IS NULL ORDER BY rowid').all(id)
     .map(a => ({ ...a, preview: JSON.parse(a.preview), result: a.result ? JSON.parse(a.result) : null }));
   function transferTargets(source, warehouseId) {
     return db.prepare("SELECT * FROM products WHERE warehouse_id=? AND ((?<>'' AND sync_key=?) OR barcode=?) ORDER BY id")
@@ -201,8 +221,9 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     db.exec('SAVEPOINT ai_preview');
     try { apply(req, kind, payload); } finally { db.exec('ROLLBACK TO ai_preview; RELEASE ai_preview'); }
     const id = randomUUID(), expires = Date.now() + 15 * 60 * 1000;
-    db.prepare('INSERT INTO ai_actions(id,conversation_id,user_id,kind,payload,preview,fingerprint,expires_at) VALUES(?,?,?,?,?,?,?,?)')
-      .run(id, cid, req.user.id, kind, JSON.stringify(payload), JSON.stringify(display), state(payload), expires);
+    const turnIndex = JSON.parse(conversation(req, cid).messages).filter(message => message.role === 'user').length;
+    db.prepare('INSERT INTO ai_actions(id,conversation_id,user_id,kind,payload,preview,fingerprint,expires_at,turn_index) VALUES(?,?,?,?,?,?,?,?,?)')
+      .run(id, cid, req.user.id, kind, JSON.stringify(payload), JSON.stringify(display), state(payload), expires, turnIndex);
     return { action_id: id, status: 'awaiting_user_confirmation', message: '仅生成预览，尚未执行。请用户在操作卡片核对并确认。' };
   }
   function runTool(req, cid, name, args) {
