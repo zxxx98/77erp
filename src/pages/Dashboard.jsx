@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
+import { FullscreenChart } from '../components/FullscreenChart.jsx';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { sameDay, shortDate, money, count, dateTime } from '../app/format.js';
 import { usePermissions } from '../permissions.jsx';
@@ -22,7 +23,15 @@ import {
 import { Badge, QueryStatus, PageHeading, Button, Panel, Empty, ProductArt } from '../components/common.jsx';
 import { orderLabel } from '../order-utils.js';
 
-function TrendChart({ orders, days }) {
+function TrendLegend() {
+  return <div className="chart-legend">
+    <span><i className="legend-dot blue" />销售金额</span>
+    <span><i className="legend-dot pale" />采购金额</span>
+  </div>;
+}
+
+function TrendChart({ orders, days, fullscreen = false }) {
+  const gradientId = useId();
   const [hover, setHover] = useState(null);
   const chartRef = useRef();
   const [chartWidth, setChartWidth] = useState(720);
@@ -50,7 +59,7 @@ function TrendChart({ orders, days }) {
   const cap = Math.ceil(max / 1000) * 1000;
   const floor = Math.floor(Math.min(0, ...series.flatMap(d => [d.in, d.out])) / 1000) * 1000;
   const W = chartWidth,
-    H = chartWidth < 450 ? 160 : 178,
+    H = fullscreen ? Math.max(280, Math.min(600, chartWidth * .55)) : chartWidth < 450 ? 160 : 178,
     L = 40,
     R = 14,
     T = 12,
@@ -85,7 +94,7 @@ function TrendChart({ orders, days }) {
         onMouseLeave={() => setHover(null)}
       >
         <defs>
-          <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#2563eb" stopOpacity=".13" />
             <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
           </linearGradient>
@@ -115,7 +124,7 @@ function TrendChart({ orders, days }) {
         ))}
         <path
           d={`${out} L${x(days - 1)},${y(0)} L${x(0)},${y(0)} Z`}
-          fill="url(#chart-fill)"
+          fill={`url(#${gradientId})`}
         />
         <path
           d={incoming}
@@ -351,18 +360,12 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               {money(salesSum)}
               <small>期间销售额</small>
             </span>
-            <div className="chart-legend">
-              <span>
-                <i className="legend-dot blue" />
-                销售金额
-              </span>
-              <span>
-                <i className="legend-dot pale" />
-                采购金额
-              </span>
-            </div>
+            <TrendLegend />
           </div>
-          <TrendChart orders={reporting} days={days} />
+          <FullscreenChart title={`最近 ${days} 天采购与销售金额趋势`}>{fullscreen => <>
+            {fullscreen && <TrendLegend />}
+            <TrendChart orders={reporting} days={days} fullscreen={fullscreen}/>
+          </>}</FullscreenChart>
         </Panel>
         <section className="quick-panel">
           <div className="quick-panel-heading">

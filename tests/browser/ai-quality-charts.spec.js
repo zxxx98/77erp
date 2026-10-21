@@ -37,6 +37,19 @@ for(const device of [null,'Pixel 7','iPhone 13'])test(`${device||'desktop'} AI r
     const action=page.locator('.ai-action');await expect(action).toContainText('品质图表配置预览 · 待确认');
     await expect(action).toContainText('AI图表模板 v1');await expect(action).toContainText('平均值 · 合格率');
     await expect(action.getByRole('img',{name:'每日合格率趋势'})).toBeVisible();
+    await action.getByRole('button',{name:'全屏查看',exact:true}).click();
+    const fullscreen=page.locator('.chart-fullscreen-modal');await expect(fullscreen.getByRole('img',{name:'每日合格率趋势',exact:true})).toBeVisible();
+    for(const viewport of [device?devices[device].viewport:{width:1440,height:1000},...(device?[{width:844,height:390}]:[])]){
+      await page.setViewportSize(viewport);
+      await expect.poll(async()=>{const box=await fullscreen.boundingBox();return Math.max(Math.abs(box.x),Math.abs(box.y),Math.abs(box.width-viewport.width),Math.abs(box.height-viewport.height));}).toBeLessThan(2);
+      await expect(fullscreen.getByRole('button',{name:'退出全屏',exact:true})).toBeInViewport();
+      expect(await fullscreen.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+    }
+    await page.screenshot({path:`output/ui-preview/chart-fullscreen-${device||'desktop'}.png`});
+    if(device)await page.goBack();
+    else await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();
+    await expect(fullscreen).toHaveCount(0);await expect(action.getByRole('button',{name:'确认保存图表',exact:true})).toBeVisible();
+    if(device)await page.setViewportSize(devices[device].viewport);
     expect((await(await context.request.get('/api/quality/charts',{headers})).json()).total).toBe(0);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
     await action.getByRole('button',{name:'确认保存图表',exact:true}).click();

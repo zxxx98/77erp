@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button, Modal } from '../components/common.jsx';
+import { FullscreenChart } from '../components/FullscreenChart.jsx';
 import { queryPath, useQuery } from '../queries.js';
 import { api } from '../api.js';
 import { Select } from '../Dropdown.jsx';
@@ -9,9 +11,22 @@ import '../quality.css';
 const colors=['#2864eb','#00a68a','#e69c31','#985be5','#df6483','#188caf'];
 export const chartNumber=(value,unit='')=>value===null?'—':`${new Intl.NumberFormat('zh-CN',{maximumFractionDigits:4}).format(value)}${unit}`;
 export function QualityChartView({result,type,title,onSources}) {
+  if(!result.rows.length)return <div className="quality-chart-empty">该范围暂无可用数据。</div>;
+  return <FullscreenChart title={title}>{fullscreen=> <QualityChartContent result={result} type={type} title={title} onSources={onSources} fullscreen={fullscreen}/>}</FullscreenChart>;
+}
+
+function QualityChartContent({result,type,title,onSources,fullscreen}) {
+  const plotRef=useRef(null),[plotSize,setPlotSize]=useState({width:820,height:320});
+  useEffect(()=>{
+    if(!fullscreen||!plotRef.current)return;
+    const observer=new ResizeObserver(([entry])=>setPlotSize({width:entry.contentRect.width,height:entry.contentRect.height}));
+    observer.observe(plotRef.current);
+    return ()=>observer.disconnect();
+  },[fullscreen,type]);
   const rows=result.rows,labels=[...new Set(rows.map(row=>row.x))],series=[...new Set(rows.map(row=>row.series))];
   if(!rows.length)return <div className="quality-chart-empty">该范围暂无可用数据。</div>;
-  const width=type==='bar'?Math.max(820,Math.min(28000,labels.length*series.length*24)):820,height=320,left=74,right=24,top=24,bottom=66;
+  const availableWidth=fullscreen?Math.max(360,plotSize.width):820;
+  const width=type==='bar'?Math.max(availableWidth,Math.min(28000,labels.length*series.length*24)):availableWidth,height=fullscreen?Math.max(280,plotSize.height):320,left=74,right=24,top=24,bottom=66;
   const max=Math.max(0,...rows.map(row=>row.value)),min=Math.min(0,...rows.map(row=>row.value)),span=max-min||1;
   const y=value=>height-bottom-(value-min)/span*(height-bottom-top);
   const values=labels.map(value=>result.xType==='number'?Number(value):result.xType==='date'?Date.parse(String(value).length===7?`${value}-01`:value):null);
@@ -23,7 +38,7 @@ export function QualityChartView({result,type,title,onSources}) {
   return <div className="quality-chart-view">
     {type!=='table'&&<>
       <div className="quality-chart-legend">{series.map((key,i)=><span key={key}><i style={{background:colors[i%colors.length]}}/>{label(key)}</span>)}</div>
-      <div className="quality-chart-scroll"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title} style={{minWidth:type==='bar'?width:undefined}}>
+      <div className="quality-chart-scroll" ref={plotRef}><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title} style={{minWidth:type==='bar'?width:undefined}}>
         <title>{title}</title>{Array.from({length:5},(_,i)=>{const value=min+span*i/4;return <g key={i}><line x1={left} x2={width-right} y1={y(value)} y2={y(value)} stroke="var(--border)"/><text x={left-10} y={y(value)+4} textAnchor="end" className="quality-chart-axis">{chartNumber(value,result.unit)}</text></g>;})}
         {labels.filter((_,i)=>i%Math.max(1,Math.ceil(labels.length/7))===0||i===labels.length-1).map(value=><text key={String(value)} x={x(value)} y={height-bottom+24} textAnchor="middle" className="quality-chart-axis"><title>{String(value)}</title>{String(value).length>14?`${String(value).slice(0,13)}…`:String(value)}</text>)}
         {series.map((key,i)=>{
@@ -69,6 +84,6 @@ export function QualityChartData({chart,data,productId=null}) {
       <QualityChartView result={query.result} type={chart.config.chartType} title={chart.name} onSources={setPoint}/>
       <p className="muted">{query.result.stats.sheets} 个 Sheet · {query.result.stats.records} 条记录{query.result.stats.incompatibleSheets?` · ${query.result.stats.incompatibleSheets} 个 Sheet 字段类型或单位不兼容，未参与统计`:''}{query.result.stats.excluded?` · ${query.result.stats.excluded} 条记录因筛选或字段空值未参与统计`:''}</p>
     </>}
-    {point&&<QualityChartSources chartId={chart.id} point={point} filters={filters} data={data} onClose={()=>setPoint(null)}/>}
+    {point&&createPortal(<QualityChartSources chartId={chart.id} point={point} filters={filters} data={data} onClose={()=>setPoint(null)}/>,document.body)}
   </div>;
 }

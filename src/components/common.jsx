@@ -185,7 +185,7 @@ function ProductArt({ product, size = "normal", preview = true }) {
   );
 }
 
-function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions,
+function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions, closeLabel = '关闭弹窗',
   presentation = 'dialog', drawerSize = 'standard', headerNavigation, footer }) {
   const drawer = presentation === 'drawer' && !mobileDevice;
   const titleId = useId();
@@ -279,7 +279,8 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
             type="button"
             className="icon-button"
             onClick={onClose}
-            aria-label="关闭弹窗"
+            aria-label={closeLabel}
+            title={closeLabel}
           >
             <X size={20} />
           </button>

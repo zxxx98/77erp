@@ -1,0 +1,32 @@
+.fullscreen-chart { min-width: 0; }
+.fullscreen-chart-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.chart-fullscreen-layer > .modal-backdrop { padding: 0; }
+.chart-fullscreen-layer .modal.chart-fullscreen-modal {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: none;
+}
+.chart-fullscreen-layer .chart-fullscreen-modal > .modal-header {
+  flex-shrink: 0;
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+}
+.chart-fullscreen-modal .modal-header-title { overflow-wrap: anywhere; }
+.chart-fullscreen-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 20px max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+}
+.chart-fullscreen-content .quality-chart-scroll { height: max(280px, calc(100dvh - 250px)); }
+.chart-fullscreen-content .quality-chart-scroll svg { height: 100%; }

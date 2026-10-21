@@ -37,12 +37,18 @@ test('configure a normal chart from a numeric rate field, preview saved data, tr
   await expect(page.getByRole('combobox',{name:'数值字段',exact:true})).toHaveValue('合格率（%）');
   await expect(page.getByRole('combobox',{name:'横轴字段',exact:true})).toHaveValue('检验日期');
   await page.getByRole('button',{name:'生成预览',exact:true}).click();await expect(page.getByRole('img',{name:'直接读取合格率预览',exact:true})).toBeVisible();
+  const fullscreenButton=page.getByRole('button',{name:'全屏查看',exact:true});
+  await fullscreenButton.click();const fullscreen=page.locator('.chart-fullscreen-modal');
+  await expect(fullscreen.getByRole('img',{name:'直接读取合格率预览',exact:true})).toBeVisible();
+  await page.keyboard.press('Escape');await expect(fullscreen).toHaveCount(0);await expect(fullscreenButton).toBeFocused();
   await page.locator('.quality-chart-table summary').click();await expect(page.locator('.quality-chart-table tbody')).toContainText('95%');
   await page.screenshot({path:'output/ui-preview/quality-chart-editor.png',fullPage:true});
   await page.getByRole('button',{name:'保存图表',exact:true}).click();const row=page.getByRole('row').filter({hasText:'直接读取合格率'});await expect(row).toBeVisible();
   await row.getByRole('button',{name:'查看图表',exact:true}).click();const modal=page.getByRole('dialog',{name:'直接读取合格率',exact:true});
-  await modal.getByRole('button',{name:/查看来源 2026-10-20/}).click();const source=page.getByRole('dialog',{name:'图表数据来源',exact:true});await expect(source).toContainText(f.acceptance.number);
+  await modal.getByRole('button',{name:'全屏查看',exact:true}).click();
+  await fullscreen.getByRole('button',{name:/查看来源 2026-10-20/}).click();const source=page.getByRole('dialog',{name:'图表数据来源',exact:true});await expect(source).toContainText(f.acceptance.number);
   await source.getByRole('button',{name:'查看验收单',exact:true}).click();await expect(source.getByRole('heading',{name:'品质数据普通',exact:true})).toBeVisible();await source.getByRole('button',{name:'关闭弹窗',exact:true}).click();
+  await expect(fullscreen).toBeVisible();await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();await expect(modal).toBeVisible();
   await choose(page,'图表数据范围','单张验收单');await choose(page,'图表验收单',`品质数据普通 · ${f.acceptance.number}`);await expect(modal.getByRole('img')).toBeVisible();
   await modal.getByRole('button',{name:'关闭弹窗',exact:true}).click();await row.getByRole('button',{name:'编辑图表',exact:true}).click();
   await choose(page,'横轴字段','供应商');await choose(page,'图表样式','柱状图');await choose(page,'日期筛选字段','不启用日期筛选');await page.getByRole('button',{name:'保存图表',exact:true}).click();
@@ -60,7 +66,19 @@ test('material chart rules have a temporary preview product and appear on matchi
   const detail=page.getByRole('dialog',{name:'物料详情',exact:true});await detail.getByRole('tab',{name:'品质图表',exact:true}).click();await detail.getByRole('button',{name:/物料合格率趋势/}).click();await expect(detail.getByRole('img',{name:'物料合格率趋势',exact:true})).toBeVisible();
   await detail.getByLabel('物料合格率趋势 开始日期').fill('2027-01-01');await expect(detail).toContainText('该范围暂无可用数据');await expect(detail.getByRole('button',{name:/物料合格率趋势/})).toBeVisible();
   await detail.getByRole('button',{name:'全部时间',exact:true}).click();await expect(detail.getByRole('img')).toBeVisible();await expect(detail.getByText('正在读取图表…',{exact:true})).toHaveCount(0);await page.screenshot({path:'output/ui-preview/material-quality-charts.png',fullPage:true});
+  await detail.getByRole('button',{name:'全屏查看',exact:true}).click();
+  const fullscreen=page.locator('.chart-fullscreen-modal');await expect(fullscreen.getByRole('img',{name:'物料合格率趋势',exact:true})).toBeVisible();
+  await page.keyboard.press('Escape');await expect(fullscreen).toHaveCount(0);await expect(detail).toBeVisible();
   await detail.getByRole('button',{name:'关闭',exact:true}).click();await page.getByRole('textbox',{name:'筛选物料'}).fill('图表无数据物料');await page.getByRole('button',{name:'查看 图表无数据物料 物料详情',exact:true}).click();await detail.getByRole('tab',{name:'品质图表',exact:true}).click();await expect(detail).toContainText('暂无品质图表');expect(errors).toEqual([]);
+});
+
+test('dashboard trend opens at viewport size and returns to the selected period',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:'近 30 天',exact:true}).click();
+  await page.getByRole('button',{name:'全屏查看',exact:true}).click();const fullscreen=page.locator('.chart-fullscreen-modal');
+  await expect(fullscreen.getByRole('img',{name:'最近 30 天采购与销售金额趋势',exact:true})).toBeVisible();
+  const box=await fullscreen.boundingBox();expect(box.x).toBe(0);expect(box.y).toBe(0);expect(box.width).toBe(page.viewportSize().width);expect(box.height).toBe(page.viewportSize().height);
+  await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();await expect(fullscreen).toHaveCount(0);
+  await expect(page.getByRole('img',{name:'最近 30 天采购与销售金额趋势',exact:true})).toBeVisible();
 });
 
 test('wide grouped bars stay inside the plot and retain source actions',async({page})=>{
@@ -70,9 +88,22 @@ test('wide grouped bars stay inside the plot and retain source actions',async({p
   const rows=['2026-10-20','2026-10-21'].flatMap(x=>Array.from({length:20},(_,i)=>({x,series:`供应商${i}`,seriesLabel:`供应商${i}`,value:i+1,count:1})));
   await page.route(`**/api/quality/charts/${chart.id}/data*`,route=>route.fulfill({json:{rows,xType:'date',unit:'%',stats:{sheets:40,records:40,excluded:0,incompatibleSheets:0}}}));
   await charts(page);await page.getByRole('row').filter({hasText:'柱组边界回归'}).getByRole('button',{name:'查看图表',exact:true}).click();
-  const svg=page.getByRole('img',{name:'柱组边界回归',exact:true});await expect(svg.locator('rect')).toHaveCount(40);
+  await page.getByRole('button',{name:'全屏查看',exact:true}).click();
+  const fullscreen=page.locator('.chart-fullscreen-modal'),svg=fullscreen.getByRole('img',{name:'柱组边界回归',exact:true});await expect(svg.locator('rect')).toHaveCount(40);
   const bounds=await svg.evaluate(element=>({width:element.viewBox.baseVal.width,bars:[...element.querySelectorAll('rect')].map(bar=>({x:bar.x.baseVal.value,width:bar.width.baseVal.value}))}));
   for(const bar of bounds.bars){expect(bar.x).toBeGreaterThanOrEqual(74);expect(bar.x+bar.width).toBeLessThanOrEqual(bounds.width-24);}
   await svg.getByRole('button',{name:'查看来源 2026-10-20 · 供应商0：1%'}).click();
   await expect(page.getByRole('dialog',{name:'图表数据来源',exact:true})).toBeVisible();
+});
+
+test('table charts support fullscreen statistics and source drilldown',async({page})=>{
+  const f=await fixture(page,'统计表全屏');
+  const response=await page.request.post('/api/quality/charts',{data:{name:'全屏统计表',template_id:f.template.id,revision_id:f.template.published_revision,request_id:randomUUID(),config:{schemaVersion:1,kind:'ordinary',chartType:'table',objectId:null,x:{fieldId:'date'},metric:{aggregation:'avg',value:{fieldId:'rate'}}}}});
+  expect(response.ok()).toBe(true);await charts(page);
+  await page.getByRole('row').filter({hasText:'全屏统计表'}).getByRole('button',{name:'查看图表',exact:true}).click();
+  const viewer=page.getByRole('dialog',{name:'全屏统计表',exact:true});await viewer.getByRole('button',{name:'全屏查看',exact:true}).click();
+  const fullscreen=page.locator('.chart-fullscreen-modal');await expect(fullscreen.getByRole('table')).toContainText('95%');
+  await fullscreen.getByRole('button',{name:'查看来源',exact:true}).click();const source=page.getByRole('dialog',{name:'图表数据来源',exact:true});await expect(source).toContainText(f.acceptance.number);
+  await page.keyboard.press('Escape');await expect(source).toHaveCount(0);await expect(fullscreen).toBeVisible();
+  await page.keyboard.press('Escape');await expect(fullscreen).toHaveCount(0);await expect(viewer.getByRole('table')).toContainText('95%');
 });
