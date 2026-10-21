@@ -8,6 +8,7 @@ import { Select } from '../Dropdown.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { adjacentRegion, cellAddress, containsCell, logicalRegion, objectHeaders, objectOrientation, objectRecords, parseRegion, previewDefinition, qualityTypeLabels, regionAddress, regionText, validateDefinition } from '../../shared/quality-template.js';
 import { TypeRules, ObjectProperties, RuleSection } from './QualityFieldRules.jsx';
+import { sheetPreviewBounds } from '../../shared/quality-sheet-view.js';
 import { downloadExcel, PreviewTable, WorkbookResults, QualityNavigation } from './quality-shared.jsx';
 import { QualityAcceptances } from './QualityAcceptances.jsx';
 import { QualityCharts } from './QualityCharts.jsx';
@@ -231,9 +232,10 @@ export function Quality({data,onConfigure}) {
   }
   if(fieldDraft?.customKey&&!form.definition.fields.some(f=>f.id===fieldDraft.id))highlights.push({rect:safeRect(fieldDraft.valueRegion),kind:'value',name:fieldDraft.name});
   if(wizard){highlights.push({rect:safeRect(wizard.labelRegion),kind:'key',name:wizard.name});if(wizard.propertyRegion)highlights.push({rect:safeRect(wizard.propertyRegion),kind:'property'});if(wizard.valueRegion)highlights.push({rect:safeRect(wizard.valueRegion),kind:'value'});}
+  const sheetView=useMemo(()=>sheetPreviewBounds(sheet,[...(form?.definition.fields||[]),...(fieldDraft?[fieldDraft]:[]),...(wizard?[wizard]:[])].flatMap(field=>[field.labelRegion,field.propertyRegion,field.valueRegion]).concat(selection?[regionAddress(selection)]:[])),[sheet,form?.definition.fields,fieldDraft,wizard,selection]);
   const merged=useMemo(()=>{const map=new Map();for(const region of sheet?.merges||[]){const r=parseRegion(region);for(let row=r.r1;row<=r.r2;row++)for(let col=r.c1;col<=r.c2;col++)map.set(cellAddress(row,col),r);}return map;},[sheet]);
-  const cells=()=>Array.from({length:sheet.rows},(_,i)=>{
-    const row=i+1;return <tr key={row}><th className="quality-row-number">{row}</th>{Array.from({length:sheet.cols},(_,j)=>{
+  const cells=()=>Array.from({length:sheetView.rows},(_,i)=>{
+    const row=i+1;return <tr key={row}><th className="quality-row-number">{row}</th>{Array.from({length:sheetView.cols},(_,j)=>{
       const col=j+1,address=cellAddress(row,col),r=merged.get(address)||{r1:row,c1:col,r2:row,c2:col};
       if(r.r1!==row||r.c1!==col)return null;
       const marks=highlights.filter(h=>h.rect&&containsCell(h.rect,row,col));
@@ -297,7 +299,7 @@ export function Quality({data,onConfigure}) {
           const keys={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
           if(keys[e.key]){e.preventDefault();const next=selection?adjacentRegion(sheet,regionAddress(selection),keys[e.key]):'A1';if(next){const r=parseRegion(next);setRegion(r);sheetRef.current.querySelector(`[data-address="${cellAddress(r.r1,r.c1)}"]`)?.scrollIntoView({block:'nearest',inline:'nearest'});}}
           if((e.key==='Enter'||e.key==='F10'&&e.shiftKey)&&selection){e.preventDefault();const r=sheetRef.current.getBoundingClientRect();setMenu({x:Math.min(r.left+30,window.innerWidth-260),y:Math.min(r.top+40,window.innerHeight-280)});}
-        }} aria-label="Excel 模板表格"><colgroup><col style={{width:32}}/>{sheet.widths.map((width,i)=><col key={i} style={{width:`calc((100% - 32px) * ${width/sheet.widths.reduce((a,b)=>a+b,0)})`}}/>)}</colgroup><thead><tr><th></th>{Array.from({length:sheet.cols},(_,i)=><th key={i}>{cellAddress(1,i+1).replace('1','')}</th>)}</tr></thead><tbody>{cells()}</tbody></table></div><div className="quality-legend"><span>蓝色：Key</span><span>橙色：对象属性</span><span>绿色：取值区域</span><span>按住 Shift 点选多个普通 Key，再右键批量添加；再次点选可取消。</span></div>
+        }} aria-label="Excel 模板表格"><colgroup><col style={{width:32}}/>{sheetView.widths.map((width,i)=><col key={i} style={{width:`calc((100% - 32px) * ${width/sheetView.widths.reduce((a,b)=>a+b,0)})`}}/>)}</colgroup><thead><tr><th></th>{Array.from({length:sheetView.cols},(_,i)=><th key={i}>{cellAddress(1,i+1).replace('1','')}</th>)}</tr></thead><tbody>{cells()}</tbody></table></div><div className="quality-legend"><span>蓝色：Key</span><span>橙色：对象属性</span><span>绿色：取值区域</span><span>按住 Shift 点选多个普通 Key，再右键批量添加；再次点选可取消。</span></div>
       </section><aside className={`panel quality-fields${fieldDraft?' quality-fields-detail':''}`} aria-label={fieldDraft?'字段独立编辑':'字段列表'}>
         {fieldDraft?<>
           <div className="quality-field-detail-heading"><Button icon={ArrowLeft} onClick={cancelField}>返回字段列表</Button><div><h2>{fieldDraft.name||'未命名字段'}</h2><small>{qualityTypeLabels[fieldDraft.type]} · {fieldDraft.customKey?'自定义 Key':`Key ${fieldDraft.labelRegion}`}</small></div></div>

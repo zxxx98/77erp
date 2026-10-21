@@ -76,6 +76,37 @@ async function newEditor(page){
   await page.getByLabel('上传模板 Excel').setInputFiles(fixturePath);
   await expect(page.getByRole('heading',{name:'新建验收单模板'})).toBeVisible();
 }
+test('Excel preview trims empty edges while keeping merged cells, internal blanks and configured empty regions',async({page})=>{
+  const excel=new ExcelJS.Workbook(),sheet=excel.addWorksheet('裁剪预览');
+  sheet.getCell('A1').value='检验报告';sheet.mergeCells('A1:F1');
+  sheet.getCell('B2').value='字段';sheet.getCell('D2').value='内容';
+  sheet.getCell('E5').value=0;sheet.getCell('F6').value=false;
+  sheet.getCell('H20').value=' \n ';sheet.getCell('J22').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFFFF'}};
+  const buffer=Buffer.from(await excel.xlsx.writeBuffer());
+  await page.goto('/#quality');
+  await page.getByLabel('上传模板 Excel').setInputFiles({name:'裁剪空白区域.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer});
+  const table=page.getByRole('table',{name:'Excel 模板表格'});
+  await expect(table.locator('thead th')).toHaveCount(7);await expect(table.locator('tbody tr')).toHaveCount(6);
+  await expect(table.locator('[data-address=A1]')).toHaveAttribute('colspan','6');
+  await expect(table.locator('[data-address=C3]')).toBeVisible();
+  await expect(table.locator('[data-address=E5]')).toContainText('0');await expect(table.locator('[data-address=F6]')).toContainText('false');
+  expect(await page.locator('.quality-sheet-scroll').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  const definition={schemaVersion:1,sheetName:'裁剪预览',fields:[{id:'field',name:'字段',type:'string',labelRegion:'B2',valueRegion:'H10',configured:true}]};
+  await page.getByLabel('导入模板字段配置').setInputFiles({name:'配置.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(definition))});
+  await expect(table.locator('thead th')).toHaveCount(9);await expect(table.locator('tbody tr')).toHaveCount(10);
+  await expect(table.locator('[data-address=H10]')).toBeVisible();
+  await page.getByRole('button',{name:'保存草稿',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'草稿已保存'})).toBeVisible();
+  const downloadEvent=page.waitForEvent('download');await page.getByRole('button',{name:'下载原始 Excel',exact:true}).click();
+  const download=await downloadEvent;expect(await readFile(await download.path())).toEqual(buffer);
+  await page.reload();await page.getByRole('row').filter({hasText:'裁剪空白区域'}).getByRole('button',{name:'编辑',exact:true}).click();
+  await expect(table.locator('[data-address=H10]')).toBeVisible();
+  await page.locator('.quality-field').click();
+  const editor=page.getByRole('complementary',{name:'字段独立编辑'});
+  await editor.getByLabel('取值区域',{exact:true}).fill('D2');
+  await editor.getByRole('button',{name:'完成配置',exact:true}).click();
+  await expect(table.locator('thead th')).toHaveCount(7);await expect(table.locator('tbody tr')).toHaveCount(6);
+});
 test('object wizard requires attributes and values, reads three string records, persists and downloads exact original',async({page})=>{
   // Public HTTP previews have getRandomValues but no secure-context randomUUID.
   await page.addInitScript(()=>Object.defineProperty(Crypto.prototype,'randomUUID',{value:undefined,configurable:true}));
@@ -487,15 +518,6 @@ for(const vertical of [true,false])test(`${vertical?'vertical':'horizontal'} mer
   await expect(page.getByRole('dialog').getByRole('cell',{name:'2/3',exact:true})).toBeVisible();expect(errors).toEqual([]);
 });
 
-async function selectWideRange(page,start,end){
-  const a=page.locator(`[data-address="${start}"]`),b=page.locator(`[data-address="${end}"]`),scroll=page.locator('.quality-sheet-scroll');
-  await a.scrollIntoViewIfNeeded();const ra=await a.boundingBox(),rs=await scroll.boundingBox();
-  await page.mouse.move(ra.x+ra.width/2,ra.y+ra.height/2);await page.mouse.down();
-  await page.mouse.move(rs.x+rs.width-20,ra.y+ra.height/2,{steps:12});
-  await expect.poll(()=>b.evaluate(cell=>cell.getBoundingClientRect().right<=cell.closest('.quality-sheet-scroll').getBoundingClientRect().right-18)).toBe(true);
-  const rb=await b.boundingBox();await page.mouse.move(rb.x+rb.width/2,rb.y+rb.height/2,{steps:10});await page.mouse.up();
-}
-
 for(const vertical of [false,true])test(`${vertical?'vertical':'horizontal'} multilevel headers flatten grouped leaves and retain typed properties through reselect and publication`,async({page})=>{
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.setViewportSize({width:vertical?1920:1440,height:1200});
@@ -507,8 +529,8 @@ for(const vertical of [false,true])test(`${vertical?'vertical':'horizontal'} mul
   await page.locator('[data-address=A1]').click({button:'right'});await page.getByRole('menuitem',{name:'添加为对象 Key',exact:true}).click();
   await page.getByRole('combobox',{name:'对象表头模式',exact:true}).click();await page.getByRole('option',{name:'多级表头（完整表头区域）',exact:true}).click();
   if(vertical){await page.getByRole('combobox',{name:'多级表头排列方向',exact:true}).click();await page.getByRole('option',{name:'竖向表头：右侧每列一条记录',exact:true}).click();}
-  const headers=()=>vertical?selectRange(page,'A1','A7'):selectWideRange(page,'A1','G1');
-  const values=()=>vertical?selectRange(page,'C1','E7'):selectWideRange(page,'A3','G5');
+  const headers=()=>selectRange(page,'A1',vertical?'A7':'G1');
+  const values=()=>selectRange(page,vertical?'C1':'A3',vertical?'E7':'G5');
   await headers();let dialog=page.getByRole('dialog',{name:'确认对象属性'});await expect(dialog).toBeVisible();
   await expect(dialog.getByText('字符串',{exact:true})).toHaveCount(7);
   await expect(dialog.getByRole('columnheader',{name:'原始表头路径'})).toBeVisible();
