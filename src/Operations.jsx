@@ -571,7 +571,7 @@ export function Backup({ onSaved }) {
     <div className="backup-business">
       {busy && <p><LoadingStatus>正在处理备份…</LoadingStatus></p>}
       <p>
-        备份包含全部仓库、物料、库存成本、单据、盘点、往来单位、模板、收付款记录及操作人名称，不包含用户账号、密码和图床凭据。物料图片只备份 URL，图片文件需在图床保留。恢复会替换全部业务数据，保留当前账户、登录信息、图床配置、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
+        备份包含全部仓库、物料、库存成本、单据、盘点、往来单位、模板、收付款记录及操作人名称，不包含用户账号、密码和图床凭据。物料图片只备份 URL，图片文件需在图床保留。品质模板包含配置、历史版本和文件引用，原始 Excel 需在 R2 保留。恢复会替换全部业务数据，保留当前账户、登录信息、图床配置、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
       </p>
       <button
         type="button"
@@ -640,6 +640,7 @@ export function Backup({ onSaved }) {
           <p>
             恢复后出入库二维码将停用，旧标签失效，需核对、启用并重新打印。备份时间：{backup.created_at}；仓库 {preview.warehouses ?? 1} 个，物料 {preview.products} 件，单据{" "}
             {preview.orders} 张，库存调整 {preview.adjustments} 条。往来单位 {preview.contacts ?? 0} 个，模板 {preview.templates ?? 0} 张，收付款 {preview.payments ?? 0} 条，出入库二维码 {preview.stock_qrs ?? 0} 个。
+            品质模板 {preview.quality_templates ?? 0} 个，验收单 {preview.quality_acceptances ?? 0} 张，品质图表 {preview.quality_charts ?? 0} 个，R2 Excel 文件引用 {preview.quality_files ?? 0} 个，原文件需在 R2 保留。
           </p>
           <button
             type="button"

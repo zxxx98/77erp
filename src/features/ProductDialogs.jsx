@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { downloadFile } from '../app/download.js';
 import { Modal, ProductArt, Button } from '../components/common.jsx';
-import { Barcode } from '../LazyComponents.jsx';
+import { Barcode, ProductQualityCharts } from '../LazyComponents.jsx';
 import { LoadingIndicator } from '../Loading.jsx';
 import { Download, ScanLine, ImagePlus, Plus, Package, TriangleAlert, Check, Minus } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
@@ -95,7 +95,9 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
 }
 
 function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
-  const { costs } = usePermissions();
+  const { costs, can } = usePermissions();
+  const [tab,setTab]=useState('details');
+  const showQuality=!mobileDevice&&can('quality');
   const [others, setOthers] = useState(null);
   const [otherError, setOtherError] = useState("");
   useEffect(() => {
@@ -134,6 +136,8 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
         <ProductArt product={product} size="large" />
         <h3>{product.name}</h3>
       </div>
+      {showQuality&&<div className="product-quality-tabs" role="tablist" aria-label="物料详情视图">{[['details','物料信息'],['quality','品质图表']].map(([id,label])=><button key={id} type="button" role="tab" id={`product-tab-${id}`} aria-controls={`product-panel-${id}`} aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>}
+      {showQuality&&tab==='quality'?<div id="product-panel-quality" role="tabpanel" aria-labelledby="product-tab-quality"><ProductQualityCharts key={product.id} product={product} data={data}/></div>:<div id="product-panel-details" role={showQuality?'tabpanel':undefined} aria-labelledby={showQuality?'product-tab-details':undefined}>
       <dl className="product-detail-fields">
         {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}
         <div className="product-detail-full"><dt>规格型号</dt><dd>{product.specification || "—"}</dd></div>
@@ -161,6 +165,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
           </div>
         )}
       </section>
+      </div>}
     </div>
     <div className="modal-footer"><Button onClick={onClose}>关闭</Button></div>
   </Modal>;

@@ -1,5 +1,6 @@
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { installR2Backup } from './r2-backup.js';
+import { migrateQuality, installQuality, clearQuality } from './quality.js';
 import { installAnnouncements } from './announcements.js';
 import { migrateProductChanges, recordProductChange } from './product-changes.js';
 import { installAi } from './ai.js';
@@ -276,6 +277,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use("/api/ai", express.json({ limit: "1mb" }));
+  app.use('/api/quality', express.json({ limit: '2mb' }));
   app.use(express.json({ limit: "100kb" }));
   const { sessionUser } = installAuth(app, db, options);
   installAnnouncements(app, db);
@@ -284,6 +286,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   installProductHistory(app, db);
   const notifications = installNotifications(app, db, options);
   const r2Backup = installR2Backup(app, db, options);
+  migrateQuality(db);
+  installQuality(app, db, { ...options, sessionUser });
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
   const dataRevision = installDataUpdates(app, db);
@@ -545,6 +549,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         throw new Error("物料被模板引用，不能删除，请先移除模板中的物料或使用停用。");
       if (db.prepare("SELECT 1 FROM stock_qr_items WHERE product_id=? LIMIT 1").get(product.id))
         throw new Error("物料被出入库二维码引用，请先从二维码明细移除或使用停用。");
+      if (db.prepare("SELECT 1 FROM quality_acceptances a,json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=? LIMIT 1").get(product.id))
+        throw new Error("物料已绑定验收单，不能删除，请使用停用。");
       db.prepare("DELETE FROM products WHERE id=?").run(product.id);
       db.exec("COMMIT");
       inTransaction = false;
@@ -598,6 +604,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       db.exec("BEGIN IMMEDIATE");
       const counts = { action: '重置业务数据', products: db.prepare('SELECT COUNT(*) AS n FROM products').get().n, orders: db.prepare('SELECT COUNT(*) AS n FROM orders').get().n };
       clearStockQr(db);
+      clearQuality(db);
       db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
       db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM product_changes; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
       queueNotification(db, req, 'admin_action', counts, { global: true });

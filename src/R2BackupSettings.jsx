@@ -26,6 +26,7 @@ export function R2BackupSettings({ active, onBusy, onDirty }) {
     {config && <div className="notification-fields">
       <label className="notification-choice"><input type="checkbox" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)} /><span>启用定时备份</span></label>
       {[['account_id', 'Cloudflare Account ID', '32 位账户 ID'], ['bucket', 'R2 存储桶', '预先创建的私有存储桶'], ['prefix', '备份目录前缀', '77erp'], ['cron', 'Cron 表达式（五段）', '0 2 * * *'], ['timezone', '执行时区', 'Asia/Shanghai']].map(([key, label, placeholder]) => <label key={key}>{label}<input value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
+      <label>Excel 目录前缀<input required value={config.excel_prefix || ''} maxLength={200} placeholder="excel" disabled={busy} onChange={e => field('excel_prefix', e.target.value)} /><small>验收单原始 Excel 使用此独立目录，复用上方 R2 连接；不参与数据库备份轮转。</small></label>
       <small>Cron 顺序：分 时 日 月 周。例如 0 2 * * * 为每天 02:00，0 * * * * 为每小时。服务需保持运行；停机错过的计划不补跑。每次成功上传后自动保留当前目录内最新 10 个备份，超出的旧备份会被删除。</small>
       {[['access_key', 'R2 Access Key ID'], ['secret_key', 'R2 Secret Access Key']].map(([key, label]) => <React.Fragment key={key}>
         <label>{label}<input type="password" autoComplete="new-password" maxLength={4096} disabled={busy || credentials[`clear_${key}`]} value={credentials[key] || ''} placeholder={config[`has_${key}`] ? '已保存，留空保留' : '尚未配置'} onChange={e => setCredentials(c => ({ ...c, [key]: e.target.value }))} /></label>

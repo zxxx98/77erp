@@ -1,0 +1,891 @@
+{
+  "schemaVersion": 1,
+  "sheetName": "251-01204040JV",
+  "fields": [
+    {
+      "id": "customer",
+      "name": "客户",
+      "labelRegion": "A4",
+      "labelText": "客  户\nKhách hàng",
+      "valueRegion": "B4",
+      "configured": true,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "model",
+      "name": "产品型号",
+      "labelRegion": "C4:D4",
+      "labelText": "产品型号\nMã số sản phẩm",
+      "valueRegion": "E4:F4",
+      "configured": true,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "date",
+      "name": "检验日期",
+      "labelRegion": "G4:H4",
+      "labelText": "检验日期\nNgày tháng kiểm tra",
+      "valueRegion": "I4",
+      "configured": true,
+      "type": "date",
+      "required": true,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "order",
+      "name": "订单号码",
+      "labelRegion": "A5",
+      "labelText": "订单号码\nMã số đơn",
+      "valueRegion": "B5",
+      "configured": true,
+      "type": "string",
+      "required": true,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "product_code",
+      "name": "客户料号",
+      "labelRegion": "C5:D5",
+      "labelText": "产品名称\nTên sản phẩm",
+      "valueRegion": "E5:I5",
+      "configured": true,
+      "parseLine": 1,
+      "type": "uniqueKey",
+      "required": true,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "product_name",
+      "name": "产品名称",
+      "labelRegion": "C5:D5",
+      "labelText": "产品名称\nTên sản phẩm",
+      "valueRegion": "E5:I5",
+      "configured": true,
+      "parseLine": 2,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "lot",
+      "name": "检验批量",
+      "labelRegion": "A6",
+      "labelText": "检验批量\nSố lot kiểm tra",
+      "valueRegion": "B6:C6",
+      "configured": true,
+      "type": "number",
+      "required": true,
+      "unit": "PCS",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "sample",
+      "name": "抽验数量",
+      "labelRegion": "D6:E6",
+      "labelText": "抽验数量\nSố lượng bốc kiểm",
+      "valueRegion": "F6:I6",
+      "configured": true,
+      "type": "number",
+      "required": true,
+      "unit": "PCS",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "sampling",
+      "name": "抽样方式",
+      "labelRegion": "A7",
+      "labelText": "抽样方式\nPhương pháp bốc kiểm",
+      "valueRegion": "B7:O7",
+      "configured": true,
+      "parseLine": 1,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "basis",
+      "name": "检验依据",
+      "labelRegion": "A8",
+      "labelText": "检验依据\nCăn cứ kiểm tra",
+      "valueRegion": "B8:F8",
+      "configured": true,
+      "parseLine": 1,
+      "markerPosition": "after",
+      "type": "multi",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "■",
+      "separator": "\n",
+      "options": "作业指导书\n样板\n图纸",
+      "choiceMode": "markers",
+      "uncheckChars": "□",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "final",
+      "name": "最终判定",
+      "labelRegion": "G8:H8",
+      "labelText": "最终判定\nPhán định cuối cùng",
+      "valueRegion": "I8:O8",
+      "configured": true,
+      "parseLine": 1,
+      "markerPosition": "after",
+      "type": "single",
+      "required": true,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "■",
+      "separator": "\n",
+      "options": "合格\n拒收",
+      "choiceMode": "markers",
+      "uncheckChars": "□",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "accept_CR",
+      "name": "CR允收/拒收",
+      "labelRegion": "J5:L5",
+      "labelText": "允收／拒收\nChấp nhận/Từ chối",
+      "valueRegion": "M5",
+      "configured": true,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "defects_CR",
+      "name": "CR不良数",
+      "labelRegion": "J6:L6",
+      "labelText": "不良数\nSố lượng NG",
+      "valueRegion": "M6",
+      "configured": true,
+      "type": "number",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "total_CR",
+      "name": "CR明细合计",
+      "labelRegion": "A32",
+      "labelText": "备注 Chú ý",
+      "valueRegion": "K32:L32",
+      "configured": true,
+      "type": "number",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "accept_MA",
+      "name": "MA允收/拒收",
+      "labelRegion": "J5:L5",
+      "labelText": "允收／拒收\nChấp nhận/Từ chối",
+      "valueRegion": "N5",
+      "configured": true,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "defects_MA",
+      "name": "MA不良数",
+      "labelRegion": "J6:L6",
+      "labelText": "不良数\nSố lượng NG",
+      "valueRegion": "N6",
+      "configured": true,
+      "type": "number",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "total_MA",
+      "name": "MA明细合计",
+      "labelRegion": "A32",
+      "labelText": "备注 Chú ý",
+      "valueRegion": "M32",
+      "configured": true,
+      "type": "number",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "accept_MI",
+      "name": "MI允收/拒收",
+      "labelRegion": "J5:L5",
+      "labelText": "允收／拒收\nChấp nhận/Từ chối",
+      "valueRegion": "O5",
+      "configured": true,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "defects_MI",
+      "name": "MI不良数",
+      "labelRegion": "J6:L6",
+      "labelText": "不良数\nSố lượng NG",
+      "valueRegion": "O6",
+      "configured": true,
+      "type": "number",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "total_MI",
+      "name": "MI明细合计",
+      "labelRegion": "A32",
+      "labelText": "备注 Chú ý",
+      "valueRegion": "N32",
+      "configured": true,
+      "type": "number",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "items",
+      "name": "检验明细",
+      "labelRegion": "A3:O3",
+      "labelText": "出货检验报告 \nBÁO CÁO KIỂM TRA XUẤT HÀNG",
+      "valueRegion": "A11:O31",
+      "configured": true,
+      "type": "object",
+      "collection": true,
+      "required": false,
+      "propertyRegion": "A9:O10",
+      "headerMode": "multi",
+      "orientation": "horizontal",
+      "properties": [
+        {
+          "id": "item",
+          "name": "检验项目",
+          "headerCell": "A9",
+          "headerText": "检验项目\nHạng mục kiểm tra",
+          "headerPath": [
+            {
+              "region": "A9:A10",
+              "text": "检验项目\nHạng mục kiểm tra"
+            }
+          ],
+          "columnOffset": 0,
+          "parseLine": 1,
+          "type": "string",
+          "required": false,
+          "unit": "",
+          "dateFormat": "YYYY-MM-DD",
+          "checkChar": "",
+          "separator": "\n",
+          "options": ""
+        },
+        {
+          "id": "requirement",
+          "name": "检验要求",
+          "headerCell": "B9",
+          "headerText": "检 验 要 求\nYêu cầu kiểm tra",
+          "headerPath": [
+            {
+              "region": "B9:G10",
+              "text": "检 验 要 求\nYêu cầu kiểm tra"
+            }
+          ],
+          "columnOffset": 1,
+          "type": "string",
+          "required": false,
+          "unit": "",
+          "dateFormat": "YYYY-MM-DD",
+          "checkChar": "",
+          "separator": "\n",
+          "options": ""
+        },
+        {
+          "id": "result",
+          "name": "检验结果",
+          "headerCell": "H9",
+          "headerText": "检验结果(是否符合)\nKết quả kiểm tra (Có phù hợp không)",
+          "headerPath": [
+            {
+              "region": "H9:J10",
+              "text": "检验结果(是否符合)\nKết quả kiểm tra (Có phù hợp không)"
+            }
+          ],
+          "columnOffset": 7,
+          "type": "string",
+          "required": false,
+          "unit": "",
+          "dateFormat": "YYYY-MM-DD",
+          "checkChar": "",
+          "separator": "\n",
+          "options": "",
+          "itemRules": [
+            {
+              "matchPropertyId": "item",
+              "equals": "线材规格",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "插头型号",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "尾部处理",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "SR尺寸",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "SR型号",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "颜色",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "外观",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "绝缘阻抗",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "导通Dây dẫn",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "耐压",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "SR吊重",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "尾端子吊重",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "开关型号",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "开关位置",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "尾插吊重",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "端子外露长",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            },
+            {
+              "matchPropertyId": "item",
+              "equals": "包装",
+              "config": {
+                "parseLine": 1,
+                "markerPosition": "after",
+                "type": "single",
+                "required": false,
+                "unit": "",
+                "dateFormat": "YYYY-MM-DD",
+                "checkChar": "■",
+                "separator": "\n",
+                "options": "OK是\nNG否",
+                "choiceMode": "markers",
+                "uncheckChars": "□"
+              }
+            }
+          ]
+        },
+        {
+          "id": "CR",
+          "name": "CR",
+          "headerCell": "K10",
+          "headerText": "CR",
+          "headerPath": [
+            {
+              "region": "K9:N9",
+              "text": "缺点件数\nSố lượng khiếm khuyết"
+            },
+            {
+              "region": "K10:L10",
+              "text": "CR"
+            }
+          ],
+          "columnOffset": 10,
+          "specialValues": [
+            {
+              "text": "/",
+              "status": "not_applicable"
+            }
+          ],
+          "type": "number",
+          "required": false,
+          "unit": "",
+          "dateFormat": "YYYY-MM-DD",
+          "checkChar": "",
+          "separator": "\n",
+          "options": ""
+        },
+        {
+          "id": "MA",
+          "name": "MA",
+          "headerCell": "M10",
+          "headerText": "MA",
+          "headerPath": [
+            {
+              "region": "K9:N9",
+              "text": "缺点件数\nSố lượng khiếm khuyết"
+            },
+            {
+              "region": "M10",
+              "text": "MA"
+            }
+          ],
+          "columnOffset": 12,
+          "specialValues": [
+            {
+              "text": "/",
+              "status": "not_applicable"
+            }
+          ],
+          "type": "number",
+          "required": false,
+          "unit": "",
+          "dateFormat": "YYYY-MM-DD",
+          "checkChar": "",
+          "separator": "\n",
+          "options": ""
+        },
+        {
+          "id": "MI",
+          "name": "MI",
+          "headerCell": "N10",
+          "headerText": "MI",
+          "headerPath": [
+            {
+              "region": "K9:N9",
+              "text": "缺点件数\nSố lượng khiếm khuyết"
+            },
+            {
+              "region": "N10",
+              "text": "MI"
+            }
+          ],
+          "columnOffset": 13,
+          "specialValues": [
+            {
+              "text": "/",
+              "status": "not_applicable"
+            }
+          ],
+          "type": "number",
+          "required": false,
+          "unit": "",
+          "dateFormat": "YYYY-MM-DD",
+          "checkChar": "",
+          "separator": "\n",
+          "options": ""
+        },
+        {
+          "id": "judgement",
+          "name": "判定",
+          "headerCell": "O9",
+          "headerText": "判\n定\nPhán định",
+          "headerPath": [
+            {
+              "region": "O9:O10",
+              "text": "判\n定\nPhán định"
+            }
+          ],
+          "columnOffset": 14,
+          "type": "string",
+          "required": false,
+          "unit": "",
+          "dateFormat": "YYYY-MM-DD",
+          "checkChar": "",
+          "separator": "\n",
+          "options": ""
+        }
+      ]
+    },
+    {
+      "id": "notes",
+      "name": "备注及合计说明",
+      "labelRegion": "A32",
+      "labelText": "备注 Chú ý",
+      "valueRegion": "B32:J32",
+      "configured": true,
+      "parseLine": 1,
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "reviewer",
+      "name": "报告审核人",
+      "labelRegion": "A34",
+      "labelText": "HSC/FM-Q-011-A/0",
+      "valueRegion": "D34:G34",
+      "configured": true,
+      "parseLine": 1,
+      "ignoreContent": "审核：",
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    },
+    {
+      "id": "inspector",
+      "name": "报告检验人",
+      "labelRegion": "A34",
+      "labelText": "HSC/FM-Q-011-A/0",
+      "valueRegion": "K34:N34",
+      "configured": true,
+      "parseLine": 1,
+      "ignoreContent": "检验：",
+      "type": "string",
+      "required": false,
+      "unit": "",
+      "dateFormat": "YYYY-MM-DD",
+      "checkChar": "",
+      "separator": "\n",
+      "options": "",
+      "selectionMode": "manual",
+      "direction": null
+    }
+  ]
+}

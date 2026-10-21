@@ -5118,3 +5118,7 @@ html:not(.mobile-device) .modal-drawer .stock-qr-line > div:last-child { flex-sh
   html:not(.mobile-device) .drawer-backdrop,
   html:not(.mobile-device) .modal-drawer { animation: none; }
 }
+
+.product-quality-tabs { display: flex; gap: 20px; margin: 20px 0; border-bottom: 1px solid var(--border); }
+.product-quality-tabs button { padding: 10px 0; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; }
+.product-quality-tabs button[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }

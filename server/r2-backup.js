@@ -65,11 +65,11 @@ export function installR2Backup(app, db, { r2Upload = uploadR2 } = {}) {
   for (const column of db.prepare('PRAGMA table_info(r2_backup_settings)').all()) {
     if (['next_at', 'lease_until'].includes(column.name)) db.exec(`ALTER TABLE r2_backup_settings DROP COLUMN ${column.name}`);
   }
-  const defaults = { enabled: false, cron: '0 2 * * *', timezone: 'Asia/Shanghai', account_id: '', bucket: '', prefix: '77erp', access_key: '', secret_key: '' };
+  const defaults = { enabled: false, cron: '0 2 * * *', timezone: 'Asia/Shanghai', account_id: '', bucket: '', prefix: '77erp', excel_prefix: 'excel', access_key: '', secret_key: '' };
   db.prepare('INSERT OR IGNORE INTO r2_backup_settings(id,config) VALUES (1,?)').run(JSON.stringify(defaults));
   const row = () => db.prepare('SELECT * FROM r2_backup_settings WHERE id=1').get();
   const read = () => JSON.parse(row().config);
-  const clean = Object.fromEntries(Object.entries(read()).filter(([key]) => Object.hasOwn(defaults, key)));
+  const clean = { ...defaults, ...Object.fromEntries(Object.entries(read()).filter(([key]) => Object.hasOwn(defaults, key))) };
   db.prepare('UPDATE r2_backup_settings SET config=? WHERE id=1').run(JSON.stringify(clean));
   let running = null, timer, stopped = false, nextAt;
   const resetSchedule = () => { const c = read(); nextAt = c.enabled ? nextBackup(c.cron, c.timezone) : null; };
@@ -95,6 +95,12 @@ export function installR2Backup(app, db, { r2Upload = uploadR2 } = {}) {
       if (c.bucket && !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(c.bucket)) throw new Error('R2 存储桶名称无效。');
       if (!/^[a-zA-Z0-9/_-]*$/.test(c.prefix) || c.prefix.includes('//')) throw new Error('备份目录仅支持字母、数字、斜线、下划线和短横线。');
       c.prefix = c.prefix.replace(/^\/+|\/+$/g, '');
+      if (b.excel_prefix !== undefined) {
+        if (typeof b.excel_prefix !== 'string' || b.excel_prefix.length > 200) throw new Error('Excel 目录前缀无效。');
+        c.excel_prefix = b.excel_prefix.trim().replace(/^\/+|\/+$/g, '');
+      }
+      if (!c.excel_prefix || !/^[a-zA-Z0-9/_-]+$/.test(c.excel_prefix) || c.excel_prefix.includes('//')) throw new Error('Excel 目录前缀必填，仅支持字母、数字、斜线、下划线和短横线。');
+      if (c.excel_prefix === c.prefix) throw new Error('Excel 目录前缀不能与备份目录前缀相同。');
       for (const key of ['access_key', 'secret_key']) {
         const label = key === 'access_key' ? 'R2 Access Key ID' : 'R2 Secret Access Key';
         if (b[key] !== undefined && typeof b[key] !== 'string') throw new Error(`${label} 必须为文本。`);

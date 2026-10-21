@@ -8,6 +8,7 @@ import { categoryPaths, productDetails, splitLegacyCategories } from "./catalog.
 import { notificationMutation } from './notifications.js';
 import { installTransfers } from './transfers.js';
 import { validInspectionDate } from '../shared/inspection.js';
+import { qualityTables, clearQuality, validateQualityBackup } from './quality.js';
 
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -402,7 +403,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "product_changes", "templates", "payments", ...stockQrTables];
+  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "product_changes", "templates", "payments", ...stockQrTables, ...qualityTables];
   const columns = Object.fromEntries(
     tables.map((table) => [
       table,
@@ -421,7 +422,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 16,
+    version: 22,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -429,11 +430,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 17) for (const table of qualityTables) data[table] = [];
+    if (value.version < 18) data.quality_acceptances = [];
+    if (value.version < 21) data.quality_charts = [];
+    if (value.version < 22) for (const row of data.quality_acceptances || []) row.checks_acknowledged = 0;
+    if (value.version < 20) for (const row of data.quality_acceptances || []) row.bindings = '[]';
     if (value.version < 16) for (const p of data.products || []) p.customer_part_numbers ??= '[]';
     if (value.version < 15) for (const p of data.products || []) {
       p.inspection_date = ''; p.inspection_interval = 0; p.inspection_unit = 'month'; p.last_inspected_on = '';
@@ -700,6 +706,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!Array.isArray(items) || !items.length || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !validQuantity(i.quantity, true) || typeof i.price !== 'number' || !Number.isFinite(i.price) || i.price < 0 || !Number.isSafeInteger(Math.round(i.price * 100)) || Math.abs(i.price * 100 - Math.round(i.price * 100)) > 0.00001)) fail('备份模板明细无效。');
     }
     validateStockQrBackup(data);
+    validateQualityBackup(data);
     return data;
   }
   app.get(
@@ -718,6 +725,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         orders: data.orders.length,
         adjustments: data.stock_adjustments.length,
         contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
+        quality_templates: data.quality_templates.length, quality_acceptances: data.quality_acceptances.length, quality_charts: data.quality_charts.length, quality_files: data.quality_template_files.length,
       };
     }),
   );
@@ -735,6 +743,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         const data = validateBackup(req.body.backup);
         // Deferred references allow return records to refer to original orders regardless of array order.
         clearStockQr(db);
+        clearQuality(db);
         db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
         db.exec(
           "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM product_changes; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
@@ -745,6 +754,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             `INSERT INTO ${table} (${fields.join(",")}) VALUES (${fields.map(() => "?").join(",")})`,
           );
           for (const row of data[table]) {
+            if (['quality_templates','quality_charts'].includes(table)) row.version = Date.now() + Math.floor(Math.random() * 1000000);
             // Cross-server user IDs must never become local owners of restored templates.
             if (['orders','templates','product_changes'].includes(table) && row.created_by !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||

@@ -38,6 +38,7 @@ import {
   Scanner,
   Dashboard,
   Announcements,
+  Quality,
   AnnouncementDetail,
   AnnouncementEditor,
   Products,
@@ -76,6 +77,7 @@ const navItems = [
   { id: "scanner", name: "扫码工作台", icon: ScanLine },
   { id: "history", name: "操作记录", icon: History },
   { id: "announcements", name: "公告中心", icon: Megaphone },
+  ...(!mobileDevice ? [{ id: 'quality', name: '品质管理', icon: PackageCheck }] : []),
   ...(mobileDevice ? [{ id: 'more', name: '工作空间', icon: Settings }] : []),
 ];
 
@@ -85,6 +87,8 @@ function App({ admin, onLogout }) {
   const [page, setPage] = useState(
     navItems.some((n) => n.id === initial) ? initial : "overview",
   );
+  const pageRef = useRef(page);
+  pageRef.current = page;
   const [data, setData] = useState({
     products: [],
     categories: [],
@@ -130,6 +134,7 @@ function App({ admin, onLogout }) {
   }, [mobileOverlayOpen]);
   const [loggingOut, setLoggingOut] = useState(false);
   const logout = async () => {
+    if (!window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return;
     setLoggingOut(true);
     try {
       await onLogout();
@@ -175,7 +180,14 @@ function App({ admin, onLogout }) {
     reload();
     const onHash = () => {
       const id = location.hash.slice(1).split("?")[0];
-      if (navItems.some((n) => n.id === id)) setPage(id);
+      if (navItems.some((n) => n.id === id)) {
+        if (id !== pageRef.current && !window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) {
+          history.replaceState(history.state, '', location.pathname + location.search + '#' + pageRef.current);
+          return;
+        }
+        pageRef.current = id;
+        setPage(id);
+      }
     };
     window.addEventListener("hashchange", onHash);
     const key = (e) => {
@@ -197,6 +209,8 @@ function App({ admin, onLogout }) {
     return () => clearTimeout(t);
   }, [toast]);
   const navigate = (id, filter) => {
+    if (id !== pageRef.current && !window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return;
+    pageRef.current = id;
     setPage(id);
     location.hash = id;
     setNotification(false);
@@ -211,6 +225,7 @@ function App({ admin, onLogout }) {
   };
   const switchWarehouse = async (id) => {
     if (switching || modal && modal.kind !== 'warehousePicker' || id === getWarehouseId()) return;
+    if (!window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return;
     const generation = ++loadGeneration.current;
     setSwitching(true);
     try {
@@ -307,7 +322,7 @@ function App({ admin, onLogout }) {
               aria-label={name}
               title={name}
               className={`nav-item ${page === id ? "active" : ""}`}
-              onClick={() => navigate(id)}
+              onClick={event => { event.preventDefault(); navigate(id); }}
             >
               <Icon size={19} strokeWidth={1.8} />
               <span>{name}</span>
@@ -322,14 +337,14 @@ function App({ admin, onLogout }) {
         </nav>
         <div className="nav-label second-label">效率工具</div>
         <nav aria-label="效率工具">
-          {navItems.slice(5, 8).map(({ id, name, icon: Icon }) => (
+          {navItems.slice(5).filter(item => item.id !== 'quality' || can('quality')).map(({ id, name, icon: Icon }) => (
             <a
               key={id}
               href={`#${id}`}
               aria-label={name}
               title={name}
               className={`nav-item ${page === id ? "active" : ""}`}
-              onClick={() => navigate(id)}
+              onClick={event => { event.preventDefault(); navigate(id); }}
             >
               <Icon size={19} strokeWidth={1.8} />
               <span>{name}</span>
@@ -499,6 +514,8 @@ function App({ admin, onLogout }) {
                 />
               )}
               {page === 'announcements' && <Announcements data={data} openModal={setModal} />}
+              {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
+              {page === 'quality' && !can('quality') && <div className="info-box">没有品质管理权限，请联系管理员。</div>}
               {page === "products" && (
                 <Products
                   data={data}

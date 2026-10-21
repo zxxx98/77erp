@@ -592,3 +592,23 @@ test('conversation history only lists the current user and current permission co
   assert.deepEqual((await f.request(f.staff, '/ai/conversations')).data, []);
   assert.equal((await f.request(f.staff, `/ai/conversations/${own.data.conversation_id}`)).status, 403);
 });
+
+test('quality permission does not grant AI business writes or template tools', async t => {
+  const f = await fixture(t);
+  await f.permissions(['ai', 'quality']);
+  const response = await f.chat(f.staff);
+  assert.equal(response.status, 200);
+  const call = f.calls.at(-1).body;
+  assert.match(call.messages[0].content, /验收单模板需在桌面品质管理页面配置/);
+  assert.match(call.messages[0].content, /字符串和数字字段可配置正则表达式及替换内容/);
+  assert.match(call.messages[0].content, /在浏览器本地解析预览，确认保存时才上传原文件并由服务端重新校验/);
+  assert.match(call.messages[0].content, /品质图表在桌面品质管理页面配置/);
+  assert.match(call.messages[0].content, /合格率直接读取模板数字字段，不自动计算/);
+  assert.match(call.messages[0].content, /模板仅配置一个工作表的规则，导入验收数据时可选择多个工作表复用同一套规则解析/);
+  assert.match(call.messages[0].content, /整个模板含对象属性最多配置一个/);
+  assert.match(call.messages[0].content, /每个验收数据工作表可独立选择是否绑定物料/);
+  assert.ok(!call.tools.some(tool => /quality|publish|preview_orders|preview_import/.test(tool.function.name)));
+  assert.match(call.messages[0].content, /不适用须由配置明确指定/);
+  assert.match(call.messages[0].content, /核对结果与原报告判定独立/);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_templates').get().n, 0);
+});

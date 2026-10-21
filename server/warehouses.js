@@ -108,6 +108,10 @@ export function installWarehouses(app, db) {
       if (!db.prepare('SELECT 1 FROM warehouses WHERE id=?').get(id)) throw new Error('仓库不存在。');
       if (db.prepare('SELECT 1 FROM products WHERE warehouse_id=? AND stock!=0 LIMIT 1').get(id))
         throw new Error('仓库仍有库存，不能删除，请先清空所有物料库存。');
+      if (db.prepare('SELECT 1 FROM quality_acceptances WHERE warehouse_id=? LIMIT 1').get(id))
+        throw new Error('仓库仍有验收单，不能删除。');
+      if (db.prepare('SELECT 1 FROM quality_templates WHERE warehouse_id=? LIMIT 1').get(id))
+        throw new Error('仓库仍有品质模板及历史版本，不能删除。');
       for (const table of ['stock_qr_previews', 'stock_qr_usages', 'stock_qr_revisions', 'stock_qr_items'])
         db.prepare(`DELETE FROM ${table} WHERE stock_qr_id IN (SELECT id FROM stock_qr_codes WHERE warehouse_id=?)`).run(id);
       db.prepare('DELETE FROM stock_qr_codes WHERE warehouse_id=?').run(id);

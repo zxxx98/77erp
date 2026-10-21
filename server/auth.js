@@ -101,9 +101,11 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (!sameOrigin(req)) {
         return res.status(403).json({ error: "请从当前站点提交请求。" });
       }
-      const upload = req.method === 'POST' && req.path.toLowerCase().replace(/\/+$/, '') === '/uploads/product-image';
+      const writePath = req.path.toLowerCase().replace(/\/+$/, '');
+      const upload = req.method === 'POST' && (writePath === '/uploads/product-image' ||
+        ['/quality/workbook-preview', '/quality/templates', '/quality/acceptances/preview', '/quality/acceptances'].includes(writePath) || /^\/quality\/templates\/\d+\/file$/.test(writePath));
       if (upload ? !req.is('multipart/form-data') : !req.is("application/json")) {
-        return res.status(415).json({ error: upload ? '图片上传必须使用 multipart/form-data 格式。' : '请求必须使用 JSON 格式。' });
+        return res.status(415).json({ error: upload ? '文件上传必须使用 multipart/form-data 格式。' : '请求必须使用 JSON 格式。' });
       }
     }
     next();
@@ -232,6 +234,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
+    if (/^\/quality(?:\/|$)/.test(path) && hasPermission(req.user, 'quality')) return next();
     if (read && path === '/updates') return next();
     if ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
         (post && /^\/announcements\/\d+\/read$/.test(path))) return next();

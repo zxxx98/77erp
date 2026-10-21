@@ -1,8 +1,14 @@
 import { aiFetch } from './ai-provider.js';
 import { createApp } from "../../server/app.js";
 import { randomUUID } from 'node:crypto';
+const qualityObjects = new Map();
 // An isolated database keeps browser mutations out of the user's working data.
-const { app, db, notifications } = createApp(":memory:", { aiFetch, aiEncryptionKey: 'ab'.repeat(32), webhookSend: async config => {
+const { app, db, notifications } = createApp(":memory:", { aiFetch, aiEncryptionKey: 'ab'.repeat(32), qualityStorage: {
+  async put(c,key,body) { qualityObjects.set(`${c.bucket}:${key}`, Buffer.from(body)); },
+  async get(c,key) { const body=qualityObjects.get(`${c.bucket}:${key}`); if(!body)throw new Error('Missing fixture Excel');return body; },
+  async head(c,key) { if(!qualityObjects.has(`${c.bucket}:${key}`))throw new Error('Missing fixture Excel'); },
+  async remove(c,key) { qualityObjects.delete(`${c.bucket}:${key}`); },
+}, webhookSend: async config => {
   if (new URL(config.url).hostname !== 'hooks.77erp.test') throw new Error('Unexpected webhook destination');
 }, imagebedFetch: async (url, options) => {
   if (url.origin !== 'https://img.77erp.test' || url.pathname !== '/upload' || url.searchParams.get('uploadChannel') !== 'cfr2' || options.body.get('file')?.type !== 'image/webp')
