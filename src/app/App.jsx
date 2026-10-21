@@ -77,7 +77,7 @@ const navItems = [
   { id: "scanner", name: "扫码工作台", icon: ScanLine },
   { id: "history", name: "操作记录", icon: History },
   { id: "announcements", name: "公告中心", icon: Megaphone },
-  ...(!mobileDevice ? [{ id: 'quality', name: '品质管理', icon: PackageCheck }] : []),
+  { id: 'quality', name: '品质管理', icon: PackageCheck },
   ...(mobileDevice ? [{ id: 'more', name: '工作空间', icon: Settings }] : []),
 ];
 
@@ -280,6 +280,7 @@ function App({ admin, onLogout }) {
         updateNotice={updateNotice}
         announcementCount={announcementCount}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
+        renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">没有品质管理权限，请联系管理员。</div>}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>

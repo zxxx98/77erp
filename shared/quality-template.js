@@ -257,7 +257,7 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
   const checks=validateChecks(input.checks,fields);
   return { schemaVersion: 1, sheetName: sheet.name, fields, ...(checks.length?{checks}:{}) };
 }
-function convert(raw, config, cell) {
+export function convertQualityValue(raw, config, cell) {
   if (!raw) return config.type === 'multi' ? [] : ['string', 'uniqueKey'].includes(config.type) ? '' : null;
   if (cell?.error) fail(cell.error);
   if (['string', 'uniqueKey'].includes(config.type)) return raw;
@@ -367,7 +367,7 @@ export function previewDefinition(definition, workbook) {
         if(special.status==='missing'&&config.required)fail('必填值为空。');
         return {raw,value:null,status:special.status};
       }
-      value = convert(processed, config, processed === raw ? cell : undefined);
+      value = convertQualityValue(processed, config, processed === raw ? cell : undefined);
       if (config.required && (value === null || value === '' || Array.isArray(value) && !value.length)) fail('必填值为空。');
     } catch (e) { issues.push({ fieldId, propertyId: config.id, row, ...(column === undefined ? {} : { column }), region, message: e.message }); }
     return { raw, value };

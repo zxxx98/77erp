@@ -7,13 +7,17 @@ export const qualityUid = () => crypto.randomUUID?.() || Array.from(crypto.getRa
 export function QualityNavigation({area,onChange,disabled}) {
   return <nav className="quality-section-tabs" aria-label="品质管理功能"><Button disabled={disabled} kind={area==='acceptances'?'primary':'secondary'} onClick={()=>onChange('acceptances')}>验收单</Button><Button disabled={disabled} kind={area==='templates'?'primary':'secondary'} onClick={()=>onChange('templates')}>模板配置</Button><Button disabled={disabled} kind={area==='charts'?'primary':'secondary'} onClick={()=>onChange('charts')}>图表</Button></nav>;
 }
-export async function downloadExcel(path) {
+export async function fetchQualityExcel(path) {
   const response = await fetch('/api/quality'+path,{credentials:'same-origin',headers:{'X-Warehouse-ID':String(getWarehouseId())}});
   if(!response.ok) {const data=await response.json();throw new Error(data.error||'下载失败。');}
   const disposition=response.headers.get('content-disposition')||'';
   const encoded=/filename\*=UTF-8''([^;]+)/i.exec(disposition), plain=/filename="([^"]+)"/i.exec(disposition);
   const filename=encoded?decodeURIComponent(encoded[1]):plain?.[1]||'验收单模板.xlsx';
-  const url=URL.createObjectURL(await response.blob()), link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  return new File([await response.blob()],filename,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+export async function downloadExcel(path) {
+  const file=await fetchQualityExcel(path);
+  const url=URL.createObjectURL(file), link=document.createElement('a');link.href=url;link.download=file.name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function ChoiceSplitPreview({field,raw,compact=false}) {
   if(!['single','multi'].includes(field?.type))return null;

@@ -17,9 +17,9 @@ import '../quality.css';
 const uid = () => crypto.randomUUID?.() || Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16)).join('-');
 const directions = [['up','上'],['down','下'],['left','左'],['right','右']];
 const editable = t => ({name:t.name,note:t.note||'',definition:t.definition});
-export function Quality({data,onConfigure}) {
+export function Quality({data,onConfigure,initialArea='templates'}) {
   const {user}=usePermissions();
-  const [area,setArea]=useState('templates');
+  const [area,setArea]=useState(initialArea);
   const [list,setList]=useState([]),[total,setTotal]=useState(0),[offset,setOffset]=useState(0),[q,setQ]=useState(''),[status,setStatus]=useState('all');
   const [storage,setStorage]=useState(null),[form,setForm]=useState(null),[workbook,setWorkbook]=useState(null),[sourceFile,setSourceFile]=useState(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
