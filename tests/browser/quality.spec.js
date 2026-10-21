@@ -16,7 +16,7 @@ test('suffix marker position survives editing, saving and reloading single and m
     await page.getByRole('menuitem',{name:/添加为 Key（右）/}).click();
     const editor=page.getByRole('complementary',{name:'字段独立编辑'});
     await editor.getByRole('combobox').first().click();await page.getByRole('option',{name:type,exact:true}).click();
-    await editor.getByRole('textbox',{name:'忽略内容',exact:true}).fill('按MIL-STD-105E Ⅱ 单次抽样');
+    await showTextRules(editor);await editor.getByRole('textbox',{name:'忽略内容',exact:true}).fill('按MIL-STD-105E Ⅱ 单次抽样');
     await editor.getByRole('textbox',{name:'勾选字符',exact:true}).fill('■');
     await editor.getByRole('textbox',{name:'未选中标记',exact:true}).fill('□');
     await editor.getByRole('textbox',{name:'允许选项（每行一个）',exact:true}).fill('正常检验\n加严检验\n减量检验');
@@ -35,9 +35,9 @@ test('suffix marker position survives editing, saving and reloading single and m
     await page.getByRole('row').filter({hasText:name}).getByRole('button',{name:'编辑',exact:true}).click();
     await page.locator('.quality-field').click();
     await expect(editor.getByRole('combobox',{name:'标记位置',exact:true})).toHaveValue('文字后（合格■ 拒收□）');
-    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
+    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
     await expect(editor.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(3);
-    await expect(editor.locator('.quality-value-preview pre').last()).toHaveText(type==='单选'?'"正常检验"':'["正常检验"]');
+    await expect(editor.locator('.quality-preview-result pre')).toHaveText(type==='单选'?'"正常检验"':'["正常检验"]');
   }
 });
 
@@ -51,6 +51,20 @@ test.beforeEach(async({page})=>{
   const c=await(await page.request.get('/api/settings/r2-backup')).json();
   expect((await page.request.put('/api/settings/r2-backup',{data:{...c,account_id:'a'.repeat(32),bucket:'erp-backups',access_key:'test-access',secret_key:'test-secret',excel_prefix:'excel',enabled:false}})).ok()).toBe(true);
 });
+async function showTextRules(panel){
+  const details=panel.locator('.quality-text-rules').first();
+  if(!await details.evaluate(el=>el.open))await details.locator(':scope > summary').click();
+}
+async function showPreviewDetails(panel){
+  const details=panel.locator('.quality-preview-details');
+  if(await details.count()&&!await details.evaluate(el=>el.open))await details.locator(':scope > summary').click();
+}
+async function editProperty(editor,index){
+  const back=editor.getByRole('button',{name:'返回属性列表',exact:true});
+  if(await back.isVisible())await back.click();
+  await editor.locator('.quality-property-item').nth(index).click();
+  return editor.locator('.quality-property-settings');
+}
 async function selectRange(page,start,end){
   const a=page.locator(`[data-address="${start}"]`),b=page.locator(`[data-address="${end}"]`);
   await a.scrollIntoViewIfNeeded();await b.scrollIntoViewIfNeeded();
@@ -112,7 +126,7 @@ test('custom Key can be added without selecting a label, previewed, saved and ed
   await selectRange(page,'A1','A1');
   await expect(editor.getByLabel('取值区域',{exact:true})).toHaveValue('A1');
   await editor.getByRole('tab',{name:'解析预览'}).click();
-  await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('"某某公司"');
+  await expect(editor.locator('.quality-preview-result pre')).toHaveText('"某某公司"');
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();
   await expect(page.locator('.quality-cell-marker')).toHaveCount(0);
   await page.getByRole('button',{name:'保存草稿',exact:true}).click();
@@ -154,8 +168,8 @@ test('inline radio and checkbox labels match decorated allowed options in editor
     await editor.getByRole('textbox',{name:/^勾选字符/}).fill(checkChar);
     await editor.getByRole('textbox',{name:'未选中标记',exact:true}).fill(type==='单选'?'○':'☐');
     await editor.getByRole('textbox',{name:/^允许选项/}).fill(options);
-    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
-    await expect(editor.locator('.quality-value-preview pre').last()).toHaveText(JSON.stringify(expected));
+    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
+    await expect(editor.locator('.quality-preview-result pre')).toHaveText(JSON.stringify(expected));
     const split=editor.getByRole('region',{name:'选项拆分结果'});await expect(split.locator('.quality-choice-part')).toHaveCount(3);
     await expect(split.getByText('已选中',{exact:true})).toHaveCount(type==='单选'?1:2);await expect(split.getByText('未选中',{exact:true})).toHaveCount(type==='单选'?2:1);
     await expect(editor.locator('.form-error')).toHaveCount(0);
@@ -181,18 +195,18 @@ test('custom choice markers and strict separator mode persist whitespace and nev
   await editor.getByRole('textbox',{name:'勾选字符',exact:true}).fill('★');
   await editor.getByRole('textbox',{name:'未选中标记',exact:true}).fill('☆');
   await editor.getByRole('textbox',{name:'允许选项（每行一个）',exact:true}).fill('★ CNY\n☆ USD\n☆ EUR');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
-  await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('"CNY"');
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
+  await expect(editor.locator('.quality-preview-result pre')).toHaveText('"CNY"');
   await editor.getByRole('tab',{name:'字段设置',exact:true}).click();
   await editor.getByRole('combobox',{name:'选项拆分方式',exact:true}).click();await page.getByRole('option',{name:'按指定分隔符拆分',exact:true}).click();
   await editor.getByRole('textbox',{name:'选项分隔符',exact:true}).fill('乱填');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
   await expect(editor.getByText(/分隔符与原文不匹配/)).toBeVisible();
-  await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('null');
+  await expect(editor.locator('.quality-preview-result pre')).toHaveText('null');
   await editor.getByRole('tab',{name:'字段设置',exact:true}).click();
   await editor.getByRole('textbox',{name:'选项分隔符',exact:true}).fill(' ');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
-  await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('"CNY"');
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
+  await expect(editor.locator('.quality-preview-result pre')).toHaveText('"CNY"');
   await expect(editor.locator('.form-error')).toHaveCount(0);
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();
   await page.getByRole('button',{name:'保存草稿',exact:true}).click();
@@ -281,7 +295,7 @@ test('field items open a dedicated editor with separate preview, picking and dis
   await expect(editor).toBeVisible();await expect(page.locator('.quality-field-list')).toHaveCount(0);
   await expect(editor.getByRole('tab',{name:'字段设置',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(editor.getByRole('textbox',{name:'字段名称',exact:true})).toHaveValue('公司名称');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
   await expect(editor.getByText('星辰科技有限公司',{exact:true})).toBeVisible();
   await expect(editor.getByRole('textbox',{name:'字段名称',exact:true})).toHaveCount(0);
   await editor.getByRole('tab',{name:'字段设置',exact:true}).click();
@@ -295,7 +309,7 @@ test('field items open a dedicated editor with separate preview, picking and dis
   await editor.getByRole('textbox',{name:'字段名称',exact:true}).fill('供应商联系人');
   await editor.getByRole('button',{name:'框选',exact:true}).click();await selectRange(page,'B12','B12');
   await expect(editor.getByRole('textbox',{name:'取值区域',exact:true})).toHaveValue('B12');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
   await expect(editor.getByText('李婷',{exact:true})).toBeVisible();
   await editor.getByRole('tab',{name:'字段设置',exact:true}).click();
   await page.locator('.quality-editor').screenshot({path:'output/ui-preview/quality-field-detail.png'});
@@ -318,7 +332,7 @@ test('object reselect returns to its field editor and cancel keeps the pending d
   await selectRange(page,'A17','F17');await page.getByRole('dialog').getByRole('button',{name:'确认并选择值区域'}).click();
   await selectRange(page,'A18','F19');await page.getByRole('dialog').getByRole('button',{name:'完成对象配置'}).click();
   await expect(editor).toBeVisible();await expect(page.locator('.quality-field-list')).toHaveCount(0);
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
   await expect(editor.getByRole('cell',{name:'机架式服务器',exact:true})).toBeVisible();
   await expect(editor.getByRole('cell',{name:'网络交换机',exact:true})).toHaveCount(0);
   await page.locator('.quality-editor').screenshot({path:'output/ui-preview/quality-object-field-detail.png'});
@@ -388,13 +402,12 @@ test('unique KEY has one shared slot, releases it on type change and persists on
   await selectRange(page,'A18','F20');
   await page.getByRole('dialog').getByRole('button',{name:'完成对象配置'}).click();
   await page.locator('.quality-field').filter({hasText:'采购明细'}).click();
-  const properties=editor.locator('.quality-property-form');
-  await properties.nth(0).locator('summary').click();
-  await properties.nth(0).getByRole('combobox').first().click();
+  let property=await editProperty(editor,0);
+  await property.getByRole('combobox').first().click();
   await expect(page.getByRole('option',{name:'唯一 KEY',exact:true})).toBeEnabled();
   await page.getByRole('option',{name:'唯一 KEY',exact:true}).click();
-  await properties.nth(1).locator('summary').click();
-  await properties.nth(1).getByRole('combobox').first().click();
+  property=await editProperty(editor,1);
+  await property.getByRole('combobox').first().click();
   await expect(page.getByRole('option',{name:'唯一 KEY',exact:true})).toBeDisabled();
   await page.keyboard.press('Escape');
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();
@@ -408,7 +421,7 @@ test('unique KEY has one shared slot, releases it on type change and persists on
   await page.reload();
   await page.getByRole('row').filter({hasText:'唯一 KEY 测试'}).getByRole('button',{name:'编辑',exact:true}).click();
   await page.locator('.quality-field').filter({hasText:'采购明细'}).click();
-  await expect(editor.locator('.quality-property-form').first().locator('summary')).toContainText('唯一 KEY');
+  await expect(editor.locator('.quality-property-item').first()).toContainText('唯一 KEY');
 });
 test('mobile has no quality navigation or editor entry',async({browser})=>{
   const context=await browser.newContext({...devices['iPhone 13'],baseURL:'http://127.0.0.1:3199'});
@@ -512,8 +525,8 @@ for(const vertical of [false,true])test(`${vertical?'vertical':'horizontal'} mul
   await dialog.getByRole('button',{name:'完成对象配置',exact:true}).click();await page.locator('.quality-field').click();
   const editor=page.getByRole('complementary',{name:'字段独立编辑'});
   for(const index of [3,4,5]){
-    const property=editor.locator('.quality-property-form').nth(index);await property.locator('summary').click();
-    await property.getByRole('combobox').first().click();await page.getByRole('option',{name:'数字',exact:true}).click();await property.locator('summary').click();
+    const property=await editProperty(editor,index);
+    await property.getByRole('combobox').first().click();await page.getByRole('option',{name:'数字',exact:true}).click();await editor.getByRole('button',{name:'返回属性列表',exact:true}).click();
   }
   await editor.getByRole('button',{name:'重新选择属性和值区域',exact:true}).click();await headers();
   dialog=page.getByRole('dialog',{name:'确认对象属性'});await expect(dialog.getByRole('textbox',{name:`属性 ${leaf}`,exact:true})).toHaveValue('缺点件数 / MA');await expect(dialog.getByText('数字',{exact:true})).toHaveCount(3);
@@ -529,7 +542,7 @@ for(const vertical of [false,true])test(`${vertical?'vertical':'horizontal'} mul
   expect(preview.value.检验明细[0]).toMatchObject({'缺点件数 / CR':null,'缺点件数 / MA':0,'缺点件数 / MI':null});expect(preview.value.检验明细[1]['缺点件数 / MA']).toBe(2);
   const download=await page.request.get(`/api/quality/templates/${detail.id}/download`);expect(await download.body()).toEqual(await readFile('tests/fixtures/quality-template-multiheaders.xlsx'));
   await page.reload();await page.getByRole('row').filter({hasText:templateName}).getByRole('button',{name:'编辑',exact:true}).click();await page.locator('.quality-field').click();
-  await expect(editor.locator('.quality-field-regions')).toContainText('多级表头');await expect(editor.locator('.quality-property-form').nth(4).locator('summary')).toHaveText('缺点件数 / MA · 数字');expect(errors).toEqual([]);
+  await expect(editor.locator('.quality-field-regions')).toContainText('多级表头');await expect(editor.locator('.quality-property-item').nth(4)).toContainText('缺点件数 / MA');await expect(editor.locator('.quality-property-item').nth(4)).toContainText('数字');expect(errors).toEqual([]);
 });
 
 test('report layout guides the exact value columns and identifies the merged footer before a corrected selection succeeds',async({page})=>{
@@ -568,16 +581,16 @@ test('choice preview shows actual split parts and clearing unchecked markers sta
   await editor.getByRole('combobox').first().click();await page.getByRole('option',{name:'单选',exact:true}).click();
   await expect(editor.getByRole('textbox',{name:'未选中标记',exact:true})).toHaveValue('');
   await editor.getByRole('textbox',{name:'勾选字符',exact:true}).fill('★');await editor.getByRole('textbox',{name:'允许选项（每行一个）',exact:true}).fill('CNY\nUSD\nEUR');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
   const split=editor.getByRole('region',{name:'选项拆分结果'});
   await expect(split.locator('.quality-choice-part')).toHaveCount(1);await expect(split.locator('dd').nth(1)).toHaveText('CNY ☆USD ☆EUR');await expect(split.getByText('未匹配允许选项',{exact:true})).toHaveCount(1);
-  await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('null');
-  await editor.getByRole('tab',{name:'字段设置',exact:true}).click();await editor.getByRole('textbox',{name:'未选中标记',exact:true}).fill('☆');await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
-  await expect(split.locator('.quality-choice-part')).toHaveCount(3);await expect(split.getByText('已选中',{exact:true})).toHaveCount(1);await expect(split.getByText('未选中',{exact:true})).toHaveCount(2);await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('"CNY"');
+  await expect(editor.locator('.quality-preview-result pre')).toHaveText('null');
+  await editor.getByRole('tab',{name:'字段设置',exact:true}).click();await editor.getByRole('textbox',{name:'未选中标记',exact:true}).fill('☆');await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
+  await expect(split.locator('.quality-choice-part')).toHaveCount(3);await expect(split.getByText('已选中',{exact:true})).toHaveCount(1);await expect(split.getByText('未选中',{exact:true})).toHaveCount(2);await expect(editor.locator('.quality-preview-result pre')).toHaveText('"CNY"');
   await page.locator('.quality-editor').screenshot({path:'output/ui-preview/quality-choice-split.png'});
   await editor.getByRole('tab',{name:'字段设置',exact:true}).click();await editor.getByRole('textbox',{name:'未选中标记',exact:true}).fill('');
   await editor.getByRole('combobox',{name:'选项拆分方式',exact:true}).click();await page.getByRole('option',{name:'按指定分隔符拆分',exact:true}).click();await editor.getByRole('textbox',{name:'选项分隔符',exact:true}).fill(' ');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(split.locator('.quality-choice-part')).toHaveCount(3);await expect(split.getByText('未识别标记',{exact:true})).toHaveCount(2);await expect(split.getByText('未选中',{exact:true})).toHaveCount(0);await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('"CNY"');
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);await expect(split.locator('.quality-choice-part')).toHaveCount(3);await expect(split.getByText('未识别标记',{exact:true})).toHaveCount(2);await expect(split.getByText('未选中',{exact:true})).toHaveCount(0);await expect(editor.locator('.quality-preview-result pre')).toHaveText('"CNY"');
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();await page.getByRole('button',{name:'启用模板',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'模板已启用'})).toBeVisible();
   const listed=await(await page.request.get('/api/quality/templates?q=空未选标记与拆分预览')).json();const detail=await(await page.request.get(`/api/quality/templates/${listed.templates[0].id}`)).json();expect(detail.definition.fields[0].uncheckChars).toBe('');
   const preview=await(await page.request.post(`/api/quality/templates/${detail.id}/preview`,{data:{}})).json();expect(preview.value.币种).toBe('CNY');expect(preview.issues).toEqual([]);
@@ -590,9 +603,9 @@ test('object single and multiple choice properties expose split results for each
   await page.locator('[data-address=A1]').click({button:'right'});await page.getByRole('menuitem',{name:'添加为对象 Key',exact:true}).click();await selectRange(page,'A3','B3');await page.getByRole('dialog').getByRole('button',{name:'确认并选择值区域',exact:true}).click();await selectRange(page,'A4','B5');await page.getByRole('dialog').getByRole('button',{name:'完成对象配置',exact:true}).click();await page.locator('.quality-field').click();
   const editor=page.getByRole('complementary',{name:'字段独立编辑'});
   for(const [i,type,checked,unchecked,options] of [[0,'单选','★','☆','合格\n不合格'],[1,'多选','☑','☐','到场安装\n三年质保\n上门培训']]){
-    const property=editor.locator('.quality-property-form').nth(i);await property.locator('summary').click();await property.getByRole('combobox').first().click();await page.getByRole('option',{name:type,exact:true}).click();await expect(property.getByRole('textbox',{name:'未选中标记',exact:true})).toHaveValue('');await property.getByRole('textbox',{name:'勾选字符',exact:true}).fill(checked);await property.getByRole('textbox',{name:'未选中标记',exact:true}).fill(unchecked);await property.getByRole('textbox',{name:'允许选项（每行一个）',exact:true}).fill(options);await property.locator('summary').click();
+    const property=await editProperty(editor,i);await property.getByRole('combobox').first().click();await page.getByRole('option',{name:type,exact:true}).click();await expect(property.getByRole('textbox',{name:'未选中标记',exact:true})).toHaveValue('');await property.getByRole('textbox',{name:'勾选字符',exact:true}).fill(checked);await property.getByRole('textbox',{name:'未选中标记',exact:true}).fill(unchecked);await property.getByRole('textbox',{name:'允许选项（每行一个）',exact:true}).fill(options);await editor.getByRole('button',{name:'返回属性列表',exact:true}).click();
   }
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
   const first=editor.locator('tbody tr').first();
   const radio=first.locator('td').nth(0);await radio.locator('.quality-choice-details summary').click();await expect(radio.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(2);await expect(radio.getByText('已选中',{exact:true})).toHaveCount(1);
   const multi=first.locator('td').nth(1);await multi.locator('.quality-choice-details summary').click();await expect(multi.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(3);await expect(multi.getByText('已选中',{exact:true})).toHaveCount(2);await expect(multi.getByText('未选中',{exact:true})).toHaveCount(1);
@@ -604,18 +617,18 @@ test('cell text lines and ignored content update choice splits and persist after
   await page.getByLabel('模板名称',{exact:true}).fill('双语文字过滤');
   await page.locator('[data-address=A1]').click({button:'right'});await page.getByRole('menuitem',{name:/添加为 Key（右）/}).click();
   const editor=page.getByRole('complementary',{name:'字段独立编辑'});
-  await expect(editor.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('所有行');
+  await showTextRules(editor);await expect(editor.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('所有行');
   await editor.getByRole('combobox',{name:'解析行',exact:true}).click();
   await expect(page.getByRole('option',{name:'第 2 行',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'第 3 行',exact:true})).toHaveCount(0);
-  await page.getByRole('option',{name:'第 1 行',exact:true}).click();await editor.getByRole('textbox',{name:'忽略内容',exact:true}).fill('结果：');
+  await page.getByRole('option',{name:'第 1 行',exact:true}).click();await showTextRules(editor);await editor.getByRole('textbox',{name:'忽略内容',exact:true}).fill('结果：');
   await editor.getByRole('combobox').first().click();await page.getByRole('option',{name:'单选',exact:true}).click();
   await editor.getByRole('textbox',{name:'勾选字符',exact:true}).fill('★');await editor.getByRole('textbox',{name:'未选中标记',exact:true}).fill('☆');await editor.getByRole('textbox',{name:'允许选项（每行一个）',exact:true}).fill('合格\n不合格');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();
-  await expect(editor.locator('.quality-processed-text pre')).toHaveText('★合格 ☆不合格');await expect(editor.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(2);await expect(editor.locator('.quality-value-preview pre').last()).toHaveText('"合格"');
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
+  await expect(editor.locator('.quality-processed-text pre')).toHaveText('★合格 ☆不合格');await expect(editor.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(2);await expect(editor.locator('.quality-preview-result pre')).toHaveText('"合格"');
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();await page.getByRole('button',{name:'保存草稿',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'草稿已保存'})).toBeVisible();
   await page.reload();await page.getByRole('row').filter({hasText:'双语文字过滤'}).getByRole('button',{name:'编辑',exact:true}).click();await page.locator('.quality-field').click();
-  await expect(editor.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('第 1 行');await expect(editor.getByRole('textbox',{name:'忽略内容',exact:true})).toHaveValue('结果：');
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await page.locator('.quality-editor').screenshot({path:'output/ui-preview/quality-text-processing.png'});
+  await showTextRules(editor);await expect(editor.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('第 1 行');await expect(editor.getByRole('textbox',{name:'忽略内容',exact:true})).toHaveValue('结果：');
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);await page.locator('.quality-editor').screenshot({path:'output/ui-preview/quality-text-processing.png'});
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();
 });
 
@@ -624,11 +637,11 @@ test('object property text line settings process bilingual cells and retain nume
   await page.locator('[data-address=A1]').click({button:'right'});await page.getByRole('menuitem',{name:'添加为对象 Key',exact:true}).click();await selectRange(page,'A3','B3');await page.getByRole('dialog').getByRole('button',{name:'确认并选择值区域',exact:true}).click();await selectRange(page,'A4','B5');await page.getByRole('dialog').getByRole('button',{name:'完成对象配置',exact:true}).click();await page.locator('.quality-field').click();
   const editor=page.getByRole('complementary',{name:'字段独立编辑'});
   for(const [i,ignoreContent] of [[0,'名称：'],[1,'数量：\n台']]){
-    const property=editor.locator('.quality-property-form').nth(i);await property.locator('summary').click();
-    await expect(property.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('所有行');await property.getByRole('combobox',{name:'解析行',exact:true}).click();await page.getByRole('option',{name:'第 1 行',exact:true}).click();await property.getByRole('textbox',{name:'忽略内容',exact:true}).fill(ignoreContent);
-    if(i===1){await property.getByRole('combobox').first().click();await page.getByRole('option',{name:'数字',exact:true}).click();}await property.locator('summary').click();
+    const property=await editProperty(editor,i);
+    await showTextRules(property);await expect(property.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('所有行');await property.getByRole('combobox',{name:'解析行',exact:true}).click();await page.getByRole('option',{name:'第 1 行',exact:true}).click();await property.getByRole('textbox',{name:'忽略内容',exact:true}).fill(ignoreContent);
+    if(i===1){await property.getByRole('combobox').first().click();await page.getByRole('option',{name:'数字',exact:true}).click();}await editor.getByRole('button',{name:'返回属性列表',exact:true}).click();
   }
-  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(editor.locator('.form-error')).toHaveCount(0);
+  await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);await expect(editor.locator('.form-error')).toHaveCount(0);
   const first=editor.locator('tbody tr').first();await expect(first.locator('td').first()).toContainText('机架');await first.locator('td').nth(1).getByText('查看内容处理',{exact:true}).click();await expect(first.locator('td').nth(1).locator('.quality-processed-text pre').last()).toHaveText('12');
   await expect(editor.locator('tbody tr').nth(1).locator('td').nth(1)).toContainText('0');await editor.getByRole('button',{name:'完成配置',exact:true}).click();
 });
@@ -643,17 +656,17 @@ test('string and number regex replacement previews, persists and matches saved a
   for(const [address,type,pattern,replacement,expected] of [['A1','字符串','^编号：([A-Z]+)-(\\d+)$','$1/$2','"AB/001"'],['A2','数字','^数量：([0-9.]+) kg$','$1','12.5']]){
     await page.locator(`[data-address=${address}]`).click({button:'right'});await page.getByRole('menuitem',{name:/添加为 Key（右）/}).click();
     await editor.getByRole('combobox').first().click();await page.getByRole('option',{name:type,exact:true}).click();
-    await editor.getByRole('textbox',{name:'正则表达式',exact:true}).fill('[');
+    await showTextRules(editor);await editor.getByRole('textbox',{name:'正则表达式',exact:true}).fill('[');
     await editor.getByRole('button',{name:'完成配置',exact:true}).click();await expect(editor.getByRole('alert')).toContainText('正则表达式无效');
     await editor.getByRole('textbox',{name:'正则表达式',exact:true}).fill(pattern);
     await editor.getByRole('textbox',{name:'正则替换内容',exact:true}).fill(replacement);
-    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(editor.locator('.quality-value-preview > pre').last()).toHaveText(expected);
+    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);await expect(editor.locator('.quality-preview-result pre')).toHaveText(expected);
     await editor.getByRole('button',{name:'完成配置',exact:true}).click();
   }
   await page.getByRole('button',{name:'启用模板',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'模板已启用'})).toBeVisible();
   await page.reload();await page.getByRole('row').filter({hasText:'正则替换端到端'}).getByRole('button',{name:'编辑',exact:true}).click();
   await page.locator('.quality-field').filter({hasText:'数字'}).click();
-  await expect(editor.getByRole('textbox',{name:'正则表达式',exact:true})).toHaveValue('^数量：([0-9.]+) kg$');await expect(editor.getByRole('textbox',{name:'正则替换内容',exact:true})).toHaveValue('$1');
+  await showTextRules(editor);await expect(editor.getByRole('textbox',{name:'正则表达式',exact:true})).toHaveValue('^数量：([0-9.]+) kg$');await expect(editor.getByRole('textbox',{name:'正则替换内容',exact:true})).toHaveValue('$1');
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();await page.getByRole('button',{name:'返回模板列表',exact:true}).click();
   await page.getByRole('button',{name:'验收单',exact:true}).click();await page.getByRole('button',{name:'导入验收单',exact:true}).click();
   await page.getByRole('combobox',{name:'验收模板',exact:true}).click();await page.getByRole('option',{name:'正则替换端到端 · v1',exact:true}).click();

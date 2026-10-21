@@ -33,9 +33,14 @@ function ChoiceSplitPreview({field,raw,compact=false}) {
   return compact?<details className="quality-choice-details"><summary>查看拆分结果（{parsed.parts.length} 项）</summary>{content}</details>:content;
 }
 const statusLabel=result=>result.status==='not_applicable'?'不适用':result.status==='missing'?'未填写':null;
-export function PreviewTable({preview,field}) {
+export function PreviewTable({preview,field,resultFirst=false}) {
   const result=preview?.results?.find(r=>r.id===field.id);
   if(!result)return null;
+  if(field.type!=='object'&&resultFirst)return <div className="quality-value-preview quality-result-first">
+    <section className="quality-preview-result" aria-label="解析结果"><strong>解析值</strong><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre></section>
+    <div className="quality-preview-raw"><span>{isManuallyCorrected(preview,field.valueRegion)?'修正后内容':'原始内容'}</span><pre>{result.raw||'（空）'}</pre></div>
+    {(hasTextProcessing(field)||['single','multi'].includes(field.type))&&<details className="quality-preview-details"><summary>查看处理与拆分过程</summary><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/></details>}
+  </div>;
   if(field.type!=='object')return <div className="quality-value-preview"><span>{isManuallyCorrected(preview,field.valueRegion)?'修正后内容':'原始内容'}</span><pre>{result.raw||'（空）'}</pre><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/><span>解析值</span><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre></div>;
   const vertical=objectOrientation(field)==='vertical';
   return <div className="quality-preview-table"><table><thead><tr><th>{vertical?'源列':'源行'}</th>{field.properties.map(p=><th key={p.id}>{p.name}</th>)}</tr></thead><tbody>{result.rows.map(row=><tr key={vertical?row.column:row.row}><th>{vertical?cellAddress(1,row.column).slice(0,-1):row.row}</th>{row.cells.map(c=>{
