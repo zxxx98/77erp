@@ -58,7 +58,7 @@ function TrendChart({ orders, days, fullscreen = false }) {
   const max = Math.max(...series.flatMap((d) => [d.in, d.out]), 1000);
   const cap = Math.ceil(max / 1000) * 1000;
   const floor = Math.floor(Math.min(0, ...series.flatMap(d => [d.in, d.out])) / 1000) * 1000;
-  const W = chartWidth,
+  const W = fullscreen ? Math.max(chartWidth, days * 56) : chartWidth,
     H = fullscreen ? Math.max(280, Math.min(600, chartWidth * .55)) : chartWidth < 450 ? 160 : 178,
     L = 40,
     R = 14,
@@ -80,14 +80,14 @@ function TrendChart({ orders, days, fullscreen = false }) {
     incoming = smooth(series.map((d, i) => [x(i), y(d.in)]));
   const fractions =
     chartWidth < 450 ? [0, 1 / 3, 2 / 3, 1] : [0, 0.2, 0.4, 0.6, 0.8, 1];
-  const labels = Array.from(
+  const labels = fullscreen ? series.map((_,i) => i) : Array.from(
     new Set(fractions.map((f) => Math.round((days - 1) * f))),
   );
   return (
-    <div className="chart-wrap" ref={chartRef}>
+    <div className="chart-wrap" ref={chartRef} style={{overflowX:fullscreen?'auto':undefined}}>
       <svg
         className="trend-chart"
-        style={{ height: H }}
+        style={{ height: H, minWidth: fullscreen ? W : undefined }}
         viewBox={`0 0 ${W} ${H}`}
         role="img"
         aria-label={`最近 ${days} 天采购与销售金额趋势`}
@@ -143,6 +143,7 @@ function TrendChart({ orders, days, fullscreen = false }) {
         {labels.map((i) => (
           <text
             key={i}
+            className="trend-chart-x-label"
             x={x(i)}
             y={H - 7}
             fontSize="10"

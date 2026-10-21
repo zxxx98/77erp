@@ -9,6 +9,19 @@ import { WorkbookResults, downloadExcel } from './quality-shared.jsx';
 import '../quality.css';
 
 const colors=['#2864eb','#00a68a','#e69c31','#985be5','#df6483','#188caf'];
+const axisTextWidth=text=>Array.from(text).reduce((width,char)=>width+(/[\x20-\x7e]/.test(char)?7:12),0);
+function wrapAxisLabel(value,width) {
+  const lines=[];
+  for(const paragraph of String(value).split(/\r?\n/)) {
+    let line='';
+    for(const char of paragraph) {
+      if(line&&axisTextWidth(line+char)>width){lines.push(line);line='';}
+      line+=char;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
 export const chartNumber=(value,unit='')=>value===null?'—':`${new Intl.NumberFormat('zh-CN',{maximumFractionDigits:4}).format(value)}${unit}`;
 export function QualityChartView({result,type,title,onSources}) {
   if(!result.rows.length)return <div className="quality-chart-empty">该范围暂无可用数据。</div>;
@@ -26,21 +39,42 @@ function QualityChartContent({result,type,title,onSources,fullscreen}) {
   const rows=result.rows,labels=[...new Set(rows.map(row=>row.x))],series=[...new Set(rows.map(row=>row.series))];
   if(!rows.length)return <div className="quality-chart-empty">该范围暂无可用数据。</div>;
   const availableWidth=fullscreen?Math.max(360,plotSize.width):820;
-  const width=type==='bar'?Math.max(availableWidth,Math.min(28000,labels.length*series.length*24)):availableWidth,height=fullscreen?Math.max(280,plotSize.height):320,left=74,right=24,top=24,bottom=66;
   const max=Math.max(0,...rows.map(row=>row.value)),min=Math.min(0,...rows.map(row=>row.value)),span=max-min||1;
-  const y=value=>height-bottom-(value-min)/span*(height-bottom-top);
+  const yTicks=Array.from({length:5},(_,i)=>min+span*i/4);
+  const visibleLabels=fullscreen?labels:labels.filter((_,i)=>i%Math.max(1,Math.ceil(labels.length/7))===0||i===labels.length-1);
+  const ticks=visibleLabels.map(value=>({value,lines:wrapAxisLabel(value,fullscreen?132:84)}));
+  const labelWidth=Math.max(0,...ticks.flatMap(tick=>tick.lines.map(axisTextWidth)));
+  const left=Math.max(74,...yTicks.map(value=>axisTextWidth(chartNumber(value,result.unit))+16)),right=Math.max(24,labelWidth/2+8),top=24;
   const values=labels.map(value=>result.xType==='number'?Number(value):result.xType==='date'?Date.parse(String(value).length===7?`${value}-01`:value):null);
   const linear=result.xType==='number'||result.xType==='date',first=linear?Math.min(...values):0,last=linear?Math.max(...values):labels.length-1;
+  const sortedValues=linear?[...new Set(values)].sort((a,b)=>a-b):[];
+  const step=linear?Math.min(...sortedValues.slice(1).map((value,i)=>value-sortedValues[i])):1;
+  const fullWidth=fullscreen&&last>first?left+right+48+(last-first)/step*Math.max(80,labelWidth+16):availableWidth;
+  const width=Math.max(availableWidth,Math.min(28000,Math.max(fullWidth,type==='bar'?labels.length*series.length*24:0)));
   const barWidth=Math.min(38,(width-left-right)/Math.max(1,labels.length)/(series.length+1));
   const padding=type==='bar'?Math.max(24,series.length*barWidth/2):24;
   const x=value=>{const index=labels.indexOf(value),n=linear?values[index]:index;return left+padding+(last===first?0.5:(n-first)/(last-first))*(width-left-right-2*padding);};
+  // Keep close numeric/date coordinates on their true scale; stagger labels if
+  // the bounded scroll width still leaves too little space between neighbours.
+  const lanes=[],lineHeight=14,rowHeight=Math.max(1,...ticks.map(tick=>tick.lines.length))*lineHeight+8;
+  for(const tick of [...ticks].sort((a,b)=>x(a.value)-x(b.value))) {
+    const halfWidth=Math.max(...tick.lines.map(axisTextWidth))/2,start=x(tick.value)-halfWidth;
+    let lane=lanes.findIndex(end=>end+12<=start);
+    if(lane<0)lane=lanes.length;
+    lanes[lane]=x(tick.value)+halfWidth;tick.offset=lane*rowHeight;
+  }
+  const bottom=Math.max(66,lanes.length*rowHeight+32),height=Math.max(fullscreen?Math.max(280,plotSize.height):320,bottom+160);
+  const y=value=>height-bottom-(value-min)/span*(height-bottom-top);
   const label=key=>rows.find(row=>row.series===key)?.seriesLabel||key;
   return <div className="quality-chart-view">
     {type!=='table'&&<>
       <div className="quality-chart-legend">{series.map((key,i)=><span key={key}><i style={{background:colors[i%colors.length]}}/>{label(key)}</span>)}</div>
-      <div className="quality-chart-scroll" ref={plotRef}><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title} style={{minWidth:type==='bar'?width:undefined}}>
-        <title>{title}</title>{Array.from({length:5},(_,i)=>{const value=min+span*i/4;return <g key={i}><line x1={left} x2={width-right} y1={y(value)} y2={y(value)} stroke="var(--border)"/><text x={left-10} y={y(value)+4} textAnchor="end" className="quality-chart-axis">{chartNumber(value,result.unit)}</text></g>;})}
-        {labels.filter((_,i)=>i%Math.max(1,Math.ceil(labels.length/7))===0||i===labels.length-1).map(value=><text key={String(value)} x={x(value)} y={height-bottom+24} textAnchor="middle" className="quality-chart-axis"><title>{String(value)}</title>{String(value).length>14?`${String(value).slice(0,13)}…`:String(value)}</text>)}
+      <div className="quality-chart-scroll" ref={plotRef}><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title} style={{minWidth:fullscreen||type==='bar'?width:undefined,minHeight:fullscreen?height:undefined}}>
+        <title>{title}</title>{yTicks.map((value,i)=><g key={i}><line x1={left} x2={width-right} y1={y(value)} y2={y(value)} stroke="var(--border)"/><text x={left-10} y={y(value)+4} textAnchor="end" className="quality-chart-axis">{chartNumber(value,result.unit)}</text></g>)}
+        {ticks.map(tick=><g key={String(tick.value)}>
+          {tick.offset>0&&<line x1={x(tick.value)} x2={x(tick.value)} y1={height-bottom+8} y2={height-bottom+tick.offset+12} stroke="var(--border)"/>}
+          <text x={x(tick.value)} y={height-bottom+24+tick.offset} textAnchor="middle" className="quality-chart-axis quality-chart-x-label"><title>{String(tick.value)}</title>{tick.lines.map((line,i)=><tspan key={i} x={x(tick.value)} dy={i?lineHeight:0}>{line||'\u00a0'}</tspan>)}</text>
+        </g>)}
         {series.map((key,i)=>{
           const points=labels.map(value=>rows.find(row=>row.x===value&&row.series===key)),color=colors[i%colors.length];
           let path='',previous=false;for(const point of points){if(point){path+=`${previous?' L':' M'}${x(point.x)},${y(point.value)}`;previous=true;}else previous=false;}

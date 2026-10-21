@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
+import { expectCompleteChartAxis } from './chart-axis-helpers.js';
 const bytes=await readFile('tests/fixtures/quality-template.xlsx');
 const definition={sheetName:'Sheet1',fields:[
   {id:'date',name:'检验日期',type:'date',labelRegion:'A4',valueRegion:'B4'},
@@ -76,9 +77,45 @@ test('dashboard trend opens at viewport size and returns to the selected period'
   await page.goto('/');await page.getByRole('button',{name:'近 30 天',exact:true}).click();
   await page.getByRole('button',{name:'全屏查看',exact:true}).click();const fullscreen=page.locator('.chart-fullscreen-modal');
   await expect(fullscreen.getByRole('img',{name:'最近 30 天采购与销售金额趋势',exact:true})).toBeVisible();
+  await expect(fullscreen.locator('.trend-chart-x-label')).toHaveCount(30);
   const box=await fullscreen.boundingBox();expect(box.x).toBe(0);expect(box.y).toBe(0);expect(box.width).toBe(page.viewportSize().width);expect(box.height).toBe(page.viewportSize().height);
   await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();await expect(fullscreen).toHaveCount(0);
   await expect(page.getByRole('img',{name:'最近 30 天采购与销售金额趋势',exact:true})).toBeVisible();
+});
+
+test('fullscreen line and bar charts keep every long axis label, wrap it and allow scrolling to the last point',async({page})=>{
+  const f=await fixture(page,'完整坐标');
+  const rows=Array.from({length:24},(_,i)=>({x:`第${i+1}号供应商的来料抽样检验合格率统计结果`,series:'rate',seriesLabel:'合格率',value:i-8,count:1}));
+  for(const type of ['line','bar']){
+    const name=`完整坐标${type}`;
+    const response=await page.request.post('/api/quality/charts',{data:{name,template_id:f.template.id,revision_id:f.template.published_revision,request_id:randomUUID(),config:{schemaVersion:1,kind:'ordinary',chartType:type,objectId:null,x:{fieldId:'name'},metric:{aggregation:'avg',value:{fieldId:'rate'}}}}});
+    expect(response.ok()).toBe(true);const chart=await response.json();
+    await page.route(`**/api/quality/charts/${chart.id}/data*`,route=>route.fulfill({json:{rows,xType:'string',unit:'%',stats:{sheets:24,records:24,excluded:0,incompatibleSheets:0}}}));
+    if(type==='bar')await page.reload();
+    await charts(page);await page.getByRole('row').filter({hasText:name}).getByRole('button',{name:'查看图表',exact:true}).click();
+    const viewer=page.getByRole('dialog',{name,exact:true});
+    await expect(viewer.locator('.quality-chart-x-label').first().locator('tspan')).not.toHaveCount(1);
+    await viewer.getByRole('button',{name:'全屏查看',exact:true}).click();
+    const fullscreen=page.locator('.chart-fullscreen-modal'),svg=fullscreen.getByRole('img',{name,exact:true});
+    const layout=await expectCompleteChartAxis(svg,rows.map(row=>row.x));expect(layout.labels.every(label=>label.lines>1)).toBe(true);
+    const scroll=fullscreen.locator('.quality-chart-scroll');expect(await scroll.evaluate(el=>el.scrollWidth>el.clientWidth)).toBe(true);
+    await scroll.evaluate(el=>{el.scrollLeft=el.scrollWidth;});await expect(svg.locator('.quality-chart-x-label').last()).toBeInViewport();
+    await svg.getByRole('button',{name:new RegExp(`查看来源 ${rows.at(-1).x}`)}).click();
+    const source=page.getByRole('dialog',{name:'图表数据来源',exact:true});await expect(source).toBeVisible();await source.getByRole('button',{name:'关闭弹窗',exact:true}).click();
+    await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();await viewer.getByRole('button',{name:'关闭弹窗',exact:true}).click();
+  }
+});
+
+test('close numeric coordinates keep their scale while fullscreen labels use separate rows',async({page})=>{
+  const f=await fixture(page,'数值密集坐标');
+  const response=await page.request.post('/api/quality/charts',{data:{name:'数值密集坐标',template_id:f.template.id,revision_id:f.template.published_revision,request_id:randomUUID(),config:{schemaVersion:1,kind:'ordinary',chartType:'line',objectId:null,x:{fieldId:'rate'},metric:{aggregation:'count'}}}});
+  expect(response.ok()).toBe(true);const chart=await response.json(),values=[0,0.000001,1000000000];
+  await page.route(`**/api/quality/charts/${chart.id}/data*`,route=>route.fulfill({json:{rows:values.map((x,i)=>({x,series:'count',seriesLabel:'记录数',value:i+1,count:1})),xType:'number',unit:'',stats:{sheets:3,records:3,excluded:0,incompatibleSheets:0}}}));
+  await charts(page);await page.getByRole('row').filter({hasText:'数值密集坐标'}).getByRole('button',{name:'查看图表',exact:true}).click();
+  await page.getByRole('button',{name:'全屏查看',exact:true}).click();const svg=page.locator('.chart-fullscreen-modal').getByRole('img',{name:'数值密集坐标',exact:true});
+  const layout=await expectCompleteChartAxis(svg,values);expect(layout.labels[1].box.y).toBeGreaterThan(layout.labels[0].box.y+layout.labels[0].box.height);
+  const points=await svg.locator('circle').evaluateAll(elements=>elements.map(element=>Number(element.getAttribute('cx'))));
+  expect((points[1]-points[0])/(points[2]-points[0])).toBeLessThan(0.000001);await expect(svg.getByRole('button')).toHaveCount(3);
 });
 
 test('wide grouped bars stay inside the plot and retain source actions',async({page})=>{
