@@ -1,4 +1,4 @@
-import { cellAddress, objectRecords, parseRegion, regionAddress, preprocessText, hasTextProcessing, convertQualityValue } from './quality-template.js';
+import { cellAddress, objectRecords, parseRegion, regionAddress, preprocessText, hasTextProcessing, convertQualityValue, previewChoice, choiceModeOf, textLines } from './quality-template.js';
 
 // Use the same logical cells and object record boundaries as acceptance parsing.
 export function onlineInputCells(definition, workbook) {
@@ -49,9 +49,47 @@ export function onlineChoiceOptions(config) {
   }).filter(Boolean);
 }
 
-export function onlineChoiceText(selected, config) {
-  return selected.map(label => config.markerPosition === 'after' ? `${label}${config.checkChar}` : `${config.checkChar}${label}`)
-    .join(config.choiceMode === 'separator' || config.separator && config.separator !== '\n' ? config.separator || '\n' : '\n');
+// A configured choice can span several physical cells. Treat them as one value,
+// matching regionText's order and omission of empty cells during acceptance parsing.
+export function onlineChoiceState(input, inputs, values) {
+  const config = onlineCellConfig(input, inputs, values);
+  const cells = inputs.filter(cell => cell.fieldId === input.fieldId && cell.record === input.record && cell.config.id === input.config.id);
+  const raw = cells.map(cell => values[cell.address] || '').filter(Boolean).join('\n');
+  let processed = '';
+  try { processed = preprocessText(raw, config); } catch { /* Invalid prefilled content remains editable by choosing an option. */ }
+  const special = config.specialValues?.find(rule => rule.text === processed.trim());
+  const parsed = special ? null : previewChoice(processed, config);
+  const selected = Array.isArray(parsed?.value) ? parsed.value : parsed?.value ? [parsed.value] : [];
+  return { config, cells, raw, selected, special };
+}
+
+export function onlineChoiceRawText(text, config, raw = '') {
+  const special = config.specialValues?.some(rule => rule.text === text);
+  // Keep surrounding lines when a template reads one particular line. Choices
+  // written into a blank cell need those preceding lines too.
+  if (config.parseLine != null && config.parseLine !== 'all' && text) {
+    const lines = textLines(raw);
+    while (lines.length < config.parseLine) lines.push('');
+    lines[config.parseLine - 1] = text;
+    text = lines.join('\n');
+  }
+  if (special && !config.specialValues.some(rule => rule.text === preprocessText(text, config)))
+    throw new Error('模板的内容处理与特殊值不兼容，请调整模板规则后重试。');
+  return text;
+}
+
+export function onlineChoiceText(selected, config, raw = '') {
+  const separator = choiceModeOf(config) === 'separator' ? config.separator ?? '\n'
+    : config.parseLine != null && config.parseLine !== 'all' ? ' ' : '\n';
+  const text = selected.map(label => config.markerPosition === 'after' ? `${label}${config.checkChar}` : `${config.checkChar}${label}`).join(separator);
+  const result = onlineChoiceRawText(text, config, raw);
+  const processed = preprocessText(result, config);
+  const parsed = previewChoice(processed, config);
+  const actual = Array.isArray(parsed.value) ? parsed.value : parsed.value ? [parsed.value] : [];
+  const mapsToSpecial = selected.length > 0 && config.specialValues?.some(rule => rule.text === processed);
+  if (mapsToSpecial || parsed.error || actual.length !== selected.length || selected.some(label => !actual.includes(label)))
+    throw new Error('模板的内容处理或分隔符与选项不兼容，请调整模板规则后重试。');
+  return result;
 }
 
 const rgb = color => /^[A-F\d]{8}$/i.test(color?.argb || '') ? `#${color.argb.slice(2)}` : undefined;

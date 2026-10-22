@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ExcelJS from 'exceljs';
-import { createOnlineWorkbook, onlineInputCells, onlineCellConfig, onlineChoiceText, onlineChoiceOptions } from '../shared/quality-online.js';
+import { createOnlineWorkbook, onlineInputCells, onlineCellConfig, onlineChoiceText, onlineChoiceOptions, onlineChoiceState, onlineChoiceRawText } from '../shared/quality-online.js';
 import { readQualityWorkbook } from '../shared/quality-workbook.js';
 import { validateDefinition, previewChoice } from '../shared/quality-template.js';
 import { parseAcceptance } from '../shared/quality-acceptance.js';
@@ -95,4 +95,46 @@ test('shared formula masters can be filled without retaining stale formula cache
   assert.equal(output.getWorksheet('Sheet1').getCell('B5').value,12);
   assert.equal(output.getWorksheet('Sheet1').getCell('B6').formula,'1+1');
   assert.equal(output.getWorksheet('Sheet1').getCell('B6').result,undefined);
+});
+
+
+test('processed choices round-trip selected lines, ignored prefixes, special mappings and explicit marker mode',async()=>{
+  for(const type of ['single','multi']) {
+    const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('选择');
+    sheet.getCell('A1').value='抽样方式';sheet.mergeCells('B1:D2');
+    sheet.getCell('B1').value='说明文字\n方式：□正常 □加严';
+    const bytes=await book.xlsx.writeBuffer(),wb=await readQualityWorkbook(bytes);
+    const def=validateDefinition({sheetName:'选择',fields:[{id:'method',name:'抽样方式',type,labelRegion:'A1',valueRegion:'B1:D2',
+      parseLine:2,ignoreContent:'方式：',checkChar:'☑',uncheckChars:'□',options:'正常\n加严',choiceMode:'markers',separator:'|',specialValues:[{text:'N/A',status:'not_applicable'}]}]},wb,{publish:true});
+    const template={definition:def,workbook:wb},input=onlineInputCells(def,wb)[0],config=input.config;
+    const selected=type==='single'?['加严']:['正常','加严'];
+    const text=onlineChoiceText(selected,config,'说明文字\n方式：□正常 □加严');
+    assert.ok(text.startsWith('说明文字\n'));
+    const filled=await createOnlineWorkbook(bytes,template,{values:{B1:text}});
+    const parsed=parseAcceptance(def,wb,await readQualityWorkbook(filled.buffer));
+    assert.deepEqual(parsed.issues,[]);assert.deepEqual(parsed.value.抽样方式,type==='single'?'加严':selected);
+    assert.deepEqual(onlineChoiceState(input,[input],{B1:text}).selected,selected);
+    const blankText=onlineChoiceText(selected,config);
+    assert.deepEqual(onlineChoiceState(input,[input],{B1:blankText}).selected,selected);
+    const special=onlineChoiceRawText('N/A',config,text);
+    assert.equal(onlineChoiceState(input,[input],{B1:special}).special.status,'not_applicable');
+    const specialFile=await createOnlineWorkbook(bytes,template,{values:{B1:special}});
+    assert.equal(parseAcceptance(def,wb,await readQualityWorkbook(specialFile.buffer)).results[0].status,'not_applicable');
+  }
+});
+
+test('choice state groups physical cells while isolating fields, properties and object records',()=>{
+  const config={id:'result',type:'single',checkChar:'●',uncheckChars:'○',options:'合格\n拒收'};
+  const inputs=[
+    {fieldId:'i',record:0,address:'A1',config},
+    {fieldId:'i',record:0,address:'B1',config},
+    {fieldId:'i',record:1,address:'A2',config},
+    {fieldId:'other',record:0,address:'C1',config},
+    {fieldId:'i',record:0,address:'D1',config:{...config,id:'other'}},
+  ];
+  const state=onlineChoiceState(inputs[0],inputs,{A1:'○合格',B1:'●拒收',A2:'●合格',C1:'●合格',D1:'●合格'});
+  assert.deepEqual(state.selected,['拒收']);assert.deepEqual(state.cells.map(cell=>cell.address),['A1','B1']);
+  assert.throws(()=>onlineChoiceText(['合格'],{...config,ignoreContent:'合格'}),/不兼容/);
+  assert.throws(()=>onlineChoiceText(['合格'],{...config,specialValues:[{text:'●合格',status:'not_applicable'}]}),/不兼容/);
+  assert.throws(()=>onlineChoiceRawText('N/A',{...config,ignoreContent:'N/',specialValues:[{text:'N/A',status:'not_applicable'}]}),/不兼容/);
 });
