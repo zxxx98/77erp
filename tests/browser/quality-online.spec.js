@@ -11,16 +11,16 @@ const fields=[
   {id:'items',name:'检验明细',type:'object',labelRegion:'A6:F6',propertyRegion:'A7:F7',valueRegion:'A8:F10',required:true,
     properties:['检验项目','规格要求','实测值','判定','检验员','备注'].map((name,i)=>({id:`p${i}`,name,type:i===2?'number':i===3?'single':'string',required:[0,2,3].includes(i),
       ...(i===3?{checkChar:'☑',uncheckChars:'□',options:'合格\n不合格',choiceMode:'markers'}:{})}))},
-  {id:'result',name:'综合判定',type:'single',labelRegion:'A12',valueRegion:'B12:C12',required:true,parseLine:2,ignoreContent:'判定：',specialValues:[{text:'N/A',status:'not_applicable'}],checkChar:'✓',options:'合格\n不合格',choiceMode:'markers',markerPosition:'after'},
-  {id:'tags',name:'检验方式',type:'multi',labelRegion:'A16',valueRegion:'B16:C16',parseLine:2,ignoreContent:'方式：',specialValues:[{text:'N/A',status:'not_applicable'}],checkChar:'★',uncheckChars:'☆',options:'外观\n尺寸',choiceMode:'markers'},
+  {id:'result',name:'综合判定',type:'single',labelRegion:'A12',valueRegion:'B12:C12',required:true,checkChar:'✓',options:'合格\n不合格',choiceMode:'markers',markerPosition:'after'},
+  {id:'tags',name:'检验方式',type:'multi',labelRegion:'A16',valueRegion:'B16:C16',checkChar:'★',uncheckChars:'☆',options:'外观\n尺寸',choiceMode:'markers'},
   {id:'inspector',name:'检验员',type:'string',labelRegion:'D12',valueRegion:'E12:F12',required:true},
 ];
 async function sample() {
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('检验记录');
   sheet.columns=Array.from({length:6},()=>({width:20}));
-  for(const region of ['A1:F1','B3:C3','E3:F3','B4:C4','E4:F4','A6:F6','B12:C12','E12:F12','A14:F14'])sheet.mergeCells(region);
+  for(const region of ['A1:F1','B3:C3','E3:F3','B4:C4','E4:F4','A6:F6','B12:C12','E12:F12','A14:F14','B16:C16'])sheet.mergeCells(region);
   for(const [address,value] of Object.entries({A16:'检验方式',A1:'产品质量检验记录单',A3:'检验单号',B3:'示例编号',D3:'检验日期',E3:'2026-10-21',A4:'产品名称',B4:'示例产品',D4:'批次数量',E4:100,
-    A6:'检验明细',A8:'外径',B8:'12 ± 0.2 mm',C8:12,D8:'☑合格',E8:'张三',A12:'综合判定',B12:'说明文字\n判定：合格✓',D12:'检验员',E12:'张三',A14:'请依据本批次实测结果填写，核对后提交。'}))sheet.getCell(address).value=value;
+    A6:'检验明细',A8:'外径',B8:'12 ± 0.2 mm',C8:12,D8:'☑合格',E8:'张三',A12:'综合判定',B12:'合格✓',D12:'检验员',E12:'张三',A14:'请依据本批次实测结果填写，核对后提交。'}))sheet.getCell(address).value=value;
   fields.find(f=>f.id==='items').properties.forEach((p,i)=>sheet.getCell(7,i+1).value=p.name);
   sheet.eachRow(row=>{row.height=32;row.eachCell({includeEmpty:true},cell=>{
     cell.font={name:'微软雅黑',size:11,color:{argb:'FF24354B'}};cell.alignment={vertical:'middle',wrapText:true};
@@ -62,16 +62,12 @@ async function fill(page) {
     '检验明细 · 第 1 条 · 检验项目 · A8':'外径','检验明细 · 第 1 条 · 规格要求 · B8':'12 ± 0.2 mm','检验明细 · 第 1 条 · 实测值 · C8':'12.08','检验明细 · 第 1 条 · 检验员 · E8':'李明','检验员 · E12':'李明'}))
     await edit(page,label,value);
   await page.getByRole('radio',{name:'检验明细 · 第 1 条 · 判定 · D8 · 合格',exact:true}).check();
-  await page.getByRole('group',{name:'综合判定 · B12 · 特殊值',exact:true}).getByRole('button',{name:'N/A（不适用）',exact:true}).click();
   await page.getByRole('radio',{name:'综合判定 · B12 · 不合格',exact:true}).check();
   await page.getByRole('radio',{name:'综合判定 · B12 · 合格',exact:true}).check();
   await expect(page.getByRole('radio',{name:'综合判定 · B12 · 不合格',exact:true})).not.toBeChecked();
   const visual=page.getByRole('checkbox',{name:'检验方式 · B16 · 外观',exact:true}),dimension=page.getByRole('checkbox',{name:'检验方式 · B16 · 尺寸',exact:true});
   await visual.check();await dimension.check();await visual.uncheck();await expect(dimension).toBeChecked();
   await expect(dimension).toHaveText('★尺寸');
-  await page.getByRole('checkbox',{name:'检验方式 · C16 · 外观',exact:true}).check();
-  await expect(page.getByRole('checkbox',{name:'检验方式 · B16 · 外观',exact:true})).toBeChecked();
-  await page.getByRole('checkbox',{name:'检验方式 · B16 · 外观',exact:true}).uncheck();
 }
 async function validate(page) {
   await page.getByRole('button',{name:'校验并预览',exact:true}).click();
@@ -117,7 +113,7 @@ test('desktop online entry validates, invalidates preview after edits, saves and
   const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载上传原文件'}).click();
   const book=new ExcelJS.Workbook();await book.xlsx.load(await readFile(await(await download).path()));
   const sheet=book.getWorksheet('检验记录');expect(sheet.getCell('B3').value).toBe('0000128');expect(sheet.getCell('C8').value).toBe(12.08);
-  expect(sheet.getCell('B16').value).toBe('\n★尺寸');
+  expect(sheet.getCell('B16').value).toBe('★尺寸');
   expect(sheet.getCell('A1').font.size).toBe(22);expect(sheet.getCell('A1').alignment.horizontal).toBe('center');
   expect(await(await page.request.get(`/api/quality/templates/${row.id}/download`)).body()).toEqual(original);
   expect((await(await page.request.get(`/api/quality/acceptances/${saved.id}`)).json()).result).toEqual(saved.result);
@@ -126,9 +122,7 @@ test('desktop online entry validates, invalidates preview after edits, saves and
 
 test('prefilled online entry protects unsaved work and detects newly published versions',async({page})=>{
   const name='在线版本校验模板',row=await prepare(page.request,name);
-  await start(page,name,{prefill:true});
-  await expect(page.getByRole('radio',{name:'综合判定 · B12 · 合格',exact:true})).toBeChecked();
-  await expect(page.getByRole('button',{name:'检验单号 · B3',exact:true})).toHaveText('示例编号');
+  await start(page,name,{prefill:true});await expect(page.getByRole('button',{name:'检验单号 · B3',exact:true})).toHaveText('示例编号');
   page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'返回验收单列表'}).click();
   await expect(page.getByRole('region',{name:'在线填写验收单',exact:true})).toBeVisible();
   const changed=structuredClone(row.definition);changed.fields.find(field=>field.id==='quantity').name='批次总数量';

@@ -1,33 +1,27 @@
 import { useMemo, useState } from 'react';
 import { Check, FileSpreadsheet, List } from 'lucide-react';
 import { Button } from '../components/common.jsx';
-import { cellAddress, containsCell, parseRegion, qualityTypeLabels } from '../../shared/quality-template.js';
-import { onlineCellConfig, onlineChoiceOptions, onlineChoiceText, onlineChoiceState, onlineChoiceRawText } from '../../shared/quality-online.js';
+import { cellAddress, containsCell, hasTextProcessing, parseRegion, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
+import { onlineCellConfig, onlineChoiceOptions, onlineChoiceText } from '../../shared/quality-online.js';
 import { sheetPreviewBounds } from '../../shared/quality-sheet-view.js';
 
 function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
   const [editing,setEditing]=useState(false);
   const [original,setOriginal]=useState('');
-  const [choiceError,setChoiceError]=useState('');
   const config=onlineCellConfig(input,inputs,values), value=values[input.address]||'';
   const position=parseRegion(input.address);
   const errors=issues.filter(issue=>containsCell(parseRegion(issue.region),position.r1,position.c1));
-  const choice=['single','multi'].includes(config.type);
-  const choiceState=choice?onlineChoiceState(input,inputs,values):null;
-  const writeChoice=text=>{
-    setChoiceError('');
-    for(const cell of choiceState.cells)onChange(cell.address,cell.address===input.address?text:'');
-  };
+  const choice=input.simple&&['single','multi'].includes(config.type)&&!hasTextProcessing(config)&&!config.specialValues?.length;
   const props={'aria-label':`${input.label} · ${input.address}`,'aria-invalid':!!errors.length,disabled:busy};
   const begin=()=>{if(!busy){setOriginal(value);setEditing(true);}};
   return <div className={`quality-online-entry${inline&&editing&&!choice?' is-editing':''}${errors.length?' has-errors':''}`}>
     {choice?<div className="quality-online-choices" role={config.type==='single'?'radiogroup':'group'} aria-label={props['aria-label']} aria-invalid={!!errors.length}>
       {onlineChoiceOptions(config).map(option=>{
-        const {selected}=choiceState;
-        const checked=selected.includes(option), marker=checked?config.checkChar:(config.uncheckChars||'').split('\n').find(Boolean)||'';
+        const parsed=previewChoice(value,config), selected=Array.isArray(parsed.value)?parsed.value:parsed.value?[parsed.value]:[];
+        const checked=selected.includes(option), marker=checked?config.checkChar:(config.uncheckChars||'').split('\n').find(Boolean)||'○';
         return <button type="button" className="quality-online-option" key={option} role={config.type==='single'?'radio':'checkbox'} aria-label={`${input.label} · ${input.address} · ${option}`} aria-checked={checked} disabled={busy} onClick={()=>{
           const next=checked?selected.filter(item=>item!==option):(config.type==='single'?[option]:[...selected,option]);
-          try { writeChoice(onlineChoiceText(next,config,choiceState.raw)); } catch(error) { setChoiceError(error.message); }
+          onChange(input.address,onlineChoiceText(next,config));
         }}><span aria-hidden="true">{config.markerPosition==='after'?`${option}${marker}`:`${marker}${option}`}</span></button>;
       })}
     </div>:inline&&!editing?<button type="button" className="quality-online-cell-value" {...props} title="双击填写，触屏轻点填写，也可按 Enter" onDoubleClick={begin}
@@ -39,12 +33,6 @@ function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
         if(event.key==='Escape'){event.preventDefault();onChange(input.address,original);setEditing(false);}
         if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();setEditing(false);}
       }}/>}
-    {choice&&!!config.specialValues?.length&&<div className="quality-online-choices" role="group" aria-label={`${props['aria-label']} · 特殊值`}>
-      {config.specialValues.map(rule=><button type="button" className="quality-online-option" key={rule.text} disabled={busy} aria-pressed={choiceState.special?.text===rule.text} onClick={()=>{
-        try { writeChoice(choiceState.special?.text===rule.text?'':onlineChoiceRawText(rule.text,config,choiceState.raw)); } catch(error) { setChoiceError(error.message); }
-      }}>{rule.text}（{rule.status==='not_applicable'?'不适用':'未填写'}）</button>)}
-    </div>}
-    {choiceError&&<small className="form-error" role="alert">{choiceError}</small>}
     {!!errors.length&&<small className="form-error">{[...new Set(errors.map(issue=>issue.message))].join('；')}</small>}
   </div>;
 }

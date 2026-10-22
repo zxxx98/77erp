@@ -282,7 +282,7 @@
 .quality-online-cell-value:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .quality-online-scroll .quality-online-entry.has-errors { box-shadow: inset 0 0 0 2px #c94b41; }
 .quality-online-option { border: 0; background: transparent; padding: 4px 2px; color: inherit; font: inherit; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; cursor: pointer; }
-.quality-online-option[aria-checked=true], .quality-online-option[aria-pressed=true] { color: #247144; font-weight: 600; }
+.quality-online-option[aria-checked=true] { color: #247144; font-weight: 600; }
 .quality-online-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .quality-online-option:disabled { cursor: default; opacity: .6; }
 .quality-online-entry textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
