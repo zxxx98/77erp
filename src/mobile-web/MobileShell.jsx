@@ -1,3 +1,5 @@
+import { modeItems } from '../app/navigation.js';
+import { ModeSwitch } from '../app/ModeSwitch.jsx';
 import { useQuery, usePagedQuery, queryPath } from '../queries.js';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
@@ -18,9 +20,9 @@ import './mobile.css';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
 
-const tabs = [['overview', '工作台', LayoutDashboard], ['products', '物料', Box], ['inventory', '库存', Warehouse], ['history', '单据', History], ['more', '更多', Settings]];
-
-export function MobileShell({ user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, announcementCount, updateNotice }) {
+export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, announcementCount, updateNotice }) {
+  const { can } = usePermissions();
+  const tabs = modeItems(mode, can).filter(item => item.mobile);
   const { online } = usePwa();
   const [updated, setUpdated] = useState(null);
   const dataRef = useRef(data);
@@ -61,6 +63,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
         <MobileIcon icon={ScanLine} label="打开扫码工作台" onClick={() => navigate('scanner')} disabled={!ready} />
       </>}
     </header>
+    <div className="mw-mode-bar"><ModeSwitch mode={mode} onChange={switchMode} disabled={switching || !ready} /></div>
     <OfflineNotice />
     <main className="mw-content" inert={switching}>
       {updateNotice}
@@ -71,7 +74,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
           {page === 'overview' && <Dashboard data={data} openOrder={openOrder} onScan={() => navigate('scanner')} showProduct={showProduct} showOrder={showOrder} history={() => navigate('history')} />}
           {['products', 'inventory'].includes(page) && <Products key={`${data.warehouse_id}:${page}`} data={data} inventory={page === 'inventory'} showProduct={showProduct} openModal={openModal} />}
           {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} />}
-          {page === 'more' && <More user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
+          {page === 'more' && <More mode={mode} user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'quality' && renderQuality()}
           {page === 'scanner' && renderScanner()}
           {page === 'announcements' && renderAnnouncements()}
@@ -80,7 +83,7 @@ export function MobileShell({ user, data, page, navigate, openModal, openOrder, 
       </>}
     </main>
     {page !== 'scanner' && <nav className="mw-tabs" aria-label="移动端主导航" inert={switching}>
-      {tabs.map(([id, label, Icon]) => <button type="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) || id === 'more' && page === 'quality' ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></button>)}
+      {tabs.map(({id, mobile: label, icon: Icon}) => <button type="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></button>)}
     </nav>}
   </div>;
 }
@@ -176,12 +179,12 @@ function Orders({ data, initial, openOrder, showOrder }) {
   </div>;
 }
 
-function More({ user, data, navigate, openModal, loggingOut, logout }) {
+function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
   const { manage, can } = usePermissions();
   return <div className="mw-stack"><h1>工作空间</h1>
     <section className="mw-card"><div className="mw-account"><ShieldCheck size={30} /><div><h2>{user.name || user.username}</h2><p className="mw-muted">账号：{user.username}</p><p className="mw-muted">{user.role === 'admin' ? '管理员账号' : '员工账号'}</p></div></div></section>
     {(user.role === 'admin' || user.permissions?.includes('ai')) && <section className="mw-card"><Button icon={Settings} onClick={() => openModal({ kind: 'ai' })}>AI 助手</Button></section>}
-    {can('quality') && <section className="mw-card"><Button icon={FilePenLine} onClick={() => navigate('quality')}>品质管理 · 在线验收</Button></section>}
+    {mode === 'production' && can('quality') && <section className="mw-card"><Button icon={FilePenLine} onClick={() => navigate('quality')}>品质管理 · 在线验收</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>商户与仓库设置</Button>}</section>
     <Button onClick={() => openModal({ kind: 'account' })}>修改密码</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>业务管理</Button>
     {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>出入库二维码</Button>}

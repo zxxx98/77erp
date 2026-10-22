@@ -141,7 +141,8 @@ for(const platform of ['Android PWA','iPhone'])test(`${platform} opens from work
     if(platform==='Android PWA')await context.addInitScript(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
     const name=`${platform}在线模板`;await prepare(context.request,name);
     const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
-    await page.goto('/');await page.getByRole('navigation',{name:'移动端主导航'}).getByRole('button',{name:'更多',exact:true}).click();
+    await page.goto('/');await page.getByRole('group',{name:'业务模式'}).getByRole('button',{name:'生产',exact:true}).click();
+    await page.getByRole('navigation',{name:'移动端主导航'}).getByRole('button',{name:'更多',exact:true}).click();
     await page.getByRole('button',{name:'品质管理 · 在线验收',exact:true}).click();
     await expect(page.getByRole('heading',{name:'验收单',exact:true})).toBeVisible();
     await start(page,name,{mobile:true});await expect(page.getByRole('button',{name:'字段填写',exact:true})).toHaveAttribute('aria-pressed','true');

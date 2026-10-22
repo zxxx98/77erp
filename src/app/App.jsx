@@ -1,5 +1,4 @@
 import {
-  LayoutDashboard,
   Box,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -23,6 +22,9 @@ import {
   CircleCheck,
   X,
 } from 'lucide-react';
+import { navItems as allNavItems, modeHome, routeMode, navigationHash, modeItems } from './navigation.js';
+import { ModeSwitch } from './ModeSwitch.jsx';
+import './mode-switch.css';
 import { mobileDevice } from '../device.js';
 import { useState, useEffect, useRef } from 'react';
 import { api, setWarehouseId, getWarehouseId } from '../api.js';
@@ -68,25 +70,29 @@ import { stockStatus } from './format.js';
 import { Button, Modal } from '../components/common.jsx';
 import { version as appVersion } from '../../package.json';
 
-const navItems = [
-  { id: "overview", name: "工作台", icon: LayoutDashboard },
-  { id: "products", name: "物料管理", icon: Box },
-  { id: "purchases", name: "采购入库", icon: ArrowDownToLine },
-  { id: "sales", name: "销售出库", icon: ArrowUpFromLine },
-  { id: "inventory", name: "库存管理", icon: Warehouse },
-  { id: "scanner", name: "扫码工作台", icon: ScanLine },
-  { id: "history", name: "操作记录", icon: History },
-  { id: "announcements", name: "公告中心", icon: Megaphone },
-  { id: 'quality', name: '品质管理', icon: PackageCheck },
-  ...(mobileDevice ? [{ id: 'more', name: '工作空间', icon: Settings }] : []),
-];
+const navItems = allNavItems.filter(item => mobileDevice || item.id !== 'more');
 
 function App({ admin, onLogout }) {
   const isAdmin = admin.role === "admin";
-  const initial = location.hash.slice(1).split("?")[0];
-  const [page, setPage] = useState(
-    navItems.some((n) => n.id === initial) ? initial : "overview",
-  );
+  const preferenceKey = `77erp:mode:${admin.id || admin.username}`;
+  const [initialNavigation] = useState(() => {
+    let stored = {};
+    try { stored = JSON.parse(localStorage.getItem(preferenceKey)) || {}; } catch {}
+    const initial = location.hash.slice(1).split('?')[0];
+    const mode = routeMode(initial, location.hash, stored.mode === 'production' ? 'production' : 'warehouse');
+    const last = stored.pages?.[mode];
+    const fallback = navItems.some(item => item.id === last && (!item.mode || item.mode === mode)) ? last : modeHome(mode);
+    return { mode, page: navItems.some(item => item.id === initial) ? initial : fallback, pages: stored.pages && typeof stored.pages === 'object' && !Array.isArray(stored.pages) ? stored.pages : {} };
+  });
+  const [mode, setMode] = useState(initialNavigation.mode);
+  const modeRef = useRef(mode);
+  const lastPages = useRef(initialNavigation.pages);
+  const [page, setPage] = useState(initialNavigation.page);
+  const acceptedHash = useRef(location.hash || navigationHash(page, mode));
+  useEffect(() => {
+    lastPages.current[mode] = page;
+    try { localStorage.setItem(preferenceKey, JSON.stringify({ mode, pages: lastPages.current })); } catch {}
+  }, [mode, page, preferenceKey]);
   const pageRef = useRef(page);
   pageRef.current = page;
   const [data, setData] = useState({
@@ -181,10 +187,14 @@ function App({ admin, onLogout }) {
     const onHash = () => {
       const id = location.hash.slice(1).split("?")[0];
       if (navItems.some((n) => n.id === id)) {
-        if (id !== pageRef.current && !window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) {
-          history.replaceState(history.state, '', location.pathname + location.search + '#' + pageRef.current);
+        if ((id !== pageRef.current || routeMode(id, location.hash, modeRef.current) !== modeRef.current) && !window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) {
+          history.replaceState(history.state, '', location.pathname + location.search + acceptedHash.current);
           return;
         }
+        const nextMode = routeMode(id, location.hash, modeRef.current);
+        modeRef.current = nextMode;
+        setMode(nextMode);
+        acceptedHash.current = location.hash;
         pageRef.current = id;
         setPage(id);
       }
@@ -208,14 +218,24 @@ function App({ admin, onLogout }) {
     const t = setTimeout(() => setToast(null), 4200);
     return () => clearTimeout(t);
   }, [toast]);
-  const navigate = (id, filter) => {
-    if (id !== pageRef.current && !window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return;
+  const navigate = (id, filter, targetMode) => {
+    if ((id !== pageRef.current || targetMode && targetMode !== modeRef.current) && !window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return;
+    const nextMode = targetMode || routeMode(id, '', modeRef.current);
+    modeRef.current = nextMode;
+    setMode(nextMode);
     pageRef.current = id;
     setPage(id);
-    location.hash = id;
+    acceptedHash.current = navigationHash(id, nextMode);
+    location.hash = acceptedHash.current;
     setNotification(false);
     if (filter) setInventoryFilter(filter);
     window.scrollTo({ top: 0 });
+  };
+  const switchMode = nextMode => {
+    if (nextMode === mode || modal || cameraActive || switching) return;
+    const last = lastPages.current[nextMode];
+    const destination = navItems.some(item => item.id === last && (!item.mode || item.mode === nextMode)) ? last : modeHome(nextMode);
+    navigate(destination, undefined, nextMode);
   };
   const notify = (message, type = "success") => setToast({ message, type });
   const saved = async (message) => {
@@ -268,12 +288,13 @@ function App({ admin, onLogout }) {
     if (!can('stocktake')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
     setModal({ kind: 'reduce', product });
   };
+  const visibleNav = modeItems(mode, can);
   const currentNav = navItems.find((n) => n.id === page);
   const updateNotice = updatesAvailable ? <DataUpdateNotice onRefresh={reload} busy={refreshing} disabled={!!modal} /> : null;
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
       {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />正在切换仓库…</div>}
-      {mobileDevice ? <div inert={!!modal} aria-hidden={modal ? true : undefined}><MobileShell user={user} data={data} page={page} navigate={navigate} openModal={setModal} openOrder={openOrder}
+      {mobileDevice ? <div inert={!!modal} aria-hidden={modal ? true : undefined}><MobileShell mode={mode} switchMode={switchMode} user={user} data={data} page={page} navigate={navigate} openModal={setModal} openOrder={openOrder}
         showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={openOrderDetail}
         switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
         loggingOut={loggingOut} logout={logout}
@@ -286,8 +307,8 @@ function App({ admin, onLogout }) {
       <aside className="sidebar" inert={switching}>
         <a
           className="brand"
-          href="#overview"
-          onClick={() => navigate("overview")}
+          href={navigationHash(modeHome(mode), mode)}
+          onClick={event => { event.preventDefault(); navigate(modeHome(mode)); }}
         >
           <span className="brand-mark">
             <svg viewBox="0 0 40 40">
@@ -301,6 +322,7 @@ function App({ admin, onLogout }) {
             <small>轻量进销存</small>
           </div>
         </a>
+        <ModeSwitch mode={mode} onChange={switchMode} disabled={!!modal || switching} />
         <button
           className="workspace-selector"
           onClick={() => setModal({ kind: "settings" })}
@@ -314,12 +336,12 @@ function App({ admin, onLogout }) {
           </span>
           <ChevronDown size={14} />
         </button>
-        <div className="nav-label">日常管理</div>
+        <div className="nav-label">{mode === 'production' ? '生产管理' : '仓储管理'}</div>
         <nav aria-label="主导航">
-          {navItems.slice(0, 5).map(({ id, name, icon: Icon }) => (
+          {visibleNav.filter(item => item.group === 'main').map(({ id, name, icon: Icon }) => (
             <a
               key={id}
-              href={`#${id}`}
+              href={navigationHash(id, mode)}
               aria-label={name}
               title={name}
               className={`nav-item ${page === id ? "active" : ""}`}
@@ -338,10 +360,10 @@ function App({ admin, onLogout }) {
         </nav>
         <div className="nav-label second-label">效率工具</div>
         <nav aria-label="效率工具">
-          {navItems.slice(5).filter(item => item.id !== 'quality' || can('quality')).map(({ id, name, icon: Icon }) => (
+          {visibleNav.filter(item => item.group === 'tools').map(({ id, name, icon: Icon }) => (
             <a
               key={id}
-              href={`#${id}`}
+              href={navigationHash(id, mode)}
               aria-label={name}
               title={name}
               className={`nav-item ${page === id ? "active" : ""}`}
@@ -354,7 +376,7 @@ function App({ admin, onLogout }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-tip">
+          {mode === 'warehouse' && <div className="sidebar-tip">
             <span className="tip-icon">
               <ScanLine size={19} />
             </span>
@@ -363,7 +385,7 @@ function App({ admin, onLogout }) {
             <button onClick={() => navigate("scanner")}>
               打开扫码工作台 <ArrowRight size={13} />
             </button>
-          </div>
+          </div>}
           <button className="nav-item" onClick={() => setModal({ kind: 'businessTools' })}>
             <History size={18} /><span>业务管理</span>
           </button>
@@ -621,7 +643,7 @@ function App({ admin, onLogout }) {
           notify={notify}
         />
       )}
-      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
+      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant mode={mode} userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{user.name || user.username}（{user.username}） · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools data={data} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
