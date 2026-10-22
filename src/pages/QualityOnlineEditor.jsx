@@ -14,7 +14,7 @@ function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
   const choice=input.simple&&['single','multi'].includes(config.type)&&!hasTextProcessing(config)&&!config.specialValues?.length;
   const props={'aria-label':`${input.label} · ${input.address}`,'aria-invalid':!!errors.length,disabled:busy};
   const begin=()=>{if(!busy){setOriginal(value);setEditing(true);}};
-  return <div className={`quality-online-entry${errors.length?' has-errors':''}`}>
+  return <div className={`quality-online-entry${inline&&editing&&!choice?' is-editing':''}${errors.length?' has-errors':''}`}>
     {choice?<div className="quality-online-choices" role={config.type==='single'?'radiogroup':'group'} aria-label={props['aria-label']} aria-invalid={!!errors.length}>
       {onlineChoiceOptions(config).map(option=>{
         const parsed=previewChoice(value,config), selected=Array.isArray(parsed.value)?parsed.value:parsed.value?[parsed.value]:[];
