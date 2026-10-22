@@ -1,4 +1,4 @@
-import { cellAddress, objectRecords, parseRegion, regionAddress, preprocessText, hasTextProcessing, convertQualityValue } from './quality-template.js';
+import { cellAddress, choiceModeOf, objectRecords, parseRegion, regionAddress, preprocessText, hasTextProcessing, convertQualityValue } from './quality-template.js';
 
 // Use the same logical cells and object record boundaries as acceptance parsing.
 export function onlineInputCells(definition, workbook) {
@@ -23,7 +23,8 @@ export function onlineInputCells(definition, workbook) {
   };
   for (const field of definition.fields) {
     if (field.type !== 'object') add(field.valueRegion, field, field, field.name);
-    else objectRecords(sheet, field).forEach((record, index) => record.cells.forEach((rect, i) =>
+    // Selected cells remain available for filling even when blank termination reads no records yet.
+    else objectRecords(sheet, {...field, termination:undefined}).forEach((record, index) => record.cells.forEach((rect, i) =>
       add(regionAddress(rect), field, field.properties[i], `${field.name} · 第 ${index + 1} 条 · ${field.properties[i].name}`, index)));
   }
   return [...inputs.values()];
@@ -38,6 +39,7 @@ export function onlineCellConfig(input, inputs, values) {
 }
 
 export function onlineChoiceOptions(config) {
+  if (choiceModeOf(config) === 'plain') return (config.options || '').split('\n').map(text => text.trim()).filter(Boolean);
   const markers = [config.checkChar, ...(config.uncheckChars || '').split('\n')].filter(Boolean).sort((a,b) => b.length - a.length);
   return (config.options || '').split('\n').map(text => {
     let label = text.trim();
@@ -50,6 +52,7 @@ export function onlineChoiceOptions(config) {
 }
 
 export function onlineChoiceText(selected, config) {
+  if (choiceModeOf(config) === 'plain') return selected[0] || '';
   return selected.map(label => config.markerPosition === 'after' ? `${label}${config.checkChar}` : `${config.checkChar}${label}`)
     .join(config.choiceMode === 'separator' || config.separator && config.separator !== '\n' ? config.separator || '\n' : '\n');
 }

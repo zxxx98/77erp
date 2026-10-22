@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { Button, Badge } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
-import { choiceModeOf, choiceUncheckText, qualityTypeLabels, qualityTypes, textLines } from '../../shared/quality-template.js';
+import { choiceModeOf, choiceUncheckText, objectOrientation, qualityTypeLabels, qualityTypes, textLines } from '../../shared/quality-template.js';
 
 export function RuleSection({title,children}) {
   return <section className="quality-rule-section" aria-label={title}><h3>{title}</h3>{children}</section>;
@@ -31,12 +31,15 @@ export function TypeRules({field,onChange,uniqueKeyOwner,sourceTexts=[],allowUni
     {['number','measurements'].includes(field.type)&&<label>单位<input value={field.unit||''} maxLength={30} onChange={e=>onChange({unit:e.target.value})}/></label>}
     {field.type==='date'&&<label>文本日期格式<Select value={field.dateFormat||'YYYY-MM-DD'} onChange={e=>onChange({dateFormat:e.target.value})}>{['YYYY-MM-DD','YYYY/MM/DD','YYYY年MM月DD日'].map(v=><option key={v}>{v}</option>)}</Select></label>}
     {['single','multi'].includes(field.type)&&<>
-      <label>选项拆分方式<Select aria-label="选项拆分方式" value={choiceModeOf(field)} onChange={e=>onChange({choiceMode:e.target.value})}><option value="markers">按选项标记拆分</option><option value="separator">按指定分隔符拆分</option></Select></label>
+      <label>选项拆分方式<Select aria-label="选项拆分方式" value={choiceModeOf(field)} onChange={e=>onChange({choiceMode:e.target.value})}><option value="markers">按选项标记拆分</option><option value="separator">按指定分隔符拆分</option><option value="plain">整格文字精确匹配（plain）</option></Select></label>
       {choiceModeOf(field)==='markers'&&<label>标记位置<Select aria-label="标记位置" value={field.markerPosition||'before'} onChange={e=>onChange({markerPosition:e.target.value})}><option value="before">文字前（■合格 □拒收）</option><option value="after">文字后（合格■ 拒收□）</option></Select></label>}
+      {choiceModeOf(field)!=='plain'&&<>
       <label>勾选字符<input aria-label="勾选字符" value={field.checkChar||''} maxLength={10} onChange={e=>onChange({checkChar:e.target.value})}/><small>填写原文中的选中标记，支持自定义符号或文字，例如 ●、☑、★、[x]。</small></label>
       <label>未选中标记（每行一个）<textarea aria-label="未选中标记" value={choiceUncheckText(field)} rows={2} maxLength={500} onChange={e=>onChange({uncheckChars:e.target.value})}/><small>按原文填写，例如 ○、☐、☆、[ ]；仅识别这里配置的标记，可以留空。</small></label>
       {choiceModeOf(field)==='separator'?<label>选项分隔符<input aria-label="选项分隔符" value={(field.separator??'\n').replaceAll('\n','\\n')} maxLength={10} onChange={e=>onChange({separator:e.target.value.replaceAll('\\n','\n')})}/><small>严格按此字符拆分，换行填写 \n，空格也会保留；填写不匹配时不会改用标记拆分。</small></label>:<p className="muted">按勾选字符和未选中标记划分选项，不使用分隔符；同一行和换行排列均支持。</p>}
-      <label>允许选项（每行一个）<textarea aria-label="允许选项（每行一个）" value={field.options||''} placeholder={'CNY\nUSD\nEUR'} rows={3} maxLength={2000} onChange={e=>onChange({options:e.target.value})}/><small>填写选项文字，也兼容带已配置标记的复制文本，解析结果不含标记。</small></label>
+      </>}
+      {choiceModeOf(field)==='plain'&&<p className="muted">整格文字（去除首尾空白）须精确匹配一个允许选项，不拆分、不要求标记；多选返回包含此选项的数组。</p>}
+      <label>允许选项（每行一个）<textarea aria-label="允许选项（每行一个）" value={field.options||''} placeholder={'CNY\nUSD\nEUR'} rows={3} maxLength={2000} onChange={e=>onChange({options:e.target.value})}/><small>{choiceModeOf(field)==='plain'?'填写完整选项文字，保留文字中的符号，区分大小写。':'填写选项文字，也兼容带已配置标记的复制文本，解析结果不含标记。'}</small></label>
     </>}
     </RuleSection>}
     <details className="quality-rule-disclosure quality-text-rules"><summary><strong>内容处理</strong><span>{textRuleSummary(field)}</span></summary><div className="quality-rule-content">
@@ -69,6 +72,18 @@ function ItemRules({property,properties,onChange,sourceTexts}) {
     </details>)}
     <Button disabled={!candidates.length||rules.length>=100||property.type!=='string'} onClick={()=>onChange({itemRules:[...rules,{matchPropertyId:rules[0]?.matchPropertyId||candidates[0].id,equals:'',config:{type:'string'}}]})}>添加项目规则</Button>
     {property.type!=='string'&&<small>请先将默认数据类型设为字符串，再添加项目规则。</small>}
+  </section>;
+}
+
+export function ObjectTerminationRules({field,onChange}) {
+  const mode=field.termination?.mode||'fixed',vertical=objectOrientation(field)==='vertical',unit=vertical?'列':'行';
+  return <section className="quality-rule-section" aria-label="对象终止策略"><h3>值区域终止策略</h3>
+    <label>终止策略<Select aria-label="对象终止策略" value={mode} onChange={e=>onChange({termination:e.target.value==='fixed'?undefined:e.target.value==='blank'?{mode:'blank',blankCount:1}:e.target.value==='label'?{mode:'label',endLabel:'合计'}:{mode:'usedRange'}})}>
+      <option value="fixed">固定框选区域</option><option value="blank">读到连续空{unit}</option><option value="label">读到指定结束标签</option><option value="usedRange">读到工作表已用区域末尾</option>
+    </Select></label>
+    {mode==='blank'&&<label>连续空{unit}数<input aria-label={`连续空${unit}数`} type="number" min={1} max={2000} value={field.termination.blankCount} onChange={e=>onChange({termination:{mode,blankCount:Number(e.target.value)}})}/><small>所有属性均为空才计为空{unit}；结束的连续空{unit}不计入读取范围。</small></label>}
+    {mode==='label'&&<label>结束标签<input aria-label="结束标签" maxLength={200} value={field.termination.endLabel} onChange={e=>onChange({termination:{mode,endLabel:e.target.value}})}/><small>任一属性单元格的整格文字精确匹配标签时停止，不读取标签所在{unit}。</small></label>}
+    {mode!=='fixed'&&<p className="muted">从框选区域的首{unit}开始，沿记录方向读取到终止条件；未遇到条件时读到当前工作表已用区域末尾。预览显示实际范围和{unit}数。在线填写位置由框选区域提供。</p>}
   </section>;
 }
 

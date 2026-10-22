@@ -96,3 +96,19 @@ test('shared formula masters can be filled without retaining stale formula cache
   assert.equal(output.getWorksheet('Sheet1').getCell('B6').formula,'1+1');
   assert.equal(output.getWorksheet('Sheet1').getCell('B6').result,undefined);
 });
+
+test('plain choice controls keep literal symbols and export marker-free values',async()=>{
+  for(const type of ['single','multi']){
+    const config={type,choiceMode:'plain',options:'★特殊选项\n合格',checkChar:'★',uncheckChars:'□'};
+    assert.deepEqual(onlineChoiceOptions(config),['★特殊选项','合格']);
+    const text=onlineChoiceText(['合格'],config);assert.equal(text,'合格');
+    assert.deepEqual(previewChoice(text,config).value,type==='multi'?['合格']:'合格');
+    assert.equal(onlineChoiceText([],config),'');
+  }
+  const def=structuredClone(definition);def.fields[2].termination={mode:'blank',blankCount:1};
+  const generated=await createOnlineWorkbook(source,{definition:def,workbook});
+  assert.equal(generated.online.inputs.filter(input=>input.fieldId==='items').length,18);
+  const filled=await createOnlineWorkbook(source,{definition:def,workbook},{values:{B8:'0001',B5:'5',A18:'物料',C18:'3'}});
+  const parsed=parseAcceptance(def,workbook,await readQualityWorkbook(filled.buffer));
+  assert.deepEqual(parsed.issues,[]);assert.equal(parsed.results[2].readCount,1);assert.equal(parsed.results[2].rows.length,1);
+});

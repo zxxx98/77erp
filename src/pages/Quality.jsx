@@ -7,7 +7,7 @@ import { PageHeading, Button, Modal, Badge } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { adjacentRegion, cellAddress, containsCell, logicalRegion, objectHeaders, objectOrientation, objectRecords, parseRegion, previewDefinition, qualityTypeLabels, regionAddress, regionText, validateDefinition } from '../../shared/quality-template.js';
-import { TypeRules, ObjectProperties, RuleSection } from './QualityFieldRules.jsx';
+import { TypeRules, ObjectProperties, ObjectTerminationRules, RuleSection } from './QualityFieldRules.jsx';
 import { sheetPreviewBounds } from '../../shared/quality-sheet-view.js';
 import { downloadExcel, fetchQualityExcel, PreviewTable, WorkbookResults, QualityNavigation } from './quality-shared.jsx';
 import { designerDefinition } from '../../shared/quality-designer.js';
@@ -94,7 +94,7 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
     });
     return {orientation:layout.orientation,properties};
   };
-  const objectField=(w,region)=>({id:w.id,name:w.name,labelRegion:w.labelRegion,labelText:w.labelText,type:'object',collection:true,propertyRegion:w.propertyRegion,...(w.headerMode==='multi'?{headerMode:'multi'}:{}),orientation:objectOrientation(w),valueRegion:region,properties:w.properties,required:!!w.required,configured:true});
+  const objectField=(w,region)=>({id:w.id,name:w.name,labelRegion:w.labelRegion,labelText:w.labelText,type:'object',collection:true,propertyRegion:w.propertyRegion,...(w.headerMode==='multi'?{headerMode:'multi'}:{}),orientation:objectOrientation(w),valueRegion:region,...(w.termination?{termination:w.termination}:{}),properties:w.properties,required:!!w.required,configured:true});
   const finishSelection=()=>{
     if(!drag.current)return;drag.current=null;
     const rect=selectionRef.current;if(!rect)return;
@@ -193,6 +193,18 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
   const finishField=()=>{
     try{const definition=validateDefinition({...form.definition,fields:form.definition.fields.some(f=>f.id===fieldDraft.id)?form.definition.fields.map(f=>f.id===fieldDraft.id?{...fieldDraft,configured:true}:f):[...form.definition.fields,{...fieldDraft,configured:true}]},workbook);
       updateDefinition(definition);setFieldDraft(null);setPicking(false);setError('');setMessage('字段配置已更新，可继续编辑其他字段或保存模板草稿。');
+    }catch(e){setError(e.message);}
+  };
+  const finishObject=()=>{
+    try{
+      const definition=validateDefinition({...form.definition,fields:[...form.definition.fields.filter(f=>f.id!==wizard.id),objectField(wizard,wizard.valueRegion)]},workbook);
+      const field=definition.fields.find(f=>f.id===wizard.id);
+      if(wizard.editorDraft){setFieldDraft(field);setFieldTab('config');}
+      else{
+        updateDefinition({...form.definition,fields:form.definition.fields.some(f=>f.id===field.id)?form.definition.fields.map(f=>f.id===field.id?field:f):[...form.definition.fields,field]});
+        setMessage(`已添加对象“${field.name}”，可继续编辑属性规则。`);
+      }
+      setSelectedId(field.id);setWizard(null);setRegion(parseRegion(field.labelRegion));setError('');
     }catch(e){setError(e.message);}
   };
   const cancelField=()=>{
@@ -317,7 +329,8 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
       {wizard&&<div className="quality-wizard-banner" role="status"><span><strong>对象 Key：{wizard.name||'未命名'}</strong> · {wizard.step==='properties'?(wizard.headerMode==='multi'?'第 1 步：仅框选完整的多级表头，不含明细数据':'第 1 步：仅框选属性表头（连续单行或单列），不含明细数据'):wizard.step==='confirm'?'第 2 步：确认对象属性':wizard.step==='values'?(objectOrientation(wizard)==='vertical'?'第 3 步：请框选属性列右侧的值区域，起止行与属性区一致，每列一条记录':'第 3 步：请框选属性行下方的值区域，起止列与属性区一致，每行一条记录'):'第 4 步：预览并完成'}</span><div className="quality-actions">{wizard.step==='values'&&<Button onClick={()=>{setWizard({...wizard,step:'properties'});setRegion(null);setError('');}}>返回重选属性</Button>}<Button onClick={cancelWizard}>{wizard.editorDraft?'取消重选':'取消添加对象'}</Button></div></div>}
       {wizard?.step==='properties'&&<div className="panel quality-header-options"><label>表头模式<Select aria-label="对象表头模式" value={wizard.headerMode||'single'} onChange={event=>{setWizard({...wizard,headerMode:event.target.value,orientation:wizard.orientation||'horizontal'});setRegion(null);setError('');}}><option value="single">普通表头（单行或单列逻辑格）</option><option value="multi">多级表头（完整表头区域）</option></Select></label>{wizard.headerMode==='multi'&&<><label>排列方向<Select aria-label="多级表头排列方向" value={wizard.orientation||'horizontal'} onChange={event=>{setWizard({...wizard,orientation:event.target.value});setRegion(null);setError('');}}><option value="horizontal">横向表头：下方每行一条记录</option><option value="vertical">竖向表头：右侧每列一条记录</option></Select></label><p className="muted">框选完整的多级表头，按末级列或行生成独立属性；上级分组保留在属性名称中，确认后再框选取值区域。默认均为字符串，可继续修改类型。</p></>}</div>}
       {wizard?.step==='properties'&&<p className="muted quality-header-key-hint">本步只选择属性名称所在的表头；松开鼠标后确认属性，再进入选择值区域。对象 Key 的单元格也可以同时作为属性表头，需要读取时请一并框选。</p>}
-      {wizardHeaders&&<div className="info-box quality-range-guide" role="note" aria-label="对象值区域要求"><strong>第 3 步：选择明细值区域<br/>已确认表头：{wizard.propertyRegion}</strong><p>{wizardValueRequirement}记录范围由你框选，请排除不属于明细的备注、合计行。</p></div>}
+      {wizardHeaders&&<ObjectTerminationRules field={wizard} onChange={change=>{setWizard(v=>({...v,...change}));setError('');}}/>}
+      {wizardHeaders&&<div className="info-box quality-range-guide" role="note" aria-label="对象值区域要求"><strong>第 3 步：选择明细值区域<br/>已确认表头：{wizard.propertyRegion}</strong><p>{wizardValueRequirement}{wizard.termination?'从框选区域起点按终止策略读取。':'记录范围由你框选，请排除不属于明细的备注、合计行。'}</p></div>}
       {error&&wizard&&['properties','values'].includes(wizard.step)&&<div ref={selectionErrorRef} className="form-error quality-notice quality-selection-error" role="alert">{error}</div>}
       {picking&&<div className="quality-wizard-banner" role="status">请在表格中拖选取值区域，松开鼠标后写入。<Button onClick={()=>setPicking(false)}>取消框选</Button></div>}
       <div className={`quality-editor${fieldDraft?' quality-editing-field':''}`}><section className="panel quality-sheet-panel"><div className="quality-grid-toolbar"><span>{sheet.name} <span className="muted">{multiSelected?`已选择 ${selectedKeys.length} 个 Key`:selection?regionAddress(selection):'右键单元格添加字段'}</span></span><div className="quality-actions">{multiSelected&&<Button onClick={()=>setRegion(null)}>清除多选</Button>}<Button icon={MousePointer2} disabled={!selection||busy||!!wizard||picking} onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setMenu({x:Math.min(r.left,window.innerWidth-260),y:Math.min(r.bottom,window.innerHeight-280)});}}>添加字段</Button></div></div>
@@ -340,6 +353,7 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
                 <Button onClick={()=>{const previous=fieldDraft;setFieldDraft(null);setWizard({...previous,editorDraft:previous,previousProperties:previous.properties,step:'properties'});setRegion(null);}}>重新选择属性和值区域</Button>
                 <label className="quality-check"><input type="checkbox" checked={!!fieldDraft.required} onChange={e=>setFieldDraft(v=>({...v,required:e.target.checked}))}/>至少填写一条记录</label>
                 </RuleSection>
+                <ObjectTerminationRules field={fieldDraft} onChange={change=>setFieldDraft(v=>({...v,...change}))}/>
                 <ObjectProperties key={fieldDraft.id} field={fieldDraft} sourceTexts={fieldSourceTexts} uniqueKeyOwner={uniqueKeyOwner} onChange={change=>setFieldDraft(v=>({...v,...change}))}/>
               </>:<TypeRules field={fieldDraft} sourceTexts={fieldSourceTexts[fieldDraft.id]} uniqueKeyOwner={uniqueKeyOwner} onChange={change=>setFieldDraft(v=>({...v,...change}))}>
                 <label>字段名称<input aria-label="字段名称" placeholder={fieldDraft.customKey?'例如：公司名':undefined} value={fieldDraft.name} maxLength={60} onChange={e=>setFieldDraft(v=>({...v,name:e.target.value}))}/></label>
@@ -369,7 +383,7 @@ export function Quality({data,onConfigure,initialArea='templates'}) {
       <div className="modal-footer"><Button onClick={()=>{setBatch(null);setError('');}}>取消添加</Button><Button kind="primary" onClick={finishBatch}>确认批量添加</Button></div>
     </Modal>}
     {wizard?.step==='confirm'&&<Modal title="确认对象属性" subtitle={`是否将以下 ${wizard.properties.length} 个字段添加为对象属性？`} wide={wizard.headerMode==='multi'} onClose={cancelWizard}><div className="form-body quality-property-confirm"><label>对象 Key 名称<input aria-label="对象 Key 名称" value={wizard.name} maxLength={60} onChange={e=>setWizard(v=>({...v,name:e.target.value}))}/></label>{wizard.properties.length===1&&wizard.headerMode!=='multi'?<label>属性排列<Select value={wizard.orientation} onChange={e=>setWizard(v=>({...v,orientation:e.target.value}))}><option value="horizontal">横向：下方每行一条记录</option><option value="vertical">竖向：右侧每列一条记录</option></Select></label>:<p className="muted">{objectOrientation(wizard)==='vertical'?'属性竖向排列，右侧每列一条记录。':'属性横向排列，下方每行一条记录。'}</p>}<table><thead><tr><th>位置</th>{wizard.headerMode==='multi'&&<th>原始表头路径</th>}<th>属性名称</th><th>类型</th></tr></thead><tbody>{wizard.properties.map((p,i)=><tr key={p.id}><td>{p.headerCell}</td>{wizard.headerMode==='multi'&&<td className="quality-header-path">{p.headerPath?.map(node=>`${node.text||'（空白）'}（${node.region}）`).join(' → ')}</td>}<td><input aria-label={`属性 ${p.headerCell}`} value={p.name} maxLength={60} onChange={e=>setWizard(v=>({...v,properties:v.properties.map((x,j)=>j===i?{...x,name:e.target.value}:x)}))}/></td><td>{qualityTypeLabels[p.type]}</td></tr>)}</tbody></table>{error&&<p className="form-error" role="alert">{error}</p>}</div><div className="modal-footer"><Button onClick={()=>{setWizard({...wizard,step:'properties'});setRegion(null);setError('');}}>重新框选</Button><Button onClick={cancelWizard}>取消添加</Button><Button kind="primary" onClick={()=>{if(!wizard.name.trim()||wizard.properties.some(p=>!p.name.trim())||new Set(wizard.properties.map(p=>p.name.trim())).size!==wizard.properties.length){setError('请填写对象名称；属性名称不能为空或重复。');return;}setError('');setWizard({...wizard,step:'values'});setRegion(null);}}>确认并选择值区域</Button></div></Modal>}
-    {wizard?.step==='preview'&&<Modal title="对象数据预览" subtitle={`${wizard.name} · ${wizard.properties.length} 个属性 · ${objectOrientation(wizard)==='vertical'?'按逻辑列读取':'按逻辑行读取'} · 当前 ${wizardPreview.results[0].rows.length} 条记录`} wide onClose={()=>setWizard({...wizard,step:'values'})}><div className="form-body"><PreviewTable field={objectField(wizard,wizard.valueRegion)} preview={wizardPreview}/></div><div className="modal-footer"><Button onClick={()=>{setWizard({...wizard,step:'values'});setRegion(null);}}>重新框选值区域</Button><Button kind="primary" onClick={()=>{const field=objectField(wizard,wizard.valueRegion);if(wizard.editorDraft){setFieldDraft(field);setFieldTab('config');}else{updateDefinition({...form.definition,fields:form.definition.fields.some(f=>f.id===field.id)?form.definition.fields.map(f=>f.id===field.id?field:f):[...form.definition.fields,field]});setMessage(`已添加对象“${field.name}”，属性默认均为字符串。`);}setSelectedId(field.id);setWizard(null);setRegion(parseRegion(field.labelRegion));}}>完成对象配置</Button></div></Modal>}
+    {wizard?.step==='preview'&&<Modal title="对象数据预览" subtitle={`${wizard.name} · ${wizard.properties.length} 个属性 · ${objectOrientation(wizard)==='vertical'?'按逻辑列读取':'按逻辑行读取'} · 当前 ${wizardPreview.results[0].rows.length} 条记录`} wide onClose={()=>setWizard({...wizard,step:'values'})}><div className="form-body"><ObjectTerminationRules field={wizard} onChange={change=>{setWizard(v=>({...v,...change}));setError('');}}/><PreviewTable field={objectField(wizard,wizard.valueRegion)} preview={wizardPreview}/>{wizardPreview.issues.map((issue,i)=><p className="form-error" key={i}>{issue.message}</p>)}{error&&<p role="alert" className="form-error">{error}</p>}</div><div className="modal-footer"><Button onClick={()=>{setWizard({...wizard,step:'values'});setRegion(null);}}>重新框选值区域</Button><Button kind="primary" onClick={finishObject}>完成对象配置</Button></div></Modal>}
     {showPreview&&<Modal title="模板解析预览" subtitle="仅验证样表，不生成正式验收记录" wide onClose={()=>setShowPreview(false)}><div className="form-body"><WorkbookResults definition={form.definition} preview={preview} compact/>{preview?.issues.map((issue,i)=><p className="form-error" key={i}>{issue.sheetName?`${issue.sheetName}!`:''}{issue.region}：{issue.message}</p>)}</div></Modal>}
   </section>;
 }

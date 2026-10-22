@@ -1206,3 +1206,116 @@ test('manual corrections persist with server-derived originals, immutable downlo
     assert.equal((await f.request('/backup/preview',{backup:tampered})).status,400);
   }
 });
+
+test('plain choices publish without markers, match whole text and preserve symbols',()=>{
+  for(const type of ['single','multi']){
+    const wb=structuredClone(workbook),config={type,choiceMode:'plain',options:'合格\n不合格\n★特殊选项',checkChar:'★',uncheckChars:'★',separator:''};
+    const input={sheetName:'Sheet1',fields:[{id:'plain',name:'结论',labelRegion:'A6',valueRegion:'B6',...config}]};
+    const def=validateDefinition(input,wb,{publish:true});
+    assert.deepEqual(validateDefinition(def,wb,{publish:true}),def);
+    for(const text of ['合格','不合格','★特殊选项']){
+      const parsed=previewChoice(` ${text} `,config);assert.equal(parsed.error,undefined);
+      assert.deepEqual(parsed.value,type==='multi'?[text]:text);assert.equal(parsed.parts[0].marker,'');
+    }
+    for(const text of ['合','合格 不合格','合格\n不合格','★合格','特殊选项','OK'])assert.match(previewChoice(text,config).error,/精确匹配/);
+    Object.assign(wb.sheets[0].cells.B6,{text:'结论：不合格\n附注',value:'结论：不合格\n附注'});
+    Object.assign(input.fields[0],{parseLine:1,ignoreContent:'结论：',checkChar:undefined,uncheckChars:undefined});
+    assert.deepEqual(previewDefinition(validateDefinition(input,wb,{publish:true}),wb).value.结论,type==='multi'?['不合格']:'不合格');
+    wb.sheets[0].cells.B6={text:'',value:''};input.fields[0].required=true;
+    assert.match(previewDefinition(validateDefinition(input,wb,{publish:true}),wb).issues[0].message,/必填/);
+    input.fields[0].options='合格\n 合格';assert.throws(()=>validateDefinition(input,wb,{publish:true}),/重复/);
+  }
+});
+
+async function dynamicObjectFixture({vertical=false,records=[['甲','合格'],['',''],['乙','不合格'],['',''],['',''],['尾部','合格']],footer=false}={}){
+  const excel=new ExcelJS.Workbook(),sheet=excel.addWorksheet('动态明细');
+  const address=(row,col)=>vertical?`${String.fromCharCode(64+row)}${col}`:`${String.fromCharCode(64+col)}${row}`;
+  sheet.getCell(address(1,1)).value='动态明细';
+  for(const [i,name] of ['项目','结果'].entries())sheet.getCell(address(2,i+1)).value=name;
+  for(const [i,row] of records.entries())for(const [j,text] of row.entries())if(text!=='')sheet.getCell(address(i+3,j+1)).value=text;
+  if(footer){const row=records.length+3;sheet.mergeCells(`${address(row,1)}:${address(row,2)}`);sheet.getCell(address(row,1)).value='合计';}
+  const bytes=Buffer.from(await excel.xlsx.writeBuffer()),wb=await readQualityWorkbook(bytes);
+  const def={sheetName:sheet.name,fields:[{id:'items',name:'明细',type:'object',labelRegion:address(1,1),propertyRegion:`${address(2,1)}:${address(2,2)}`,valueRegion:`${address(3,1)}:${address(3,2)}`,orientation:vertical?'vertical':'horizontal',properties:[{id:'project',name:'项目',type:'string',required:true},{id:'result',name:'结果',type:'multi',choiceMode:'plain',options:'合格\n不合格',required:true}]}]};
+  return {excel,sheet,bytes,wb,def};
+}
+
+test('blank termination keeps internal gaps, excludes terminating blanks and supports both orientations',async()=>{
+  for(const vertical of [false,true]){
+    const {wb,def}=await dynamicObjectFixture({vertical});
+    def.fields[0].termination={mode:'blank',blankCount:2};
+    const validated=validateDefinition(def,wb,{publish:true}),parsed=previewDefinition(validated,wb),result=parsed.results[0];
+    assert.deepEqual(parsed.issues,[]);assert.equal(result.readCount,3);assert.equal(result.stopReason,'blank');
+    assert.equal(result.actualRegion,vertical?'C1:E2':'A3:B5');assert.equal(result.rows.length,2);
+    assert.deepEqual(parsed.value.明细.map(row=>row.结果),[['合格'],['不合格']]);
+    assert.deepEqual(validateDefinition(validated,wb,{publish:true}),validated);
+    def.fields[0].termination.blankCount=1;assert.equal(previewDefinition(def,wb).results[0].readCount,1);
+    for(const rule of [{mode:'auto'},{mode:'blank',blankCount:0},{mode:'blank',blankCount:1.2},{mode:'blank',blankCount:2001},{mode:'label',endLabel:''},null]){
+      def.fields[0].termination=rule;assert.throws(()=>validateDefinition(def,wb),/终止策略|连续空行|结束标签/);
+    }
+  }
+});
+
+test('label termination excludes merged footers before record validation and falls back to used range',async()=>{
+  for(const vertical of [false,true]){
+    const {wb,def}=await dynamicObjectFixture({vertical,records:[['甲','合格'],['乙','不合格']],footer:true});
+    def.fields[0].termination={mode:'label',endLabel:'合计'};
+    const validated=validateDefinition(def,wb,{publish:true}),parsed=previewDefinition(validated,wb);
+    assert.deepEqual(parsed.issues,[]);assert.equal(parsed.results[0].readCount,2);assert.equal(parsed.results[0].stopReason,'label');
+    def.fields[0].termination.endLabel='计';assert.throws(()=>validateDefinition(def,wb),/合并单元格/);
+    def.fields[0].termination.endLabel='合计';
+    const empty=structuredClone(wb);empty.sheets[0].cells[vertical?'C1':'A3']={text:'合计'};
+    const none=previewDefinition(def,empty);assert.equal(none.results[0].readCount,0);assert.equal(none.results[0].actualRegion,null);
+    def.fields[0].required=true;assert.match(previewDefinition(def,empty).issues[0].message,/至少/);
+  }
+  const {wb,def}=await dynamicObjectFixture({records:[['甲','合格'],['乙','不合格']]});
+  def.fields[0].termination={mode:'label',endLabel:'不存在'};
+  const result=previewDefinition(validateDefinition(def,wb),wb).results[0];assert.equal(result.stopReason,'usedRange');assert.equal(result.readCount,2);
+});
+
+test('used range excludes preview padding, counts formatted rows and supports old snapshots',async()=>{
+  const {excel,sheet,def}=await dynamicObjectFixture({records:[['甲','合格'],['',''],['乙','不合格']]});
+  sheet.getCell('B7').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFFFF'}};
+  const wb=await readQualityWorkbook(Buffer.from(await excel.xlsx.writeBuffer()));
+  assert.equal(wb.sheets[0].usedRows,7);assert.equal(wb.sheets[0].rows,25);
+  def.fields[0].termination={mode:'usedRange'};
+  let parsed=previewDefinition(validateDefinition(def,wb,{publish:true}),wb);assert.equal(parsed.results[0].readCount,5);assert.equal(parsed.results[0].rows.length,2);
+  delete wb.sheets[0].usedRows;
+  parsed=previewDefinition(def,wb);assert.equal(parsed.results[0].readCount,3);
+  delete def.fields[0].termination;
+  assert.equal(previewDefinition(validateDefinition(def,wb),wb).results[0].readCount,undefined,'fixed mode preserves saved snapshot shape');
+  assert.equal(previewDefinition(def,wb).results[0].rows.length,1);
+});
+
+test('dynamic blank scans retain Excel errors and reject misaligned records before the terminator',async()=>{
+  const {wb,def}=await dynamicObjectFixture({records:[['甲','合格'],['',''],['','']]});
+  def.fields[0].termination={mode:'blank',blankCount:1};
+  wb.sheets[0].usedRows=6;wb.sheets[0].cells.B4={text:'',error:'公式缺少缓存值'};
+  const parsed=previewDefinition(def,wb);assert.equal(parsed.results[0].readCount,2);assert.ok(parsed.issues.some(issue=>/公式/.test(issue.message)));
+  wb.sheets[0].merges.push('A3:B3');assert.throws(()=>validateDefinition(def,wb),/合并单元格/);
+});
+
+test('plain per-item rules and dynamic records survive API publishing and multi-sheet acceptance save',async t=>{
+  const original=await dynamicObjectFixture({records:[['甲','合格']],footer:true});
+  const field=original.def.fields[0];field.termination={mode:'label',endLabel:'合计'};
+  field.properties[1]={id:'result',name:'结果',type:'string',itemRules:[{matchPropertyId:'project',equals:'甲',config:{type:'multi',choiceMode:'plain',options:'合格\n不合格',required:true}}]};
+  const f=await publishedAcceptanceFixture(t,original.def,original.bytes);
+  assert.deepEqual(f.row.definition.fields[0].termination,field.termination);
+  const data=await dynamicObjectFixture({records:[['甲','不合格'],['',''],['乙','合格'],['丙','合格']],footer:true});
+  data.sheet.mergeCells('A3:A4');data.sheet.mergeCells('B3:B4');
+  const sheet=data.excel.addWorksheet('第二批');sheet.model={...original.sheet.model,name:'第二批'};
+  const bytes=Buffer.from(await data.excel.xlsx.writeBuffer()),sheet_names=JSON.stringify(['动态明细','第二批']);
+  const response=await f.preview(bytes,{sheet_names});assert.equal(response.status,200,JSON.stringify(response.data));
+  const p=response.data;assert.deepEqual(p.preview.issues,[]);
+  assert.deepEqual(p.preview.sheets.map(s=>s.results[0].readCount),[4,1]);
+  assert.deepEqual(p.preview.sheets[0].value.明细[0].结果,['不合格']);
+  const saved=await f.save(p,bytes,{sheet_names,bindings:bindingBody(p.bindings.map(b=>({...b,mode:'none',product_id:null})))});
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.deepEqual(saved.data.result.sheets.map(s=>s.results[0].readCount),[4,1]);
+  const backup=(await f.request('/backup')).data,preview=await f.request('/backup/preview',{backup});
+  assert.equal(preview.status,200,JSON.stringify(preview.data));
+  const restored=await f.request('/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA',request_id:randomUUID()});
+  assert.equal(restored.status,200,JSON.stringify(restored.data));
+  assert.deepEqual((await f.request(`/quality/acceptances/${saved.data.id}`)).data.result,saved.data.result);
+  backup.data.quality_template_files[0].workbook=JSON.stringify({...original.wb,sheets:original.wb.sheets.map(sheet=>({...sheet,usedRows:-1}))});
+  assert.equal((await f.request('/backup/preview',{backup})).status,400);
+});

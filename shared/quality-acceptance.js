@@ -61,7 +61,8 @@ export function parseAcceptance(definition, templateWorkbook, workbook, { sheetN
       const anchors = [...new Set([field.labelRegion,...headers].filter(Boolean))];
       for (const region of anchors) if (regionText(template, region) !== regionText(sheet, region))
         issues.push({ fieldId: field.id, region, message: '字段标题或对象属性与模板不一致，请勿移动或修改这些单元格。' });
-      const regions = [...anchors, field.valueRegion].map(parseRegion);
+      // Dynamic records may grow or shrink; their cell alignment is checked by the parser.
+      const regions = [...anchors, ...(field.type === 'object' && field.termination ? [] : [field.valueRegion])].map(parseRegion);
       const merges = source => source.merges.filter(merge => regions.some(region => overlaps(parseRegion(merge), region))).sort();
       if (JSON.stringify(merges(template)) !== JSON.stringify(merges(sheet)))
         issues.push({ fieldId: field.id, region: field.valueRegion, message: '配置区域的合并单元格与模板不一致，请使用所选版本的原始 Excel。' });

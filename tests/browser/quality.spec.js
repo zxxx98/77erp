@@ -703,3 +703,80 @@ test('string and number regex replacement previews, persists and matches saved a
   const response=page.waitForResponse(r=>r.url().endsWith('/api/quality/acceptances')&&r.request().method()==='POST');await page.getByRole('button',{name:'确认保存验收单',exact:true}).click();
   const saved=await(await response).json();expect(saved.result.value.正则).toEqual({字符串:'AB/001',数字:12.5});
 });
+
+for(const platform of ['desktop','iPhone','Android PWA'])test(`${platform} configures plain choices and object termination with actual row counts`,async({browser})=>{
+  const context=await browser.newContext({...(platform==='desktop'?{}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']),baseURL:'http://127.0.0.1:3199',serviceWorkers:platform==='Android PWA'?'allow':'block'});
+  try{
+    if(platform==='Android PWA')await context.addInitScript(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
+    await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});
+    const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+    const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('检查');
+    for(const [address,value] of Object.entries({A1:'结论',B1:'合格',A3:'明细',A4:'项目',B4:'结果',A5:'甲',B5:'合格',A6:'乙',B6:'不合格',A9:'合计'}))sheet.getCell(address).value=value;
+    sheet.mergeCells('A9:B9');
+    const fields=[{id:'result',name:'结论',labelRegion:'A1',valueRegion:'B1',type:'single',choiceMode:'plain',options:'合格\n不合格'},
+      {id:'items',name:'明细',type:'object',labelRegion:'A3',propertyRegion:'A4:B4',valueRegion:'A5:B6',properties:[{id:'project',name:'项目',type:'string'},{id:'choice',name:'结果',type:'multi',choiceMode:'plain',options:'合格\n不合格'}]}];
+    await page.goto('/#quality');
+    if(platform!=='desktop')await page.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'模板配置',exact:true}).click();
+    await page.getByLabel('上传模板 Excel').setInputFiles({name:'plain动态.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(await book.xlsx.writeBuffer())});
+    const name=`plain动态-${platform}`;await page.getByLabel('模板名称',{exact:true}).fill(name);
+    await page.getByLabel('导入模板字段配置').setInputFiles({name:'配置.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({sheetName:'检查',fields}))});
+    await page.locator('.quality-field').filter({hasText:'结论'}).click();
+    const editor=page.getByRole('complementary',{name:'字段独立编辑'});
+    await expect(editor.getByRole('combobox',{name:'选项拆分方式',exact:true})).toHaveValue('整格文字精确匹配（plain）');
+    await expect(editor.getByLabel('勾选字符',{exact:true})).toHaveCount(0);
+    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(editor.locator('.quality-preview-result pre')).toHaveText('"合格"');
+    await editor.getByRole('tab',{name:'字段设置',exact:true}).click();
+    await editor.getByRole('combobox',{name:'选项拆分方式',exact:true}).click();await page.getByRole('option',{name:'按选项标记拆分',exact:true}).click();
+    await expect(editor.getByLabel('勾选字符',{exact:true})).toBeVisible();
+    await editor.getByRole('combobox',{name:'选项拆分方式',exact:true}).click();await page.getByRole('option',{name:'整格文字精确匹配（plain）',exact:true}).click();
+    await editor.getByRole('button',{name:'完成配置',exact:true}).click();
+    await page.locator('.quality-field').filter({hasText:'明细'}).click();
+    await editor.getByRole('combobox',{name:'对象终止策略',exact:true}).click();await page.getByRole('option',{name:'读到指定结束标签',exact:true}).click();
+    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(editor.getByLabel('对象实际读取范围')).toContainText('实际读取 4 行 · A5:B8 · 遇到结束标签 · 2 条记录');
+    await editor.getByRole('tab',{name:'字段设置',exact:true}).click();
+    await editor.getByRole('combobox',{name:'对象终止策略',exact:true}).click();await page.getByRole('option',{name:'读到连续空行',exact:true}).click();
+    await editor.getByLabel('连续空行数',{exact:true}).fill('2');
+    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(editor.getByLabel('对象实际读取范围')).toContainText('实际读取 2 行 · A5:B6 · 遇到连续空行 · 2 条记录');
+    await editor.getByRole('button',{name:'完成配置',exact:true}).click();await page.getByRole('button',{name:'启用模板',exact:true}).click();
+    await expect(page.getByRole('status').filter({hasText:'模板已启用'})).toBeVisible();
+    await page.reload();if(platform!=='desktop')await page.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'模板配置',exact:true}).click();
+    await page.getByRole('row').filter({hasText:name}).getByRole('button',{name:'编辑',exact:true}).click();await page.locator('.quality-field').filter({hasText:'明细'}).click();
+    await expect(editor.getByLabel('连续空行数',{exact:true})).toHaveValue('2');
+    await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(editor.getByLabel('对象实际读取范围')).toContainText('实际读取 2 行');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await editor.getByRole('button',{name:'完成配置',exact:true}).click();await page.getByRole('button',{name:'返回模板列表',exact:true}).click();
+    await page.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'验收单',exact:true}).click();
+    await page.getByRole('button',{name:'在线新建验收单',exact:true}).click();
+    await page.getByRole('combobox',{name:'验收模板',exact:true}).click();await page.getByRole('option',{name:`${name} · v1`,exact:true}).click();
+    await page.getByRole('checkbox',{name:'带入模板预填内容（请逐项核对）',exact:true}).check();await page.getByRole('button',{name:'开始填写',exact:true}).click();
+    await page.getByRole('radio',{name:'结论 · B1 · 不合格',exact:true}).check();
+    await expect(page.getByRole('radio',{name:'结论 · B1 · 不合格',exact:true})).toHaveText('不合格');
+    await page.getByRole('checkbox',{name:'明细 · 第 1 条 · 结果 · B5 · 不合格',exact:true}).check();
+    await expect(page.getByRole('checkbox',{name:'明细 · 第 1 条 · 结果 · B5 · 合格',exact:true})).not.toBeChecked();
+    await page.getByRole('button',{name:'校验并预览',exact:true}).click();
+    await page.getByRole('button',{name:'查看解析结果',exact:true}).click();
+    await expect(page.getByLabel('对象实际读取范围')).toContainText('实际读取 2 行');
+    await page.getByRole('dialog',{name:'工作表解析结果',exact:true}).getByRole('button',{name:'关闭弹窗',exact:true}).click();
+    await page.getByRole('checkbox',{name:'绑定物料 检查',exact:true}).uncheck();
+    const response=page.waitForResponse(r=>r.url().endsWith('/api/quality/acceptances')&&r.request().method()==='POST');
+    await page.getByRole('button',{name:'确认保存验收单',exact:true}).click();
+    const saved=await (await response).json();expect(saved.result.value.检查.结论).toBe('不合格');expect(saved.result.value.检查.明细[0].结果).toEqual(['不合格']);
+    expect(errors).toEqual([]);
+  }finally{await context.close();}
+});
+
+
+test('object wizard applies termination to a starting row and shows actual rows before completion',async({page})=>{
+  const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('动态向导');
+  for(const [address,value] of Object.entries({A1:'明细',A2:'项目',B2:'结果',A3:'甲',B3:'合格',A4:'乙',B4:'不合格',A5:'合计'}))sheet.getCell(address).value=value;
+  sheet.mergeCells('A5:B5');
+  await page.goto('/#quality');await page.getByLabel('上传模板 Excel').setInputFiles({name:'动态向导.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(await book.xlsx.writeBuffer())});
+  await page.locator('[data-address=A1]').click({button:'right'});await page.getByRole('menuitem',{name:'添加为对象 Key',exact:true}).click();await selectRange(page,'A2','B2');
+  await page.getByRole('dialog').getByRole('button',{name:'确认并选择值区域',exact:true}).click();
+  await page.getByRole('combobox',{name:'对象终止策略',exact:true}).click();await page.getByRole('option',{name:'读到指定结束标签',exact:true}).click();
+  await selectRange(page,'A3','B3');const dialog=page.getByRole('dialog',{name:'对象数据预览',exact:true});
+  await expect(dialog.getByLabel('对象实际读取范围')).toContainText('实际读取 2 行 · A3:B4 · 遇到结束标签 · 2 条记录');
+  await dialog.getByLabel('结束标签',{exact:true}).fill('');await dialog.getByRole('button',{name:'完成对象配置',exact:true}).click();await expect(dialog.getByRole('alert')).toContainText('结束标签');
+  await dialog.getByLabel('结束标签',{exact:true}).fill('合计');await dialog.getByRole('button',{name:'完成对象配置',exact:true}).click();
+  await page.locator('.quality-field').click();await expect(page.getByRole('complementary',{name:'字段独立编辑'}).getByLabel('结束标签',{exact:true})).toHaveValue('合计');
+});

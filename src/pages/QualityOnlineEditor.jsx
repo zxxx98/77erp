@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, FileSpreadsheet, List } from 'lucide-react';
 import { Button } from '../components/common.jsx';
-import { cellAddress, containsCell, hasTextProcessing, parseRegion, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
+import { cellAddress, choiceModeOf, containsCell, hasTextProcessing, parseRegion, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
 import { onlineCellConfig, onlineChoiceOptions, onlineChoiceText } from '../../shared/quality-online.js';
 import { sheetPreviewBounds } from '../../shared/quality-sheet-view.js';
 
@@ -20,9 +20,9 @@ function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
         const parsed=previewChoice(value,config), selected=Array.isArray(parsed.value)?parsed.value:parsed.value?[parsed.value]:[];
         const checked=selected.includes(option), marker=checked?config.checkChar:(config.uncheckChars||'').split('\n').find(Boolean)||'○';
         return <button type="button" className="quality-online-option" key={option} role={config.type==='single'?'radio':'checkbox'} aria-label={`${input.label} · ${input.address} · ${option}`} aria-checked={checked} disabled={busy} onClick={()=>{
-          const next=checked?selected.filter(item=>item!==option):(config.type==='single'?[option]:[...selected,option]);
+          const next=checked?selected.filter(item=>item!==option):(config.type==='single'||choiceModeOf(config)==='plain'?[option]:[...selected,option]);
           onChange(input.address,onlineChoiceText(next,config));
-        }}><span aria-hidden="true">{config.markerPosition==='after'?`${option}${marker}`:`${marker}${option}`}</span></button>;
+        }}><span aria-hidden="true">{choiceModeOf(config)==='plain'?option:config.markerPosition==='after'?`${option}${marker}`:`${marker}${option}`}</span></button>;
       })}
     </div>:inline&&!editing?<button type="button" className="quality-online-cell-value" {...props} title="双击填写，触屏轻点填写，也可按 Enter" onDoubleClick={begin}
       onPointerUp={event=>{if(event.pointerType==='touch'||event.pointerType==='pen')begin();}}

@@ -94,9 +94,56 @@ export function objectHeaders(sheet, region, orientation, headerMode = 'single')
   if (!cells) throw new Error('请框选连续的一行或一列逻辑属性单元格；合并单元格须完整选中且排列对齐。');
   return { orientation: direction, cells };
 }
-export function objectRecords(sheet, field) {
+function objectTermination(field) {
+  const rule = field.termination;
+  if (rule === undefined) return undefined;
+  if (!rule || !['blank','label','usedRange'].includes(rule.mode)) fail('对象终止策略无效。');
+  if (rule.mode === 'blank') {
+    if (!Number.isSafeInteger(rule.blankCount) || rule.blankCount < 1 || rule.blankCount > 2000) fail('连续空行数须为 1～2000 的整数。');
+    return { mode: 'blank', blankCount: rule.blankCount };
+  }
+  if (rule.mode === 'label') return { mode: 'label', endLabel: cleanText(rule.endLabel, 200, '结束标签') };
+  return { mode: 'usedRange' };
+}
+// Workbook dimensions include UI padding; used dimensions preserve the Excel boundary.
+export function objectReadExtent(sheet, field) {
+  const values = parseRegion(field.valueRegion), vertical = objectOrientation(field) === 'vertical';
+  const rule = objectTermination(field), start = vertical ? values.c1 : values.r1;
+  let end = vertical ? values.c2 : values.r2, stopReason = 'fixed';
+  if (rule) {
+    const used = sheet[vertical ? 'usedCols' : 'usedRows'];
+    end = Number.isSafeInteger(used) ? used : Object.keys(sheet.cells).concat(sheet.merges || []).reduce((end, region) => {
+      const rect = parseRegion(region);
+      return Math.max(end, vertical ? rect.c2 : rect.r2);
+    }, 0);
+    end = Math.min(end, vertical ? sheet.cols : sheet.rows);
+    stopReason = 'usedRange';
+    let blanks = 0;
+    for (let index = start; index <= end && rule.mode !== 'usedRange'; index++) {
+      const line = { ...values, ...(vertical ? { c1: index, c2: index } : { r1: index, r2: index }) };
+      const logical = new Map();
+      for (let offset = vertical ? values.r1 : values.c1; offset <= (vertical ? values.r2 : values.c2); offset++) {
+        const cell = logicalRegion(sheet, vertical ? offset : index, vertical ? index : offset);
+        const address = cellAddress(cell.r1, cell.c1);
+        logical.set(address, sheet.cells[address]);
+      }
+      if (rule.mode === 'label' && [...logical.values()].some(cell => cell?.text?.trim() === rule.endLabel)) {
+        end = index - 1; stopReason = 'label'; break;
+      }
+      const empty = !regionText(sheet, regionAddress(line)) && ![...logical.values()].some(cell => cell?.error);
+      blanks = empty ? blanks + 1 : 0;
+      if (rule.mode === 'blank' && blanks >= rule.blankCount) {
+        end = index - blanks; stopReason = 'blank'; break;
+      }
+    }
+  }
+  const readCount = Math.max(0, end - start + 1);
+  return { readCount, actualRegion: readCount ? regionAddress({ ...values, ...(vertical ? { c2: end } : { r2: end }) }) : null, stopReason };
+}
+export function objectRecords(sheet, field, extent = objectReadExtent(sheet, field)) {
+  if (!extent.actualRegion) return [];
   const { orientation, cells: headers } = objectHeaders(sheet, field.propertyRegion, objectOrientation(field), field.headerMode);
-  const vertical = orientation === 'vertical', values = parseRegion(field.valueRegion), records = [];
+  const vertical = orientation === 'vertical', values = parseRegion(extent.actualRegion), records = [];
   for (let index = vertical ? values.c1 : values.r1; index <= (vertical ? values.c2 : values.r2);) {
     const cells = headers.map(header => logicalRegion(sheet, vertical ? header.r1 : index, vertical ? index : header.c1));
     const end = vertical ? cells[0].c2 : cells[0].r2;
@@ -116,7 +163,13 @@ export const choiceModeOf = config => config.choiceMode ?? (config.separator && 
 export const choiceUncheckText = config => config.uncheckChars ?? '';
 function choiceRules(config) {
   const mode = choiceModeOf(config), separator=config.separator ?? '\n';
-  if (!['markers','separator'].includes(mode)) fail('选项拆分方式无效。');
+  if (!['markers','separator','plain'].includes(mode)) fail('选项拆分方式无效。');
+  if (mode === 'plain') {
+    const allowed = config.options.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!allowed.length) fail('请填写允许选项。');
+    if (new Set(allowed).size !== allowed.length) fail('允许选项不能重复。');
+    return { allowed, mode };
+  }
   if (!['before','after'].includes(config.markerPosition || 'before')) fail('选项标记位置无效。');
   if (!config.checkChar) fail('请填写勾选字符。');
   if (mode==='separator' && !separator) fail('请填写选项分隔符。');
@@ -190,7 +243,7 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
     if (field.ignoreContent != null && (typeof field.ignoreContent !== 'string' || field.ignoreContent.length > 2000)) fail('忽略内容最多 2000 个字符。');
     const regex=regexRule(field);
     const processing = { ...(field.parseLine != null && field.parseLine !== 'all' ? { parseLine: field.parseLine } : {}), ...(field.ignoreContent ? { ignoreContent: field.ignoreContent } : {}), ...(regex?{regexPattern:regex.pattern,regexReplacement:regex.replacement}:{}) };
-    if(choice&&!['markers','separator'].includes(choiceModeOf(field)))fail('选项拆分方式无效。');
+    if(choice&&!['markers','separator','plain'].includes(choiceModeOf(field)))fail('选项拆分方式无效。');
     return { ...processing, ...(specialValues.length?{specialValues}:{}), ...(choice&&field.markerPosition==='after'?{markerPosition:'after'}:{}), type: field.type, required: field.required === true, unit: cleanText(field.unit || '', 30, '单位', true), dateFormat: ['YYYY-MM-DD', 'YYYY/MM/DD', 'YYYY年MM月DD日'].includes(field.dateFormat) ? field.dateFormat : 'YYYY-MM-DD', checkChar: cleanText(field.checkChar || '', 10, '勾选字符', true), separator, options: cleanText(field.options || '', 2000, '选项', true), ...(choice?{choiceMode:choiceModeOf(field),uncheckChars:cleanText(choiceUncheckText(field),500,'未选中标记',true)}:{}) };
   };
   const fields = input.fields.map(field => {
@@ -208,7 +261,8 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
       if (vertical) {
         if (headers.r1 !== values.r1 || headers.r2 !== values.r2 || values.c1 <= headers.c2) fail(`竖向对象的值区域须位于属性列右侧且起止行一致。已确认表头 ${propertyRegion}，当前值区域 ${base.valueRegion}；请选择第 ${headers.r1}～${headers.r2} 行、${cellAddress(1,headers.c2).replace('1','')} 列右侧的值。若需读取其他行，请返回重选属性。`);
       } else if (headers.c1 !== values.c1 || headers.c2 !== values.c2 || values.r1 <= headers.r2) fail(`横向对象的值区域须位于属性行下方且起止列一致。已确认表头 ${propertyRegion}，当前值区域 ${base.valueRegion}；请选择 ${cellAddress(1,headers.c1).replace('1','')}～${cellAddress(1,headers.c2).replace('1','')} 列、第 ${headers.r2} 行下方的值。若需读取其他列，请返回重选属性。`);
-      objectRecords(sheet, { propertyRegion, valueRegion: base.valueRegion, orientation: layout.orientation, headerMode: field.headerMode });
+      const termination = objectTermination(field);
+      objectRecords(sheet, { propertyRegion, valueRegion: base.valueRegion, orientation: layout.orientation, headerMode: field.headerMode, termination });
       if (!Array.isArray(field.properties) || field.properties.length !== layout.cells.length) fail('对象属性数量与选区不符。');
       const propertyNames = new Set();
       const properties = field.properties.map((p, i) => {
@@ -216,7 +270,6 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
         if (propertyNames.has(propName)) fail('同一对象内的属性名称不能重复。');
         propertyNames.add(propName);
         const config = basic(p);
-        if (publish && ['single', 'multi'].includes(config.type) && (!config.checkChar || !config.options)) fail('选择类型请配置勾选字符和允许选项。');
         if (publish && ['single', 'multi'].includes(config.type)) choiceRules(config);
         const cell = layout.cells[i], headerCell = cellAddress(cell.r1, cell.c1);
         const headerPath = layout.paths?.[i].map(cell => ({region:regionAddress(cell),text:regionText(sheet,regionAddress(cell))}));
@@ -242,11 +295,10 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
           return {matchPropertyId:match.id,equals,config};
         });
       }
-      return { ...base, type: 'object', collection: true, required: field.required === true, propertyRegion, ...(field.headerMode==='multi'?{headerMode:'multi'}:{}), ...(vertical ? { orientation: 'vertical' } : headers.r1 !== headers.r2 || field.headerMode==='multi' ? { orientation: 'horizontal' } : {}), properties };
+      return { ...base, type: 'object', collection: true, required: field.required === true, propertyRegion, ...(termination ? { termination } : {}), ...(field.headerMode==='multi'?{headerMode:'multi'}:{}), ...(vertical ? { orientation: 'vertical' } : headers.r1 !== headers.r2 || field.headerMode==='multi' ? { orientation: 'horizontal' } : {}), properties };
     }
     const config = basic(field), r = parseRegion(base.valueRegion), logical = logicalRegion(sheet, r.r1, r.c1);
     if (['number', 'date', 'measurements'].includes(config.type) && regionAddress(r) !== regionAddress(logical)) fail('数字、日期和测量值列表只能读取一个逻辑单元格。');
-    if (publish && ['single', 'multi'].includes(config.type) && (!config.checkChar || !config.options)) fail('选择类型请配置勾选字符和允许选项。');
     if (publish && ['single', 'multi'].includes(config.type)) choiceRules(config);
     const direction = ['up','down','left','right'].includes(field.direction) ? field.direction : null;
     if (direction && base.customKey) fail('自定义 Key 请直接配置取值区域。');
@@ -289,8 +341,14 @@ export function previewChoice(raw, config) {
   const parts = [], mode = choiceModeOf(config);
   try {
     if (!raw) return { mode, parts, value: config.type === 'multi' ? [] : null };
-    if (!config.checkChar || !config.options) fail('请选择勾选字符及允许选项。');
+    if (!config.options || mode !== 'plain' && !config.checkChar) fail(mode === 'plain' ? '请填写允许选项。' : '请选择勾选字符及允许选项。');
     const { allowed, pattern, separator } = choiceRules(config);
+    if (mode === 'plain') {
+      const label = raw.trim(), matched = allowed.includes(label);
+      parts.push({ raw, label, marker: '', status: matched ? 'selected' : 'invalid', matched });
+      if (!matched) fail('整格文字未精确匹配允许选项。');
+      return { mode, parts, value: config.type === 'multi' ? [label] : label };
+    }
     const add = (text, label, marker = '', error) => {
       const status = !text.trim() ? 'empty' : !marker ? 'unmarked'
         : normalizeChoiceMarker(marker) === normalizeChoiceMarker(config.checkChar) ? 'selected' : 'unselected';
@@ -378,8 +436,8 @@ export function previewDefinition(definition, workbook) {
       continue;
     }
     const rows = [], vertical = objectOrientation(field) === 'vertical';
-    let records;
-    try { records = objectRecords(sheet,field); } catch (e) {
+    let records, extent;
+    try { extent = objectReadExtent(sheet,field); records = objectRecords(sheet,field,extent); } catch (e) {
       issues.push({fieldId:field.id,region:field.valueRegion,message:e.message});
       results.push({id:field.id,name:field.name,region:field.valueRegion,rows:[],value:[]});continue;
     }
@@ -398,7 +456,7 @@ export function previewDefinition(definition, workbook) {
       rows.push({ ...(vertical ? { column: index } : { row: index }), cells, value: Object.fromEntries(cells.map(c => [c.name,c.value])) });
     }
     if (field.required && !rows.length) issues.push({ fieldId:field.id, region:field.valueRegion, message:'对象至少需要一条记录。' });
-    results.push({ id:field.id, name:field.name, region:field.valueRegion, rows, value:rows.map(r=>r.value) });
+    results.push({ id:field.id, name:field.name, region:field.valueRegion, ...(field.termination ? extent : {}), rows, value:rows.map(r=>r.value) });
   }
   const parsed={ results, value:Object.fromEntries(results.map(r=>[r.name,r.value])), issues };
   if(definition.checks?.length)parsed.checks=evaluateChecks(definition,parsed);

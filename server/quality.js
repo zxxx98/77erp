@@ -67,6 +67,8 @@ export function validateQualityBackup(data) {
           !s.cells || typeof s.cells !== 'object' || Array.isArray(s.cells) || !Array.isArray(s.merges) || s.merges.length > 10000 || !Array.isArray(s.widths) ||
           s.widths.length !== s.cols || s.widths.some(w=>typeof w!=='number'||!Number.isFinite(w)||w<40||w>500) ||
           sheetNames.has(s.name) || (totalCells += s.rows*s.cols)>200000) throw error('备份工作表无效。');
+      if (s.usedRows !== undefined && (!Number.isSafeInteger(s.usedRows) || s.usedRows < 0 || s.usedRows > s.rows) ||
+          s.usedCols !== undefined && (!Number.isSafeInteger(s.usedCols) || s.usedCols < 0 || s.usedCols > s.cols)) throw error('备份工作表已用范围无效。');
       sheetNames.add(s.name);
       for (const [addr,cell] of Object.entries(s.cells)) {
         const r = parseRegion(addr);

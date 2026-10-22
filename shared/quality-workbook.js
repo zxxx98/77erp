@@ -46,7 +46,7 @@ export async function readQualityWorkbook(buffer) {
     }));
     const merges = sheet.model.merges || [];
     for (const merge of merges) parseRegion(merge);
-    return { name:sheet.name, rows, cols, cells, merges, widths:Array.from({length:cols},(_,i)=>Math.max(72,Math.min(320,(sheet.getColumn(i+1).width || 14)*7))) };
+    return { name:sheet.name, rows, cols, usedRows:sheet.rowCount, usedCols:sheet.columnCount, cells, merges, widths:Array.from({length:cols},(_,i)=>Math.max(72,Math.min(320,(sheet.getColumn(i+1).width || 14)*7))) };
   });
   const result = { sheets };
   if (new TextEncoder().encode(JSON.stringify(result)).length > 5 * 1024 * 1024) throw new Error('表格内容超过 5 MB，请减少工作表内容。');

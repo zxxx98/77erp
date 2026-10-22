@@ -27,7 +27,7 @@ function ChoiceSplitPreview({field,raw,compact=false}) {
   const parsed=previewChoice(processed,field);
   const labels={selected:'已选中',unselected:'未选中',unmarked:'未识别标记',invalid:'无法拆分',empty:'空白片段'};
   const content=<section className="quality-choice-split" aria-label="选项拆分结果">
-    <div className="quality-choice-heading"><strong>拆分结果（{parsed.parts.length} 项）</strong><small>{parsed.mode==='separator'?'按指定分隔符拆分':'按选项标记拆分'}</small></div>
+    <div className="quality-choice-heading"><strong>拆分结果（{parsed.parts.length} 项）</strong><small>{parsed.mode==='plain'?'整格文字精确匹配（plain）':parsed.mode==='separator'?'按指定分隔符拆分':'按选项标记拆分'}</small></div>
     {!parsed.parts.length&&<p className="muted">{parsed.error?'请先完成选项规则配置，再查看拆分结果。':`${hasTextProcessing(field)?'处理后的内容':'原始内容'}为空，没有可拆分的选项。`}</p>}
     {parsed.parts.map((part,index)=><div className="quality-choice-part" key={index}>
       <div className="quality-choice-part-heading"><strong>第 {index+1} 项</strong><Badge tone={part.status==='selected'?'green':part.status==='unselected'?'blue':'gray'}>{labels[part.status]}</Badge><small>{part.matched?'匹配允许选项':'未匹配允许选项'}</small></div>
@@ -47,7 +47,7 @@ export function PreviewTable({preview,field,resultFirst=false}) {
   </div>;
   if(field.type!=='object')return <div className="quality-value-preview"><span>{isManuallyCorrected(preview,field.valueRegion)?'修正后内容':'原始内容'}</span><pre>{result.raw||'（空）'}</pre><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/><span>解析值</span><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre></div>;
   const vertical=objectOrientation(field)==='vertical';
-  return <div className="quality-preview-table"><table><thead><tr><th>{vertical?'源列':'源行'}</th>{field.properties.map(p=><th key={p.id}>{p.name}</th>)}</tr></thead><tbody>{result.rows.map(row=><tr key={vertical?row.column:row.row}><th>{vertical?cellAddress(1,row.column).slice(0,-1):row.row}</th>{row.cells.map(c=>{
+  return <div className="quality-preview-table">{result.readCount!==undefined&&<p className="muted" aria-label="对象实际读取范围">实际读取 {result.readCount} {vertical?'列':'行'} · {result.actualRegion||'无数据区域'} · {({fixed:'固定区域结束',blank:vertical?'遇到连续空列':'遇到连续空行',label:'遇到结束标签',usedRange:'到达工作表已用区域末尾'})[result.stopReason]} · {result.rows.length} 条记录</p>}<table><thead><tr><th>{vertical?'源列':'源行'}</th>{field.properties.map(p=><th key={p.id}>{p.name}</th>)}</tr></thead><tbody>{result.rows.map(row=><tr key={vertical?row.column:row.row}><th>{vertical?cellAddress(1,row.column).slice(0,-1):row.row}</th>{row.cells.map(c=>{
     const property=field.properties.find(p=>p.id===c.id),rule=property?.itemRules?.[c.ruleIndex],config=rule?.config||property;
     const invalid=preview.issues?.some(issue=>issue.fieldId===field.id&&issue.propertyId===c.id&&issue.region===c.region);
     return <td key={c.id}>{invalid?'（无效）':statusLabel(c)||(c.value===null||c.value===''?'（未填写）':Array.isArray(c.value)?JSON.stringify(c.value):String(c.value))}{isManuallyCorrected(preview,c.region)&&<small className="quality-manual-marker">手动修正</small>}{rule&&<small className="quality-rule-match">项目规则：{rule.equals} · {qualityTypeLabels[config.type]}</small>}{c.status&&<small>原文：{c.raw}</small>}<ProcessedTextPreview field={config} raw={c.raw} compact/><ChoiceSplitPreview field={config} raw={c.raw} compact/></td>;
