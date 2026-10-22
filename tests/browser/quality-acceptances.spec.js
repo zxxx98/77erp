@@ -46,6 +46,7 @@ test('acceptance import previews typed values, saves an immutable version and do
   await page.getByRole('button',{name:'确认保存验收单'}).click();const saved=await(await savedResponse).json();
   expect(uploads).toEqual(['http://127.0.0.1:3199/api/quality/acceptances']);
   await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'第一批服务器到货',exact:true})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'工作表切换'})).toHaveCount(0);
   expect(saved.result.value.Sheet1.采购明细[0].数量).toBe(8);expect(saved.revision).toBe(1);
   const uploaded=page.waitForEvent('download');await page.getByRole('button',{name:'下载上传原文件'}).click();const attachment=await uploaded;expect(attachment.suggestedFilename()).toBe('第一批验收.xlsx');expect(await readFile(await attachment.path())).toEqual(original);
   await page.getByRole('button',{name:'返回验收单列表'}).click();await page.getByLabel('搜索验收单').fill('第一批服务器到货');
@@ -108,6 +109,22 @@ test('twenty sheets stay compact and show only the requested sheet in a result d
   await expect(rows.first().getByRole('button',{name:'手动选择物料',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   await page.screenshot({path:'output/ui-preview/quality-compact-sheets.png',fullPage:true});
+  await selectDataSheets(page,Array.from({length:20},(_,i)=>`批次${i+1}`));
+  await page.getByRole('button',{name:'确认保存验收单',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();
+  const results=page.getByRole('region',{name:'验收解析结果'}),navigation=page.getByRole('navigation',{name:'工作表切换'});
+  await expect(results.locator('.quality-sheet-results')).toHaveCount(1);
+  await expect(navigation).toContainText('1 / 20 个工作表');
+  await expect(navigation.getByRole('button',{name:'上一张',exact:true})).toBeDisabled();
+  const picker=navigation.getByRole('combobox',{name:'当前工作表',exact:true});
+  await picker.fill('批次20');await picker.press('ArrowDown');await picker.press('Enter');
+  await expect(results.getByText('1020',{exact:true}).last()).toBeVisible();
+  await expect(results.locator('.quality-sheet-results')).toHaveCount(1);
+  await expect(navigation).toContainText('20 / 20 个工作表');
+  await expect(navigation.getByRole('button',{name:'下一张',exact:true})).toBeDisabled();
+  await navigation.getByRole('button',{name:'上一张',exact:true}).click();
+  await expect(results.getByText('1019',{exact:true}).last()).toBeVisible();
+  await page.screenshot({path:'output/ui-preview/quality-detail-sheet-navigation.png',fullPage:true});
 });
 
 test('acceptances can be deleted from the list and detail after confirmation',async({page})=>{

@@ -2,6 +2,8 @@ import { getWarehouseId } from '../api.js';
 import { Badge, Button } from '../components/common.jsx';
 import { cellAddress, hasTextProcessing, objectOrientation, preprocessText, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
 import { isManuallyCorrected } from '../../shared/quality-acceptance.js';
+import { useState } from 'react';
+import { Select } from '../Dropdown.jsx';
 
 export const qualityUid = () => crypto.randomUUID?.() || Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16)).join('-');
 export function QualityNavigation({area,onChange,disabled}) {
@@ -79,9 +81,18 @@ export function QualityCheckResults({checks,onLocate}) {
   </section>;
 }
 
-export function WorkbookResults({definition,preview,compact=false,renderSheet,onLocate}) {
+export function WorkbookResults({definition,preview,compact=false,renderSheet,onLocate,sheetNavigation=false}) {
+  const [sheetName,setSheetName]=useState(null);
   const groups=preview?.sheets || [{sheetName:definition.sheetName,...preview}];
-  return <section className={compact?'quality-all-preview':'quality-acceptance-results'} aria-label={compact?'模板各工作表解析结果':'验收解析结果'}>{groups.map(config=>{
+  const index=Math.max(0,groups.findIndex(group=>group.sheetName===sheetName));
+  const paged=sheetNavigation&&groups.length>1;
+  const visibleGroups=paged?[groups[index]]:groups;
+  return <section className={compact?'quality-all-preview':'quality-acceptance-results'} aria-label={compact?'模板各工作表解析结果':'验收解析结果'}>
+    {paged&&<nav className="panel quality-sheet-navigation" aria-label="工作表切换">
+      <Select label="当前工作表" searchable value={groups[index].sheetName} onChange={event=>setSheetName(event.target.value)}>{groups.map(group=><option key={group.sheetName} value={group.sheetName}>{group.sheetName}</option>)}</Select>
+      <div className="quality-sheet-navigation-actions"><span className="muted" aria-live="polite">{index+1} / {groups.length} 个工作表</span><Button disabled={index===0} onClick={()=>setSheetName(groups[index-1].sheetName)}>上一张</Button><Button disabled={index===groups.length-1} onClick={()=>setSheetName(groups[index+1].sheetName)}>下一张</Button></div>
+    </nav>}
+    {visibleGroups.map(config=>{
     const parsed=config;
     return <section key={config.sheetName} className="quality-sheet-results" aria-label={`工作表 ${config.sheetName}`}>
       {preview?.sheets&&<div className="quality-sheet-result-heading"><h2>{config.sheetName}</h2><span className="muted">{definition.fields.length} 个字段{parsed?.issues.length?` · ${parsed.issues.length} 处问题`:''}</span></div>}

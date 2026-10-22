@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { selectDataSheets, openSheetResults, closeSheetResults } from './quality-helpers.js';
@@ -14,7 +14,8 @@ async function range(page,start,end) {
   await a.scrollIntoViewIfNeeded();await b.scrollIntoViewIfNeeded();const ra=await a.boundingBox(),rb=await b.boundingBox();
   await page.mouse.move(ra.x+ra.width/2,ra.y+ra.height/2);await page.mouse.down();await page.mouse.move(rb.x+rb.width/2,rb.y+rb.height/2,{steps:8});await page.mouse.up();
 }
-test('a single-sheet template parses multiple data sheets with different names into one acceptance',async({page})=>{
+test('a single-sheet template parses multiple data sheets with different names into one acceptance',async({page,browser})=>{
+  test.setTimeout(60000);
   const errors=[];page.on('pageerror',e=>errors.push(e.message));let workers=0;page.on('worker',()=>workers++);
   await page.goto('/#quality');await page.getByLabel('上传模板 Excel').setInputFiles('tests/fixtures/quality-template.xlsx');await page.getByLabel('模板名称',{exact:true}).fill('单表规则多表验收');
   await page.locator('[data-address=A11]').click({button:'right'});await page.getByRole('menuitem',{name:/添加为 Key（右）/}).click();await page.getByRole('checkbox',{name:'必填',exact:true}).check();await page.getByRole('button',{name:'完成配置',exact:true}).click();
@@ -53,5 +54,26 @@ test('a single-sheet template parses multiple data sheets with different names i
   expect(acceptance.result.value.一批到货.公司名称).toBe('第一批供应商');expect(acceptance.result.value.二批到货.公司名称).toBe('第二批供应商');expect(acceptance.result.value.二批到货.采购明细[0].数量).toBe('12');expect(acceptance.definition.sheets).toBeUndefined();
   await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载上传原文件'}).click();expect(await readFile(await(await download).path())).toEqual(bytes);
   const after=await(await page.request.get(`/api/quality/templates/${id}`)).json();expect(after.definition).toEqual(template.definition);
+  for(const device of ['Pixel 7','iPhone 13']){
+    const context=await browser.newContext({...devices[device],baseURL:'http://127.0.0.1:3199',serviceWorkers:'block',storageState:await page.context().storageState()});
+    try{
+      const mobile=await context.newPage();mobile.on('pageerror',e=>errors.push(e.message));
+      await mobile.goto('/#quality');await expect(mobile.locator('.mw-tabs')).toBeVisible();
+      await mobile.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'验收单',exact:true}).click();
+      await mobile.getByRole('row').filter({hasText:acceptance.number}).getByRole('button',{name:'查看详情',exact:true}).click();
+      const results=mobile.getByRole('region',{name:'验收解析结果'}),navigation=mobile.getByRole('navigation',{name:'工作表切换'});
+      await expect(results.locator('.quality-sheet-results')).toHaveCount(1);
+      await expect(results).toContainText('第一批供应商');
+      await navigation.getByRole('button',{name:'下一张',exact:true}).click();
+      await expect(results).toContainText('第二批供应商');
+      await expect(results).not.toContainText('第一批供应商');
+      await expect(navigation.getByRole('button',{name:'下一张',exact:true})).toBeDisabled();
+      await navigation.getByRole('combobox',{name:'当前工作表',exact:true}).fill('一批');
+      await mobile.getByRole('option',{name:'一批到货',exact:true}).click();
+      await expect(results).toContainText('第一批供应商');
+      expect(await mobile.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+      await mobile.screenshot({path:`output/ui-preview/quality-detail-${device.replaceAll(' ','-')}.png`,fullPage:true});
+    }finally{await context.close();}
+  }
   expect(errors).toEqual([]);
 });

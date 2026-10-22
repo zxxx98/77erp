@@ -59,9 +59,9 @@ test('multiple Sheets auto match material names and customer part numbers, allow
   const response=page.waitForResponse(response=>response.url().endsWith('/api/quality/acceptances')&&response.request().method()==='POST');
   await page.getByRole('button',{name:'确认保存验收单'}).click();const saved=await(await response).json();
   expect(saved.bindings.map(binding=>binding.product_id)).toEqual([automatic.id,manual.id]);expect(saved.bindings[1].product_id).not.toBe(byPart.id);
-  await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();await expect(first).toContainText('BIND-NAME');await expect(second).toContainText('BIND-OVERRIDE');
+  await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();await expect(first).toContainText('BIND-NAME');await page.getByRole('button',{name:'下一张',exact:true}).click();await expect(second).toContainText('BIND-OVERRIDE');
   await page.getByRole('button',{name:'返回验收单列表'}).click();await page.getByRole('row').filter({hasText:saved.number}).getByRole('button',{name:'查看详情',exact:true}).click();
-  await expect(second).toContainText('BIND-OVERRIDE');expect(errors).toEqual([]);
+  await expect(first).toContainText('BIND-NAME');await page.getByRole('button',{name:'下一张',exact:true}).click();await expect(second).toContainText('BIND-OVERRIDE');expect(errors).toEqual([]);
 });
 test('unmatched and ambiguous keys require manual choice or opt-out independently for each Sheet',async({page})=>{
   const a=await product(page,{name:'重复匹配名称',barcode:'BIND-DUPLICATE'});
@@ -84,7 +84,7 @@ test('templates without a unique key support manual binding and opt-out without 
   await expect(page.getByRole('button',{name:'确认保存验收单'})).toBeDisabled();
   await selectProduct(page,'一批到货','BIND-NOKEY');await second.getByRole('checkbox').uncheck();
   await page.getByRole('button',{name:'确认保存验收单'}).click();await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();
-  await expect(first).toContainText('BIND-NOKEY');await expect(second).toContainText('此 Sheet 不绑定物料');
+  await expect(first).toContainText('BIND-NOKEY');await page.getByRole('button',{name:'下一张',exact:true}).click();await expect(second).toContainText('此 Sheet 不绑定物料');
 });
 
 test('manual corrections refresh automatic key matches per sheet and retain deliberate material choices',async({page})=>{
