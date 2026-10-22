@@ -643,6 +643,9 @@ test('quality permission grants chart tools without unrelated business writes or
   assert.match(call.messages[0].content, /合格率直接读取模板数字字段，不自动计算/);
   assert.match(call.messages[0].content, /模板仅配置一个工作表的规则，导入验收数据时可选择多个工作表复用同一套规则解析/);
   assert.match(call.messages[0].content, /整个模板含对象属性最多配置一个/);
+  assert.match(call.messages[0].content, /95% 和 95 均解析为 95/);
+  assert.match(call.messages[0].content, /日期时间统一为 YYYY-MM-DDTHH:mm:ss/);
+  assert.match(call.messages[0].content, /false 不是空值/);
   assert.match(call.messages[0].content, /每个验收数据工作表可独立选择是否绑定物料/);
   assert.ok(!call.tools.some(tool => /publish|preview_orders|preview_import/.test(tool.function.name)));
   for(const name of ['quality_chart_templates','quality_chart_data','preview_quality_chart'])assert.ok(call.tools.some(tool=>tool.function.name===name));
@@ -651,7 +654,7 @@ test('quality permission grants chart tools without unrelated business writes or
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_templates').get().n, 0);
 });
 
-async function qualityAiFixture(t,{save=true}={}) {
+async function qualityAiFixture(t,{save=true,extendedTypes=false}={}) {
   const f=await fixture(t);
   const config=(await f.request(f.admin,'/settings/r2-backup')).data;
   assert.equal((await f.request(f.admin,'/settings/r2-backup',{...config,account_id:'a'.repeat(32),bucket:'erp-backups',access_key:'key',secret_key:'secret'},'PUT')).status,200);
@@ -660,11 +663,13 @@ async function qualityAiFixture(t,{save=true}={}) {
   sheet.getCell('A2').value='检验明细';
   for(const [i,value] of ['项目','数量','日期'].entries())sheet.getCell(3,i+1).value=value;
   for(const [i,values] of [['尺寸',2,'2026-10-20'],['外观',0,'2026-10-21']].entries())for(const [j,value] of values.entries())sheet.getCell(i+4,j+1).value=value;
+  if(extendedTypes){sheet.getCell('A1').value=new Date('2026-10-20T23:59:59Z');sheet.getCell('A1').numFmt='yyyy/mm/dd hh:mm:ss';sheet.getCell('B1').value=0.95;sheet.getCell('B1').numFmt='0%';sheet.getCell('C1').value=false;}
   const bytes=Buffer.from(await excel.xlsx.writeBuffer());
   const definition={sheetName:'检验',fields:[{id:'date',name:'日期',type:'date',customKey:true,valueRegion:'A1'},
     {id:'rate',name:'合格率',type:'number',unit:'%',customKey:true,valueRegion:'B1'},
     {id:'company',name:'公司名',type:'string',customKey:true,valueRegion:'C1'},
     {id:'items',name:'检验明细',type:'object',labelRegion:'A2',propertyRegion:'A3:C3',valueRegion:'A4:C5',properties:[{id:'item',name:'项目',type:'string'},{id:'quantity',name:'数量',type:'number'},{id:'itemDate',name:'日期',type:'date'}]}]};
+  if(extendedTypes){definition.fields[0].type='datetime';definition.fields[1].numberMode='percent';definition.fields[2].type='boolean';}
   const body=new FormData();body.append('file',new Blob([bytes]),'检验.xlsx');body.append('name','品质检验模板');body.append('definition',JSON.stringify(definition));body.append('request_id',randomUUID());
   const created=await f.request(f.admin,'/quality/templates',body);assert.equal(created.status,200,JSON.stringify(created.data));
   const published=await f.request(f.admin,`/quality/templates/${created.data.id}/publish`,{version:created.data.version});assert.equal(published.status,200);
@@ -759,4 +764,16 @@ test('AI material chart preview uses only the chosen material while saved rules 
   const other=(await f.request(f.admin,'/warehouses',{name:'其他预览物料仓'})).data.id;
   const foreign=await f.request(f.admin,'/products',{name:'外仓物料',barcode:'FOREIGN-AI-MAT',category:'未分类',unit:'件',cost:0,price:0,threshold:0},'POST',other);assert.equal(foreign.status,201);
   f.use('preview_quality_chart',{...args,product_id:foreign.data.id});response=await f.chat(f.admin);assert.deepEqual(response.data.actions,[]);assert.match(f.toolResult().error,/不属于当前仓库/);
+});
+
+
+test('AI charts expose datetime and false boolean fields and preview percent values without recalculating rates',async t=>{
+  const f=await qualityAiFixture(t,{extendedTypes:true});
+  f.use('quality_chart_data',{revision_id:f.row.published_revision});assert.equal((await f.chat(f.admin)).status,200);
+  const data=f.toolResult(),fields=data.scopes[0].fields;
+  assert.equal(fields.find(field=>field.ref.fieldId==='date').type,'datetime');
+  assert.deepEqual(fields.find(field=>field.ref.fieldId==='company').samples,['false']);assert.equal(fields.find(field=>field.ref.fieldId==='company').missing,0);
+  assert.deepEqual(fields.find(field=>field.ref.fieldId==='rate').samples,['95']);assert.ok(data.recommendations.some(chart=>chart.config.x.fieldId==='date'));
+  f.use('preview_quality_chart',{...f.chart,config:{...f.chart.config,groupBy:{fieldId:'company'}}});
+  const preview=await f.chat(f.admin);assert.equal(preview.status,200);assert.deepEqual(preview.data.actions[0].preview.rows.map(row=>[row.x,row.series,row.value]),[['2026-10-20','false',95]]);
 });

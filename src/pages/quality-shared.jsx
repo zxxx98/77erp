@@ -36,21 +36,24 @@ function ChoiceSplitPreview({field,raw,compact=false}) {
   </section>;
   return compact?<details className="quality-choice-details"><summary>查看拆分结果（{parsed.parts.length} 项）</summary>{content}</details>:content;
 }
+function PercentHint({field}) {
+  return field?.type==='number'&&field.numberMode==='percent'?<small className="muted">百分数值，单位 %（95% → 95）</small>:null;
+}
 const statusLabel=result=>result.status==='not_applicable'?'不适用':result.status==='missing'?'未填写':null;
 export function PreviewTable({preview,field,resultFirst=false}) {
   const result=preview?.results?.find(r=>r.id===field.id);
   if(!result)return null;
   if(field.type!=='object'&&resultFirst)return <div className="quality-value-preview quality-result-first">
-    <section className="quality-preview-result" aria-label="解析结果"><strong>解析值</strong><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre></section>
+    <section className="quality-preview-result" aria-label="解析结果"><strong>解析值</strong><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre><PercentHint field={field}/></section>
     <div className="quality-preview-raw"><span>{isManuallyCorrected(preview,field.valueRegion)?'修正后内容':'原始内容'}</span><pre>{result.raw||'（空）'}</pre></div>
     {(hasTextProcessing(field)||['single','multi'].includes(field.type))&&<details className="quality-preview-details"><summary>查看处理与拆分过程</summary><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/></details>}
   </div>;
-  if(field.type!=='object')return <div className="quality-value-preview"><span>{isManuallyCorrected(preview,field.valueRegion)?'修正后内容':'原始内容'}</span><pre>{result.raw||'（空）'}</pre><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/><span>解析值</span><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre></div>;
+  if(field.type!=='object')return <div className="quality-value-preview"><span>{isManuallyCorrected(preview,field.valueRegion)?'修正后内容':'原始内容'}</span><pre>{result.raw||'（空）'}</pre><ProcessedTextPreview field={field} raw={result.raw}/><ChoiceSplitPreview field={field} raw={result.raw}/><span>解析值</span><pre>{statusLabel(result)||JSON.stringify(result.value)}{isManuallyCorrected(preview,field.valueRegion)&&<small className="quality-manual-marker">手动修正</small>}</pre><PercentHint field={field}/></div>;
   const vertical=objectOrientation(field)==='vertical';
   return <div className="quality-preview-table">{result.readCount!==undefined&&<p className="muted" aria-label="对象实际读取范围">实际读取 {result.readCount} {vertical?'列':'行'} · {result.actualRegion||'无数据区域'} · {({fixed:'固定区域结束',blank:vertical?'遇到连续空列':'遇到连续空行',label:'遇到结束标签',usedRange:'到达工作表已用区域末尾'})[result.stopReason]} · {result.rows.length} 条记录</p>}<table><thead><tr><th>{vertical?'源列':'源行'}</th>{field.properties.map(p=><th key={p.id}>{p.name}</th>)}</tr></thead><tbody>{result.rows.map(row=><tr key={vertical?row.column:row.row}><th>{vertical?cellAddress(1,row.column).slice(0,-1):row.row}</th>{row.cells.map(c=>{
     const property=field.properties.find(p=>p.id===c.id),rule=property?.itemRules?.[c.ruleIndex],config=rule?.config||property;
     const invalid=preview.issues?.some(issue=>issue.fieldId===field.id&&issue.propertyId===c.id&&issue.region===c.region);
-    return <td key={c.id}>{invalid?'（无效）':statusLabel(c)||(c.value===null||c.value===''?'（未填写）':Array.isArray(c.value)?JSON.stringify(c.value):String(c.value))}{isManuallyCorrected(preview,c.region)&&<small className="quality-manual-marker">手动修正</small>}{rule&&<small className="quality-rule-match">项目规则：{rule.equals} · {qualityTypeLabels[config.type]}</small>}{c.status&&<small>原文：{c.raw}</small>}<ProcessedTextPreview field={config} raw={c.raw} compact/><ChoiceSplitPreview field={config} raw={c.raw} compact/></td>;
+    return <td key={c.id}>{invalid?'（无效）':statusLabel(c)||(c.value===null||c.value===''?'（未填写）':Array.isArray(c.value)?JSON.stringify(c.value):String(c.value))}{isManuallyCorrected(preview,c.region)&&<small className="quality-manual-marker">手动修正</small>}{rule&&<small className="quality-rule-match">项目规则：{rule.equals} · {qualityTypeLabels[config.type]}</small>}{c.status&&<small>原文：{c.raw}</small>}<PercentHint field={config}/><ProcessedTextPreview field={config} raw={c.raw} compact/><ChoiceSplitPreview field={config} raw={c.raw} compact/></td>;
   })}</tr>)}</tbody></table>{!result.rows.length&&<p className="quality-empty">值区域尚无填写记录。</p>}</div>;
 }
 

@@ -1,10 +1,10 @@
-import { aggregateQualityChart, chartFields, chartTypeLabels, metricLabels, refKey, validateChart } from '../shared/quality-charts.js';
+import { aggregateQualityChart, chartDateTypes, chartDimensionTypes, chartFields, chartTypeLabels, metricLabels, refKey, validateChart } from '../shared/quality-charts.js';
 import { acceptanceSheetResults } from '../shared/quality-bindings.js';
 import { createQualityChart, normalizeQualityChart, qualityChartEntries, qualityChartRevision } from './quality-charts.js';
 
 const fail=message=>{throw new Error(message);};
 const validId=id=>Number.isSafeInteger(id)&&id>0;
-const dimensions=['string','uniqueKey','single','date','number'];
+const dimensions=chartDimensionTypes;
 const text=value=>String(value).slice(0,160);
 export function aiChartTemplates(db,warehouseId,query='') {
   if(typeof query!=='string'||query.length>100)fail('模板查询条件最多100字。');
@@ -42,7 +42,7 @@ export function aiChartData(db,warehouseId,revisionId) {
         }
       }
     }
-    const date=fields.find(f=>f.type==='date'&&f.nonempty),category=fields.find(f=>['string','single','uniqueKey'].includes(f.type)&&f.nonempty);
+    const date=fields.find(f=>chartDateTypes.includes(f.type)&&f.nonempty),category=fields.find(f=>['string','single','uniqueKey','boolean'].includes(f.type)&&f.nonempty);
     const numbers=fields.filter(f=>f.type==='number'&&f.nonempty);
     const add=(name,reason,x,metric,chartType)=>{
       if(recommendations.length>=8)return;

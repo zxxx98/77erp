@@ -1,4 +1,5 @@
 import { cellAddress, choiceModeOf, objectRecords, parseRegion, regionAddress, preprocessText, hasTextProcessing, convertQualityValue } from './quality-template.js';
+import { booleanRules, formatQualityDate, percentRatio, qualityDateFormats, qualityDateTimeFormats } from './quality-value-types.js';
 
 // Use the same logical cells and object record boundaries as acceptance parsing.
 export function onlineInputCells(definition, workbook) {
@@ -56,6 +57,10 @@ export function onlineChoiceText(selected, config) {
   return selected.map(label => config.markerPosition === 'after' ? `${label}${config.checkChar}` : `${config.checkChar}${label}`)
     .join(config.choiceMode === 'separator' || config.separator && config.separator !== '\n' ? config.separator || '\n' : '\n');
 }
+export function onlineBooleanOptions(config) {
+  const values = booleanRules(config);
+  return [{ label:values.trueValues[0], value:true }, { label:values.falseValues[0], value:false }];
+}
 
 const rgb = color => /^[A-F\d]{8}$/i.test(color?.argb || '') ? `#${color.argb.slice(2)}` : undefined;
 export function cellStyle(cell) {
@@ -102,16 +107,33 @@ export async function createOnlineWorkbook(source, template, { values, keepValue
     next[input.address] = values?.[input.address] ?? (keepValues ? template.workbook.sheets.find(s => s.name === sheet.name).cells[input.address]?.text || '' : '');
   }
   for (const input of inputs) {
-    const text = next[input.address];
     // Codes and '=...' stay literal; numeric fields remain usable as Excel numbers.
     const cell = sheet.getCell(input.address), config = onlineCellConfig(input, inputs, next);
+    const original = template.workbook.sheets.find(s => s.name === sheet.name).cells[input.address];
+    if (keepValues && values?.[input.address] === undefined && !hasTextProcessing(config)) {
+      if (config.type === 'number' && config.numberMode === 'percent' && typeof original?.value === 'number' && /%/.test((original.format || '').replace(/"[^"]*"|\\./g,''))) next[input.address] = `${convertQualityValue(original.text,config,original)}%`;
+      if (config.type === 'boolean' && typeof original?.value === 'boolean') next[input.address] = onlineBooleanOptions(config).find(option => option.value === original.value).label;
+      if (['date','datetime'].includes(config.type) && original?.date) {
+        const format = config.dateFormat || (config.type === 'datetime' ? qualityDateTimeFormats[0] : qualityDateFormats[0]);
+        next[input.address] = formatQualityDate(config.type === 'datetime' ? original.datetime || `${original.date}T00:00:00` : original.date,format);
+      }
+    }
+    const text = next[input.address];
+    // ExcelJS shares style objects across cells. Native dates and number formats
+    // must not change the formatting of other inputs that share this style.
+    cell.style = { ...cell.style };
     cell.value = text || null;
-    if (input.simple && config.type === 'number' && !hasTextProcessing(config)) {
+    if (input.simple && ['number','boolean','date','datetime'].includes(config.type) && !hasTextProcessing(config)) {
       try {
-        const number = convertQualityValue(text.trim(),config);
-        if (typeof number === 'number') {
-          cell.value = number;
-          if (/%/.test(cell.numFmt || '')) cell.numFmt = 'General';
+        const value = convertQualityValue(text.trim(),config);
+        if (typeof value === 'number') {
+          cell.value = config.numberMode === 'percent' ? percentRatio(value) : value;
+          if (config.numberMode === 'percent') cell.numFmt = /%/.test((cell.numFmt || '').replace(/"[^"]*"|\\./g,'')) ? cell.numFmt : '0.##########%';
+          else if (/%/.test(cell.numFmt || '')) cell.numFmt = 'General';
+        } else if (typeof value === 'boolean') cell.value = value;
+        else if (value && ['date','datetime'].includes(config.type)) {
+          cell.value = new Date(`${value}${config.type==='date'?'T00:00:00':''}Z`);
+          cell.numFmt = config.type === 'datetime' ? 'yyyy-mm-dd hh:mm:ss' : 'yyyy-mm-dd';
         }
       } catch { /* Keep invalid input as text so the normal parser reports it. */ }
     }

@@ -74,7 +74,8 @@ export function validateQualityBackup(data) {
         const r = parseRegion(addr);
         if (r.r1!==r.r2 || r.c1!==r.c2 || r.r2>s.rows || r.c2>s.cols || !cell || !text(cell.text,10000) ||
             !['string','number','boolean'].includes(typeof cell.value) || typeof cell.value==='number'&&!Number.isFinite(cell.value) ||
-            !text(cell.format,1000) || cell.error!==undefined&&!text(cell.error,2000) || cell.date!==undefined&&!/^\d{4}-\d{2}-\d{2}$/.test(cell.date)) throw error('备份单元格无效。');
+            !text(cell.format,1000) || cell.error!==undefined&&!text(cell.error,2000) || cell.date!==undefined&&!/^\d{4}-\d{2}-\d{2}$/.test(cell.date) ||
+            cell.datetime!==undefined&&(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(cell.datetime)||!Number.isFinite(Date.parse(`${cell.datetime}Z`))||new Date(`${cell.datetime}Z`).toISOString().slice(0,19)!==cell.datetime)) throw error('备份单元格无效。');
       }
       for (const merge of s.merges) {const r=parseRegion(merge);if(r.r2>s.rows||r.c2>s.cols)throw error('备份合并区域无效。');}
     }

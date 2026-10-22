@@ -4,16 +4,16 @@ import { api } from '../api.js';
 import { Button, Modal, PageHeading, Badge } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { queryPath, useQuery } from '../queries.js';
-import { chartFields, chartTypeLabels, metricLabels, refKey } from '../../shared/quality-charts.js';
+import { chartDateTypes, chartDimensionTypes, chartFields, chartTypeLabels, metricLabels, refKey } from '../../shared/quality-charts.js';
 import { QualityNavigation, qualityUid } from './quality-shared.jsx';
 import { MaterialPicker } from './QualityMaterialBinding.jsx';
 import { QualityChartData, QualityChartView } from './QualityChartView.jsx';
 
 const initialConfig={schemaVersion:1,kind:'ordinary',chartType:'line',objectId:null,x:null,dateField:null,bucket:'day',groupBy:null,metric:{aggregation:'avg',value:null}};
-const dimensions=['string','uniqueKey','single','number','date'];
+const dimensions=chartDimensionTypes;
 function defaultConfig(definition,previous=initialConfig) {
-  const fields=chartFields(definition,previous.objectId),x=fields.find(field=>field.type==='date')||fields.find(field=>dimensions.includes(field.type)),value=fields.find(field=>field.type==='number');
-  return {...previous,x:x?.ref||null,dateField:x?.type==='date'?x.ref:null,groupBy:null,metric:value?{aggregation:'avg',value:value.ref}:{aggregation:'count'}};
+  const fields=chartFields(definition,previous.objectId),x=fields.find(field=>chartDateTypes.includes(field.type))||fields.find(field=>dimensions.includes(field.type)),value=fields.find(field=>field.type==='number');
+  return {...previous,x:x?.ref||null,dateField:chartDateTypes.includes(x?.type)?x.ref:null,groupBy:null,metric:value?{aggregation:'avg',value:value.ref}:{aggregation:'count'}};
 }
 function FieldSelect({label,fields,value,onChange,emptyLabel}) {
   return <label>{label}<Select aria-label={label} value={refKey(value)} onChange={event=>onChange(fields.find(field=>refKey(field.ref)===event.target.value)?.ref||null)}>
@@ -53,7 +53,7 @@ function ChartEditor({data,chart,onClose,onSaved}) {
   const run=async fn=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await fn();}catch(error){setError(error.message);}finally{lock.current=false;setBusy(false);}};
   const payload=()=>({name,template_id:source.template_id,revision_id:source.revision_id,config});
   const fields=source?chartFields(source.definition,config.objectId):[],x=fields.find(field=>refKey(field.ref)===refKey(config.x));
-  const numeric=fields.filter(field=>field.type==='number'),dates=fields.filter(field=>field.type==='date');
+  const numeric=fields.filter(field=>field.type==='number'),dates=fields.filter(field=>chartDateTypes.includes(field.type));
   const options=source&&!sources.some(row=>row.revision_id===source.revision_id)?[source,...sources]:sources;
   return <section className="quality-chart-editor">
     <PageHeading title={chart?'编辑品质图表':'新建品质图表'} description="选择模板与取数方式，配置字段和统计规则；物料图表按查看时的当前物料取数。">
@@ -74,8 +74,8 @@ function ChartEditor({data,chart,onClose,onSaved}) {
           <p className="muted">使用所选版本的字段规则，读取同一模板中字段 ID、类型和单位兼容的历史及后续验收数据。</p>
           <label>取数方式<Select aria-label="图表取数方式" value={config.objectId||''} onChange={event=>change(defaultConfig(source.definition,{...config,objectId:event.target.value||null}))}><option value="">Sheet 普通字段（每个 Sheet 一条记录）</option>{source.definition.fields.filter(field=>field.type==='object').map(field=><option key={field.id} value={field.id}>对象明细：{field.name}</option>)}</Select></label>
           {config.objectId&&<p className="muted">每条对象明细参与统计；同时使用 Sheet 普通字段时，该值会应用于每条明细。</p>}
-          <FieldSelect label="横轴字段" fields={fields.filter(field=>dimensions.includes(field.type))} value={config.x} onChange={ref=>change({x:ref,dateField:fields.find(field=>refKey(field.ref)===refKey(ref))?.type==='date'?ref:config.dateField})}/>
-          {x?.type==='date'&&<label>日期汇总<Select aria-label="日期汇总" value={config.bucket} onChange={event=>change({bucket:event.target.value})}><option value="day">按日</option><option value="week">按周（周一开始）</option><option value="month">按月</option></Select></label>}
+          <FieldSelect label="横轴字段" fields={fields.filter(field=>dimensions.includes(field.type))} value={config.x} onChange={ref=>change({x:ref,dateField:chartDateTypes.includes(fields.find(field=>refKey(field.ref)===refKey(ref))?.type)?ref:config.dateField})}/>
+          {chartDateTypes.includes(x?.type)&&<label>日期汇总<Select aria-label="日期汇总" value={config.bucket} onChange={event=>change({bucket:event.target.value})}><option value="day">按日</option><option value="week">按周（周一开始）</option><option value="month">按月</option></Select></label>}
           <label>分组字段<Select aria-label="分组字段" value={refKey(config.groupBy)} onChange={event=>change({groupBy:event.target.value==='$material'?{system:'material'}:fields.find(field=>refKey(field.ref)===event.target.value)?.ref||null})}><option value="">不分组</option>{config.kind==='ordinary'&&<option value="$material">按绑定物料分组</option>}{fields.filter(field=>dimensions.includes(field.type)).map(field=><option key={refKey(field.ref)} value={refKey(field.ref)}>{field.name}</option>)}</Select></label>
           <label>统计方式<Select aria-label="图表统计方式" value={config.metric.aggregation} onChange={event=>change({metric:event.target.value==='count'?{aggregation:'count'}:{aggregation:event.target.value,value:config.metric.value||numeric[0]?.ref||null}})}>{Object.entries(metricLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
           {config.metric.aggregation!=='count'&&<FieldSelect label="数值字段" fields={numeric} value={config.metric.value} onChange={ref=>change({metric:{...config.metric,value:ref}})}/>}

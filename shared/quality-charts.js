@@ -3,6 +3,8 @@ import { acceptanceSheetResults } from './quality-bindings.js';
 const fail = message => { throw new Error(message); };
 export const chartTypeLabels = { line: '折线图', bar: '柱状图', table: '明细表' };
 export const metricLabels = { sum: '求和', avg: '平均值', min: '最小值', max: '最大值', count: '记录数' };
+export const chartDimensionTypes = ['string','uniqueKey','single','date','datetime','boolean','number'];
+export const chartDateTypes = ['date','datetime'];
 export const refKey = ref => ref?.system ? `$${ref.system}` : ref ? JSON.stringify([ref.fieldId,ref.propertyId||null]) : '';
 export function chartFields(definition, objectId = null) {
   return definition.fields.flatMap(field=>field.type==='object'
@@ -19,17 +21,16 @@ export function validateChart(input, definition) {
     if(!field||!types.includes(field.type))fail(`${label}字段不存在或数据类型不适用。`);
     return {...field.ref};
   };
-  const dimensions=['string','uniqueKey','single','date','number'];
-  const x=readRef(input.x,dimensions,'横轴');
+  const x=readRef(input.x,chartDimensionTypes,'横轴');
   const xField=fields.find(field=>refKey(field.ref)===refKey(x));
-  const dateField=input.dateField===null?null:input.dateField?readRef(input.dateField,['date'],'日期筛选'):xField.type==='date'?x:null;
+  const dateField=input.dateField===null?null:input.dateField?readRef(input.dateField,chartDateTypes,'日期筛选'):chartDateTypes.includes(xField.type)?x:null;
   const bucket=input.bucket||'day';if(!['day','week','month'].includes(bucket))fail('日期汇总方式无效。');
   let groupBy=null;
   if(input.groupBy){
     if(input.groupBy.system==='material'){
       if(input.kind==='material')fail('物料图表已限定当前物料，无需再次按物料分组。');
       groupBy={system:'material'};
-    }else groupBy=readRef(input.groupBy,dimensions,'分组');
+    }else groupBy=readRef(input.groupBy,chartDimensionTypes,'分组');
   }
   const source=input.metric;
   if(!source||!Object.hasOwn(metricLabels,source.aggregation))fail('统计方式无效。');
@@ -50,6 +51,15 @@ export function chartCompatible(config, definition, candidate) {
 }
 export function validChartDate(value) {
   return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
+}
+function calendarDate(value, type) {
+  if (type === 'datetime') {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)) return null;
+    const date = new Date(`${value}Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,19) !== value) return null;
+    value = value.slice(0,10);
+  }
+  return validChartDate(value) ? value : null;
 }
 export function validateChartFilters(input,config,{sample=false}={}) {
   const integer=(value,label)=>{
@@ -91,11 +101,11 @@ export function aggregateQualityChart(config,definition,entries,filters={},trace
       const records=config.objectId?object?.rows||[]:[null];
       for(const record of records){
         const read=ref=>!ref?null:ref.propertyId?record?.cells.find(cell=>cell.id===ref.propertyId)?.value:sheet.results.find(result=>result.id===ref.fieldId)?.value;
-        const date=read(config.dateField);
+        const date=calendarDate(read(config.dateField),fields.find(field=>refKey(field.ref)===refKey(config.dateField))?.type);
         if((filters.from||filters.to)&&(!validChartDate(date)||filters.from&&date<filters.from||filters.to&&date>filters.to)){stats.excluded++;continue;}
         let x=read(config.x);
-        if(empty(x)||axis.type==='date'&&!validChartDate(x)){stats.excluded++;continue;}
-        if(axis.type==='date')x=dateBucket(x,config.bucket);
+        if(empty(x)||chartDateTypes.includes(axis.type)&&!calendarDate(x,axis.type)){stats.excluded++;continue;}
+        if(chartDateTypes.includes(axis.type))x=dateBucket(calendarDate(x,axis.type),config.bucket);
         const grouped=config.groupBy?.system==='material'?(binding?.product_id?`material:${binding.product_id}`:'未绑定物料'):read(config.groupBy);
         const series=config.groupBy?String(empty(grouped)?'（空）':grouped):'统计值';
         const metric=config.metric,aggregation=metric.aggregation;
@@ -123,5 +133,5 @@ export function aggregateQualityChart(config,definition,entries,filters={},trace
     if(value!==null&&!Number.isFinite(value))fail('统计结果超出数值范围，请缩小统计范围。');
     return {x:group.x,series:group.series,seriesLabel:group.seriesLabel,value,count:group.count};
   });
-  return {rows,stats,xType:axis.type,unit:fields.find(field=>refKey(field.ref)===refKey(config.metric.value))?.unit||''};
+  return {rows,stats,xType:axis.type==='datetime'?'date':axis.type,unit:fields.find(field=>refKey(field.ref)===refKey(config.metric.value))?.unit||''};
 }

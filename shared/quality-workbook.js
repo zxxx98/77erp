@@ -25,7 +25,7 @@ export async function readQualityWorkbook(buffer) {
     const cells = {};
     sheet.eachRow(row => row.eachCell(cell => {
       if (cell.isMerged && cell.master.address !== cell.address) return;
-      let value = cell.value, error = '', date;
+      let value = cell.value, error = '', date, datetime;
       if (value && typeof value === 'object') {
         if ('formula' in value || 'sharedFormula' in value) {
           value = value.result;
@@ -35,14 +35,29 @@ export async function readQualityWorkbook(buffer) {
         if (value?.richText) value = value.richText.map(t => t.text).join('');
         if (value?.hyperlink) value = value.text || '';
       }
-      if (value instanceof Date) { date = value.toISOString().slice(0,10); value = date; }
+      if (value instanceof Date) {
+        datetime = value.toISOString().slice(0,19); date = datetime.slice(0,10);
+        const timeFormat = /[hs]/i.test((cell.numFmt || '').replace(/"[^"]*"|\\./g,''));
+        value = timeFormat || datetime.slice(11) !== '00:00:00' ? datetime.replace('T',' ') : date;
+      }
       if (!['string','number','boolean'].includes(typeof value)) value = '';
       let text = String(value);
       if (typeof value === 'number' && cell.numFmt) {
         try { text = SSF.format(cell.numFmt, value, { date1904: workbook.properties.date1904 }); } catch { /* retain raw value */ }
+        if (SSF.is_date(cell.numFmt)) {
+          const parts = SSF.parse_date_code(value,{date1904:workbook.properties.date1904});
+          if (parts) {
+            const pad = n => String(n).padStart(2,'0');
+            const candidate = `${String(parts.y).padStart(4,'0')}-${pad(parts.m)}-${pad(parts.d)}T${pad(parts.H)}:${pad(parts.M)}:${pad(parts.S)}`;
+            const parsed = new Date(`${candidate}Z`);
+            if (Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,19) === candidate) {
+              datetime = candidate; date = candidate.slice(0,10);
+            }
+          }
+        }
       }
       if (text.length > 10000) throw new Error('单元格内容过长。');
-      if (text || error) cells[cellAddress(cell.row,cell.col)] = { value, text, format: cell.numFmt || '', ...(date ? {date}:{}), ...(error ? {error}:{}) };
+      if (text || error) cells[cellAddress(cell.row,cell.col)] = { value, text, format: cell.numFmt || '', ...(date ? {date}:{}), ...(datetime ? {datetime}:{}), ...(error ? {error}:{}) };
     }));
     const merges = sheet.model.merges || [];
     for (const merge of merges) parseRegion(merge);

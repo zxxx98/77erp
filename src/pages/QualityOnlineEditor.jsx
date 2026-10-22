@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Check, FileSpreadsheet, List } from 'lucide-react';
 import { Button } from '../components/common.jsx';
-import { cellAddress, choiceModeOf, containsCell, hasTextProcessing, parseRegion, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
-import { onlineCellConfig, onlineChoiceOptions, onlineChoiceText } from '../../shared/quality-online.js';
+import { cellAddress, choiceModeOf, containsCell, convertQualityValue, hasTextProcessing, parseRegion, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
+import { onlineCellConfig, onlineChoiceOptions, onlineChoiceText, onlineBooleanOptions } from '../../shared/quality-online.js';
 import { sheetPreviewBounds } from '../../shared/quality-sheet-view.js';
 
 function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
@@ -12,10 +12,15 @@ function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
   const position=parseRegion(input.address);
   const errors=issues.filter(issue=>containsCell(parseRegion(issue.region),position.r1,position.c1));
   const choice=input.simple&&['single','multi'].includes(config.type)&&!hasTextProcessing(config)&&!config.specialValues?.length;
+  const boolean=input.simple&&config.type==='boolean'&&!hasTextProcessing(config)&&!config.specialValues?.length;
+  let booleanValue=null;
+  if(boolean){try{booleanValue=convertQualityValue(value.trim(),config);}catch{/* Validation shows unmapped text. */}}
   const props={'aria-label':`${input.label} · ${input.address}`,'aria-invalid':!!errors.length,disabled:busy};
   const begin=()=>{if(!busy){setOriginal(value);setEditing(true);}};
   return <div className={`quality-online-entry${inline&&editing&&!choice?' is-editing':''}${errors.length?' has-errors':''}`}>
-    {choice?<div className="quality-online-choices" role={config.type==='single'?'radiogroup':'group'} aria-label={props['aria-label']} aria-invalid={!!errors.length}>
+    {boolean?<div className="quality-online-choices" role="radiogroup" aria-label={props['aria-label']} aria-invalid={!!errors.length}>
+      {onlineBooleanOptions(config).map(option=><button type="button" key={option.label} className="quality-online-option" role="radio" aria-label={`${props['aria-label']} · ${option.label}`} aria-checked={booleanValue===option.value} disabled={busy} onClick={()=>onChange(input.address,booleanValue===option.value?'':option.label)}>{option.label}</button>)}
+    </div>:choice?<div className="quality-online-choices" role={config.type==='single'?'radiogroup':'group'} aria-label={props['aria-label']} aria-invalid={!!errors.length}>
       {onlineChoiceOptions(config).map(option=>{
         const parsed=previewChoice(value,config), selected=Array.isArray(parsed.value)?parsed.value:parsed.value?[parsed.value]:[];
         const checked=selected.includes(option), marker=checked?config.checkChar:(config.uncheckChars||'').split('\n').find(Boolean)||'○';
@@ -27,7 +32,7 @@ function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
     </div>:inline&&!editing?<button type="button" className="quality-online-cell-value" {...props} title="双击填写，触屏轻点填写，也可按 Enter" onDoubleClick={begin}
       onPointerUp={event=>{if(event.pointerType==='touch'||event.pointerType==='pen')begin();}}
       onKeyDown={event=>{if(event.key==='Enter'||event.key==='F2'){event.preventDefault();begin();}}}>{value||'\u00a0'}</button>:<textarea {...props} autoFocus={inline} rows={config.type==='measurements'||value.includes('\n')?3:1} maxLength={10000}
-      inputMode={config.type==='number'?'decimal':undefined} placeholder={`${config.required?'必填 · ':''}${config.type==='date'?(config.dateFormat||'YYYY-MM-DD'):{string:'填写内容',uniqueKey:'填写编号'}[config.type]||qualityTypeLabels[config.type]||'填写内容'}`}
+      inputMode={config.type==='number'?'decimal':undefined} placeholder={`${config.required?'必填 · ':''}${['date','datetime'].includes(config.type)?(config.dateFormat||(config.type==='datetime'?'YYYY-MM-DD HH:mm:ss':'YYYY-MM-DD')):{string:'填写内容',uniqueKey:'填写编号'}[config.type]||qualityTypeLabels[config.type]||'填写内容'}`}
       value={value} onChange={e=>onChange(input.address,e.target.value)} onBlur={()=>setEditing(false)} onKeyDown={event=>{
         if(!inline||event.nativeEvent.isComposing)return;
         if(event.key==='Escape'){event.preventDefault();onChange(input.address,original);setEditing(false);}

@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { Button, Badge } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { choiceModeOf, choiceUncheckText, objectOrientation, qualityTypeLabels, qualityTypes, textLines } from '../../shared/quality-template.js';
+import { qualityDateFormats, qualityDateTimeFormats, booleanValuesOf } from '../../shared/quality-value-types.js';
 
 export function RuleSection({title,children}) {
   return <section className="quality-rule-section" aria-label={title}><h3>{title}</h3>{children}</section>;
@@ -17,19 +18,21 @@ function textRuleSummary(field,emptyLabel='未启用') {
 }
 export function TypeRules({field,onChange,uniqueKeyOwner,sourceTexts=[],allowUniqueKey=true,properties,children}) {
   const lineCount=Math.max(1,...sourceTexts.map(text=>textLines(text).length),Number(field.parseLine)||1);
-  const hasTypeSettings=['number','date','single','multi','measurements'].includes(field.type);
+  const hasTypeSettings=['number','date','datetime','boolean','single','multi','measurements'].includes(field.type);
   const specialCount=field.specialValues?.length||0,itemCount=field.itemRules?.length||0;
   const showItemRules=properties&&(field.type==='string'||itemCount>0);
   return <>
     <RuleSection title="基本信息">{children}
-    <label>数据类型<Select aria-label="数据类型" disabled={!!field.itemRules?.length} value={field.type} onChange={e=>onChange({type:e.target.value,...(!['string','number'].includes(e.target.value)?{regexPattern:undefined,regexReplacement:undefined}:{}),...(e.target.value==='measurements'?{separator:'/'}:{})})}>{qualityTypes.filter(type=>allowUniqueKey||type!=='uniqueKey').map(type=><option key={type} value={type} disabled={type==='uniqueKey'&&!!uniqueKeyOwner&&uniqueKeyOwner.id!==field.id}>{qualityTypeLabels[type]}</option>)}</Select></label>
+    <label>数据类型<Select aria-label="数据类型" disabled={!!field.itemRules?.length} value={field.type} onChange={e=>onChange({type:e.target.value,...(!['string','number'].includes(e.target.value)?{regexPattern:undefined,regexReplacement:undefined}:{}),...(['date','datetime'].includes(e.target.value)?{dateFormat:e.target.value==='datetime'?qualityDateTimeFormats[0]:qualityDateFormats[0]}:{}),...(e.target.value==='measurements'?{separator:'/'}:{})})}>{qualityTypes.filter(type=>allowUniqueKey||type!=='uniqueKey').map(type=><option key={type} value={type} disabled={type==='uniqueKey'&&!!uniqueKeyOwner&&uniqueKeyOwner.id!==field.id}>{qualityTypeLabels[type]}</option>)}</Select></label>
     {(field.type==='uniqueKey'||uniqueKeyOwner&&uniqueKeyOwner.id!==field.id)&&<p className="muted">{field.type==='uniqueKey'?'按文本读取，保留编号前导零；整个模板最多配置一个唯一 KEY。':`唯一 KEY 已配置为“${uniqueKeyOwner.name}”；请先将其改为其他类型或移除，再配置新的唯一 KEY。`}</p>}
     <label className="quality-check"><input type="checkbox" checked={!!field.required} onChange={e=>onChange({required:e.target.checked})}/>必填</label>
     </RuleSection>
     {hasTypeSettings&&<RuleSection title="类型设置">
     {field.type==='measurements'&&<label>测量值分隔符<input aria-label="测量值分隔符" maxLength={10} value={(field.separator??'/').replaceAll('\n','\\n')} onChange={e=>onChange({separator:e.target.value.replaceAll('\\n','\n')})}/><small>如 2065/2061/2060；先用忽略内容去除“实测值”等前缀。各值单位须一致。</small></label>}
-    {['number','measurements'].includes(field.type)&&<label>单位<input value={field.unit||''} maxLength={30} onChange={e=>onChange({unit:e.target.value})}/></label>}
-    {field.type==='date'&&<label>文本日期格式<Select value={field.dateFormat||'YYYY-MM-DD'} onChange={e=>onChange({dateFormat:e.target.value})}>{['YYYY-MM-DD','YYYY/MM/DD','YYYY年MM月DD日'].map(v=><option key={v}>{v}</option>)}</Select></label>}
+    {field.type==='number'&&<label>数字模式<Select aria-label="数字模式" value={field.numberMode||'decimal'} onChange={e=>onChange({numberMode:e.target.value,...(e.target.value==='percent'?{unit:'%'}:{})})}><option value="decimal">普通数字</option><option value="percent">百分比（95% → 95）</option></Select></label>}
+    {field.type==='number'&&field.numberMode==='percent'?<p className="muted">95 或 95% 均解析为 95，单位为 %；Excel 百分比单元格按真实数值转换，保留精度。0.95（无百分号且非 Excel 百分比格式）解析为 0.95。</p>:['number','measurements'].includes(field.type)&&<label>单位<input value={field.unit||''} maxLength={30} onChange={e=>onChange({unit:e.target.value})}/></label>}
+    {['date','datetime'].includes(field.type)&&<label>文本{field.type==='datetime'?'日期时间':'日期'}格式<Select aria-label="日期格式" value={field.dateFormat||(field.type==='datetime'?qualityDateTimeFormats[0]:qualityDateFormats[0])} onChange={e=>onChange({dateFormat:e.target.value})}>{(field.type==='datetime'?qualityDateTimeFormats:qualityDateFormats).map(v=><option key={v}>{v}</option>)}</Select><small>文字须按所选格式填写，不自动猜测日/月顺序。Excel 原生日期时间直接读取；日期时间保留表内时间，不换算时区。解析统一为 {field.type==='datetime'?'YYYY-MM-DDTHH:mm:ss':'YYYY-MM-DD'}。</small></label>}
+    {field.type==='boolean'&&<>{[['trueValues','真值文字'],['falseValues','假值文字']].map(([key,label])=><label key={key}>{label}（每行一个）<textarea aria-label={label} value={booleanValuesOf(field)[key]} rows={3} maxLength={2000} onChange={e=>onChange({[key]:e.target.value})}/></label>)}<p className="muted">整格文字匹配，不区分英文大小写；真值解析为 true，假值解析为 false。原生 Excel 布尔值直接读取；空白保留为未填写，未匹配文字报错。</p></>}
     {['single','multi'].includes(field.type)&&<>
       <label>选项拆分方式<Select aria-label="选项拆分方式" value={choiceModeOf(field)} onChange={e=>onChange({choiceMode:e.target.value})}><option value="markers">按选项标记拆分</option><option value="separator">按指定分隔符拆分</option><option value="plain">整格文字精确匹配（plain）</option></Select></label>
       {choiceModeOf(field)==='markers'&&<label>标记位置<Select aria-label="标记位置" value={field.markerPosition||'before'} onChange={e=>onChange({markerPosition:e.target.value})}><option value="before">文字前（■合格 □拒收）</option><option value="after">文字后（合格■ 拒收□）</option></Select></label>}

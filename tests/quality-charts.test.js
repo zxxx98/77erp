@@ -89,3 +89,15 @@ test('mixed item-rule properties are excluded from chart dimensions and incompat
   const chart=config({objectId:'items',x:{fieldId:'items',propertyId:'name'},metric:{aggregation:'count'}});
   assert.equal(chartCompatible(chart,definition,candidate),false);
 });
+
+test('datetime dimensions bucket calendar dates and boolean false remains a usable group and axis',()=>{
+  const def={sheetName:'Sheet1',fields:[{id:'time',name:'时刻',type:'datetime'},{id:'active',name:'有效',type:'boolean'},{id:'rate',name:'合格率',type:'number',numberMode:'percent',unit:'%'}]};
+  const chart=validateChart({schemaVersion:1,kind:'ordinary',chartType:'line',x:{fieldId:'time'},groupBy:{fieldId:'active'},metric:{aggregation:'avg',value:{fieldId:'rate'}}},def);
+  assert.deepEqual(chart.dateField,{fieldId:'time'});
+  const entries=[entry(1,{time:'2026-10-22T00:00:00',active:false,rate:95},{candidate:def}),entry(2,{time:'2026-10-22T23:59:59',active:false,rate:99},{candidate:def}),entry(3,{time:'2026-10-23T00:00:00',active:true,rate:20},{candidate:def}),entry(4,{time:'2026-10-22T24:00:00',active:false,rate:20},{candidate:def})];
+  const result=aggregateQualityChart(chart,def,entries,{from:'2026-10-22',to:'2026-10-22'});
+  assert.deepEqual(result.rows.map(row=>[row.x,row.series,row.value]),[['2026-10-22','false',97]]);assert.equal(result.unit,'%');assert.equal(result.xType,'date');assert.equal(result.stats.excluded,2);
+  const categories=validateChart({...chart,x:{fieldId:'active'},dateField:null,groupBy:null,metric:{aggregation:'count'}},def);
+  assert.equal(aggregateQualityChart(categories,def,entries).rows.find(row=>row.x===false).value,3);
+  assert.throws(()=>validateChart({...chart,metric:{aggregation:'sum',value:{fieldId:'active'}}},def),/数据类型/);
+});

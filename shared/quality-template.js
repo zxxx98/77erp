@@ -1,7 +1,8 @@
 import { parseMeasurements, validateChecks, evaluateChecks } from './quality-checks.js';
 import { regexRule, replaceRegexText } from './quality-regex.js';
-export const qualityTypes = ['string', 'uniqueKey', 'number', 'date', 'single', 'multi', 'measurements'];
-export const qualityTypeLabels = { string: '字符串', uniqueKey: '唯一 KEY', number: '数字', date: '日期', single: '单选', multi: '多选', measurements: '测量值列表', object: '对象' };
+import { qualityDateFormats, qualityDateTimeFormats, booleanValuesOf, booleanRules, parseQualityBoolean, parseQualityDate, parseQualityPercent } from './quality-value-types.js';
+export const qualityTypes = ['string', 'uniqueKey', 'number', 'date', 'datetime', 'boolean', 'single', 'multi', 'measurements'];
+export const qualityTypeLabels = { string: '字符串', uniqueKey: '唯一 KEY', number: '数字', date: '日期', datetime: '日期时间', boolean: '布尔', single: '单选', multi: '多选', measurements: '测量值列表', object: '对象' };
 export function cellAddress(row, col) {
   let name = '';
   for (let n = col; n > 0; n = Math.floor((n - 1) / 26)) name = String.fromCharCode(65 + (n - 1) % 26) + name;
@@ -231,6 +232,13 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
     if(typeof separator!=='string'||separator.length>10)fail('分隔符无效。');
     if(field.type==='measurements'&&(!separator||separator.length>10||/[\d.+-]/.test(separator)))fail('测量值分隔符不能为空或包含数字、正负号、小数点。');
     const choice=['single','multi'].includes(field.type);
+    if (field.type === 'number' && field.numberMode !== undefined && !['decimal','percent'].includes(field.numberMode)) fail('数字模式无效。');
+    const percent = field.type === 'number' && field.numberMode === 'percent';
+    const formats = field.type === 'datetime' ? qualityDateTimeFormats : qualityDateFormats;
+    if (['date','datetime'].includes(field.type) && field.dateFormat !== undefined && !formats.includes(field.dateFormat)) fail('日期格式无效。');
+    const dateFormat = formats.includes(field.dateFormat) ? field.dateFormat : formats[0];
+    const booleanValues = field.type === 'boolean' ? booleanValuesOf(field) : null;
+    if (booleanValues) booleanRules(field);
     if(field.markerPosition!==undefined&&!['before','after'].includes(field.markerPosition))fail('选项标记位置无效。');
     if(field.specialValues!==undefined&&(!Array.isArray(field.specialValues)||field.specialValues.length>20))fail('特殊值映射最多 20 项。');
     const specialValues=(field.specialValues||[]).map(rule=>{
@@ -244,7 +252,7 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
     const regex=regexRule(field);
     const processing = { ...(field.parseLine != null && field.parseLine !== 'all' ? { parseLine: field.parseLine } : {}), ...(field.ignoreContent ? { ignoreContent: field.ignoreContent } : {}), ...(regex?{regexPattern:regex.pattern,regexReplacement:regex.replacement}:{}) };
     if(choice&&!['markers','separator','plain'].includes(choiceModeOf(field)))fail('选项拆分方式无效。');
-    return { ...processing, ...(specialValues.length?{specialValues}:{}), ...(choice&&field.markerPosition==='after'?{markerPosition:'after'}:{}), type: field.type, required: field.required === true, unit: cleanText(field.unit || '', 30, '单位', true), dateFormat: ['YYYY-MM-DD', 'YYYY/MM/DD', 'YYYY年MM月DD日'].includes(field.dateFormat) ? field.dateFormat : 'YYYY-MM-DD', checkChar: cleanText(field.checkChar || '', 10, '勾选字符', true), separator, options: cleanText(field.options || '', 2000, '选项', true), ...(choice?{choiceMode:choiceModeOf(field),uncheckChars:cleanText(choiceUncheckText(field),500,'未选中标记',true)}:{}) };
+    return { ...processing, ...(specialValues.length?{specialValues}:{}), ...(choice&&field.markerPosition==='after'?{markerPosition:'after'}:{}), ...(percent?{numberMode:'percent'}:{}), ...(booleanValues||{}), type: field.type, required: field.required === true, unit: percent ? '%' : cleanText(field.unit || '', 30, '单位', true), dateFormat, checkChar: cleanText(field.checkChar || '', 10, '勾选字符', true), separator, options: cleanText(field.options || '', 2000, '选项', true), ...(choice?{choiceMode:choiceModeOf(field),uncheckChars:cleanText(choiceUncheckText(field),500,'未选中标记',true)}:{}) };
   };
   const fields = input.fields.map(field => {
     const name = cleanText(field.name, 60, '字段名称');
@@ -298,7 +306,7 @@ export function validateDefinition(input, workbook, { publish = false } = {}) {
       return { ...base, type: 'object', collection: true, required: field.required === true, propertyRegion, ...(termination ? { termination } : {}), ...(field.headerMode==='multi'?{headerMode:'multi'}:{}), ...(vertical ? { orientation: 'vertical' } : headers.r1 !== headers.r2 || field.headerMode==='multi' ? { orientation: 'horizontal' } : {}), properties };
     }
     const config = basic(field), r = parseRegion(base.valueRegion), logical = logicalRegion(sheet, r.r1, r.c1);
-    if (['number', 'date', 'measurements'].includes(config.type) && regionAddress(r) !== regionAddress(logical)) fail('数字、日期和测量值列表只能读取一个逻辑单元格。');
+    if (['number', 'date', 'datetime', 'boolean', 'measurements'].includes(config.type) && regionAddress(r) !== regionAddress(logical)) fail('数字、日期、日期时间、布尔和测量值列表只能读取一个逻辑单元格。');
     if (publish && ['single', 'multi'].includes(config.type)) choiceRules(config);
     const direction = ['up','down','left','right'].includes(field.direction) ? field.direction : null;
     if (direction && base.customKey) fail('自定义 Key 请直接配置取值区域。');
@@ -313,8 +321,11 @@ export function convertQualityValue(raw, config, cell) {
   if (!raw) return config.type === 'multi' ? [] : ['string', 'uniqueKey'].includes(config.type) ? '' : null;
   if (cell?.error) fail(cell.error);
   if (['string', 'uniqueKey'].includes(config.type)) return raw;
+  if (config.type === 'boolean') return parseQualityBoolean(raw,config,cell);
+  if (['date','datetime'].includes(config.type)) return parseQualityDate(raw,config,cell);
   if (config.type === 'measurements') return parseMeasurements(raw,config.separator);
   if (config.type === 'number') {
+    if (config.numberMode === 'percent') return parseQualityPercent(raw,config,cell);
     if (typeof cell?.value === 'number' && !/%/.test(cell.format || '')) return cell.value;
     let text = raw;
     if (config.unit && text.endsWith(config.unit)) text = text.slice(0, -config.unit.length).trim();
@@ -323,14 +334,6 @@ export function convertQualityValue(raw, config, cell) {
     const n = Number(text.replace(/[,，]/g,''));
     if (!Number.isFinite(n) || Math.abs(n) > Number.MAX_SAFE_INTEGER) fail('数值超出支持范围。');
     return n;
-  }
-  if (config.type === 'date') {
-    if (cell?.date) return cell.date;
-    const patterns = { 'YYYY-MM-DD': /^(\d{4})-(\d{2})-(\d{2})$/, 'YYYY/MM/DD': /^(\d{4})\/(\d{2})\/(\d{2})$/, 'YYYY年MM月DD日': /^(\d{4})年(\d{2})月(\d{2})日$/ };
-    const match = (patterns[config.dateFormat] || patterns['YYYY-MM-DD']).exec(raw);
-    const result = match && `${match[1]}-${match[2]}-${match[3]}`;
-    if (!result || !Number.isFinite(Date.parse(result)) || new Date(result).toISOString().slice(0,10) !== result) fail('日期格式无效。');
-    return result;
   }
   const parsed = previewChoice(raw, config);
   if (parsed.error) fail(parsed.error);

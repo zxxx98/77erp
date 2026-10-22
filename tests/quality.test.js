@@ -1319,3 +1319,31 @@ test('plain per-item rules and dynamic records survive API publishing and multi-
   backup.data.quality_template_files[0].workbook=JSON.stringify({...original.wb,sheets:original.wb.sheets.map(sheet=>({...sheet,usedRows:-1}))});
   assert.equal((await f.request('/backup/preview',{backup})).status,400);
 });
+
+test('extended value types publish, parse object item rules, save and round trip backups without losing false or time',async t=>{
+  const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('类型验收');
+  for(const [address,value] of Object.entries({A1:'合格率',B1:0.954321,A2:'日期',B2:'31/12/2026',A3:'时间',B3:new Date('2026-12-31T23:59:59Z'),A4:'启用',B4:false,A6:'明细',
+    A7:'项目',B7:'值',C7:'时刻',D7:'有效',A8:'比率',B8:'98.5%',C8:'2026/12/31 09:05',D8:'否',A9:'标志',B9:'yes',C9:new Date('2026-12-31T23:59:58Z'),D9:true}))sheet.getCell(address).value=value;
+  sheet.getCell('B1').numFmt='0%';for(const address of ['B3','C9'])sheet.getCell(address).numFmt='yyyy/mm/dd hh:mm:ss';
+  const bytes=Buffer.from(await book.xlsx.writeBuffer()),input={sheetName:sheet.name,fields:[
+    {id:'rate',name:'合格率',type:'number',numberMode:'percent',labelRegion:'A1',valueRegion:'B1'},
+    {id:'date',name:'日期',type:'date',dateFormat:'DD/MM/YYYY',labelRegion:'A2',valueRegion:'B2'},
+    {id:'time',name:'时间',type:'datetime',labelRegion:'A3',valueRegion:'B3'},
+    {id:'enabled',name:'启用',type:'boolean',required:true,labelRegion:'A4',valueRegion:'B4'},
+    {id:'items',name:'明细',type:'object',labelRegion:'A6',propertyRegion:'A7:D7',valueRegion:'A8:D9',properties:[
+      {id:'item',name:'项目',type:'string'},
+      {id:'value',name:'值',type:'string',itemRules:[{matchPropertyId:'item',equals:'比率',config:{type:'number',numberMode:'percent'}},{matchPropertyId:'item',equals:'标志',config:{type:'boolean'}}]},
+      {id:'itemtime',name:'时刻',type:'datetime',dateFormat:'YYYY/MM/DD HH:mm'},
+      {id:'active',name:'有效',type:'boolean',required:true},
+    ]},
+  ]};
+  const f=await publishedAcceptanceFixture(t,input,bytes),preview=await f.preview();assert.equal(preview.status,200,JSON.stringify(preview.data));
+  const parsed=preview.data.preview;assert.deepEqual(parsed.issues,[]);assert.equal(parsed.value.启用,false);assert.equal(parsed.value.合格率,95.4321);assert.equal(parsed.value.日期,'2026-12-31');assert.equal(parsed.value.时间,'2026-12-31T23:59:59');
+  assert.deepEqual(parsed.value.明细,[{项目:'比率',值:98.5,时刻:'2026-12-31T09:05:00',有效:false},{项目:'标志',值:true,时刻:'2026-12-31T23:59:58',有效:true}]);
+  const saved=await f.save(preview.data);assert.equal(saved.status,200,JSON.stringify(saved.data));assert.deepEqual(saved.data.result,parsed);
+  const backup=(await f.request('/backup')).data,p=(await f.request('/backup/preview',{backup}));assert.equal(p.status,200,JSON.stringify(p.data));
+  const restore=await f.request('/backup/restore',{backup,...p.data,confirmation:'RESTORE_BUSINESS_DATA',request_id:randomUUID()});assert.equal(restore.status,200,JSON.stringify(restore.data));
+  assert.deepEqual((await f.request(`/quality/acceptances/${saved.data.id}`)).data.result,parsed);
+  const wb=JSON.parse(backup.data.quality_template_files[0].workbook);wb.sheets[0].cells.B3.datetime='2026-12-31T24:00:00';backup.data.quality_template_files[0].workbook=JSON.stringify(wb);
+  assert.equal((await f.request('/backup/preview',{backup})).status,400);
+});
