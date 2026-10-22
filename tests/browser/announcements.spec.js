@@ -47,6 +47,10 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
     page.on('pageerror', error => errors.push(error.message));
     const title = `${device || '桌面'}盘点公告-${Date.now()}`;
     let id;
+    const detailRequests = [];
+    page.on('request', request => {
+      if (request.method() === 'GET' && new URL(request.url()).pathname === `/api/announcements/${id}`) detailRequests.push(request.url());
+    });
     try {
       await page.clock.install();
       const expectNoUpdateNotice = async () => {
@@ -79,6 +83,7 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
       await expect(card).toContainText('已读');
       await expectNoUpdateNotice();
       await expect(dialog).toContainText('<script>alert("test")</script>');
+      expect(detailRequests).toHaveLength(1);
       await dialog.getByRole('button', { name: '编辑公告', exact: true }).click();
       await page.getByRole('textbox', { name: '公告正文', exact: true }).fill('盘点改为周六上午。');
       await page.getByRole('checkbox', { name: '置顶公告' }).uncheck();
@@ -146,6 +151,10 @@ test('employee reading on mobile is reflected on desktop, with no management con
 test('PWA keeps the announcement form when offline and can publish after reconnecting', async ({ browser }) => {
   const { context, page } = await session(browser, 'Pixel 7', undefined, { serviceWorkers: 'allow' });
   let item;
+  const detailRequests = [];
+  page.on('request', request => {
+    if (request.method() === 'GET' && item && new URL(request.url()).pathname === `/api/announcements/${item.id}`) detailRequests.push(request.url());
+  });
   try {
     await page.goto('/#announcements');
     await expect(page.getByRole('heading', { name: '公告中心', exact: true })).toBeVisible();
@@ -175,6 +184,7 @@ test('PWA keeps the announcement form when offline and can publish after reconne
     expect((await checked).ok()).toBe(true);
     await expect(page.getByRole('status', { name: '数据更新提示' })).toHaveCount(0);
     await expect(page.getByRole('dialog', { name: '公告详情' })).toContainText('联网后发布这条公告。');
+    expect(detailRequests).toHaveLength(1);
   } finally {
     await context.setOffline(false);
     if (item?.id) await context.request.delete(`/api/announcements/${item.id}`, { data: { version: item.version } });

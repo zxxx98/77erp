@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Megaphone, Pin, Plus, RefreshCw } from 'lucide-react';
 import { api } from '../api.js';
 import { useQuery } from '../queries.js';
@@ -54,7 +54,9 @@ export function Announcements({ data, openModal }) {
 
 export function AnnouncementDetail({ id, data, onClose, onEdit, onSaved, onRead }) {
   const { user } = usePermissions();
-  const query = useQuery(`/announcements/${id}`, data);
+  // A read receipt refreshes the workspace baseline, but must not reload the open detail.
+  const queryScope = useMemo(() => ({ warehouse_id: data.warehouse_id }), [data.warehouse_id]);
+  const query = useQuery(`/announcements/${id}`, queryScope);
   const item = query.result;
   const [error, setError] = useState('');
   const [readError, setReadError] = useState('');
