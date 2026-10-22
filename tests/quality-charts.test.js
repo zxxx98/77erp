@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateQualityChart, chartCompatible, chartFields, validateChart, validateChartFilters } from '../shared/quality-charts.js';
+import { aggregateQualityChart, chartCompatible, chartFields, qualityPieSlices, validateChart, validateChartFilters } from '../shared/quality-charts.js';
 
 const definition={sheetName:'Sheet1',fields:[
   {id:'date',name:'日期',type:'date'}, {id:'rate',name:'合格率',type:'number',unit:'%'},
@@ -8,6 +8,22 @@ const definition={sheetName:'Sheet1',fields:[
   {id:'items',name:'明细',type:'object',properties:[{id:'name',name:'名称',type:'string'},{id:'qty',name:'数量',type:'number'}]},
 ]};
 const config=extra=>validateChart({schemaVersion:1,kind:'ordinary',chartType:'line',objectId:null,x:{fieldId:'date'},dateField:{fieldId:'date'},bucket:'day',groupBy:null,metric:{aggregation:'avg',value:{fieldId:'rate'}},...extra},definition);
+test('pie charts preserve categories and sources and compute finite shares without changing statistical values',()=>{
+  const chart=config({chartType:'pie',x:{fieldId:'category'},metric:{aggregation:'sum',value:{fieldId:'rate'}}});
+  const entries=[entry(1,{category:'甲',rate:30}),entry(2,{category:'乙',rate:90}),entry(3,{category:'丙',rate:0})];
+  const result=aggregateQualityChart(chart,definition,entries);
+  const before=structuredClone(result.rows),{slices,message}=qualityPieSlices(result.rows);
+  assert.equal(message,'');assert.deepEqual(result.rows,before);
+  assert.deepEqual(slices.map(row=>[row.x,row.value,row.share]),[['丙',0,0],['甲',30,0.25],['乙',90,0.75]]);
+  assert.ok(Math.abs(slices.at(-1).endAngle-3*Math.PI/2)<1e-10);
+  const trace=aggregateQualityChart(chart,definition,entries,{},{x:'丙',series:'统计值',offset:0});
+  assert.equal(trace.sources[0].acceptanceId,3);
+  assert.equal(qualityPieSlices([{value:5}]).slices[0].share,1);
+  assert.deepEqual(qualityPieSlices([{value:1e308},{value:1e308}]).slices.map(row=>row.share),[0.5,0.5]);
+  for(const rows of [[{value:0}],[{value:-1},{value:2}],[{value:Infinity}],[{value:null}],[]]) {
+    assert.ok(qualityPieSlices(rows).message);assert.deepEqual(qualityPieSlices(rows).slices,[]);
+  }
+});
 function entry(id,values,{productId=1,productName='物料A',candidate=definition,rows=null,sheetName='批次'}={}) {
   const results=Object.entries(values).map(([id,value])=>({id,value}));
   if(rows)results.push({id:'items',rows:rows.map((value,index)=>({row:index+18,cells:Object.entries(value).map(([id,value])=>({id,value}))}))});

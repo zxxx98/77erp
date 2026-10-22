@@ -55,6 +55,7 @@ export function aiChartData(db,warehouseId,revisionId) {
     if(date)for(const field of numbers.slice(0,2))add(`${field.name}趋势`,'日期字段与数字字段均有已保存数据，按日期查看平均值。',date,{aggregation:'avg',value:field.ref},'line');
     const distribution=category||numbers[0]||date;
     if(distribution){
+      if(category&&category.distinct.size<=12)add(`${category.name}占比`,'按分类记录数展示占比，不推算合格率。',category,{aggregation:'count'},'pie');
       add(`${distribution.name}记录分布`,'按横轴字段统计记录数；对象来源按明细记录计数。',distribution,{aggregation:'count'},'bar');
       for(const field of numbers.filter(f=>refKey(f.ref)!==refKey(distribution.ref)).slice(0,2))add(`${distribution.name}与${field.name}`,'按分类比较数字字段平均值，不推算合格率。',distribution,{aggregation:'avg',value:field.ref},'bar');
     }
@@ -82,7 +83,7 @@ export function aiChartPreview(db,warehouseId,args) {
     name:chart.name,template_name:revision.name,revision:revision.revision,config:chart.config,
     x_label:label(chart.config.x),group_label:label(chart.config.groupBy),date_label:label(chart.config.dateField),metric_label:label(chart.config.metric.value),
     object_label:chart.config.objectId?definition.fields.find(f=>f.id===chart.config.objectId).name:'每个工作表一条记录',
-    product,x_type:data?.xType,rows:data?.rows.slice(0,20)||[],stats:data?.stats||null,unit:data?.unit||'',total_groups:data?.rows.length||0,
+    product,x_type:data?.xType,rows:(chart.config.chartType==='pie'?data?.rows:data?.rows.slice(0,20))||[],stats:data?.stats||null,unit:data?.unit||'',total_groups:data?.rows.length||0,
     warning:needsProduct?'物料图表按当前物料取数，未指定预览物料；保存后可在物料详情查看。':!data.rows.length?'当前没有可用于此配置的已保存数据。':'',
   }};
 }

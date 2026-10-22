@@ -73,7 +73,7 @@ function ActionPreview({ action, busy, confirm }) {
         <div><dt>数据模板</dt><dd>{p.template_name} v{p.revision}</dd></div>
         <div><dt>图表分类 / 类型</dt><dd>{p.config.kind==='material'?'物料图表':'普通图表'} · {chartTypeLabels[p.config.chartType]}</dd></div>
         <div><dt>记录口径</dt><dd>{p.object_label}</dd></div>
-        <div><dt>横轴</dt><dd>{p.x_label}</dd></div>
+        <div><dt>{p.config.chartType==='pie'?'分类':'横轴'}</dt><dd>{p.x_label}</dd></div>
         <div><dt>统计值</dt><dd>{metricLabels[p.config.metric.aggregation]}{p.config.metric.value?` · ${p.metric_label}`:''}</dd></div>
         <div><dt>分组</dt><dd>{p.group_label}</dd></div>
         <div><dt>日期筛选 / 汇总</dt><dd>{p.date_label} · {{day:'按日',week:'按周',month:'按月'}[p.config.bucket]}</dd></div>

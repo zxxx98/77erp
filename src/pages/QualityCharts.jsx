@@ -74,7 +74,7 @@ function ChartEditor({data,chart,onClose,onSaved}) {
           <p className="muted">使用所选版本的字段规则，读取同一模板中字段 ID、类型和单位兼容的历史及后续验收数据。</p>
           <label>取数方式<Select aria-label="图表取数方式" value={config.objectId||''} onChange={event=>change(defaultConfig(source.definition,{...config,objectId:event.target.value||null}))}><option value="">Sheet 普通字段（每个 Sheet 一条记录）</option>{source.definition.fields.filter(field=>field.type==='object').map(field=><option key={field.id} value={field.id}>对象明细：{field.name}</option>)}</Select></label>
           {config.objectId&&<p className="muted">每条对象明细参与统计；同时使用 Sheet 普通字段时，该值会应用于每条明细。</p>}
-          <FieldSelect label="横轴字段" fields={fields.filter(field=>dimensions.includes(field.type))} value={config.x} onChange={ref=>change({x:ref,dateField:chartDateTypes.includes(fields.find(field=>refKey(field.ref)===refKey(ref))?.type)?ref:config.dateField})}/>
+          <FieldSelect label={config.chartType==='pie'?'分类字段':'横轴字段'} fields={fields.filter(field=>dimensions.includes(field.type))} value={config.x} onChange={ref=>change({x:ref,dateField:chartDateTypes.includes(fields.find(field=>refKey(field.ref)===refKey(ref))?.type)?ref:config.dateField})}/>
           {chartDateTypes.includes(x?.type)&&<label>日期汇总<Select aria-label="日期汇总" value={config.bucket} onChange={event=>change({bucket:event.target.value})}><option value="day">按日</option><option value="week">按周（周一开始）</option><option value="month">按月</option></Select></label>}
           <label>分组字段<Select aria-label="分组字段" value={refKey(config.groupBy)} onChange={event=>change({groupBy:event.target.value==='$material'?{system:'material'}:fields.find(field=>refKey(field.ref)===event.target.value)?.ref||null})}><option value="">不分组</option>{config.kind==='ordinary'&&<option value="$material">按绑定物料分组</option>}{fields.filter(field=>dimensions.includes(field.type)).map(field=><option key={refKey(field.ref)} value={refKey(field.ref)}>{field.name}</option>)}</Select></label>
           <label>统计方式<Select aria-label="图表统计方式" value={config.metric.aggregation} onChange={event=>change({metric:event.target.value==='count'?{aggregation:'count'}:{aggregation:event.target.value,value:config.metric.value||numeric[0]?.ref||null}})}>{Object.entries(metricLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
@@ -82,6 +82,7 @@ function ChartEditor({data,chart,onClose,onSaved}) {
           {!numeric.length&&config.metric.aggregation!=='count'&&<p className="muted">此取数范围没有数字字段，请先配置模板数据类型，或选择统计记录数。</p>}
           <FieldSelect label="日期筛选字段" fields={dates} value={config.dateField} emptyLabel="不启用日期筛选" onChange={ref=>change({dateField:ref})}/>
           <label>图表样式<Select aria-label="图表样式" value={config.chartType} onChange={event=>change({chartType:event.target.value})}>{Object.entries(chartTypeLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</Select></label>
+          {config.chartType==='pie'&&<p className="muted">按分类字段和所选统计方式计算占比；配置分组后，每组单独展示饼图。数值须非负且总和大于 0。</p>}
         </>}
       </fieldset>
     </section><section className="panel quality-chart-preview"><h2>数据预览</h2>

@@ -6,7 +6,7 @@ test.beforeAll(async({request})=>{
   const response=await request.post('/api/auth/setup',{data:{username:'admin',password:'Test-admin-123'}});
   expect([201,409]).toContain(response.status());
 });
-for(const device of [null,'Pixel 7','iPhone 13'])test(`${device||'desktop'} AI recommends and saves a quality chart after confirmation`,async({browser})=>{
+for(const chartType of ['line','pie'])for(const device of [null,'Pixel 7','iPhone 13'])test(`${device||'desktop'} ${chartType} AI recommends and saves a quality chart after confirmation`,async({browser})=>{
   const context=await browser.newContext({baseURL:'http://127.0.0.1:3199',serviceWorkers:device==='iPhone 13'?'allow':'block',...(device?devices[device]:{viewport:{width:1440,height:1000}})});
   try{
     await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});
@@ -32,7 +32,7 @@ for(const device of [null,'Pixel 7','iPhone 13'])test(`${device||'desktop'} AI r
     await page.getByRole('button',{name:'发送',exact:true}).click();
     await expect(page.locator('.ai-markdown')).toContainText('当前有 1 张验收单，可生成：合格率趋势');
     await expect(page.locator('.ai-action')).toHaveCount(0);
-    const chart={revision_id:template.published_revision,name:'每日合格率趋势',config:{schemaVersion:1,kind:'ordinary',chartType:'line',objectId:null,x:{fieldId:'date'},dateField:{fieldId:'date'},bucket:'day',groupBy:null,metric:{aggregation:'avg',value:{fieldId:'rate'}}}};
+    const chart={revision_id:template.published_revision,name:'每日合格率趋势',config:{schemaVersion:1,kind:'ordinary',chartType,objectId:null,x:{fieldId:'date'},dateField:{fieldId:'date'},bucket:'day',groupBy:null,metric:{aggregation:'avg',value:{fieldId:'rate'}}}};
     await page.getByLabel('你的需求').fill('图表参数：'+JSON.stringify(chart));await page.getByRole('button',{name:'发送',exact:true}).click();
     const action=page.locator('.ai-action');await expect(action).toContainText('品质图表配置预览 · 待确认');
     await expect(action).toContainText('AI图表模板 v1');await expect(action).toContainText('平均值 · 合格率');
@@ -66,7 +66,7 @@ for(const device of [null,'Pixel 7','iPhone 13'])test(`${device||'desktop'} AI r
     await expect(page.locator('.ai-turn').last()).toContainText('保存好了，继续聊天');
     await expect(page.locator('.ai-turn').nth(1).locator('.ai-action-result')).toContainText('已保存图表');
     await expect(page.locator('.ai-turn').last().locator('.ai-action-result')).toHaveCount(0);
-    const charts=await(await context.request.get('/api/quality/charts',{headers})).json();expect(charts.total).toBe(1);expect(charts.charts[0].config.chartType).toBe('line');
+    const charts=await(await context.request.get('/api/quality/charts',{headers})).json();expect(charts.total).toBe(1);expect(charts.charts[0].config.chartType).toBe(chartType);
     await page.reload();if(device)await page.getByRole('button',{name:'更多',exact:true}).click();await page.getByRole('button',{name:'AI 助手',exact:true}).click();
     await expect(page.locator('.ai-action-result')).toContainText('已保存图表“每日合格率趋势”');
     await expect(page.locator('.ai-turn').nth(1).locator('.ai-action-result')).toHaveCount(1);

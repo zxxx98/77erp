@@ -1,10 +1,25 @@
 import { acceptanceSheetResults } from './quality-bindings.js';
 
 const fail = message => { throw new Error(message); };
-export const chartTypeLabels = { line: '折线图', bar: '柱状图', table: '明细表' };
+export const chartTypeLabels = { line: '折线图', bar: '柱状图', pie: '饼图', table: '明细表' };
 export const metricLabels = { sum: '求和', avg: '平均值', min: '最小值', max: '最大值', count: '记录数' };
 export const chartDimensionTypes = ['string','uniqueKey','single','date','datetime','boolean','number'];
 export const chartDateTypes = ['date','datetime'];
+// Normalize before summing so large finite values cannot overflow the total.
+// Keep zero categories for the legend and source drilldown, without drawing an area.
+export function qualityPieSlices(rows) {
+  if (rows.some(row=>typeof row.value!=='number'||!Number.isFinite(row.value)||row.value<0))
+    return { slices:[], message:'饼图需要非负数值；当前数据包含负数或无效数值，请查看统计数据或选择其他图表样式。' };
+  const max=Math.max(0,...rows.map(row=>row.value));
+  if (!max) return { slices:[], message:'当前统计值均为 0，暂无可展示的占比。' };
+  const total=rows.reduce((sum,row)=>sum+row.value/max,0);
+  let angle=-Math.PI/2;
+  return { slices:rows.map(row=>{
+    const share=(row.value/max)/total,start=angle;
+    angle+=share*Math.PI*2;
+    return {...row,share,startAngle:start,endAngle:angle};
+  }), message:'' };
+}
 export const refKey = ref => ref?.system ? `$${ref.system}` : ref ? JSON.stringify([ref.fieldId,ref.propertyId||null]) : '';
 export function chartFields(definition, objectId = null) {
   return definition.fields.flatMap(field=>field.type==='object'

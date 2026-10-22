@@ -6,6 +6,7 @@ import { queryPath, useQuery } from '../queries.js';
 import { api } from '../api.js';
 import { Select } from '../Dropdown.jsx';
 import { WorkbookResults, downloadExcel } from './quality-shared.jsx';
+import { qualityPieSlices } from '../../shared/quality-charts.js';
 import '../quality.css';
 
 const colors=['#2864eb','#00a68a','#e69c31','#985be5','#df6483','#188caf'];
@@ -67,7 +68,8 @@ function QualityChartContent({result,type,title,onSources,fullscreen}) {
   const y=value=>height-bottom-(value-min)/span*(height-bottom-top);
   const label=key=>rows.find(row=>row.series===key)?.seriesLabel||key;
   return <div className="quality-chart-view">
-    {type!=='table'&&<>
+    {type==='pie'&&<QualityPieChart result={result} title={title} onSources={onSources}/>}
+    {type!=='table'&&type!=='pie'&&<>
       <div className="quality-chart-legend">{series.map((key,i)=><span key={key}><i style={{background:colors[i%colors.length]}}/>{label(key)}</span>)}</div>
       <div className="quality-chart-scroll" ref={plotRef}><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title} style={{minWidth:fullscreen||type==='bar'?width:undefined,minHeight:fullscreen?height:undefined}}>
         <title>{title}</title>{yTicks.map((value,i)=><g key={i}><line x1={left} x2={width-right} y1={y(value)} y2={y(value)} stroke="var(--border)"/><text x={left-10} y={y(value)+4} textAnchor="end" className="quality-chart-axis">{chartNumber(value,result.unit)}</text></g>)}
@@ -89,7 +91,42 @@ function QualityChartContent({result,type,title,onSources,fullscreen}) {
         })}
       </svg></div>
     </>}
-    <details className="quality-chart-table" open={type==='table'}><summary>查看统计数据（{rows.length} 项）</summary><div className="quality-preview-table"><table><thead><tr><th>横轴</th><th>分组</th><th>数值{result.unit?`（${result.unit}）`:''}</th><th>参与记录数</th>{onSources&&<th>来源</th>}</tr></thead><tbody>{rows.map(row=><tr key={JSON.stringify([row.x,row.series])}><td>{String(row.x)}</td><td>{row.seriesLabel}</td><td>{chartNumber(row.value,result.unit)}</td><td>{row.count}</td>{onSources&&<td><Button onClick={()=>onSources(row)}>查看来源</Button></td>}</tr>)}</tbody></table></div></details>
+    <details className="quality-chart-table" open={type==='table'}><summary>查看统计数据（{rows.length} 项）</summary><div className="quality-preview-table"><table><thead><tr><th>{type==='pie'?'分类':'横轴'}</th><th>分组</th><th>数值{result.unit?`（${result.unit}）`:''}</th><th>参与记录数</th>{onSources&&<th>来源</th>}</tr></thead><tbody>{rows.map(row=><tr key={JSON.stringify([row.x,row.series])}><td>{String(row.x)}</td><td>{row.seriesLabel}</td><td>{chartNumber(row.value,result.unit)}</td><td>{row.count}</td>{onSources&&<td><Button onClick={()=>onSources(row)}>查看来源</Button></td>}</tr>)}</tbody></table></div></details>
+  </div>;
+}
+
+function QualityPieChart({result,title,onSources}) {
+  const series=[...new Set(result.rows.map(row=>row.series))];
+  const categories=[...new Set(result.rows.map(row=>row.x))];
+  const color=value=>{const i=categories.indexOf(value);return colors[i]||`hsl(${(i*137.508)%360} 65% 45%)`;};
+  const percent=value=>new Intl.NumberFormat('zh-CN',{style:'percent',maximumFractionDigits:2}).format(value);
+  const point=angle=>[160+120*Math.cos(angle),160+120*Math.sin(angle)];
+  return <div className="quality-pie-charts">
+    <p className="muted quality-pie-note">占比为各分类统计值占本饼图统计值总和的比例。每个分组单独展示，原始统计值保留在图例和统计数据中。</p>
+    {series.map(key=>{
+      const rows=result.rows.filter(row=>row.series===key),{slices,message}=qualityPieSlices(rows);
+      const name=series.length===1?title:`${title} · ${rows[0].seriesLabel||key}`;
+      return <section className="quality-pie-card" key={key} aria-label={name}>
+        {series.length>1&&<h3>{rows[0].seriesLabel||key}</h3>}
+        {message?<p className="quality-chart-empty" role="status">{message}</p>:<>
+          <svg className="quality-pie-svg" viewBox="0 0 320 320" role="img" aria-label={name}>
+            <title>{name}</title>
+            {slices.filter(slice=>slice.share>0).map(slice=>{
+              const text=`${slice.x}：${chartNumber(slice.value,result.unit)} · 占比 ${percent(slice.share)}`;
+              const props={fill:color(slice.x),stroke:'var(--surface, #fff)',strokeWidth:1.5,
+                role:onSources?'button':undefined,tabIndex:onSources?0:undefined,'aria-label':onSources?`查看来源 ${text}`:text,
+                onClick:onSources?()=>onSources(slice):undefined,onKeyDown:onSources?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSources(slice);}}:undefined};
+              const [x1,y1]=point(slice.startAngle),[x2,y2]=point(slice.endAngle);
+              return <g key={String(slice.x)}>{slice.share===1?<circle {...props} cx="160" cy="160" r="120"><title>{text}</title></circle>:<path {...props} d={`M160,160 L${x1},${y1} A120,120 0 ${slice.share>0.5?1:0},1 ${x2},${y2} Z`}><title>{text}</title></path>}</g>;
+            })}
+          </svg>
+          <ul className="quality-pie-legend" aria-label={`${name}图例`}>{slices.map(slice=>{
+            const content=<><i style={{background:color(slice.x)}} aria-hidden="true"/><span>{String(slice.x)}</span><strong>{chartNumber(slice.value,result.unit)}</strong><span>{percent(slice.share)}</span></>;
+            return <li key={String(slice.x)}>{onSources?<button type="button" onClick={()=>onSources(slice)} aria-label={`查看来源 ${slice.x} · ${slice.seriesLabel}：${chartNumber(slice.value,result.unit)} · 占比 ${percent(slice.share)}`}>{content}</button>:<div>{content}</div>}</li>;
+          })}</ul>
+        </>}
+      </section>;
+    })}
   </div>;
 }
 

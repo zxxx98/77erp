@@ -654,7 +654,7 @@ test('quality permission grants chart tools without unrelated business writes or
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_templates').get().n, 0);
 });
 
-async function qualityAiFixture(t,{save=true,extendedTypes=false}={}) {
+async function qualityAiFixture(t,{save=true,extendedTypes=false,manyItems=false}={}) {
   const f=await fixture(t);
   const config=(await f.request(f.admin,'/settings/r2-backup')).data;
   assert.equal((await f.request(f.admin,'/settings/r2-backup',{...config,account_id:'a'.repeat(32),bucket:'erp-backups',access_key:'key',secret_key:'secret'},'PUT')).status,200);
@@ -662,7 +662,8 @@ async function qualityAiFixture(t,{save=true,extendedTypes=false}={}) {
   sheet.getCell('A1').value='2026-10-20';sheet.getCell('B1').value=95;sheet.getCell('C1').value='某某公司';
   sheet.getCell('A2').value='检验明细';
   for(const [i,value] of ['项目','数量','日期'].entries())sheet.getCell(3,i+1).value=value;
-  for(const [i,values] of [['尺寸',2,'2026-10-20'],['外观',0,'2026-10-21']].entries())for(const [j,value] of values.entries())sheet.getCell(i+4,j+1).value=value;
+  const itemRows=manyItems?Array.from({length:25},(_,i)=>[`项目${i+1}`,i,'2026-10-20']):[['尺寸',2,'2026-10-20'],['外观',0,'2026-10-21']];
+  for(const [i,values] of itemRows.entries())for(const [j,value] of values.entries())sheet.getCell(i+4,j+1).value=value;
   if(extendedTypes){sheet.getCell('A1').value=new Date('2026-10-20T23:59:59Z');sheet.getCell('A1').numFmt='yyyy/mm/dd hh:mm:ss';sheet.getCell('B1').value=0.95;sheet.getCell('B1').numFmt='0%';sheet.getCell('C1').value=false;}
   const bytes=Buffer.from(await excel.xlsx.writeBuffer());
   const definition={sheetName:'检验',fields:[{id:'date',name:'日期',type:'date',customKey:true,valueRegion:'A1'},
@@ -670,6 +671,7 @@ async function qualityAiFixture(t,{save=true,extendedTypes=false}={}) {
     {id:'company',name:'公司名',type:'string',customKey:true,valueRegion:'C1'},
     {id:'items',name:'检验明细',type:'object',labelRegion:'A2',propertyRegion:'A3:C3',valueRegion:'A4:C5',properties:[{id:'item',name:'项目',type:'string'},{id:'quantity',name:'数量',type:'number'},{id:'itemDate',name:'日期',type:'date'}]}]};
   if(extendedTypes){definition.fields[0].type='datetime';definition.fields[1].numberMode='percent';definition.fields[2].type='boolean';}
+  if(manyItems)definition.fields[3].valueRegion='A4:C28';
   const body=new FormData();body.append('file',new Blob([bytes]),'检验.xlsx');body.append('name','品质检验模板');body.append('definition',JSON.stringify(definition));body.append('request_id',randomUUID());
   const created=await f.request(f.admin,'/quality/templates',body);assert.equal(created.status,200,JSON.stringify(created.data));
   const published=await f.request(f.admin,`/quality/templates/${created.data.id}/publish`,{version:created.data.version});assert.equal(published.status,200);
@@ -689,6 +691,8 @@ test('AI recommends charts from scoped saved data and never saves during recomme
   assert.equal(f.toolResult().templates[0].acceptance_count,1);
   f.use('quality_chart_data',{revision_id:f.row.published_revision});await f.chat(f.admin);
   const data=f.toolResult();assert.equal(data.acceptance_count,1);assert.ok(data.recommendations.some(r=>r.config.chartType==='line'));
+  assert.ok(data.recommendations.some(r=>r.config.chartType==='pie'&&r.config.metric.aggregation==='count'));
+  assert.equal(data.chart_types.pie,'饼图');
   assert.ok(data.recommendations.some(r=>r.config.objectId==='items'));
   assert.equal(data.scopes.find(s=>s.id==='items').records,2);
   assert.deepEqual(data.scopes[0].fields.find(f=>f.ref.fieldId==='rate').samples,['95']);
@@ -701,26 +705,36 @@ test('AI recommends charts from scoped saved data and never saves during recomme
 });
 test('AI chart previews confirm once and support every existing chart type and object scope',async t=>{
   const f=await qualityAiFixture(t);
-  for(const chartType of ['line','bar','table']){
+  for(const chartType of ['line','bar','pie','table']){
     const chart=structuredClone(f.chart);chart.config.chartType=chartType;
     if(chartType==='table'){chart.config.objectId='items';chart.config.x={fieldId:'items',propertyId:'item'};chart.config.metric={aggregation:'sum',value:{fieldId:'items',propertyId:'quantity'}};}
     f.use('preview_quality_chart',chart);const response=await f.chat(f.admin);assert.equal(response.status,200);
     const action=response.data.actions[0];assert.equal(action.kind,'quality_chart');assert.equal(action.preview.template_name,'品质检验模板');
-    assert.ok(action.preview.rows.length);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,['line','bar','table'].indexOf(chartType));
+    assert.ok(action.preview.rows.length);assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,['line','bar','pie','table'].indexOf(chartType));
     const confirmed=await f.request(f.admin,'/ai/confirm',{action_id:action.id});assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));
     assert.deepEqual((await f.request(f.admin,'/ai/confirm',{action_id:action.id})).data,confirmed.data);
     const stored=(await f.request(f.admin,`/quality/charts/${confirmed.data.id}`)).data;
     assert.equal(stored.config.chartType,chartType);assert.equal(stored.source.revision_id,f.row.published_revision);
     assert.equal(stored.created_by_name,'owner');
   }
-  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,3);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM quality_charts').get().n,4);
+});
+test('AI pie previews retain all categories so preview truncation cannot change their shares',async t=>{
+  const f=await qualityAiFixture(t,{manyItems:true});
+  for(const chartType of ['pie','line']){
+    f.use('preview_quality_chart',{...f.chart,config:{...f.chart.config,chartType,objectId:'items',x:{fieldId:'items',propertyId:'item'},metric:{aggregation:'count'}}});
+    const response=await f.chat(f.admin);assert.equal(response.status,200);
+    const preview=response.data.actions[0].preview;
+    assert.equal(preview.total_groups,25);assert.equal(preview.rows.length,chartType==='pie'?25:20);
+    if(chartType==='pie')assert.equal(preview.rows.reduce((sum,row)=>sum+row.value,0),25);
+  }
 });
 test('AI chart tools enforce quality permission, write switch and schema validation',async t=>{
   const f=await qualityAiFixture(t);await f.permissions(['ai']);
   await f.chat(f.staff);assert.ok(!f.calls.at(-1).body.tools.some(t=>/quality_chart/.test(t.function.name)));
   f.use('quality_chart_data',{revision_id:f.row.published_revision});assert.equal((await f.chat(f.staff)).status,403);
   await f.permissions(['ai','quality']);
-  for(const config of [{...f.chart.config,chartType:'pie'},{...f.chart.config,x:{fieldId:'invented'}},{...f.chart.config,metric:{aggregation:'avg',value:{fieldId:'company'}}}]){
+  for(const config of [{...f.chart.config,chartType:'radar'},{...f.chart.config,x:{fieldId:'invented'}},{...f.chart.config,metric:{aggregation:'avg',value:{fieldId:'company'}}}]){
     f.use('preview_quality_chart',{...f.chart,config});const response=await f.chat(f.staff);assert.deepEqual(response.data.actions,[]);assert.ok(f.toolResult().error);
   }
   await f.request(f.admin,'/settings/ai',{...f.settings,writes:false},'PUT');

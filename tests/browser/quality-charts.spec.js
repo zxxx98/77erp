@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
@@ -31,6 +31,55 @@ async function fixture(page,suffix){
   return {template,templateName,productName,product,acceptance:await saved.json()};
 }
 async function charts(page){await page.goto('/#quality');await page.getByRole('button',{name:'图表',exact:true}).click();}
+for(const platform of ['desktop','iPhone','Android PWA'])test(`${platform} configures, saves and traces a fullscreen pie chart`,async({page,browser})=>{
+  const f=await fixture(page,`饼图${platform}`);
+  const context=await browser.newContext({baseURL:'http://127.0.0.1:3199',...(platform==='desktop'?{viewport:{width:1440,height:1000}}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']),serviceWorkers:platform==='Android PWA'?'allow':'block'});
+  try{
+    if(platform==='Android PWA')await context.addInitScript(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
+    await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});
+    const view=await context.newPage(),errors=[];view.on('pageerror',error=>errors.push(error.message));
+    await charts(view);await view.getByRole('button',{name:'新建图表',exact:true}).click();
+    const title=`验收分布饼图-${platform}`;await view.getByRole('textbox',{name:'图表名称',exact:true}).fill(title);
+    await choose(view,'图表数据模板',`${f.templateName} · v1`);await choose(view,'图表样式','饼图');await choose(view,'图表统计方式','记录数');
+    await expect(view.getByRole('combobox',{name:'分类字段',exact:true})).toHaveValue('检验日期');
+    expect(await view.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await view.getByRole('button',{name:'生成预览',exact:true}).click();
+    const preview=view.getByRole('img',{name:`${title}预览`,exact:true});await expect(preview.locator('circle')).toHaveCount(1);await expect(view.locator('.quality-pie-legend')).toContainText('100%');
+    await view.getByRole('button',{name:'保存图表',exact:true}).click();
+    await view.getByRole('row').filter({hasText:title}).getByRole('button',{name:'查看图表',exact:true}).click();
+    const modal=view.getByRole('dialog',{name:title,exact:true});await modal.getByRole('button',{name:'全屏查看',exact:true}).click();
+    const fullscreen=view.locator('.chart-fullscreen-modal'),svg=fullscreen.getByRole('img',{name:title,exact:true});
+    await expect(svg.locator('circle')).toHaveCount(1);await expect(fullscreen.locator('.quality-pie-legend')).toContainText('100%');
+    expect(await fullscreen.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+    if(platform==='desktop')await svg.getByRole('button',{name:/查看来源/}).press('Enter');
+    else await fullscreen.locator('.quality-pie-legend').getByRole('button',{name:/查看来源/}).click();
+    const source=view.getByRole('dialog',{name:'图表数据来源',exact:true});await expect(source).toContainText(f.acceptance.number);
+    await source.getByRole('button',{name:'关闭弹窗',exact:true}).click();await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();
+    await modal.screenshot({path:`output/ui-preview/quality-pie-${platform}.png`});
+    expect(await view.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);
+    await modal.getByRole('button',{name:'关闭弹窗',exact:true}).click();await view.reload();await view.getByRole('button',{name:'图表',exact:true}).click();
+    await view.getByRole('row').filter({hasText:title}).getByRole('button',{name:'编辑图表',exact:true}).click();await expect(view.getByRole('combobox',{name:'图表样式',exact:true})).toHaveValue('饼图');
+  }finally{await context.close();}
+});
+
+test('grouped pies use separate denominators, retain zero sources and handle negative and zero data',async({page})=>{
+  const f=await fixture(page,'饼图边界');
+  const response=await page.request.post('/api/quality/charts',{data:{name:'分组饼图',template_id:f.template.id,revision_id:f.template.published_revision,request_id:randomUUID(),config:{schemaVersion:1,kind:'ordinary',chartType:'pie',x:{fieldId:'date'},groupBy:{fieldId:'name'},metric:{aggregation:'count'}}}});expect(response.ok()).toBe(true);const chart=await response.json();
+  let rows=[{x:'甲',series:'A',seriesLabel:'第一组',value:30,count:1},{x:'乙',series:'A',seriesLabel:'第一组',value:90,count:1},{x:'丙',series:'A',seriesLabel:'第一组',value:0,count:1},{x:'甲',series:'B',seriesLabel:'第二组',value:30,count:1},{x:'乙',series:'B',seriesLabel:'第二组',value:30,count:1}];
+  await page.route(`**/api/quality/charts/${chart.id}/data*`,route=>route.fulfill({json:{rows,xType:'string',unit:'',stats:{sheets:5,records:5,excluded:0,incompatibleSheets:0}}}));
+  await page.route(`**/api/quality/charts/${chart.id}/sources*`,route=>route.fulfill({json:{sources:[],total:0}}));
+  const open=async()=>{await charts(page);await page.getByRole('row').filter({hasText:'分组饼图'}).getByRole('button',{name:'查看图表',exact:true}).click();};
+  await open();const modal=page.getByRole('dialog',{name:'分组饼图',exact:true});
+  const first=modal.getByRole('region',{name:'分组饼图 · 第一组',exact:true}),second=modal.getByRole('region',{name:'分组饼图 · 第二组',exact:true});
+  await expect(first.locator('svg path')).toHaveCount(2);await expect(first.locator('.quality-pie-legend')).toContainText('25%');await expect(first.locator('.quality-pie-legend')).toContainText('75%');await expect(second.locator('.quality-pie-legend').getByText('50%',{exact:true})).toHaveCount(2);
+  await modal.screenshot({path:'output/ui-preview/quality-pie-grouped.png'});
+  const sourceRequest=page.waitForRequest(r=>r.url().includes(`/charts/${chart.id}/sources`));await first.locator('.quality-pie-legend').getByRole('button',{name:/查看来源 丙/}).click();const url=new URL((await sourceRequest).url());expect(url.searchParams.get('x')).toBe('丙');expect(url.searchParams.get('series')).toBe('A');
+  await page.getByRole('dialog',{name:'图表数据来源',exact:true}).getByRole('button',{name:'关闭弹窗',exact:true}).click();await modal.getByRole('button',{name:'关闭弹窗',exact:true}).click();
+  for(const value of [0,-5]){
+    rows=[{x:'甲',series:'统计值',seriesLabel:'统计值',value,count:1}];await open();await expect(modal.getByRole('status')).toContainText(value===0?'当前统计值均为 0':'饼图需要非负数值');await expect(modal.locator('.quality-pie-svg')).toHaveCount(0);
+    await modal.locator('.quality-chart-table summary').click();await expect(modal.getByRole('table')).toContainText(String(value));await modal.getByRole('button',{name:'关闭弹窗',exact:true}).click();
+  }
+});
 test('configure a normal chart from a numeric rate field, preview saved data, trace sources and edit categories',async({page})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));const f=await fixture(page,'普通');
   await charts(page);await page.getByRole('button',{name:'新建图表',exact:true}).click();

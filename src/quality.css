@@ -177,6 +177,10 @@
   .quality-sheet-summary-actions { width: 100%; }
 }
 .quality-chart-editor-layout { display: grid; grid-template-columns: minmax(320px, .8fr) minmax(0, 1.4fr); gap: 20px; align-items: start; }
+.mobile-device .quality-chart-editor-layout { grid-template-columns: minmax(0,1fr); }
+@media (max-width: 900px) {
+  .quality-chart-editor-layout { grid-template-columns: minmax(0,1fr); }
+}
 .quality-chart-config, .quality-chart-preview { padding: 22px; display: grid; gap: 20px; min-width: 0; }
 .quality-chart-config fieldset { display: grid; gap: 18px; border: 0; padding: 0; min-width: 0; }
 .quality-chart-preview fieldset { display: grid; gap: 18px; border: 0; padding: 0; min-width: 0; }
@@ -195,6 +199,22 @@
 .quality-chart-legend > span { display: inline-flex; gap: 6px; align-items: center; }
 .quality-chart-legend i { width: 9px; height: 9px; border-radius: 50%; }
 .quality-chart-table summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 10px 0; }
+.quality-pie-charts { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 20px; min-width: 0; }
+.quality-pie-note { grid-column: 1 / -1; margin: 0; }
+.quality-pie-card { min-width: 0; align-self: start; }
+.quality-pie-card:only-of-type { grid-column: 1 / -1; }
+.quality-pie-card h3 { overflow-wrap: anywhere; }
+.quality-pie-svg { display: block; width: 100%; max-width: 440px; margin: auto; }
+.quality-pie-svg [role=button] { cursor: pointer; }
+.quality-pie-svg [role=button]:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+.quality-pie-legend { display: grid; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.quality-pie-legend li > * { display: grid; grid-template-columns: 10px minmax(0,1fr) auto auto; align-items: center; gap: 8px; width: 100%; padding: 8px 4px; text-align: left; font-size: 12px; color: inherit; }
+.quality-pie-legend button { border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
+.quality-pie-legend button:hover, .quality-pie-legend button:focus-visible { background: var(--hover); }
+.quality-pie-legend i { width: 10px; height: 10px; border-radius: 50%; }
+.quality-pie-legend span { overflow-wrap: anywhere; }
+.quality-pie-legend strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
+.chart-fullscreen-content .quality-pie-svg { max-width: 560px; }
 .quality-chart-filters { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
 .quality-chart-modal { display: grid; gap: 20px; }
 .quality-chart-sources small { display: block; margin-top: 5px; color: var(--muted); }
