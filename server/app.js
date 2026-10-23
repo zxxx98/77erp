@@ -525,6 +525,138 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       res.status(400).json({ error: error.message });
     }
   });
+  const parseBatchProductIds = (rawIds) => {
+    if (!Array.isArray(rawIds) || !rawIds.length)
+      throw new Error("请先选择要操作的物料。");
+    const ids = [];
+    const seen = new Set();
+    for (const item of rawIds) {
+      if (!Number.isSafeInteger(item) || item <= 0)
+        throw new Error("物料编号无效。");
+      if (!seen.has(item)) {
+        seen.add(item);
+        ids.push(item);
+      }
+    }
+    if (ids.length > 500)
+      throw new Error("单次批量操作最多支持 500 种物料。");
+    return ids;
+  };
+  const productDeleteBlockReason = (product) => {
+    if (product.stock !== 0 || product.inventory_value_cents !== 0)
+      return "物料仍有库存或库存价值，不能删除，请使用停用。清库存可从库存页面开单。";
+    if (db.prepare("SELECT 1 FROM order_items WHERE product_id=? LIMIT 1").get(product.id) ||
+        db.prepare("SELECT 1 FROM stock_adjustments WHERE product_id=? LIMIT 1").get(product.id))
+      return "物料已有单据或盘点记录，不能删除，请使用停用。";
+    if (db.prepare("SELECT 1 FROM product_changes WHERE product_id=? LIMIT 1").get(product.id))
+      return "物料已有改价记录，不能删除，请使用停用。";
+    if (db.prepare("SELECT 1 FROM templates d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
+      return "物料被模板引用，不能删除，请先移除模板中的物料或使用停用。";
+    if (db.prepare("SELECT 1 FROM stock_qr_items WHERE product_id=? LIMIT 1").get(product.id))
+      return "物料被出入库二维码引用，请先从二维码明细移除或使用停用。";
+    if (db.prepare("SELECT 1 FROM quality_acceptances a,json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=? LIMIT 1").get(product.id))
+      return "物料已绑定验收单，不能删除，请使用停用。";
+    if (db.prepare('SELECT 1 FROM production_orders WHERE product_id=? LIMIT 1').get(product.id) ||
+        db.prepare('SELECT 1 FROM production_items WHERE product_id=? LIMIT 1').get(product.id) ||
+        db.prepare('SELECT 1 FROM production_scraps WHERE product_id=? LIMIT 1').get(product.id))
+      return '物料被生产单引用，不能删除，请使用停用。';
+    if (db.prepare('SELECT 1 FROM boms WHERE product_id=? LIMIT 1').get(product.id) ||
+        db.prepare('SELECT 1 FROM bom_items WHERE product_id=? LIMIT 1').get(product.id) ||
+        db.prepare('SELECT 1 FROM bom_scraps WHERE product_id=? LIMIT 1').get(product.id))
+      return '物料被BOM引用，不能删除，请移除引用或使用停用。';
+    return null;
+  };
+  app.post("/api/products/batch/status", (req, res) => {
+    let inTransaction = false;
+    try {
+      const ids = parseBatchProductIds(req.body?.ids);
+      const active = req.body?.active;
+      if (![0, 1].includes(active))
+        return res.status(400).json({ error: "请选择有效的启用或停用状态。" });
+      db.exec("BEGIN IMMEDIATE");
+      inTransaction = true;
+      const selectProduct = db.prepare("SELECT id,name,barcode,active FROM products WHERE id=? AND warehouse_id=?");
+      const updateStatus = db.prepare("UPDATE products SET active=? WHERE id=? AND warehouse_id=?");
+      const updated = [];
+      const skipped = [];
+      for (const id of ids) {
+        const product = selectProduct.get(id, req.warehouse.id);
+        if (!product) {
+          skipped.push({ id, name: null, reason: "物料不存在或不属于当前仓库" });
+          continue;
+        }
+        if (product.active === active) {
+          skipped.push({ id, name: product.name, barcode: product.barcode, reason: active === 0 ? "已是停用状态" : "已是启用状态" });
+          continue;
+        }
+        updateStatus.run(active, id, req.warehouse.id);
+        updated.push(id);
+      }
+      db.exec("COMMIT");
+      inTransaction = false;
+      res.json({ ok: true, updated, skipped });
+    } catch (e) {
+      if (inTransaction) db.exec("ROLLBACK");
+      res.status(400).json({ error: e.message.trim() });
+    }
+  });
+  app.post("/api/products/batch/delete/preview", (req, res) => {
+    try {
+      const ids = parseBatchProductIds(req.body?.ids);
+      const selectProduct = db.prepare("SELECT * FROM products WHERE id=? AND warehouse_id=?");
+      const deletable = [];
+      const blocked = [];
+      for (const id of ids) {
+        const product = selectProduct.get(id, req.warehouse.id);
+        if (!product) {
+          blocked.push({ id, name: `物料 #${id}`, barcode: "", reason: "物料不存在或不属于当前仓库。" });
+          continue;
+        }
+        const reason = productDeleteBlockReason(product);
+        if (reason) blocked.push({ id: product.id, name: product.name, barcode: product.barcode, reason });
+        else deletable.push({ id: product.id, name: product.name, barcode: product.barcode });
+      }
+      res.json({ ok: true, deletable, blocked });
+    } catch (e) {
+      res.status(400).json({ error: e.message.trim() });
+    }
+  });
+  app.post("/api/products/batch/delete", (req, res) => {
+    let inTransaction = false;
+    try {
+      const ids = parseBatchProductIds(req.body?.ids);
+      db.exec("BEGIN IMMEDIATE");
+      inTransaction = true;
+      const selectProduct = db.prepare("SELECT * FROM products WHERE id=? AND warehouse_id=?");
+      const deleteProduct = db.prepare("DELETE FROM products WHERE id=? AND warehouse_id=?");
+      const failed = [];
+      for (const id of ids) {
+        const product = selectProduct.get(id, req.warehouse.id);
+        if (!product) {
+          failed.push({ id, name: `物料 #${id}`, barcode: "", reason: "物料不存在或不属于当前仓库。" });
+          continue;
+        }
+        const reason = productDeleteBlockReason(product);
+        if (reason) failed.push({ id: product.id, name: product.name, barcode: product.barcode, reason });
+      }
+      if (failed.length) {
+        db.exec("ROLLBACK");
+        inTransaction = false;
+        return res.status(400).json({
+          error: failed.length === 1 ? failed[0].reason : `${failed.length} 种物料无法删除，本次未删除任何物料。`,
+          deleted: [],
+          failed,
+        });
+      }
+      for (const id of ids) deleteProduct.run(id, req.warehouse.id);
+      db.exec("COMMIT");
+      inTransaction = false;
+      res.json({ ok: true, deleted: ids, failed: [] });
+    } catch (e) {
+      if (inTransaction) db.exec("ROLLBACK");
+      res.status(400).json({ error: e.message.trim() });
+    }
+  });
   // Lifecycle actions affect only the current warehouse, never synchronized copies.
   app.post("/api/products/:id/status", (req, res) => {
     if (![0, 1].includes(req.body?.active))
@@ -544,27 +676,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         inTransaction = false;
         return res.status(404).json({ error: "物料不存在。" });
       }
-      if (product.stock !== 0 || product.inventory_value_cents !== 0)
-        throw new Error("物料仍有库存或库存价值，不能删除，请使用停用。清库存可从库存页面开单。");
-      if (db.prepare("SELECT 1 FROM order_items WHERE product_id=? LIMIT 1").get(product.id) ||
-          db.prepare("SELECT 1 FROM stock_adjustments WHERE product_id=? LIMIT 1").get(product.id))
-        throw new Error("物料已有单据或盘点记录，不能删除，请使用停用。");
-      if (db.prepare("SELECT 1 FROM product_changes WHERE product_id=? LIMIT 1").get(product.id))
-        throw new Error("物料已有改价记录，不能删除，请使用停用。");
-      if (db.prepare("SELECT 1 FROM templates d, json_each(d.items) i WHERE json_extract(i.value, '$.product_id')=? LIMIT 1").get(product.id))
-        throw new Error("物料被模板引用，不能删除，请先移除模板中的物料或使用停用。");
-      if (db.prepare("SELECT 1 FROM stock_qr_items WHERE product_id=? LIMIT 1").get(product.id))
-        throw new Error("物料被出入库二维码引用，请先从二维码明细移除或使用停用。");
-      if (db.prepare("SELECT 1 FROM quality_acceptances a,json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=? LIMIT 1").get(product.id))
-        throw new Error("物料已绑定验收单，不能删除，请使用停用。");
-      if (db.prepare('SELECT 1 FROM production_orders WHERE product_id=? LIMIT 1').get(product.id) ||
-          db.prepare('SELECT 1 FROM production_items WHERE product_id=? LIMIT 1').get(product.id) ||
-          db.prepare('SELECT 1 FROM production_scraps WHERE product_id=? LIMIT 1').get(product.id))
-        throw new Error('物料被生产单引用，不能删除，请使用停用。');
-      if (db.prepare('SELECT 1 FROM boms WHERE product_id=? LIMIT 1').get(product.id) ||
-          db.prepare('SELECT 1 FROM bom_items WHERE product_id=? LIMIT 1').get(product.id) ||
-          db.prepare('SELECT 1 FROM bom_scraps WHERE product_id=? LIMIT 1').get(product.id))
-        throw new Error('物料被BOM引用，不能删除，请移除引用或使用停用。');
+      const reason = productDeleteBlockReason(product);
+      if (reason) throw new Error(reason);
       db.prepare("DELETE FROM products WHERE id=?").run(product.id);
       db.exec("COMMIT");
       inTransaction = false;

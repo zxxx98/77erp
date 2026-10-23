@@ -307,7 +307,7 @@ function App({ admin, onLogout }) {
       {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />正在切换仓库…</div>}
       {mobileDevice ? <div inert={!!modal} aria-hidden={modal ? true : undefined}><MobileShell mode={mode} switchMode={switchMode} user={user} data={data} page={page} navigate={navigate} openModal={setModal} openOrder={openOrder}
         showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={openOrderDetail}
-        switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} refreshing={refreshing}
+        switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} onSaved={saved} refreshing={refreshing}
         loggingOut={loggingOut} logout={logout}
         updateNotice={updateNotice}
         announcementCount={announcementCount}

@@ -101,3 +101,113 @@ test('backups retain listing states and accept older backups without the field',
   backup.data.products[0].active = 2;
   assert.equal((await f.request('/backup/preview', 'POST', {backup})).status, 400);
 });
+
+test('batch status and delete endpoints validate inputs, enforce permissions and warehouse isolation, preview constraints, and rollback atomically', async t => {
+  const f = await fixture(t), w = await f.warehouse('分仓');
+  const create = async (index, extra = {}) => {
+    const res = await f.request('/products', 'POST', {
+      ...product,
+      name: `批量物料-${index}`,
+      barcode: `BATCH-${index}`,
+      ...extra,
+    });
+    assert.equal(res.status, 201);
+    return res.data.id;
+  };
+  const id1 = await create(1, { sync_warehouse_ids: [w] });
+  const id2 = await create(2);
+  const id3 = await create(3);
+  const otherWarehouseProduct = (await f.request('/data', 'GET', undefined, w)).data.products.find(p => p.barcode === 'BATCH-1');
+  assert.ok(otherWarehouseProduct);
+
+  // Input validation & deduplication
+  for (const invalidIds of [null, [], ['1'], [0], [-1], [1.5], Array.from({ length: 501 }, (_, i) => i + 1)]) {
+    assert.equal((await f.request('/products/batch/status', 'POST', { ids: invalidIds, active: 0 })).status, 400);
+    assert.equal((await f.request('/products/batch/delete/preview', 'POST', { ids: invalidIds })).status, 400);
+    assert.equal((await f.request('/products/batch/delete', 'POST', { ids: invalidIds })).status, 400);
+  }
+  for (const active of [null, 2, '0', false]) {
+    assert.equal((await f.request('/products/batch/status', 'POST', { ids: [id1], active })).status, 400);
+  }
+
+  // Permissions: legacy employee is forbidden, configured employee without products is forbidden, with products is allowed
+  const createdEmp = await f.request('/users', 'POST', { username: 'legacy_emp', password: 'Test-staff-123' });
+  assert.equal(createdEmp.status, 201);
+  const empId = createdEmp.data.id;
+  f.db.prepare('UPDATE users SET permissions=NULL WHERE id=?').run(empId);
+  const legacyLogin = await f.request('/auth/login', 'POST', { username: 'legacy_emp', password: 'Test-staff-123' }, 1, false);
+  assert.equal(legacyLogin.status, 200);
+  for (const [p, body] of [
+    ['/products/batch/status', { ids: [id1], active: 0 }],
+    ['/products/batch/delete/preview', { ids: [id1] }],
+    ['/products/batch/delete', { ids: [id1] }],
+  ]) {
+    assert.equal((await f.request(p, 'POST', body, 1, true, legacyLogin.cookie)).status, 403);
+  }
+  const emp = (await f.request('/users')).data.find(u => u.id === empId);
+  assert.equal((await f.request(`/users/${emp.id}/permissions`, 'PUT', { permissions: ['purchase'], version: emp.permissions_version })).status, 200);
+  assert.equal((await f.request('/products/batch/status', 'POST', { ids: [id1], active: 0 }, 1, true, legacyLogin.cookie)).status, 403);
+  assert.equal((await f.request(`/users/${emp.id}/permissions`, 'PUT', { permissions: ['products'], version: emp.permissions_version + 1 })).status, 200);
+
+  // Batch status with deduplication, already-inactive skip, and cross-warehouse skip
+  await f.request(`/products/${id2}/status`, 'POST', { active: 0 });
+  const statusRes = await f.request('/products/batch/status', 'POST', {
+    ids: [id1, id1, id2, otherWarehouseProduct.id, 999999],
+    active: 0,
+  }, 1, true, legacyLogin.cookie);
+  assert.equal(statusRes.status, 200);
+  assert.deepEqual(statusRes.data.updated, [id1]);
+  assert.equal(statusRes.data.skipped.length, 3);
+  assert.equal((await f.request('/data', 'GET', undefined, w)).data.products.find(p => p.id === otherWarehouseProduct.id).active, 1);
+
+  // Batch delete preview checks all constraints without mutating
+  f.db.prepare('UPDATE products SET stock=2 WHERE id=?').run(id1);
+  const preview1 = await f.request('/products/batch/delete/preview', 'POST', {
+    ids: [id1, id2, id3, otherWarehouseProduct.id],
+  }, 1, true, legacyLogin.cookie);
+  assert.equal(preview1.status, 200);
+  assert.deepEqual(preview1.data.deletable.map(d => d.id), [id2, id3]);
+  assert.deepEqual(preview1.data.blocked.map(b => b.id), [id1, otherWarehouseProduct.id]);
+  assert.match(preview1.data.blocked[0].reason, /库存/);
+
+  // Batch delete rolls back entire transaction if any requested item is blocked
+  const failedDelete = await f.request('/products/batch/delete', 'POST', {
+    ids: [id1, id2],
+  }, 1, true, legacyLogin.cookie);
+  assert.equal(failedDelete.status, 400);
+  assert.deepEqual(failedDelete.data.deleted, []);
+  assert.equal(failedDelete.data.failed.length, 1);
+  assert.equal(failedDelete.data.failed[0].id, id1);
+  // id2 must still exist because transaction rolled back
+  assert.ok((await f.request('/data')).data.products.some(p => p.id === id2));
+
+  // Batch delete succeeds when all requested items are deletable
+  const okDelete = await f.request('/products/batch/delete', 'POST', {
+    ids: [id2, id3],
+  }, 1, true, legacyLogin.cookie);
+  assert.equal(okDelete.status, 200);
+  assert.deepEqual(okDelete.data.deleted, [id2, id3]);
+  const remaining = (await f.request('/data')).data.products.map(p => p.id);
+  assert.deepEqual(remaining, [id1]);
+
+  // Verify remaining delete block reasons in batch preview
+  const pOrder = await create('ORD');
+  const pChange = await create('CHG');
+  const pTpl = await create('TPL');
+  const pQr = await create('QR');
+  const pBom = await create('BOM');
+  const pMat = await create('MAT');
+  await f.order(pOrder, 'in', 1);
+  f.db.prepare('UPDATE products SET stock=0, inventory_value_cents=0 WHERE id=?').run(pOrder);
+  const pChangeRow = (await f.request('/data')).data.products.find(p => p.id === pChange);
+  await f.request(`/products/${pChange}`, 'PUT', { ...product, name: '批量物料-CHG', barcode: 'BATCH-CHG', cost: 15, price: 25, version: pChangeRow.version });
+  await f.command('/templates', { name: '批量测试模板', type: 'in', partner: '供方', note: '', items: [{ product_id: pTpl, quantity: 1, price: 10 }] });
+  await f.command('/stock-qrs', { name: '二维码引用', type: 'in', partner: '供方', max_scans: 1, items: [{ product_id: pQr, quantity: 1, price_e4: 10000 }] });
+  assert.equal((await f.command('/boms', { name: '测试BOM', product_id: pBom, base_quantity: 1, base_unit: '件', note: '', enabled: 1, items: [{ product_id: pMat, quantity: 1, unit: '件', note: '' }] })).status, 200);
+  const previewAllConstraints = await f.request('/products/batch/delete/preview', 'POST', {
+    ids: [pOrder, pChange, pTpl, pQr, pBom],
+  });
+  assert.equal(previewAllConstraints.status, 200);
+  assert.equal(previewAllConstraints.data.deletable.length, 0);
+  assert.equal(previewAllConstraints.data.blocked.length, 5);
+});

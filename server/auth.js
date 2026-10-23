@@ -265,7 +265,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
         /^\/products\/\d+\/(other-warehouses|history)$/.test(path));
       if (basicRead) return next();
       let permission;
-      if ((post && ['/products','/uploads/product-image'].includes(path)) ||
+      if ((post && ['/products','/uploads/product-image','/products/batch/status','/products/batch/delete/preview','/products/batch/delete'].includes(path)) ||
           (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||
           (post && /^\/products\/\d+\/(status|inspect)$/.test(path)) ||
           (req.method === 'DELETE' && /^\/products\/\d+$/.test(path)) ||

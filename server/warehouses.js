@@ -45,7 +45,7 @@ export function installWarehouses(app, db) {
     // Guard every route accepting existing business IDs, including financial corrections.
     const checks = [];
     const match = /^\/(products|orders|templates|payments|categories)\/([^/]+)(?:\/|$)/.exec(path);
-    if (match && !(match[1] === 'products' && ['barcode','import','export'].includes(match[2])) && !(match[1] === 'orders' && match[2] === 'export')) checks.push([match[1], Number(match[2])]);
+    if (match && !(match[1] === 'products' && ['barcode','import','export','batch'].includes(match[2])) && !(match[1] === 'orders' && match[2] === 'export')) checks.push([match[1], Number(match[2])]);
     if (path === '/templates' && req.body?.id != null) checks.push(['templates', req.body.id]);
     if (['/orders', '/stocktakes', '/templates'].includes(path)) {
       for (const item of Array.isArray(req.body?.items) ? req.body.items : []) checks.push(['products', item?.product_id]);

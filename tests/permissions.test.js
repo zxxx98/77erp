@@ -32,6 +32,7 @@ async function fixture(t) {
 const probes = {
   products: [
     ['POST', '/products', {}], ['PUT', '/products/1', {}], ['POST', '/products/1/status', {}], ['DELETE', '/products/1', {}],
+    ['POST', '/products/batch/status', { ids: [1], active: 0 }], ['POST', '/products/batch/delete/preview', { ids: [1] }], ['POST', '/products/batch/delete', { ids: [1] }],
     ['POST', '/categories', {}], ['PUT', '/categories/1', {}], ['POST', '/categories/1/delete', {}],
   ],
   purchase: [['POST', '/orders', { type: 'in' }]],

@@ -19,8 +19,9 @@ import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, Product
 import './mobile.css';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
+import { ProductBatchDialog } from '../pages/Products.jsx';
 
-export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProduction, announcementCount, updateNotice }) {
+export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProduction, announcementCount, updateNotice }) {
   const { can } = usePermissions();
   const tabs = modeItems(mode, can).filter(item => item.mobile);
   const { online } = usePwa();
@@ -72,7 +73,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
         {!ready && !loadError && <Empty title="等待连接工作空间" />}
         {ready && <>
           {page === 'overview' && <Dashboard data={data} openOrder={openOrder} onScan={() => navigate('scanner')} showProduct={showProduct} showOrder={showOrder} history={() => navigate('history')} />}
-          {['products', 'inventory'].includes(page) && <Products key={`${data.warehouse_id}:${page}`} data={data} inventory={page === 'inventory'} showProduct={showProduct} openModal={openModal} />}
+          {['products', 'inventory'].includes(page) && <Products key={`${data.warehouse_id}:${page}`} data={data} inventory={page === 'inventory'} showProduct={showProduct} openModal={openModal} onSaved={onSaved || reload} />}
           {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} />}
           {page === 'more' && <More mode={mode} user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'quality' && renderQuality()}
@@ -112,28 +113,144 @@ function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history })
   </div>;
 }
 
-function Products({ data, inventory, showProduct, openModal }) {
+function Products({ data, inventory, showProduct, openModal, onSaved }) {
   const { can, manage } = usePermissions();
+  const { online } = usePwa();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
   const [filter, setFilter] = useState(inventory ? 'all' : 'active');
+  const [batchSelecting, setBatchSelecting] = useState(false);
+  const [selectedMap, setSelectedMap] = useState(() => new Map());
+  const [batchMode, setBatchMode] = useState(null);
   const categories = flattenCategories(data.categories || []);
   useEffect(() => { if (category !== 'all' && !categories.some(c => String(c.id) === category)) setCategory('all'); }, [data.categories, category]);
+  useEffect(() => {
+    setSelectedMap(new Map());
+    setBatchMode(null);
+  }, [query, category, filter, data.warehouse_id]);
   const { result, error, loading, loadMore, retry } = usePagedQuery(queryPath('/products', {
     q: query, category_id: category, status: inventory ? 'active' : filter, stock: inventory ? filter : 'all',
   }), data, 'products', query ? 250 : 0);
   const products = result?.products || [];
+  useEffect(() => {
+    if (!products.length) return;
+    setSelectedMap(prev => {
+      if (!prev.size) return prev;
+      let changed = false;
+      const next = new Map(prev);
+      for (const p of products) {
+        const existing = next.get(p.id);
+        if (existing && (existing.name !== p.name || existing.barcode !== p.barcode || existing.active !== p.active)) {
+          next.set(p.id, { id: p.id, name: p.name, barcode: p.barcode, active: p.active });
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [products]);
+  const selectedList = [...selectedMap.values()];
+  const activeSelected = selectedList.filter(p => p.active !== 0);
+  const selectedLoadedCount = products.filter(p => selectedMap.has(p.id)).length;
+  const allLoadedSelected = products.length > 0 && selectedLoadedCount === products.length;
+  const someLoadedSelected = selectedLoadedCount > 0 && !allLoadedSelected;
+  const toggleSelect = (p) => {
+    setSelectedMap(prev => {
+      const next = new Map(prev);
+      if (next.has(p.id)) next.delete(p.id);
+      else next.set(p.id, { id: p.id, name: p.name, barcode: p.barcode, active: p.active });
+      return next;
+    });
+  };
+  const toggleSelectAllLoaded = () => {
+    setSelectedMap(prev => {
+      const next = new Map(prev);
+      if (allLoadedSelected) {
+        for (const p of products) next.delete(p.id);
+      } else {
+        for (const p of products) next.set(p.id, { id: p.id, name: p.name, barcode: p.barcode, active: p.active });
+      }
+      return next;
+    });
+  };
+  const handleBatchCompleted = async ({ clearedIds, message }) => {
+    if (clearedIds?.length) {
+      setSelectedMap(prev => {
+        const next = new Map(prev);
+        for (const id of clearedIds) next.delete(id);
+        return next;
+      });
+    }
+    retry();
+    if (onSaved && message) await onSaved(message);
+  };
   return <div className="mw-stack">
     <div className="mw-between"><div><h1>{inventory ? '库存管理' : '物料管理'}</h1><p className="mw-muted">共 {result ? result.total : '—'} 种物料 · 已加载 {products.length} 种</p></div>{!inventory && can('products') && <MobileIcon icon={Plus} label="新增物料" onClick={() => openModal({ kind: 'product' })} />}</div>
-    {!inventory && manage('products') && <Button onClick={() => openModal({ kind: 'categories' })}>管理分类</Button>}
+    {!inventory && manage('products') && (
+      <div className="mw-columns">
+        <Button onClick={() => openModal({ kind: 'categories' })}>管理分类</Button>
+        <Button
+          primary={batchSelecting}
+          onClick={() => {
+            setBatchSelecting(v => !v);
+            setSelectedMap(new Map());
+            setBatchMode(null);
+          }}
+        >
+          {batchSelecting ? '退出批量' : '批量'}
+        </Button>
+      </div>
+    )}
     <SearchField value={query} onChange={setQuery} label="搜索名称、条码、规格或客户料号" />
     <Chips label={inventory ? '库存筛选' : '使用状态'} value={filter} onChange={setFilter} options={inventory ? [['all', '全部库存'], ['low', '库存预警'], ['empty', '缺货']] : [['all', '全部状态'], ['active', '已启用'], ['inactive', '已停用']]} />
     <label className="mw-field"><span>物料分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
     <Notice>{error}</Notice>{error && <Button onClick={retry}>重新加载</Button>}
+    {batchSelecting && products.length > 0 && (
+      <div className="mw-batch-header">
+        <label className="mw-batch-check-all">
+          <input
+            ref={el => { if (el) el.indeterminate = someLoadedSelected; }}
+            type="checkbox"
+            aria-label="全选本页物料"
+            checked={allLoadedSelected}
+            onChange={toggleSelectAllLoaded}
+          />
+          <span>全选已加载</span>
+        </label>
+        <span className="mw-muted">已选 {selectedList.length} 项</span>
+      </div>
+    )}
     {loading && !products.length && <p className="mw-muted"><LoadingStatus>正在读取物料…</LoadingStatus></p>}
-    <div className="mw-product-list" aria-busy={loading}>{products.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />)}</div>
+    <div className="mw-product-list" aria-busy={loading}>{products.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} selectable={batchSelecting} selected={selectedMap.has(p.id)} onToggle={toggleSelect} />)}</div>
     {!loading && !products.length && !error && <Empty title="未找到物料">尝试调整筛选条件，或新增物料档案。</Empty>}
     {result?.has_more && <Button busy={loading} onClick={loadMore}>加载更多物料</Button>}
+    {batchSelecting && manage('products') && (
+      <div className="mw-batch-bar" role="region" aria-label="批量操作栏">
+        <div className="mw-batch-summary">
+          <strong>已选 {selectedList.length} 项</strong>
+          {selectedList.length > 0 && (
+            <button type="button" className="mw-batch-clear" onClick={() => setSelectedMap(new Map())}>
+              清除选择
+            </button>
+          )}
+        </div>
+        <div className="mw-batch-buttons">
+          <Button disabled={!online || activeSelected.length === 0} onClick={() => setBatchMode('deactivate')}>
+            批量停用
+          </Button>
+          <Button danger disabled={!online || selectedList.length === 0} onClick={() => setBatchMode('delete')}>
+            批量删除
+          </Button>
+        </div>
+      </div>
+    )}
+    {batchSelecting && manage('products') && batchMode && (
+      <ProductBatchDialog
+        mode={batchMode}
+        selectedProducts={selectedList}
+        onClose={() => setBatchMode(null)}
+        onCompleted={handleBatchCompleted}
+      />
+    )}
   </div>;
 }
 

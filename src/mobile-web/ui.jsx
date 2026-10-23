@@ -39,10 +39,19 @@ export function SearchField({ value, onChange, label = '搜索物料名称、条
 export function StockBadge({ product }) {
   return <span className={`mw-badge ${stockTone(product)}`}>{stockLabel(product)}</span>;
 }
-export function ProductRow({ product, onOpen }) {
-  return <article className="mw-product-row">
+export function ProductRow({ product, onOpen, selectable = false, selected = false, onToggle }) {
+  return <article className={`mw-product-row${selected ? ' mw-product-row-selected' : ''}`}>
+    {selectable && (
+      <input
+        type="checkbox"
+        className="mw-product-checkbox"
+        aria-label={`选择 ${product.name}`}
+        checked={selected}
+        onChange={() => onToggle(product)}
+      />
+    )}
     <div className="mw-product-icon">{product.image ? <ProductImage src={product.image} alt={product.name} thumbnailSize={100} className="mw-product-image" /> : <Box size={24} />}</div>
-    <button type="button" className="mw-product-copy" aria-label={`${product.name}，库存 ${count(product.stock)} ${product.unit}`} onClick={() => onOpen(product)}>
+    <button type="button" className="mw-product-copy" aria-label={`${product.name}，库存 ${count(product.stock)} ${product.unit}`} onClick={() => selectable ? onToggle(product) : onOpen(product)}>
       <span className="mw-product-title"><strong>{product.name}{product.active === 0 ? '（已停用）' : ''}</strong><ChevronRight size={16} /></span>
       <span className="mw-muted">{product.barcode}</span>
       {product.specification && <span className="mw-muted">{product.specification}</span>}

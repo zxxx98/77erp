@@ -37,6 +37,7 @@ export async function api(path, options) {
     error.status = res.status;
     error.code = data.code;
     error.details = data.details;
+    error.data = data;
     throw error;
   }
   return data;
