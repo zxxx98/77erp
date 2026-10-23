@@ -285,6 +285,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use("/api/ai", express.json({ limit: "1mb" }));
   app.use('/api/quality', express.json({ limit: '2mb' }));
+  app.use(['/api/boms', '/api/production-orders'], express.json({ limit: '2mb' }));
   app.use(express.json({ limit: "100kb" }));
   const { sessionUser } = installAuth(app, db, options);
   installCurrency(app, db);
@@ -558,7 +559,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return "物料已绑定验收单，不能删除，请使用停用。";
     if (db.prepare('SELECT 1 FROM production_orders WHERE product_id=? LIMIT 1').get(product.id) ||
         db.prepare('SELECT 1 FROM production_items WHERE product_id=? LIMIT 1').get(product.id) ||
-        db.prepare('SELECT 1 FROM production_scraps WHERE product_id=? LIMIT 1').get(product.id))
+        db.prepare('SELECT 1 FROM production_scraps WHERE product_id=? LIMIT 1').get(product.id) ||
+        db.prepare('SELECT 1 FROM production_bom_nodes WHERE product_id=? OR bom_product_id=? LIMIT 1').get(product.id, product.id))
       return '物料被生产单引用，不能删除，请使用停用。';
     if (db.prepare('SELECT 1 FROM boms WHERE product_id=? LIMIT 1').get(product.id) ||
         db.prepare('SELECT 1 FROM bom_items WHERE product_id=? LIMIT 1').get(product.id) ||

@@ -190,7 +190,7 @@ test('inspection settings survive backup/restore and imports; older backups defa
     if (preview.status !== 200) return preview;
     return f.request('/backup/restore', 'POST', { backup: value, ...preview.data, request_id: randomUUID(), confirmation: 'RESTORE_BUSINESS_DATA' });
   };
-  assert.equal(backup.version, 31);
+  assert.equal(backup.version, 32);
   assert.equal((await restore(backup)).status, 200);
   for (const key of fields) assert.equal(f.current(p.id)[key], saved[key]);
   const bad = structuredClone(backup);

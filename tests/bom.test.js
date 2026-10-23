@@ -51,7 +51,7 @@ test('BOM maintenance is idempotent, warehouse-scoped, searchable and does not c
   assert.equal(bom.created_by_name, 'bomadmin');
   assert.equal(bom.items[0].product.name, '物料 MATERIAL');
   assert.equal(JSON.stringify(bom).includes('inventory_value_cents'), false);
-  assert.equal((await f.command('/boms', f.definition())).status, 400, 'one BOM per finished product');
+  assert.equal((await f.command('/boms', f.definition({ name: bom.name }))).status, 400, 'same product recipe names are unique');
   assert.notEqual((await f.request('/workspace')).data.revision, revision);
   for (const q of ['%25', '_', 'FINISHED', '配方']) {
     const list = (await f.request('/boms?q=' + q)).data;
@@ -268,7 +268,7 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 31);
+  assert.equal(backup.version, 32);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },
@@ -345,4 +345,67 @@ test('BOM CSV exports the exact snapshot, retains fractional quantities and prot
   assert.equal(exported[7][0], "'=废料"); assert.equal(exported[7][5], '1/3（约 0.333334）'); assert.equal(exported[7][8], "'@说明");
   assert.equal(exported[8][5], '5%'); assert.equal(exported[8][6], 'A,"001"'); assert.equal(exported[8][7], '0.15');
 
+});
+
+test('multiple named recipes per product bind explicit child IDs and preserve older-client edits', async t => {
+  const f = await fixture(t), raw = await f.product('RAW');
+  const child = await f.create({ product_id: f.material, name: '半成品标准', items: [{ product_id: raw, quantity: 3, unit: '个', note: '' }] });
+  const alternate = await f.create({ product_id: f.material, name: '半成品替代', items: [{ product_id: raw, quantity: 6, unit: '个', note: '' }] });
+  const root = await f.create({ items: [{ product_id: f.material, ...parseBomQuantity('1/3'), unit: '个', note: '', usage_mode: 'explode', child_bom_id: child.id }] });
+  const otherRoot = await f.create({ name: '另一成品配方', items: [{ product_id: f.material, quantity: 1, unit: '个', note: '', usage_mode: 'explode', child_bom_id: alternate.id }] });
+  const calculate = id => f.request(`/boms/${id}/calculate`, { production_quantity: 1, schema_version: 2 });
+  const plan = (await calculate(root.id)).data;
+  assert.deepEqual(plan.rows.map(row => [row.product_id, row.required, row.quantity, row.loss_rate]), [[raw, 1, null, null]]);
+  assert.equal(plan.nodes[0].child_bom_id, child.id); assert.equal(plan.nodes[1].bom_id, child.id);
+  assert.equal((await calculate(otherRoot.id)).data.rows[0].required, 6);
+  assert.equal((await f.request(`/boms/${root.id}/calculate`, { production_quantity: 1 })).status, 409);
+  assert.equal((await f.request(`/boms?product_id=${f.material}`)).data.total, 2);
+  assert.equal((await f.command('/boms', f.definition({ name: ' 半成品标准 ', product_id: f.material, items: child.items }))).status, 400);
+  await f.command(`/boms/${alternate.id}`, { ...alternate, version: alternate.version, name: '未选配方改名', items: alternate.items });
+  assert.equal((await calculate(root.id)).data.structure_token, plan.structure_token);
+  const oldEdit = await f.command(`/boms/${root.id}`, { ...f.definition(), version: root.version });
+  assert.equal(oldEdit.status, 200, JSON.stringify(oldEdit.data));
+  assert.equal(oldEdit.data.items[0].usage_mode, 'explode'); assert.equal(oldEdit.data.items[0].child_bom_id, child.id);
+  const invalid = await f.command(`/boms/${child.id}`, { ...child, version: child.version, product_id: f.parent });
+  assert.equal(invalid.status, 400, 'selected child cannot change product');
+});
+
+test('multilevel demand retains exact fractions, aggregates shared leaves once and ignores intermediate stock', async t => {
+  const f = await fixture(t), branch = await f.product('BRANCH'), raw = await f.product('RAW');
+  const child = await f.create({ product_id: f.material, items: [{ product_id: raw, ...parseBomQuantity('1/3'), unit: '个', note: '' }] });
+  const second = await f.create({ product_id: branch, items: [{ product_id: raw, ...parseBomQuantity('1/3'), unit: '个', note: '' }] });
+  const root = await f.create({ items: [f.material, branch].map((product_id, index) => ({ product_id, quantity: 1, unit: '个', note: '', usage_mode: 'explode', child_bom_id: [child.id, second.id][index] })) });
+  f.db.prepare('UPDATE products SET stock=100 WHERE id=?').run(f.material);
+  f.db.prepare('UPDATE products SET stock=0.3 WHERE id=?').run(raw);
+  const result = await f.request(`/boms/${root.id}/calculate`, { production_quantity: 1, schema_version: 2 });
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  assert.equal(result.data.rows.length, 1); assert.equal(result.data.rows[0].required, 0.666667); assert.equal(result.data.rows[0].shortage, 0.366667);
+  assert.deepEqual(result.data.rows[0].sources, ['1.1', '2.1']);
+  const changed = await f.command(`/boms/${child.id}`, { ...child, version: child.version, loss_method: 'external', items: [{ ...child.items[0], loss_rate: 10 }] });
+  assert.equal(changed.status, 200);
+  const next = (await f.request(`/boms/${root.id}/calculate`, { production_quantity: 1, schema_version: 2 })).data;
+  assert.equal(next.rows[0].required, 0.7); assert.notEqual(next.structure_token, result.data.structure_token);
+});
+
+test('selected BOM graph rejects cycles, wrong child identity and unsupported scrap without partial writes', async t => {
+  const f = await fixture(t), raw = await f.product('RAW'), waste = await f.product('WASTE');
+  const child = await f.create({ product_id: f.material, items: [{ product_id: raw, quantity: 1, unit: '个', note: '' }] });
+  const root = await f.create({ items: [{ product_id: f.material, quantity: 1, unit: '个', note: '', usage_mode: 'explode', child_bom_id: child.id }] });
+  const cycle = await f.command(`/boms/${child.id}`, { ...child, version: child.version,
+    items: [{ product_id: f.parent, quantity: 1, unit: '个', note: '', usage_mode: 'explode', child_bom_id: root.id }] });
+  assert.equal(cycle.status, 400); assert.match(cycle.data.error, /循环/);
+  assert.equal((await f.request(`/boms/${child.id}`)).data.version, child.version);
+  const wrong = await f.command(`/boms/${root.id}`, { ...root, items: [{ ...root.items[0], child_bom_id: root.id }], version: root.version });
+  assert.equal(wrong.status, 400);
+  const scrapChild = await f.create({ product_id: f.material, name: '含废料配方', items: child.items,
+    scraps: [{ product_id: waste, method: 'output', source_product_id: null, quantity: 1, unit: '个', note: '' }] });
+  const scrapRoot = await f.command(`/boms/${root.id}`, { ...root, version: root.version, items: [{ ...root.items[0], child_bom_id: scrapChild.id }] });
+  assert.equal(scrapRoot.status, 400); assert.match(scrapRoot.data.error, /废料/);
+  await f.command(`/boms/${child.id}/status`, { version: child.version, enabled: 0 });
+  const stopped = await f.request(`/boms/${root.id}/calculate`, { production_quantity: 1, schema_version: 2 });
+  assert.equal(stopped.status, 400); assert.match(stopped.data.error, /已停用/);
+  const disabledSelection = await f.command('/boms', f.definition({ name: '不允许新选停用配方', items: root.items }));
+  assert.equal(disabledSelection.status, 400); assert.match(disabledSelection.data.error, /已停用/);
+  const stockRoot = await f.create({ name: '直接领用配方', items: [{ product_id: f.material, quantity: 1, unit: '个', note: '' }] });
+  assert.equal((await f.request(`/boms/${stockRoot.id}/calculate`, { production_quantity: 1 })).status, 200);
 });

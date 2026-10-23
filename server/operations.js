@@ -424,7 +424,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 31,
+    version: 32,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -432,11 +432,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 32) {
+      data.production_bom_nodes = [];
+      for (const row of data.bom_items || []) { row.usage_mode = 'stock'; row.child_bom_id = null; }
+      for (const row of data.production_orders || []) row.snapshot_format = 1;
+    }
     if (value.version < 31) for (const table of ['boms', 'production_orders'])
       for (const row of data[table] || []) row.loss_method = 'internal';
     if (value.version < 30) {
@@ -766,7 +771,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
         quality_templates: data.quality_templates.length, quality_acceptances: data.quality_acceptances.length, quality_charts: data.quality_charts.length, quality_files: data.quality_template_files.length,
         boms: data.boms.length, bom_scraps: data.bom_scraps.length, production_scraps: data.production_scraps.length,
-        production_orders: data.production_orders.length, production_batches: data.production_batches.length,
+        production_bom_nodes: data.production_bom_nodes.length, production_orders: data.production_orders.length, production_batches: data.production_batches.length,
       };
     }),
   );

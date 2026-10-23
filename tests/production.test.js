@@ -94,7 +94,7 @@ test('loss snapshots drive plans and actual-output variance without double-count
     scraps: [{ product_id: scrap, quantity: 2, disposition: 'stock' }, { product_id: outputScrap, quantity: 1.5, disposition: 'discard' }] }));
   assert.equal(done.items[0].standard_quantity, 30); assert.equal(done.items[0].variance_quantity, 3); assert.equal(done.items[0].variance_rate, 10);
   assert.deepEqual(done.scraps.map(row => row.expected_quantity), [1.98, 1.5], 'completion uses actual input, not a second loss multiplier');
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 31);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 32);
   for (const change of [
     data => { data.bom_items[0].loss_rate = 100; },
     data => { data.production_items.at(-1).loss_rate = 25; },
@@ -426,7 +426,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 31); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 32); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -571,7 +571,7 @@ test('scrap backup validates rule relations and completion state, restores quant
   const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
   const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
-  assert.equal(backup.version, 31);
+  assert.equal(backup.version, 32);
   for (const tamper of [
     data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
     data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
@@ -688,7 +688,7 @@ test('variance reasons survive backup and void, reject malformed drafts, and for
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
     { product_id: f.material, quantity: 16, variance_reason: '调机\n材料偏差' }, { product_id: f.second, quantity: 1.5, variance_reason: '字'.repeat(500) },
   ] })));
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 31);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 32);
   assert.ok(backup.data.production_items.every(item => !('standard_quantity' in item)));
   for (const change of [
     data => { data.production_items[0].variance_reason = '草稿不得提前记完工原因'; },
@@ -908,4 +908,92 @@ test('whole-order reversal is atomic across batches when an earlier batch cannot
   assert.equal((await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '后续领用' })).status, 400);
   assert.deepEqual(f.inventory(), before);
   assert.ok(f.ok(await f.request(`/production-orders/${order.id}`)).batches.every(batch => batch.status === 'active'));
+});
+
+test('multilevel production freezes selected recipes, handles stale previews, batches and restores without intermediate inventory', async t => {
+  const f = await fixture(t);
+  const child = f.ok(await f.command('/boms', f.definition({ product_id: f.material, name: '半成品配方', base_quantity: 1,
+    items: [{ product_id: f.second, quantity: 3, unit: '件', note: '' }] })));
+  const root = f.ok(await f.command('/boms', f.definition({ name: '多层配方', base_quantity: 1,
+    items: [{ product_id: f.material, ...parseBomQuantity('1/3'), usage_mode: 'explode', child_bom_id: child.id, unit: '件', note: '' }] })));
+  const prepare = () => f.request('/production-orders/prepare', f.plan({ bom_id: root.id, bom_version: root.version, planned_quantity: 3, schema_version: 2 }));
+  const plan = f.ok(await prepare()), before = f.inventory();
+  const body = { ...f.plan({ bom_id: root.id, bom_version: root.version, planned_quantity: 3 }), schema_version: 2, structure_token: plan.structure_token };
+  const changedChild = f.ok(await f.command(`/boms/${child.id}`, { ...child, version: child.version, items: [{ ...child.items[0], quantity: 6 }] }));
+  assert.equal((await f.command('/production-orders', body)).status, 409, 'child changed without a root version change');
+  body.structure_token = f.ok(await prepare()).structure_token;
+  const request = { ...body, request_id: randomUUID() };
+  let order = f.ok(await f.request('/production-orders', request));
+  assert.equal(order.snapshot_format, 2); assert.equal(order.nodes.length, 2);
+  assert.equal(order.items[0].planned_quantity, 6); assert.equal(order.items[0].base_quantity, null);
+  f.ok(await f.command(`/boms/${child.id}`, { ...changedChild, version: changedChild.version, items: [{ ...changedChild.items[0], quantity: 9 }] }));
+  assert.equal(f.ok(await f.request('/production-orders', request)).id, order.id, 'retry returns original success after recipe changed');
+  order = f.ok(await f.command(`/production-orders/${order.id}`, { version: order.version, planned_quantity: 6, note: '', schema_version: 2 }));
+  assert.equal(order.items[0].planned_quantity, 12, 'rescaling uses frozen child quantity 6');
+  assert.equal((await f.command(`/production-orders/${order.id}/complete`, { version: order.version, completed_quantity: 1, items: [{ product_id: f.second, quantity: 2 }] })).status, 409);
+  order = f.ok(await f.command(`/production-orders/${order.id}/complete`, { version: order.version, schema_version: 2, completed_quantity: 1, finish_order: false, items: [{ product_id: f.second, quantity: 2 }] }));
+  assert.equal(order.items[0].standard_quantity, 2); assert.equal(order.items[0].variance_quantity, 0);
+  order = f.ok(await f.command(`/production-orders/${order.id}/complete`, { version: order.version, schema_version: 2, completed_quantity: 2, finish_order: true, items: [{ product_id: f.second, quantity: 4 }] }));
+  assert.equal(order.items[0].standard_quantity, 6); assert.equal(order.total_cost_cents, 600);
+  assert.deepEqual(f.inventory().find(row => row.id === f.material), before.find(row => row.id === f.material), 'intermediate stock/value/version untouched');
+  const backup = f.ok(await f.request('/backup'));
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  order = f.ok(await f.request(`/production-orders/${order.id}`));
+  assert.equal(order.nodes[1].quantity, 6); assert.equal(order.items[0].standard_quantity, 6);
+  for (const mutate of [
+    data => { data.production_bom_nodes[0].child_bom_id = 99999; },
+    data => { data.production_bom_nodes[1].quantity = 7; },
+    data => { data.production_items.find(row => row.production_id === order.id).unit = '错误单位'; },
+    data => { data.production_bom_nodes.pop(); },
+    data => { data.production_items.find(row => row.production_id === order.id).base_quantity = 1; },
+  ]) {
+    const broken = structuredClone(backup); mutate(broken.data);
+    assert.equal((await f.request('/backup/preview', { backup: broken })).status, 400);
+  }
+  order = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: order.version, schema_version: 2, reason: '回退验证' }));
+  assert.equal(order.status, 'void');
+  assert.deepEqual(f.inventory().map(({ id,stock,inventory_value_cents }) => [id,stock,inventory_value_cents]), before.map(({ id,stock,inventory_value_cents }) => [id,stock,inventory_value_cents]));
+});
+
+test('reopening legacy unique-product and non-null material tables preserves IDs, foreign keys, versions and history', async t => {
+  const { rebuildTable } = await import('../server/table-migration.js');
+  const f = await fixture(t), order = await f.create(), before = f.inventory();
+  rebuildTable(f.db, 'boms', sql => sql.replace(/\)\s*$/, ', UNIQUE(warehouse_id,product_id))'));
+  rebuildTable(f.db, 'production_items', sql => sql.replace(/\b(base_quantity|base_quantity_fraction|loss_rate) (REAL|TEXT)(?! NOT NULL)/g, '$1 $2 NOT NULL'));
+  migrateBom(f.db); migrateProduction(f.db); migrateBom(f.db); migrateProduction(f.db);
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+  assert.equal(f.ok(await f.request(`/production-orders/${order.id}`)).bom_id, f.bom.id);
+  assert.equal(f.ok(await f.request(`/boms/${f.bom.id}`)).version, f.bom.version);
+  const second = f.ok(await f.command('/boms', f.definition({ name: '迁移后第二配方' })));
+  assert.notEqual(second.id, f.bom.id);
+  assert.deepEqual(f.inventory(), before);
+  const edited = f.ok(await f.command(`/production-orders/${order.id}`, { version: order.version, planned_quantity: 2, note: '迁移后编辑' }));
+  assert.notEqual(edited.version, order.version);
+});
+
+test('multilevel orders retain supported root waste rules and do not infer allocations across repeated material paths', async t => {
+  const f = await fixture(t), direct = await f.product('DIRECT'), wasteOut = await f.product('WASTE-OUT'), wasteIn = await f.product('WASTE-IN');
+  f.db.prepare('UPDATE products SET stock=20,inventory_value_cents=2000 WHERE id=?').run(direct);
+  const child = f.ok(await f.command('/boms', f.definition({ product_id: f.material, name: '无废料子配方', base_quantity: 1,
+    items: [{ product_id: f.second, quantity: 1, unit: '件', note: '' }] })));
+  const root = f.ok(await f.command('/boms', f.definition({ name: '根废料多层配方', base_quantity: 1,
+    items: [{ product_id: f.material, quantity: 2, usage_mode: 'explode', child_bom_id: child.id, unit: '件', note: '' },
+      { product_id: direct, quantity: 3, unit: '件', note: '' }],
+    scraps: [{ product_id: wasteOut, method: 'output', source_product_id: null, ...parseBomQuantity('1/2'), unit: '件', note: '' },
+      { product_id: wasteIn, method: 'input_ratio', source_product_id: direct, quantity: 10, unit: '件', note: '' }] })));
+  const body = f.plan({ bom_id: root.id, bom_version: root.version, planned_quantity: 2, schema_version: 2 });
+  const plan = f.ok(await f.request('/production-orders/prepare', body));
+  assert.deepEqual(plan.scraps.map(row => row.planned_quantity), [1, 0.6]);
+  let order = f.ok(await f.command('/production-orders', { ...body, structure_token: plan.structure_token }));
+  f.ok(await f.command(`/boms/${child.id}`, { ...child, version: child.version,
+    items: [...child.items, { product_id: direct, quantity: 1, unit: '件', note: '' }] }));
+  const invalidLivePlan = await f.request('/production-orders/prepare', body);
+  assert.equal(invalidLivePlan.status, 400); assert.match(invalidLivePlan.data.error, /不能同时出现在其他展开路径/);
+  order = f.ok(await f.command(`/production-orders/${order.id}/complete`, { version: order.version, schema_version: 2, completed_quantity: 1,
+    items: [{ product_id: f.second, quantity: 2 }, { product_id: direct, quantity: 4 }],
+    scraps: [{ product_id: wasteOut, quantity: 0.5, disposition: 'stock' }, { product_id: wasteIn, quantity: 0.4, disposition: 'stock' }] }));
+  assert.equal(order.total_cost_cents, 600); assert.deepEqual(order.scraps.map(row => row.expected_quantity), [0.5, 0.4]);
+  const backup = f.ok(await f.request('/backup'));
+  f.ok(await f.request('/backup/preview', { backup }));
 });

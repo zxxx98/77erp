@@ -1,3 +1,5 @@
+import { rebuildTable } from './table-migration.js';
+import { BOM_NODE_COLUMNS, validateSnapshotNodes, validateExpansionScraps, calculateBomNodes } from '../shared/bom-expansion.js';
 import { randomUUID } from 'node:crypto';
 import { getBom, listBoms, calculateBom } from './bom.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
@@ -7,11 +9,11 @@ import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity } from '../shared/quantity.js';
 import { validateBomLossRate, validateBomLossMethod } from '../shared/bom.js';
-import { validateProductionPlan, validateProductionCompletion, productionPlannedQuantity, productionMaterialAnalysis } from '../shared/production.js';
+import { validateProductionPlan, validateProductionCompletion, productionPlannedQuantity, productionItemQuantity, productionMaterialAnalysis } from '../shared/production.js';
 import { productionBatchSummary } from '../shared/production-batches.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
-export const productionTables = ['production_orders', 'production_items', 'production_scraps', ...productionBatchTables];
+export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
@@ -88,13 +90,22 @@ export function migrateProduction(db) {
     db.exec('ALTER TABLE production_orders ADD COLUMN batch_tracking INTEGER NOT NULL DEFAULT 0 CHECK(batch_tracking IN (0,1))');
     db.exec('UPDATE production_orders SET batch_tracking=1 WHERE EXISTS (SELECT 1 FROM production_batches b WHERE b.production_id=production_orders.id)');
   }
+  if (!db.prepare('PRAGMA table_info(production_orders)').all().some(column => column.name === 'snapshot_format'))
+    db.exec('ALTER TABLE production_orders ADD COLUMN snapshot_format INTEGER NOT NULL DEFAULT 1 CHECK(snapshot_format IN (1,2))');
+  if (db.prepare('PRAGMA table_info(production_items)').all().find(column => column.name === 'base_quantity').notnull)
+    rebuildTable(db, 'production_items', sql => sql.replace(/\b(base_quantity|base_quantity_fraction|loss_rate) (REAL|TEXT) NOT NULL/g, '$1 $2'));
+  const numeric = new Set(['bom_id','bom_version','bom_product_id','bom_base_quantity','product_id','quantity','loss_rate','child_bom_id','position']);
+  const columns = BOM_NODE_COLUMNS.map(key => `${key} ${numeric.has(key) ? (['quantity','loss_rate','bom_base_quantity'].includes(key) ? 'REAL' : 'INTEGER') : 'TEXT'}${key === 'child_bom_id' ? '' : ' NOT NULL'}${['bom_id','child_bom_id'].includes(key) ? ' REFERENCES boms(id)' : ['product_id','bom_product_id'].includes(key) ? ' REFERENCES products(id)' : ''}`);
+  db.exec(`CREATE TABLE IF NOT EXISTS production_bom_nodes (id INTEGER PRIMARY KEY, production_id INTEGER NOT NULL REFERENCES production_orders(id), ${columns.join(',')}, UNIQUE(production_id,path));
+    CREATE INDEX IF NOT EXISTS production_bom_node_product ON production_bom_nodes(product_id);
+    CREATE INDEX IF NOT EXISTS production_bom_node_parent_product ON production_bom_nodes(bom_product_id);`);
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='production_version';
     UPDATE production_orders SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='production_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
     CREATE TRIGGER IF NOT EXISTS production_version_update AFTER UPDATE OF planned_quantity,note,status,updated_at ON production_orders BEGIN ${advance} END;`);
 }
 
-export function clearProduction(db) { db.exec('DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { db.exec('DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 // Preserve the legacy SQLite status constraint. A posted, open order is exposed
 // as in_progress; draft without any currently posted output remains draft.
@@ -150,6 +161,16 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
     order.scraps = db.prepare('SELECT * FROM production_scraps WHERE production_id=? ORDER BY position,id').all(id).map(row => ({
       ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id)),
     }));
+    order.nodes = db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(id);
+    const standardCache = new Map();
+    const standardsFor = quantity => {
+      if (order.snapshot_format !== 2) return undefined;
+      if (!standardCache.has(quantity)) {
+        try { standardCache.set(quantity, new Map(calculateBomNodes(order.nodes, quantity).rows.map(row => [row.product_id, row.required]))); }
+        catch { standardCache.set(quantity, new Map()); }
+      }
+      return standardCache.get(quantity);
+    };
     order.batches = readBatches(db, id);
     const counted = summaryBatches(order);
     if (order.batches.length) {
@@ -161,13 +182,13 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
     }
     order.batches = order.batches.map(batch => ({ ...batch,
       items: batch.items.map(row => { const item = order.items.find(item => item.product_id === row.product_id); return { ...item, ...row,
-        ...productionMaterialAnalysis(item, batch.completed_quantity, order.base_quantity, row.actual_quantity, order.loss_method), variance_reasons: undefined }; }),
+        ...productionMaterialAnalysis(item, batch.completed_quantity, order.base_quantity, row.actual_quantity, order.loss_method, standardsFor(batch.completed_quantity)), variance_reasons: undefined }; }),
       scraps: batch.scraps.map(row => ({ ...order.scraps.find(item => item.product_id === row.product_id), ...row, stock_quantity: undefined, discard_quantity: undefined })),
     }));
     order.status = publicStatus(order);
     order.batch_count = order.batches.filter(batch => batch.status === 'active').length;
     order.items = order.items.map(item => ({ ...item, ...(order.completed_at
-      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method)
+      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method, standardsFor(order.completed_quantity))
       : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
     order.captured_at = new Date().toISOString();
     return costs ? order : productionWithoutCosts(order);
@@ -176,7 +197,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
 
 function prepareProduction(db, req) {
   if (!isId(req.body.bom_id) || !isId(req.body.bom_version)) fail('请选择BOM并核对版本。');
-  return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version));
+  return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version, req.body.schema_version));
 }
 
 export function installProduction(app, db) {
@@ -194,6 +215,7 @@ export function installProduction(app, db) {
   };
   const current = req => getProductionOrder(db, req.warehouse.id, Number(req.params.id), true);
   const version = (req, order) => {
+    if (order.snapshot_format === 2 && req.body.schema_version !== 2) fail('此生产单使用多层配方，请刷新页面后操作。', 409);
     if (!isId(req.body.version) || req.body.version !== order.version) fail('生产单已变化，请重新读取后核对。当前填写内容已保留。', 409);
   };
   const draft = (req, order) => { version(req, order); if (order.status !== 'draft' || order.batches.length) fail('仅尚未登记批次的待生产单据可以编辑。', 409); };
@@ -214,12 +236,18 @@ export function installProduction(app, db) {
   app.post('/api/production-orders', route(req => {
     validateProductionPlan(req.body);
     const plan = prepareProduction(db, req), bom = getBom(db, req.warehouse.id, plan.bom_id);
+    if (plan.multi_level && req.body.structure_token !== plan.structure_token) fail('下级配方已变化或尚未预览，请重新测算后保存。当前填写内容已保留。', 409);
     const at = new Date().toISOString(), owner = actor(req), number = `SC${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const id = Number(db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,
       product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,
       created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
       .run(number, req.warehouse.id, bom.id, bom.version, bom.name, bom.product_id, bom.product.name, bom.product.barcode,
         bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, bom.loss_method, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
+    db.prepare('UPDATE production_orders SET snapshot_format=? WHERE id=?').run(plan.multi_level ? 2 : 1, id);
+    if (plan.multi_level) {
+      const insertNode = db.prepare(`INSERT INTO production_bom_nodes(production_id,${BOM_NODE_COLUMNS.join(',')}) VALUES (${Array(BOM_NODE_COLUMNS.length + 1).fill('?').join(',')})`);
+      for (const node of plan.nodes) insertNode.run(id, ...BOM_NODE_COLUMNS.map(key => node[key]));
+    }
     const insert = db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,base_quantity_fraction,loss_rate,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
     plan.rows.forEach((row, index) => insert.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.required, row.note, index));
     const insertScrap = db.prepare(`INSERT INTO production_scraps(production_id,product_id,name,barcode,specification,unit,method,source_product_id,quantity,quantity_fraction,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -228,10 +256,11 @@ export function installProduction(app, db) {
   }, true));
   app.post('/api/production-orders/:id', route(req => {
     const order = current(req); draft(req, order); validateProductionPlan(req.body);
+    const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, req.body.planned_quantity).rows.map(row => [row.product_id, row.required])) : null;
     for (const item of order.items) db.prepare('UPDATE production_items SET planned_quantity=? WHERE id=?')
-      .run(productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate, order.loss_method), item.id);
+      .run(productionItemQuantity(item, req.body.planned_quantity, order, standards), item.id);
     const plannedMaterials = order.items.map(item => ({ product_id: item.product_id,
-      quantity: productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate, order.loss_method) }));
+      quantity: productionItemQuantity(item, req.body.planned_quantity, order, standards) }));
     for (const row of order.scraps) db.prepare('UPDATE production_scraps SET planned_quantity=? WHERE id=?')
       .run(scrapExpectedQuantity(row, req.body.planned_quantity, order.base_quantity, plannedMaterials), row.id);
     db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
@@ -355,9 +384,23 @@ export function validateProductionBackup(data) {
     if (!orders.has(row.production_id)) fail('备份生产废料关联无效。');
     const group = scrapGroups.get(row.production_id) || []; group.push(row); scrapGroups.set(row.production_id, group);
   }
+  const nodeGroups = new Map();
+  for (const node of data.production_bom_nodes) {
+    if (!orders.has(node.production_id)) fail('备份生产配方节点关联无效。');
+    const order = orders.get(node.production_id);
+    if (boms.get(node.bom_id)?.warehouse_id !== order.warehouse_id ||
+        (node.child_bom_id !== null && boms.get(node.child_bom_id)?.warehouse_id !== order.warehouse_id) ||
+        products.get(node.product_id)?.warehouse_id !== order.warehouse_id || products.get(node.bom_product_id)?.warehouse_id !== order.warehouse_id)
+      fail('备份生产配方节点跨仓库或关联无效。');
+    const rows = nodeGroups.get(node.production_id) || []; rows.push(node); nodeGroups.set(node.production_id, rows);
+  }
   const batchGroups = validateBatchBackup(data, orders, grouped, scrapGroups);
   for (const order of orders.values()) {
     const rows = grouped.get(order.id) || [], completed = order.completed_at !== null, batches = batchGroups.get(order.id) || [];
+    const nodes = (nodeGroups.get(order.id) || []).sort((a,b) => a.position-b.position);
+    if (![1, 2].includes(order.snapshot_format) || (order.snapshot_format === 1 && nodes.length)) fail('备份生产配方快照格式无效。');
+    const expanded = order.snapshot_format === 2 ? validateSnapshotNodes(order, nodes) : null;
+    if (expanded && (!expanded.multi_level || expanded.rows.length !== rows.length)) fail('备份多层生产材料汇总无效。');
     validateProductionPlan(order);
     validateBomLossMethod(order.loss_method);
     if (![0, 1].includes(order.batch_tracking) || (batches.length && order.batch_tracking !== 1) || (order.batch_tracking === 1 && completed && !batches.length) ||
@@ -365,7 +408,7 @@ export function validateProductionBackup(data) {
         !text(order.number, 100, true) || !/^SC\d{8}-[a-f0-9]{12}$/.test(order.number) || numbers.has(order.number) || !text(order.bom_name, 100, true) ||
         boms.get(order.bom_id)?.warehouse_id !== order.warehouse_id || products.get(order.product_id)?.warehouse_id !== order.warehouse_id ||
         !text(order.product_name, 100, true) || !text(order.barcode, 100, true) || !text(order.specification, 500) || !text(order.unit, 100, true) ||
-        !validQuantity(order.base_quantity, true) || !rows.length || rows.length > 100 ||
+        !validQuantity(order.base_quantity, true) || !rows.length || rows.length > (expanded ? 500 : 100) ||
         new Set(rows.map(row => row.product_id)).size !== rows.length || new Set(rows.map(row => row.position)).size !== rows.length ||
         !text(order.created_by_name, 60, true) || !text(order.updated_by_name, 60, true) || !date(order.created_at) || !date(order.updated_at) ||
         !text(order.completed_by_name, 60) || !text(order.voided_by_name, 60) || !text(order.void_reason, 500) ||
@@ -377,6 +420,7 @@ export function validateProductionBackup(data) {
     numbers.add(order.number);
     const scraps = scrapGroups.get(order.id) || [];
     validateScrapRules(scraps, order.product_id, rows);
+    if (expanded) validateExpansionScraps(scraps, nodes);
     if (new Set(scraps.map(row => row.position)).size !== scraps.length) fail('备份生产废料排序重复。');
     for (const row of scraps) {
       if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || typeof row.quantity_fraction !== 'string' ||
@@ -389,11 +433,16 @@ export function validateProductionBackup(data) {
         fail('备份生产废料数量、处理方式或快照无效。');
     }
     for (const row of rows) {
-      validateBomLossRate(row.loss_rate);
+      if (!expanded) validateBomLossRate(row.loss_rate);
+      else {
+        if (row.base_quantity !== null || row.base_quantity_fraction !== null || row.loss_rate !== null) fail('多层生产材料不能伪造单层基准用量。');
+        const expected = expanded.rows[row.position];
+        if (!expected || ['product_id','name','barcode','specification','unit','note'].some(key => row[key] !== expected[key])) fail('备份生产材料与节点来源快照不一致。');
+      }
       if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || row.product_id === order.product_id ||
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) || !text(row.variance_reason, 500) || (!completed && row.variance_reason !== '') ||
-          !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 || !validQuantity(row.base_quantity, true) ||
-          row.planned_quantity !== productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity, row.base_quantity_fraction, row.loss_rate, order.loss_method) ||
+          !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= (expanded ? 500 : 100) || (!expanded && !validQuantity(row.base_quantity, true)) ||
+          row.planned_quantity !== (expanded ? expanded.rows.find(item => item.product_id === row.product_id)?.required : productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity, row.base_quantity_fraction, row.loss_rate, order.loss_method)) ||
           (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))
         fail('备份生产材料数量、成本或快照无效。');
     }

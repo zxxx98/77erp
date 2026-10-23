@@ -925,3 +925,36 @@ test('AI distinguishes partial production, reports active batch facts and hides 
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.completed_quantity, null); assert.equal(result.batches[0].status, 'void'); assert.equal(result.items[0].standard_quantity, null);
 });
+
+test('AI queries explicit alternate and multilevel recipes, exposes snapshot sources without writes or financial values', async t => {
+  const f = await fixture(t);
+  const [parent, intermediate, raw] = f.db.prepare('SELECT * FROM products ORDER BY id LIMIT 3').all();
+  const save = async body => {
+    const response = await f.request(f.admin, '/boms', { request_id: randomUUID(), base_quantity: 1, note: '', enabled: 1, ...body });
+    assert.equal(response.status, 200, JSON.stringify(response.data)); return response.data;
+  };
+  const child = await save({ name: 'AI多配方标准', product_id: intermediate.id, base_unit: intermediate.unit,
+    items: [{ product_id: raw.id, quantity: 3, unit: raw.unit, note: '' }] });
+  await save({ name: 'AI多配方替代', product_id: intermediate.id, base_unit: intermediate.unit,
+    items: [{ product_id: raw.id, quantity: 6, unit: raw.unit, note: '' }] });
+  const root = await save({ name: 'AI多层根配方', product_id: parent.id, base_unit: parent.unit,
+    items: [{ product_id: intermediate.id, quantity: 1, unit: intermediate.unit, note: '', usage_mode: 'explode', child_bom_id: child.id }] });
+  const result = () => JSON.parse(f.calls.at(-1).body.messages.filter(message => message.role === 'tool').at(-1).content);
+  await f.permissions(['ai', 'bom', 'production']);
+  f.use('search_boms', { query: 'AI多配方' }); await f.chat(f.staff);
+  assert.equal(result().total, 2); assert.deepEqual(new Set(result().boms.map(row => row.name)), new Set(['AI多配方标准','AI多配方替代']));
+  f.use('get_bom', { bom_id: root.id }); await f.chat(f.staff);
+  assert.equal(result().items[0].child_bom_id, child.id); assert.equal(result().items[0].usage_mode, 'explode');
+  f.use('calculate_bom', { bom_id: root.id, production_quantity: 2 });
+  const calculation = await f.chat(f.staff); assert.deepEqual(calculation.data.actions, []);
+  assert.equal(result().rows[0].product_id, raw.id); assert.equal(result().rows[0].required, 6); assert.equal(result().nodes[1].bom_id, child.id);
+  const plan = result();
+  const created = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), schema_version: 2, bom_id: root.id, bom_version: root.version, planned_quantity: 2, note: '', structure_token: plan.structure_token });
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  f.use('get_production_order', { production_id: created.data.id }); await f.chat(f.staff);
+  assert.equal(result().nodes[1].quantity, 3); assert.equal(result().items[0].base_quantity, null);
+  assert.ok(!JSON.stringify(result()).includes('cost_cents'));
+  const system = f.calls.at(-1).body.messages.find(message => message.role === 'system').content;
+  assert.match(system, /多份匹配时须让用户明确选择/); assert.match(system, /不抵扣中间半成品库存/);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
+});

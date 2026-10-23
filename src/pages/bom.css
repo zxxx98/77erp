@@ -92,3 +92,11 @@
 @media (max-width: 600px) {
   .bom-scrap-fields, .scrap-output { grid-template-columns: minmax(0, 1fr); }
 }
+
+.bom-child-picker, .bom-structure { grid-column: 1 / -1; min-width: 0; padding: 12px; border: 1px solid #dce2ea; border-radius: 8px; margin: 12px 0; overflow-wrap: anywhere; }
+.bom-child-picker summary, .bom-structure summary { cursor: pointer; padding: 8px 0; color: #334565; }
+.bom-child-preview { padding: 12px 0; }
+.bom-structure-list { list-style: none; margin: 8px 0; padding-left: 12px; border-left: 2px solid #e9ecf1; }
+.bom-structure-list li { margin: 12px 0; min-width: 0; }
+.bom-structure-list strong, .bom-structure-list span { display: block; }
+@media (max-width: 600px) { .bom-structure-list { padding-left: 6px; } .bom-child-picker .bom-search-product { flex-wrap: wrap; } }

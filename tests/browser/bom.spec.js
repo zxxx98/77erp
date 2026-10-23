@@ -87,7 +87,7 @@ for (const mobile of [false, true]) {
       await page.getByRole('button', { name: '复制', exact: true }).click();
       await expect(page.getByLabel('基准产量', { exact: true })).toHaveValue('2');
       await expect(page.getByLabel('螺丝材料用量', { exact: true })).toHaveValue('32');
-      await expect(page.getByRole('button', { name: '保存BOM', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存BOM', exact: true })).toBeEnabled();
       await page.getByRole('searchbox', { name: '搜索成品', exact: true }).fill('TABLE-002');
       await page.getByRole('button', { name: '选择成品 小号桌子', exact: true }).click();
       await page.getByRole('button', { name: '保存BOM', exact: true }).click();
@@ -256,3 +256,76 @@ test('mobile PWA loads the BOM route, scans a material and keeps the form when r
     expect(f.db.prepare('SELECT COUNT(*) n FROM boms').get().n).toBe(0);
   } finally { await context.close(); await f.close(); }
 });
+
+for (const profile of ['desktop', 'iphone', 'android-pwa']) {
+  test(`${profile} selects among child recipes, copies the same product and completes a frozen multilevel order`, async ({ page: defaultPage, browser }) => {
+    test.setTimeout(90000);
+    const context = profile === 'android-pwa' ? await browser.newContext({ viewport: { width: 412, height: 915 }, serviceWorkers: 'allow', userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36' }) : null;
+    const page = context ? await context.newPage() : defaultPage;
+    if (profile === 'iphone') { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
+    const { chooseOption } = await import('./dropdown-helpers.js');
+    const f = await fixture(page), errors = []; page.on('pageerror', error => errors.push(error.message));
+    try {
+      const childBody = { ...f.definition, product_id: f.products[2].id, base_unit: f.products[2].unit,
+        items: [{ product_id: f.products[4].id, quantity: 3, unit: f.products[4].unit, note: '' }] };
+      const child = await f.post('/boms', { ...childBody, name: '桌面标准配方' });
+      const alternate = await f.post('/boms', { ...childBody, name: '桌面替代配方', items: [{ ...childBody.items[0], quantity: 6 }] });
+      await f.post('/boms', { ...f.definition, items: [{ product_id: f.products[2].id, quantity: 0.333334, quantity_fraction: '1/3', unit: f.products[2].unit, note: '', usage_mode: 'explode', child_bom_id: child.id }] });
+      const before = f.db.prepare('SELECT stock,inventory_value_cents FROM products ORDER BY id').all();
+      await page.goto(f.base + '/#bom');
+      if (context) await page.evaluate(() => navigator.serviceWorker.ready);
+      await page.getByRole('searchbox', { name: '搜索BOM', exact: true }).fill('桌子配方');
+      await page.getByRole('button', { name: '复制', exact: true }).click();
+      await expect(page.getByText('成品：示例桌子', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('桌子配方副本');
+      await chooseOption(page.getByRole('combobox', { name: '桌面材料用料方式', exact: true }), 'stock');
+      await chooseOption(page.getByRole('combobox', { name: '桌面材料用料方式', exact: true }), 'explode');
+      await page.getByRole('button', { name: `选择下级配方 桌面替代配方 #${alternate.id}`, exact: true }).click();
+      await page.getByRole('button', { name: '查看下级配方', exact: true }).click();
+      await expect(page.locator('.bom-child-preview')).toContainText('螺丝材料 · 6 颗');
+      await page.getByRole('button', { name: '保存BOM', exact: true }).click();
+      const copied = page.locator('.bom-list-item').filter({ has: page.getByText('桌子配方副本', { exact: true }) });
+      await copied.getByRole('button', { name: '测算备料', exact: true }).click();
+      await page.getByLabel('生产数量', { exact: true }).fill('3');
+      await page.getByRole('button', { name: '开始测算', exact: true }).click();
+      await expect(page.locator('.bom-result-summary')).toHaveText('共 1 种材料，0 种缺料。');
+      await expect(page.locator('.bom-result-table tbody tr')).toContainText('6 颗');
+      await expect(page.locator('.bom-warning')).toContainText('中间半成品库存未抵扣');
+      await page.getByText('结构与各层需求', { exact: true }).click();
+      await page.locator('.bom-structure-list > li > details > summary').click();
+      await expect(page.locator('.bom-structure')).toContainText(`桌面替代配方 #${alternate.id}`);
+      const download = page.waitForEvent('download');
+      await page.getByRole('button', { name: '导出结构明细', exact: true }).click();
+      const exported = await readFile(await (await download).path(), 'utf8');
+      expect(exported).toContain('1/3'); expect(exported).toContain('桌面替代配方');
+      await page.getByRole('button', { name: '按本次数量新建生产单', exact: true }).click();
+      await page.getByRole('button', { name: /^选择配方 示例桌子 · 桌子配方副本 #/ }).click();
+      await page.getByLabel('计划产量', { exact: true }).fill('3');
+      await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
+      await expect(page.getByRole('heading', { name: '生产单详情', exact: true })).toBeVisible();
+      await f.post(`/boms/${alternate.id}`, { ...childBody, name: alternate.name, version: alternate.version, items: [{ ...childBody.items[0], quantity: 9 }] });
+      await page.getByRole('button', { name: '登记完工', exact: true }).click();
+      await expect(page.getByLabel('螺丝材料实际耗料', { exact: true })).toHaveValue('6');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      page.once('dialog', dialog => dialog.accept());
+      await page.getByRole('button', { name: '本批入库并继续生产', exact: true }).click();
+      await expect(page.locator('.bom-success')).toContainText('继续生产');
+      await page.getByRole('button', { name: '登记完工', exact: true }).click();
+      await expect(page.getByLabel('螺丝材料实际耗料', { exact: true })).toHaveValue('2');
+      page.once('dialog', dialog => dialog.accept());
+      await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
+      await expect(page.locator('.production-summary')).toContainText('4 张');
+      const stock = f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[2].id).stock;
+      expect(stock).toBe(8);
+      expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[4].id).stock).toBe(92);
+      await page.getByRole('button', { name: '作废生产单', exact: true }).click();
+      await page.getByLabel('作废原因', { exact: true }).fill('多层生产回退');
+      page.once('dialog', dialog => dialog.accept());
+      await page.getByRole('button', { name: '确认作废', exact: true }).click();
+      await expect(page.locator('.bom-success')).toContainText('已作废');
+      expect(f.db.prepare('SELECT stock,inventory_value_cents FROM products ORDER BY id').all()).toEqual(before);
+      expect(errors).toEqual([]);
+      await page.screenshot({ path: test.info().outputPath('multilevel-production.png'), fullPage: true });
+    } finally { await f.close(); await context?.close(); }
+  });
+}

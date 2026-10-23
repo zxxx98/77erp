@@ -36,7 +36,7 @@ async function productionFlow(page, pwa = false) {
     if (pwa) await page.evaluate(() => navigator.serviceWorker.ready);
     await expect(page.getByRole('heading', { name: '生产单', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '新建生产单', exact: true }).click();
-    await page.getByRole('button', { name: '选择配方 示例成品', exact: true }).click();
+    await page.getByRole('button', { name: /^选择配方 示例成品 ·/ }).click();
     await page.getByLabel('计划产量', { exact: true }).fill('100');
     await expect(page.locator('.production-material').first()).toContainText('缺料 50 千克');
     await page.getByLabel('计划产量', { exact: true }).fill('10');
@@ -421,7 +421,7 @@ async function partialProductionFlow(page, pwa = false) {
     await page.goto(f.base + '/#production');
     if (pwa) { await page.evaluate(() => navigator.serviceWorker.ready); await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true); }
     await page.getByRole('button', { name: '新建生产单', exact: true }).click();
-    await page.getByRole('button', { name: '选择配方 示例成品', exact: true }).click();
+    await page.getByRole('button', { name: /^选择配方 示例成品 ·/ }).click();
     await page.getByLabel('计划产量', { exact: true }).fill('10');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
     await page.getByRole('button', { name: '登记完工', exact: true }).click();

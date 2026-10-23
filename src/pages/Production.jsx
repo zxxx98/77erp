@@ -1,3 +1,5 @@
+import { calculateBomNodes } from '../../shared/bom-expansion.js';
+import { BomStructure } from '../features/BomStructure.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, ClipboardList, Plus, Save, XCircle } from 'lucide-react';
 import { api } from '../api.js';
@@ -8,7 +10,7 @@ import { PageHeading, Button, Badge, QueryStatus } from '../components/common.js
 import { Select } from '../Dropdown.jsx';
 import { parseQuantity, quantityUnits, QUANTITY_SCALE } from '../../shared/quantity.js';
 import { bomShortage, bomLossMethodLabels, bomLossMethodFormulas } from '../../shared/bom.js';
-import { productionStatusLabels, productionPlannedQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
+import { productionStatusLabels, productionItemQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import { MaterialVariance } from '../features/MaterialVariance.jsx';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
@@ -29,8 +31,8 @@ function BomPicker({ data, disabled, onSelect }) {
       onChange={e => { setQ(e.target.value); setOffset(0); }} />
     <QueryStatus query={list} />
     <div className="production-bom-options">{list.result?.boms.map(bom => <div className="bom-search-product" key={bom.id}>
-      <div><strong>{bom.product_name}</strong><small>{bom.barcode} · {bom.name} · 基准产量 {count(bom.base_quantity)} {bom.base_unit}</small></div>
-      <Button type="button" disabled={disabled || !bom.product_active} onClick={() => onSelect(bom)} aria-label={`选择配方 ${bom.product_name}`}>选择</Button>
+      <div><strong>{bom.product_name}</strong><small>{bom.barcode} · {bom.name} #{bom.id} · 基准产量 {count(bom.base_quantity)} {bom.base_unit}</small></div>
+      <Button type="button" disabled={disabled || !bom.product_active} onClick={() => onSelect(bom)} aria-label={`选择配方 ${bom.product_name} · ${bom.name} #${bom.id}`}>选择</Button>
     </div>)}</div>
     {list.result && !list.result.boms.length && <p className="bom-empty">没有匹配的已启用配方，请先在BOM中配置。</p>}
     {(offset > 0 || list.result?.has_more) && <div className="bom-actions bom-pagination">
@@ -40,19 +42,24 @@ function BomPicker({ data, disabled, onSelect }) {
   </section>;
 }
 
-function Materials({ rows, complete, disabled, onQuantity, onReason, completedQuantity, baseQuantity, lossMethod, showActual, costs }) {
+function Materials({ rows, complete, disabled, onQuantity, onReason, completedQuantity, baseQuantity, lossMethod, nodes, showActual, costs }) {
+  let standards;
+  if (nodes && complete) {
+    try { standards = new Map(calculateBomNodes(nodes, Number(completedQuantity)).rows.map(row => [row.product_id, row.required])); }
+    catch { standards = new Map(); }
+  }
   return <div className="production-materials">{rows.map(row => {
     const raw = complete ? row.quantity : showActual ? row.actual_quantity : row.planned_quantity;
     const value = Number(raw), valid = raw !== '' && Number.isFinite(value) && value >= 0;
     const shortage = valid && row.product ? bomShortage(value, row.product.stock) : 0;
     let analysis = row;
     if (complete) {
-      try { analysis = productionMaterialAnalysis(row, parseQuantity(completedQuantity, true), baseQuantity, parseQuantity(row.quantity), lossMethod); }
+      try { analysis = productionMaterialAnalysis(row, parseQuantity(completedQuantity, true), baseQuantity, parseQuantity(row.quantity), lossMethod, standards); }
       catch { analysis = { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '请先填写有效的合格成品数量和实际耗料。' }; }
     }
     return <article className="production-material" key={row.product_id}>
       <div className="production-material-name"><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small>
-        <small>基准净用量 {row.base_quantity_fraction || count(row.base_quantity)} {row.unit} · 标准损耗率 {count(row.loss_rate ?? 0)}%</small>
+        {row.base_quantity === null ? <small>多层配方汇总，基准用量与损耗见结构来源。</small> : <small>基准净用量 {row.base_quantity_fraction || count(row.base_quantity)} {row.unit} · 标准损耗率 {count(row.loss_rate ?? 0)}%</small>}
         {row.note && <small>{row.note}</small>}
         {row.product && row.unit !== row.product.unit && <p className="bom-warning">当前单位已变为 {row.product.unit}，此单保留 {row.unit}。</p>}
         {row.product && !row.product.active && <p className="bom-warning">材料已停用</p>}</div>
@@ -92,6 +99,7 @@ export function Production({ data, initialBom, onChanged }) {
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState(null), [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [message, setMessage] = useState('');
   const action = useBusiness();
+  const send = (path, body, options) => action.send(path, { schema_version: 2, ...body }, options);
   const listData = useMemo(() => ({ ...data, productionRevision: revision }), [data, revision]);
   const list = useQuery(queryPath('/production-orders', { q, status, offset }), listData, 150);
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
@@ -107,7 +115,7 @@ export function Production({ data, initialBom, onChanged }) {
   const update = value => { setEditor(previous => ({ ...previous, ...value })); action.setError(''); };
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
-      body: { bom_id: bom.id, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity } });
+      body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity } });
     setEditor(previous => ({ kind: 'new', note: previous?.note || '', planned_quantity: String(plan.production_quantity), plan }));
   };
   const initial = useRef(false);
@@ -131,8 +139,9 @@ export function Production({ data, initialBom, onChanged }) {
     if (stockChanged) await onChanged?.();
   };
   const batchDefaults = quantity => {
+    const standards = detail.snapshot_format === 2 ? new Map(calculateBomNodes(detail.nodes, quantity).rows.map(row => [row.product_id, row.required])) : null;
     const items = detail.items.map(item => ({ product_id: item.product_id,
-      quantity: String(productionPlannedQuantity(item.base_quantity, quantity, detail.base_quantity, item.base_quantity_fraction, item.loss_rate, detail.loss_method)), variance_reason: '' }));
+      quantity: String(productionItemQuantity(item, quantity, detail, standards)), variance_reason: '' }));
     const scraps = (detail.scraps || []).map(row => ({ product_id: row.product_id,
       quantity: String(scrapExpectedQuantity(row, quantity, detail.base_quantity, items.map(item => ({ ...item, quantity: Number(item.quantity) })))), disposition: 'stock' }));
     return { items, scraps };
@@ -144,7 +153,7 @@ export function Production({ data, initialBom, onChanged }) {
   });
   const finishOrder = () => action.run(async () => {
     if (!window.confirm('确认结束此生产单？已登记批次和库存保持当前结果，结束后不能继续登记，作废批次后会重新开放。')) return;
-    await saved(await action.send(`/production-orders/${detail.id}/finish`, { version: detail.version }, { warehouseId: data.warehouse_id }), '生产单已结束，已登记批次和库存保持当前结果。');
+    await saved(await send(`/production-orders/${detail.id}/finish`, { version: detail.version }, { warehouseId: data.warehouse_id }), '生产单已结束，已登记批次和库存保持当前结果。');
   });
   const submit = event => {
     event.preventDefault();
@@ -155,9 +164,9 @@ export function Production({ data, initialBom, onChanged }) {
         const body = { planned_quantity: parseQuantity(editor.planned_quantity, true), note: editor.note };
         validateProductionPlan(body);
         const path = editor.kind === 'new' ? '/production-orders' : `/production-orders/${detail.id}`;
-        if (editor.kind === 'new') { body.bom_id = editor.plan.bom_id; body.bom_version = editor.plan.version; }
+        if (editor.kind === 'new') { body.bom_id = editor.plan.bom_id; body.bom_version = editor.plan.version; body.structure_token = editor.plan.structure_token; }
         else body.version = detail.version;
-        await saved(await action.send(path, body, options), '生产草稿已保存，库存未变动。');
+        await saved(await send(path, body, options), '生产草稿已保存，库存未变动。');
       } else if (editor.kind === 'complete') {
         const body = { version: detail.version, completed_quantity: parseQuantity(editor.completed_quantity, true), finish_order: finishOrder, note: editor.note,
           items: editor.items.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity), variance_reason: row.variance_reason })),
@@ -165,16 +174,16 @@ export function Production({ data, initialBom, onChanged }) {
         validateProductionCompletion(body, detail.items);
         validateScrapActuals(body.scraps, detail.scraps || []);
         if (!window.confirm(`确认本批入库 ${count(body.completed_quantity)} ${detail.unit}${detail.product_name}，按本批实际耗料扣库并登记废料，随后${finishOrder ? '结束生产单' : '继续生产'}？`)) return;
-        await saved(await action.send(`/production-orders/${detail.id}/complete`, body, options), finishOrder ? '生产单已完工，材料已扣减，合格成品已入库。' : '本批已入库，材料已扣减，生产单继续生产。', true);
+        await saved(await send(`/production-orders/${detail.id}/complete`, body, options), finishOrder ? '生产单已完工，材料已扣减，合格成品已入库。' : '本批已入库，材料已扣减，生产单继续生产。', true);
       } else {
         if (!editor.reason.trim()) throw new Error('请填写作废原因。');
         if (editor.kind === 'void_batch') {
           if (!window.confirm('确认作废此批次？仅扣回本批成品及已入库废料，按本批原数量和原成本退回材料，生产单重新开放。')) return;
-          await saved(await action.send(`/production-orders/${detail.id}/batches/${editor.batchId}/void`, { version: detail.version, reason: editor.reason }, options), '本批已作废，库存与原成本已回退，生产单已重新开放。', true);
+          await saved(await send(`/production-orders/${detail.id}/batches/${editor.batchId}/void`, { version: detail.version, reason: editor.reason }, options), '本批已作废，库存与原成本已回退，生产单已重新开放。', true);
           return;
         }
         if (!window.confirm(detail.completed_at ? '确认作废此生产单？系统将扣回成品，并按原数量和原成本退回材料，同时扣回已入库废料。' : '确认作废此生产草稿？')) return;
-        await saved(await action.send(`/production-orders/${detail.id}/void`, { version: detail.version, reason: editor.reason }, options),
+        await saved(await send(`/production-orders/${detail.id}/void`, { version: detail.version, reason: editor.reason }, options),
           detail.completed_at ? '生产单已作废，库存与原成本已回退。' : '生产草稿已作废，库存未变动。', !!detail.completed_at);
       }
     });
@@ -193,7 +202,8 @@ export function Production({ data, initialBom, onChanged }) {
     if (planning && source) {
       try {
         const quantity = parseQuantity(editor.planned_quantity, true);
-        rows = rows.map(row => ({ ...row, planned_quantity: productionPlannedQuantity(row.base_quantity, quantity, source.base_quantity, row.base_quantity_fraction, row.loss_rate, source.loss_method) }));
+        const standards = source.snapshot_format === 2 || source.multi_level ? new Map(calculateBomNodes(source.nodes, quantity).rows.map(row => [row.product_id, row.required])) : null;
+        rows = rows.map(row => ({ ...row, planned_quantity: productionItemQuantity(row, quantity, source, standards) }));
       } catch (error) { quantityError = error.message; }
     }
     if (editor.kind === 'complete') rows = rows.map(row => ({ ...row, ...editor.items.find(item => item.product_id === row.product_id) }));
@@ -214,8 +224,8 @@ export function Production({ data, initialBom, onChanged }) {
       <form onSubmit={submit}>
         {editor.kind === 'new' && <BomPicker data={listData} disabled={action.busy} onSelect={bom => action.run(() => chooseBom(bom))} />}
         {source && <section className="panel bom-section">
-          <h2>{name}</h2><small>{editor.kind === 'new' ? source.product.barcode : detail.barcode} · {editor.kind === 'new' ? source.name : detail.bom_name}</small>
-          <p className="bom-hint">标准损耗计算方式：{bomLossMethodLabels[source.loss_method]}，标准投入＝{bomLossMethodFormulas[source.loss_method]}。</p>
+          <h2>{name}</h2><small>{editor.kind === 'new' ? source.product.barcode : detail.barcode} · {editor.kind === 'new' ? source.name : detail.bom_name} #{source.bom_id}</small>
+          <p className="bom-hint">{source.snapshot_format === 2 || source.multi_level ? '根配方损耗计算方式' : '标准损耗计算方式'}：{bomLossMethodLabels[source.loss_method]}，标准投入＝{bomLossMethodFormulas[source.loss_method]}。</p>
           {planning ? <>
             <div className="bom-form-grid production-fields"><label>计划产量（{unit}）<input aria-label="计划产量" inputMode="decimal" required value={editor.planned_quantity} disabled={action.busy} onChange={e => update({ planned_quantity: e.target.value })} /></label>
               <label>生产备注<textarea aria-label="生产备注" rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label></div>
@@ -238,7 +248,11 @@ export function Production({ data, initialBom, onChanged }) {
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? '核对实际耗料' : '计划备料'}</h2><span className="bom-hint">共 {rows.length} 种材料</span></div>
           {quantityError && <p className="form-error" role="alert">{quantityError}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">标准耗料按本单保存的净用量、标准损耗率和实际合格产量计算，已包含允许的标准损耗。差异 = 实际耗料 − 标准耗料，正数为超耗、负数为节省；差异率以标准耗料为分母。废料单独核对，耗料差异不直接视为损耗或废料。</p>}
-          <Materials rows={rows} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity} lossMethod={source.loss_method}
+          {(source.multi_level || source.snapshot_format === 2) && <>
+            <p className="bom-warning">按毛需求展开；中间半成品库存未抵扣。各层按自己的损耗算法计算。</p>
+            <BomStructure nodes={source.nodes} quantity={planning ? editor.planned_quantity : editor.completed_quantity || source.planned_quantity} />
+          </>}
+          <Materials rows={rows} nodes={source.snapshot_format === 2 || source.multi_level ? source.nodes : undefined} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity} lossMethod={source.loss_method}
             onReason={(id, variance_reason) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, variance_reason } : item) })} complete={editor.kind === 'complete'} disabled={action.busy}
             onQuantity={(id, quantity) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, quantity } : item) })} />
           <p className="bom-hint">账面库存读取于 {time(source.captured_at)}，提交完工时会重新校验。</p>
@@ -267,8 +281,8 @@ export function Production({ data, initialBom, onChanged }) {
         <div><small>剩余计划</small><strong>{count(Math.max(0, quantityUnits(detail.planned_quantity) - quantityUnits(detail.completed_quantity ?? 0)) / QUANTITY_SCALE)} {detail.unit}</strong></div>
         {can('finance') && detail.completed_at && <div><small>材料成本合计</small><strong>{money(detail.total_cost_cents)}</strong></div>}
       </div>
-      <p className="bom-hint">配方：{detail.bom_name} · 基准产量 {count(detail.base_quantity)} {detail.unit} · 保留建单时的材料配方</p>
-      <p className="bom-hint">标准损耗计算方式：{bomLossMethodLabels[detail.loss_method]}，标准投入＝{bomLossMethodFormulas[detail.loss_method]}。</p>
+      <p className="bom-hint">配方：{detail.bom_name} #{detail.bom_id} · 基准产量 {count(detail.base_quantity)} {detail.unit} · 保留建单时的材料配方</p>
+      <p className="bom-hint">{detail.snapshot_format === 2 ? '根配方损耗计算方式' : '标准损耗计算方式'}：{bomLossMethodLabels[detail.loss_method]}，标准投入＝{bomLossMethodFormulas[detail.loss_method]}。</p>
       {detail.note && <p className="production-note">{detail.note}</p>}
       <div className="production-audit"><p>创建：{detail.created_by_name} · {time(detail.created_at)}</p><p>更新：{detail.updated_by_name} · {time(detail.updated_at)}</p>
         {detail.completed_at && <p>最近完工：{detail.completed_by_name} · {time(detail.completed_at)}</p>}
@@ -282,6 +296,9 @@ export function Production({ data, initialBom, onChanged }) {
         <Button disabled={action.busy} onClick={() => open(detail.id)}>刷新单据与库存</Button>
       </div>
     </section>
+    {detail.snapshot_format === 2 && <section className="panel bom-section"><h2>配方结构快照</h2>
+      <BomStructure nodes={detail.nodes} quantity={detail.planned_quantity} />
+    </section>}
     <ProductionBatches key={detail.id} order={detail} costs={can('finance')} canVoid={can('corrections')} disabled={action.busy}
       onVoid={batch => begin({ kind: 'void_batch', batchId: batch.id, reason: '' })} />
     {(detail.scraps || []).length > 0 && <section className="panel bom-section"><ScrapOutputs rows={detail.scraps} materials={detail.items} completed={!!detail.completed_at} />
@@ -305,7 +322,7 @@ export function Production({ data, initialBom, onChanged }) {
         {Object.entries(productionStatusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select>
     </div><QueryStatus query={list} />
       <div className="production-list">{list.result?.orders.map(order => <article className="bom-list-item" key={order.id}>
-        <div className="bom-list-info"><strong>{order.product_name}</strong><p>{order.number}</p><small>{order.barcode} · {order.bom_name}</small>
+        <div className="bom-list-info"><strong>{order.product_name}</strong><p>{order.number}</p><small>{order.barcode} · {order.bom_name} #{order.bom_id}</small>
           <small>计划 {count(order.planned_quantity)} {order.unit}{order.completed_at ? ` · 合格 ${count(order.completed_quantity)} ${order.unit}` : ''} · 创建人 {order.created_by_name}</small>
           <small>{time(order.created_at)}</small>{statusBadge(order.status)}</div>
         <Button icon={ClipboardList} disabled={action.busy} onClick={() => open(order.id)} aria-label={`查看生产单 ${order.number}`}>查看详情</Button>

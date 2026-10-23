@@ -53,6 +53,9 @@ export function validateBom(value) {
       throw new Error('材料、用量、单位或备注无效，用量需为正数且最多 6 位小数。');
     validateBomQuantity(item.quantity, item.quantity_fraction);
     validateBomLossRate(item.loss_rate === undefined ? 0 : item.loss_rate);
+    const mode = item.usage_mode === undefined ? 'stock' : item.usage_mode;
+    if (!['stock', 'explode'].includes(mode) || (mode === 'explode' ? !id(item.child_bom_id) : item.child_bom_id != null))
+      throw new Error('请选择有效的用料方式；展开时必须指定下级配方，直接领用时不能指定下级配方。');
     if (item.product_id === value.product_id) throw new Error('成品不能作为自身的材料。');
     if (seen.has(item.product_id)) throw new Error('同一材料不能重复添加，请合并用量。');
     seen.add(item.product_id);

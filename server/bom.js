@@ -1,6 +1,8 @@
-import { validateBom, validateBomLossMethod, bomRequiredQuantity, bomShortage } from '../shared/bom.js';
+import { createHash } from 'node:crypto';
+import { rebuildTable } from './table-migration.js';
+import { buildBomNodes, calculateBomNodes } from '../shared/bom-expansion.js';
+import { validateBom, validateBomLossMethod, bomShortage } from '../shared/bom.js';
 import { validateScrapRules, scrapExpectedQuantity } from '../shared/scrap.js';
-import { validQuantity } from '../shared/quantity.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 
 export const bomTables = ['boms', 'bom_items', 'bom_scraps'];
@@ -47,6 +49,13 @@ export function migrateBom(db) {
     db.exec("ALTER TABLE boms ADD COLUMN loss_method TEXT NOT NULL DEFAULT 'internal' CHECK(loss_method IN ('internal','external'))");
     db.exec('DROP TRIGGER IF EXISTS bom_version_update');
   }
+  if (db.prepare('PRAGMA index_list(boms)').all().some(index => index.unique &&
+      db.prepare(`PRAGMA index_info("${index.name}")`).all().map(row => row.name).join(',') === 'warehouse_id,product_id'))
+    rebuildTable(db, 'boms', sql => sql.replace(/,\s*UNIQUE\s*\(warehouse_id,\s*product_id\)/i, ''));
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS boms_product_name ON boms(warehouse_id,product_id,trim(name)); CREATE INDEX IF NOT EXISTS boms_product ON boms(warehouse_id,product_id);');
+  if (!db.prepare('PRAGMA table_info(bom_items)').all().some(column => column.name === 'usage_mode'))
+    db.exec("ALTER TABLE bom_items ADD COLUMN usage_mode TEXT NOT NULL DEFAULT 'stock' CHECK(usage_mode IN ('stock','explode')); ALTER TABLE bom_items ADD COLUMN child_bom_id INTEGER REFERENCES boms(id);");
+  db.exec('CREATE INDEX IF NOT EXISTS bom_items_child ON bom_items(child_bom_id)');
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='bom_version';
     UPDATE boms SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='bom_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS bom_version_insert AFTER INSERT ON boms BEGIN ${advance} END;
@@ -88,7 +97,7 @@ export function getBom(db, warehouseId, id) {
     if (!bom) fail('BOM不存在或不属于当前仓库。', 404);
     bom.product = publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(bom.product_id, warehouseId));
     bom.items = db.prepare('SELECT * FROM bom_items WHERE bom_id=? ORDER BY position,id').all(id).map(item => ({
-      ...item, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, warehouseId)),
+      ...item, child_bom: item.child_bom_id ? db.prepare('SELECT id,name,version,product_id,base_quantity,enabled FROM boms WHERE id=? AND warehouse_id=?').get(item.child_bom_id, warehouseId) : null, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, warehouseId)),
     }));
     bom.scraps = db.prepare('SELECT * FROM bom_scraps WHERE bom_id=? ORDER BY position,id').all(id).map(row => ({
       ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, warehouseId)),
@@ -97,23 +106,47 @@ export function getBom(db, warehouseId, id) {
   });
 }
 
-export function calculateBom(db, warehouse, id, productionQuantity, version) {
-  if (!validQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 6 位小数。');
-  const bom = getBom(db, warehouse.id, id);
-  if (version !== undefined && version !== bom.version) fail('BOM已变化，请重新打开后测算。', 409);
-  if (!bom.enabled) fail('BOM已停用，请启用后测算。');
-  if (!bom.product.active || [...bom.items, ...bom.scraps].some(item => !item.product.active)) fail('成品、材料或废料已停用，请核对物料后测算。');
-  if (bom.base_unit !== bom.product.unit || [...bom.items, ...bom.scraps].some(item => item.unit !== item.product.unit))
-    fail('物料单位已变化，请编辑BOM、核对用量并重新保存后测算。', 409);
-  const rows = bom.items.map(item => {
-    const required = bomRequiredQuantity(item.quantity, productionQuantity, bom.base_quantity, item.quantity_fraction, item.loss_rate, bom.loss_method);
-    return { product_id: item.product_id, name: item.product.name, barcode: item.product.barcode, specification: item.product.specification,
-      unit: item.unit, quantity: item.quantity, quantity_fraction: item.quantity_fraction, loss_rate: item.loss_rate, required, stock: item.product.stock, shortage: bomShortage(required, item.product.stock), note: item.note };
+export function calculateBom(db, warehouse, id, productionQuantity, version, schemaVersion) {
+  return readSnapshot(db, () => {
+    const bom = getBom(db, warehouse.id, id);
+    if (version !== undefined && version !== bom.version) fail('BOM已变化，请重新打开后测算。', 409);
+    const cache = new Map([[bom.id, bom]]);
+    const load = childId => {
+      if (!cache.has(childId)) cache.set(childId, getBom(db, warehouse.id, childId));
+      return cache.get(childId);
+    };
+    const nodes = buildBomNodes(bom, load), result = calculateBomNodes(nodes, productionQuantity);
+    if (result.multi_level && schemaVersion !== 2) fail('此BOM包含多层配方，请刷新页面后重新测算。', 409);
+    const rows = result.rows.map(row => {
+      const product = db.prepare('SELECT stock FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, warehouse.id);
+      return { ...row, stock: product.stock, shortage: bomShortage(row.required, product.stock) };
+    });
+    const instance = db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
+    const fingerprints = [...cache.values()].sort((a, b) => a.id - b.id).map(b => [b.id, b.version, b.name, b.enabled, b.base_quantity, b.base_unit, b.loss_method,
+      b.product.id, b.product.name, b.product.barcode, b.product.specification, b.product.active, b.product.unit,
+      [...b.items, ...b.scraps].map(row => [row.product_id, row.quantity, row.quantity_fraction, row.loss_rate, row.usage_mode, row.child_bom_id, row.note, row.method, row.source_product_id,
+        row.product.name, row.product.barcode, row.product.specification, row.product.active, row.product.unit])]);
+    return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity, loss_method: bom.loss_method,
+      schema_version: 2, multi_level: result.multi_level, nodes: result.nodes,
+      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints])).digest('hex'),
+      scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
+        planned_quantity: scrapExpectedQuantity(row, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
+      production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
   });
-  return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity, loss_method: bom.loss_method,
-    scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
-      planned_quantity: scrapExpectedQuantity(row, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
-    production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
+}
+
+// Validate identities and structure without requiring currently enabled goods.
+// Disabled / changed-unit recipes may legitimately remain in the catalogue.
+export function validateBomGraph(boms, { scraps = false } = {}) {
+  const map = new Map(boms.map(bom => [bom.id, bom]));
+  for (const bom of boms) buildBomNodes(bom, id => map.get(id), { availability: false, scrapRules: scraps });
+}
+
+function validateWarehouseGraph(db, warehouseId, changedId) {
+  const boms = db.prepare('SELECT id FROM boms WHERE warehouse_id=?').all(warehouseId).map(row => getBom(db, warehouseId, row.id));
+  validateBomGraph(boms);
+  const changed = boms.find(row => row.id === changedId);
+  buildBomNodes(changed, id => boms.find(row => row.id === id), { availability: false });
 }
 
 export function validateBomBackup(data) {
@@ -142,7 +175,7 @@ export function validateBomBackup(data) {
     if (new Set(scraps.map(row => row.position)).size !== scraps.length || scraps.some(row =>
         typeof row.quantity_fraction !== 'string' || !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 || products.get(row.product_id)?.warehouse_id !== bom.warehouse_id))
       fail('备份 BOM 废料排序或仓库关联无效。');
-    const key = `${bom.warehouse_id}:${bom.product_id}`;
+    const key = JSON.stringify([bom.warehouse_id, bom.product_id, bom.name.trim()]);
     if (!warehouses.has(bom.warehouse_id) || products.get(bom.product_id)?.warehouse_id !== bom.warehouse_id || parents.has(key) ||
         items.some(item => products.get(item.product_id)?.warehouse_id !== bom.warehouse_id) ||
         new Set(items.map(item => item.position)).size !== items.length ||
@@ -152,6 +185,9 @@ export function validateBomBackup(data) {
       fail('备份BOM字段或仓库关联无效。');
     parents.add(key);
   }
+  validateBomGraph(data.boms.map(bom => ({ ...bom, product: products.get(bom.product_id),
+    items: (grouped.get(bom.id) || []).sort((a,b) => a.position-b.position).map(row => ({ ...row, product: products.get(row.product_id) })),
+    scraps: scrapGroups.get(bom.id) || [] })));
 }
 
 export function installBom(app, db) {
@@ -164,7 +200,7 @@ export function installBom(app, db) {
       res.json(result);
     } catch (error) {
       if (write && db.isTransaction) db.exec('ROLLBACK');
-      res.status(error.status || 400).json({ error: error.message.includes('UNIQUE') ? '该成品已有BOM，请编辑现有清单或选择其他成品。' : error.message });
+      res.status(error.status || 400).json({ error: error.message.includes('UNIQUE') ? '该物料已有同名BOM，请使用不同的配方名称。' : error.message });
     }
   };
   const current = req => getBom(db, req.warehouse.id, Number(req.params.id));
@@ -175,6 +211,8 @@ export function installBom(app, db) {
     // Older clients preserve the saved method and rates instead of resetting them.
     const body = validateBom({ ...req.body, loss_method: req.body.loss_method === undefined ? (existing?.loss_method ?? 'internal') : req.body.loss_method,
       items: Array.isArray(req.body.items) ? req.body.items.map(item => item && ({ ...item,
+      usage_mode: item.usage_mode === undefined ? (existing?.items.find(row => row.product_id === item.product_id)?.usage_mode ?? 'stock') : item.usage_mode,
+      child_bom_id: item.usage_mode === 'stock' ? null : item.child_bom_id === undefined ? (existing?.items.find(row => row.product_id === item.product_id)?.child_bom_id ?? null) : item.child_bom_id,
       loss_rate: item.loss_rate === undefined ? (existing?.items.find(row => row.product_id === item.product_id)?.loss_rate ?? 0) : item.loss_rate })) : req.body.items });
     // An older client editing a BOM must not silently delete its output rules.
     const scraps = body.scraps === undefined ? (existing?.scraps || []) : body.scraps;
@@ -182,6 +220,12 @@ export function installBom(app, db) {
     const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(body.product_id, req.warehouse.id);
     if (!product || !product.active) fail('请选择当前仓库已启用的成品物料。');
     if (product.unit !== body.base_unit) fail('成品单位已变化，请重新选择成品并核对基准产量。', 409);
+    for (const item of body.items.filter(row => row.usage_mode === 'explode')) {
+      const old = existing?.items.find(row => row.product_id === item.product_id);
+      const child = db.prepare('SELECT enabled FROM boms WHERE id=? AND product_id=? AND warehouse_id=?').get(item.child_bom_id, item.product_id, req.warehouse.id);
+      if (!child) fail('请选择当前物料在当前仓库的下级配方。');
+      if (!child.enabled && (old?.usage_mode !== 'explode' || old.child_bom_id !== item.child_bom_id)) fail('所选下级配方已停用，请选择已启用的配方。');
+    }
     for (const item of [...body.items, ...scraps]) {
       const material = db.prepare('SELECT unit,active FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, req.warehouse.id);
       if (!material || !material.active) fail('材料不存在、已停用或不属于当前仓库，请重新选择。');
@@ -191,16 +235,18 @@ export function installBom(app, db) {
     let id = existing?.id;
     if (existing) {
       checkVersion(req, existing);
+      if (existing.product_id !== body.product_id && db.prepare('SELECT 1 FROM bom_items WHERE child_bom_id=? LIMIT 1').get(existing.id)) fail('此配方已被上级BOM引用，请先处理上级关联后再更换成品。');
       db.prepare('UPDATE boms SET product_id=?,name=?,base_quantity=?,base_unit=?,loss_method=?,note=?,enabled=?,updated_by_name=?,updated_at=? WHERE id=?')
         .run(body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.loss_method, body.note.trim(), body.enabled, owner, at, id);
       db.prepare('DELETE FROM bom_scraps WHERE bom_id=?').run(id);
       db.prepare('DELETE FROM bom_items WHERE bom_id=?').run(id);
     } else id = Number(db.prepare('INSERT INTO boms(warehouse_id,product_id,name,base_quantity,base_unit,loss_method,note,enabled,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
       .run(req.warehouse.id, body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.loss_method, body.note.trim(), body.enabled, owner, owner, at, at).lastInsertRowid);
-    const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,loss_rate,unit,note,position) VALUES (?,?,?,?,?,?,?,?)');
-    body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.loss_rate, item.unit, item.note.trim(), index));
+    const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,loss_rate,unit,note,position,usage_mode,child_bom_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
+    body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.loss_rate, item.unit, item.note.trim(), index, item.usage_mode, item.child_bom_id));
     const insertScrap = db.prepare('INSERT INTO bom_scraps(bom_id,product_id,method,source_product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?,?,?)');
     scraps.forEach((row, index) => insertScrap.run(id, row.product_id, row.method, row.source_product_id, row.quantity, row.quantity_fraction ?? '', row.unit, row.note.trim(), index));
+    validateWarehouseGraph(db, req.warehouse.id, id);
     return getBom(db, req.warehouse.id, id);
   };
   app.get('/api/boms', route(req => listBoms(db, req.warehouse.id, req.query)));
@@ -214,5 +260,5 @@ export function installBom(app, db) {
       .run(req.body.enabled, req.user.name || req.user.username, new Date().toISOString(), bom.id);
     return current(req);
   }, true));
-  app.post('/api/boms/:id/calculate', route(req => calculateBom(db, req.warehouse, Number(req.params.id), req.body.production_quantity, req.body.version)));
+  app.post('/api/boms/:id/calculate', route(req => calculateBom(db, req.warehouse, Number(req.params.id), req.body.production_quantity, req.body.version, req.body.schema_version)));
 }

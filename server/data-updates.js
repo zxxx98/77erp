@@ -18,6 +18,7 @@ export function installDataUpdates(app, db) {
     bom_scraps: row => `'warehouse:' || (SELECT warehouse_id FROM boms WHERE id=${row}.bom_id)`,
     production_scraps: row => `'warehouse:' || (SELECT warehouse_id FROM production_orders WHERE id=${row}.production_id)`,
     production_orders: row => `'warehouse:' || ${row}.warehouse_id`,
+    production_bom_nodes: row => `'warehouse:' || (SELECT warehouse_id FROM production_orders WHERE id=${row}.production_id)`,
     production_items: row => `'warehouse:' || (SELECT warehouse_id FROM production_orders WHERE id=${row}.production_id)`,
     production_batches: row => `'warehouse:' || (SELECT warehouse_id FROM production_orders WHERE id=${row}.production_id)`,
     production_batch_items: row => `'warehouse:' || (SELECT o.warehouse_id FROM production_batches b JOIN production_orders o ON o.id=b.production_id WHERE b.id=${row}.batch_id)`,

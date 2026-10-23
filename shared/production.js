@@ -1,8 +1,18 @@
+import { calculateBomNodes } from './bom-expansion.js';
 import { validQuantity, quantityUnits, QUANTITY_SCALE } from './quantity.js';
 import { bomRequiredQuantity } from './bom.js';
 
 export const productionStatusLabels = { draft: '待生产', in_progress: '生产中', completed: '已完工', void: '已作废' };
 export const productionPlannedQuantity = bomRequiredQuantity;
+export function productionItemQuantity(item, quantity, order, standards) {
+  if (order.snapshot_format === 2 || order.multi_level) {
+    if (standards) return standards.get(item.product_id);
+    const row = calculateBomNodes(order.nodes, quantity).rows.find(row => row.product_id === item.product_id);
+    if (!row) throw new Error('生产配方缺少该领料项。');
+    return row.required;
+  }
+  return productionPlannedQuantity(item.base_quantity, quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate, order.loss_method);
+}
 
 export function validateProductionPlan(value) {
   if (!value || !validQuantity(value.planned_quantity, true)) throw new Error('计划产量需为正数，最多 6 位小数。');
@@ -28,10 +38,11 @@ export function validateProductionCompletion(value, items) {
 // Compare against the saved recipe scaled to actual good output, not the plan.
 // Derived analysis must never prevent an otherwise valid stock posting. Older
 // orders may have actual output whose theoretical requirement exceeds the cap.
-export function productionMaterialAnalysis(item, completedQuantity, baseQuantity, actualQuantity, lossMethod = 'internal') {
+export function productionMaterialAnalysis(item, completedQuantity, baseQuantity, actualQuantity, lossMethod = 'internal', nodes) {
   try {
     if (!validQuantity(actualQuantity)) throw new Error('实际耗料无效。');
-    const standard = productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate, lossMethod);
+    const standard = nodes instanceof Map ? nodes.get(item.product_id) : nodes ? calculateBomNodes(nodes, completedQuantity).rows.find(row => row.product_id === item.product_id).required : productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate, lossMethod);
+    if (!validQuantity(standard, true)) throw new Error('标准耗料无效。');
     const difference = quantityUnits(actualQuantity) - quantityUnits(standard);
     return { standard_quantity: standard, variance_quantity: difference / QUANTITY_SCALE,
       variance_rate: difference * 100 / quantityUnits(standard), analysis_error: '' };
