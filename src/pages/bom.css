@@ -25,8 +25,9 @@
 .bom-search-product > .btn { flex-shrink: 0; }
 .bom-search-results > .bom-actions { padding: 12px 0; }
 .bom-empty { padding: 28px 10px; text-align: center; color: #7e8798; font-size: 13px; }
-.bom-material { display: grid; grid-template-columns: minmax(180px, 2fr) minmax(100px, 1fr) minmax(140px, 1.5fr) auto; align-items: center; gap: 18px; border-top: 1px solid #e9ecf1; padding: 18px 0; }
-.bom-material-name { min-width: 0; }
+.bom-material { display: grid; grid-template-columns: minmax(180px, 2fr) minmax(100px, 1fr) minmax(140px, 1.5fr) auto; align-items: end; column-gap: 18px; row-gap: 8px; border-top: 1px solid #e9ecf1; padding: 18px 0; }
+.bom-material-name { min-width: 0; align-self: center; }
+.bom-material > .bom-usage-preview { grid-column: 2 / 4; grid-row: 2; margin: 0; align-self: start; }
 .bom-warning, .bom-shortage { color: #b45309; }
 .bom-warning { font-size: 12px; display: block; margin-top: 5px; }
 .bom-error { padding: 0 2px 14px; }
@@ -54,7 +55,8 @@
   .bom-list-item { align-items: flex-start; flex-direction: column; gap: 16px; }
   .bom-material { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
   .bom-material-name { grid-column: 1 / -1; }
-  .bom-material > .btn { grid-column: 2; justify-self: end; }
+  .bom-material > .btn { grid-column: 2; justify-self: end; align-self: start; }
+  .bom-material > .bom-usage-preview { grid-column: 1; grid-row: 3; }
 }
 @media (max-width: 600px) {
   .bom-section { padding: 18px 14px; margin-bottom: 16px; }

@@ -30,7 +30,7 @@ function incrementUsage(value) {
 function UsagePreview({ value, unit }) {
   try {
     const parsed = parseBomQuantity(value);
-    return parsed.quantity_fraction && <small className="bom-hint">折合约 {count(parsed.quantity)} {unit}，按原分数测算。</small>;
+    return parsed.quantity_fraction && <small className="bom-hint bom-usage-preview">折合约 {count(parsed.quantity)} {unit}，按原分数测算。</small>;
   } catch { return null; }
 }
 
@@ -185,11 +185,11 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
           <div className="bom-material-name"><strong>{item.product.name}</strong><small>{item.product.barcode} · {item.product.specification || '无规格'}{!item.product.active && ' · 已停用'}</small>
             {item.unit !== item.product.unit && <span className="bom-warning">单位已从 {item.unit} 改为 {item.product.unit}，请核对用量。</span>}</div>
           <label>用量（{item.product.unit}）<input aria-label={`${item.product.name}用量`} aria-describedby="bom-usage-help" inputMode="text" placeholder="如 0.025 或 1/40" maxLength={60} spellCheck={false} required value={item.quantity} disabled={action.busy}
-            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} />
-            <UsagePreview value={item.quantity} unit={item.product.unit} /></label>
+            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} /></label>
           <label>材料备注<input aria-label={`${item.product.name}备注`} maxLength={200} value={item.note} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
           <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除材料 ${item.product.name}`} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>移除</Button>
+          <UsagePreview value={item.quantity} unit={item.product.unit} />
         </div>)}</div>
       </section>
       {action.error && <p className="form-error bom-error" role="alert">{action.error}</p>}
