@@ -43,6 +43,7 @@ async function productionFlow(page, pwa = false) {
     await page.getByLabel('生产备注', { exact: true }).fill('本次生产十件');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('库存未变动');
+    await expect(page.getByRole('button', { name: '删除生产单', exact: true })).toHaveCount(0);
     expect(f.inventory()).toEqual(before);
     await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
     await page.getByLabel('计划产量', { exact: true }).fill('12');
@@ -68,6 +69,7 @@ async function productionFlow(page, pwa = false) {
     await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
     await expect(page.getByText('已完工', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '删除生产单', exact: true })).toHaveCount(0);
     await expect(page.locator('.production-summary')).toContainText('21.25');
     const analysis = page.getByRole('group', { name: '材料甲耗料差异分析', exact: true });
     await expect(analysis).toContainText('13.5 千克'); await expect(analysis).toContainText('+2.5 千克');
@@ -85,6 +87,20 @@ async function productionFlow(page, pwa = false) {
     await expect(page.locator('.bom-success')).toContainText('原成本已回退');
     await expect(page.getByText('已作废', { exact: true })).toBeVisible();
     expect(f.inventory()).toEqual(before);
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.getByRole('button', { name: '删除生产单', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '生产单详情', exact: true })).toBeVisible();
+    expect(f.db.prepare('SELECT COUNT(*) n FROM production_orders').get().n).toBe(1);
+    await page.getByRole('button', { name: '返回生产单', exact: true }).click();
+    await expect(page.locator('.production-list article')).toHaveCount(1);
+    page.once('dialog', async dialog => { expect(dialog.message()).toContain('删除无法恢复'); await dialog.accept(); });
+    await page.getByRole('button', { name: '删除生产单', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('生产单已删除');
+    await expect(page.locator('.production-list article')).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText('暂无匹配的生产单。选择已有BOM，建立第一张生产草稿。')).toBeVisible();
+    expect(f.inventory()).toEqual(before);
+    expect(f.db.prepare('SELECT COUNT(*) n FROM production_orders').get().n).toBe(0);
     expect(f.db.prepare('SELECT COUNT(*) n FROM orders').get().n).toBe(0);
     expect(errors).toEqual([]);
   } finally { await f.close(); }

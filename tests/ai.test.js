@@ -128,7 +128,8 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} productio
   assert.match(prompt, /生产单保存自己的损耗率快照/);
   assert.match(prompt, /variance_rate是以标准耗料为分母的百分数/);
   assert.match(prompt, /不按计划产量或当前BOM重算/);
-  assert.match(prompt, /AI不创建、修改、完工或作废生产单/);
+  assert.match(prompt, /AI不创建、修改、完工、作废或删除生产单/);
+  assert.match(prompt, /删除会清理耗料、废料、批次、配方快照和相关物料操作历史，不再次变动库存和成本/);
   assert.match(prompt, /绝不能用采购入库、销售出库、盘点等工具代替生产记账/);
   const completed = await f.request(f.admin, `/production-orders/${order.id}/complete`, { request_id: randomUUID(), version: order.version,
     completed_quantity: 3, items: [{ product_id: material.id, quantity: 1.2, variance_reason: '调机耗料' }], scraps: [{ product_id: 3, quantity: 1.4, disposition: 'stock' }] });
@@ -148,6 +149,13 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} productio
   f.use('get_production_order', { production_id: order.id });
   await f.request(f.staff, '/ai/chat', { message: '查询生产单' }, 'POST', remote);
   assert.match(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).error, /当前仓库/);
+  const voided = await f.request(f.admin, `/production-orders/${order.id}/void`, { request_id: randomUUID(), version: completed.data.version, reason: '删除前作废' });
+  assert.equal(voided.status, 200);
+  assert.equal((await f.request(f.admin, `/production-orders/${order.id}/delete`, { request_id: randomUUID(), version: voided.data.version })).status, 200);
+  f.use('search_production_orders', { query: order.number }); await f.chat(f.staff);
+  assert.equal(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).total, 0);
+  f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
+  assert.match(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).error, /生产单不存在/);
 });
 
 test('AI configuration encrypts credentials, remains admin-only and requires separate usage permission', async t => {

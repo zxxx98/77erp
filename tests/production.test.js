@@ -45,6 +45,53 @@ async function fixture(t) {
   return { db, request, command, ok, product, parent, material, second, bom, definition, plan, create, completion, complete, inventory };
 }
 
+test('production deletion requires a void order and current version, isolates warehouses and deduplicates retries', async t => {
+  const f = await fixture(t), order = await f.create(), path = `/production-orders/${order.id}/delete`;
+  const remove = version => f.command(path, { version });
+  assert.equal((await remove(order.version)).status, 409);
+  const active = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { finish_order: false })));
+  assert.equal(active.status, 'in_progress');
+  assert.equal((await remove(active.version)).status, 409);
+  const done = f.ok(await f.command(`/production-orders/${order.id}/finish`, { version: active.version }));
+  assert.equal((await remove(done.version)).status, 409);
+  const voided = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '取消生产' }));
+  const before = f.inventory(), revision = f.ok(await f.request('/updates')).revision;
+  assert.equal((await remove(done.version)).status, 409);
+  assert.equal((await remove(undefined)).status, 409);
+  assert.equal((await remove(String(voided.version))).status, 409);
+  const body = { version: voided.version, request_id: randomUUID() };
+  assert.equal((await f.request(path, body, { cookie: null })).status, 401);
+  const warehouseId = (await f.request('/warehouses', { name: '删除隔离仓库' })).data.id;
+  assert.equal((await f.request(path, body, { warehouseId })).status, 404);
+  const retained = await f.create();
+  const backup = f.ok(await f.request('/backup')), preview = f.ok(await f.request('/backup/preview', { backup }));
+  assert.deepEqual(f.ok(await f.request(path, body)), { ok: true });
+  assert.deepEqual(f.ok(await f.request(path, body)), { ok: true });
+  assert.equal((await remove(voided.version)).status, 404);
+  assert.equal((await f.request(`/production-orders/${order.id}`)).status, 404);
+  assert.deepEqual(f.ok(await f.request('/production-orders')).orders.map(row => row.id), [retained.id]);
+  assert.notEqual(f.ok(await f.request('/updates')).revision, revision);
+  assert.equal((await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 400);
+  assert.deepEqual(f.inventory(), before);
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+  for (const product of [f.parent, f.material, f.second]) assert.deepEqual(f.ok(await f.request(`/products/${product}/history`)).records, []);
+  const after = f.ok(await f.request('/backup'));
+  assert.deepEqual(after.data.production_orders.map(row => row.id), [retained.id]);
+  assert.ok(after.data.production_items.every(row => row.production_id === retained.id));
+  assert.equal(after.data.production_batches.length, 0);
+});
+
+test('deleting a void draft releases its BOM reference without changing inventory', async t => {
+  const f = await fixture(t), order = await f.create();
+  const voided = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: order.version, reason: '取消草稿' }));
+  const before = f.inventory();
+  assert.equal((await f.command(`/boms/${f.bom.id}/delete`, { version: f.bom.version })).status, 409);
+  f.ok(await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }));
+  assert.deepEqual(f.inventory(), before);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_items').get().n, 0);
+  f.ok(await f.command(`/boms/${f.bom.id}/delete`, { version: f.bom.version }));
+});
+
 test('production drafts preserve exact BOM snapshots, rescale batches and never reserve stock or create commerce', async t => {
   const f = await fixture(t), before = f.inventory(), revision = (await f.request('/updates')).data.revision;
   const body = { ...f.plan(), request_id: randomUUID() };
@@ -350,6 +397,12 @@ test('production permission is independent of BOM, writes and financial reads ar
   await permissions(['production', 'corrections']);
   const voided = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '权限内作废' }, asStaff));
   assert.equal(voided.status, 'void');
+  await permissions(['production']);
+  assert.equal((await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }, asStaff)).status, 403);
+  await permissions(['corrections']);
+  assert.equal((await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }, asStaff)).status, 403);
+  await permissions(['production', 'corrections']);
+  assert.deepEqual(f.ok(await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }, asStaff)), { ok: true });
   await permissions([]);
   assert.deepEqual(f.ok(await f.request(`/products/${f.parent}/history`, undefined, asStaff)).records, []);
 });
@@ -526,6 +579,11 @@ test('production scraps snapshot rules, rescale fractions, calculate from actual
   assert.deepEqual(f.inventory().map(row => [row.stock, row.inventory_value_cents]), before.map(row => [row.stock, row.inventory_value_cents]));
   const reverted = f.inventory(); f.ok(await f.request(voidPath, voidBody)); assert.deepEqual(f.inventory(), reverted);
   assert.deepEqual(f.ok(await f.request(`/products/${scrap}/history`)).records.map(row => row.event).sort(), ['production_scrap_in', 'production_scrap_void_out']);
+  f.ok(await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }));
+  assert.deepEqual(f.inventory(), reverted);
+  for (const table of ['production_orders', 'production_items', 'production_scraps', 'production_batches', 'production_batch_items', 'production_batch_scraps'])
+    assert.equal(f.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n, 0);
+  assert.deepEqual(f.ok(await f.request(`/products/${scrap}/history`)).records, []);
 });
 
 test('invalid scrap completions, overflow, changed units, and insufficient scrap on void roll back the entire production transaction', async t => {
@@ -850,8 +908,12 @@ test('batch backup validates child relations, aggregate facts and void state; le
   f.db.exec('DROP TABLE production_batch_scraps; DROP TABLE production_batch_items; DROP TABLE production_batches; DROP TRIGGER data_revision_production_orders_UPDATE; ALTER TABLE production_orders DROP COLUMN batch_tracking;');
   migrateProduction(f.db);
   assert.deepEqual(f.inventory(), beforeUpgrade); assert.equal(f.ok(await f.request(`/production-orders/${order.id}`)).batch_tracking, 0);
-  f.ok(await f.command(`/production-orders/${order.id}/void`, { version: loaded.version, reason: '历史单回退' }));
+  const voided = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: loaded.version, reason: '历史单回退' }));
   assert.equal(f.inventory()[0].stock, 0); assert.equal(f.inventory()[1].stock, 100);
+  const reversed = f.inventory();
+  f.ok(await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }));
+  assert.deepEqual(f.inventory(), reversed);
+  assert.equal((await f.request(`/production-orders/${order.id}`)).status, 404);
 });
 
 test('batch corrections require correction permission and nested costs stay hidden after finance permission is removed', async t => {
@@ -954,6 +1016,16 @@ test('multilevel production freezes selected recipes, handles stale previews, ba
   order = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: order.version, schema_version: 2, reason: '回退验证' }));
   assert.equal(order.status, 'void');
   assert.deepEqual(f.inventory().map(({ id,stock,inventory_value_cents }) => [id,stock,inventory_value_cents]), before.map(({ id,stock,inventory_value_cents }) => [id,stock,inventory_value_cents]));
+  const reversed = f.inventory();
+  assert.equal((await f.command(`/production-orders/${order.id}/delete`, { version: order.version })).status, 409);
+  f.ok(await f.command(`/production-orders/${order.id}/delete`, { version: order.version, schema_version: 2 }));
+  for (const table of ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', 'production_batches', 'production_batch_items', 'production_batch_scraps'])
+    assert.equal(f.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n, 0);
+  assert.deepEqual(f.inventory(), reversed);
+  const currentRoot = f.ok(await f.request(`/boms/${root.id}`));
+  f.ok(await f.command(`/boms/${root.id}/delete`, { version: currentRoot.version }));
+  const currentChild = f.ok(await f.request(`/boms/${child.id}`));
+  f.ok(await f.command(`/boms/${child.id}/delete`, { version: currentChild.version }));
 });
 
 test('reopening legacy unique-product and non-null material tables preserves IDs, foreign keys, versions and history', async t => {

@@ -1,7 +1,7 @@
 import { calculateBomNodes } from '../../shared/bom-expansion.js';
 import { BomStructure } from '../features/BomStructure.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, ClipboardList, Plus, Save, XCircle } from 'lucide-react';
+import { ArrowLeft, Check, ClipboardList, Plus, Save, Trash2, XCircle } from 'lucide-react';
 import { api } from '../api.js';
 import { useBusiness } from '../business-api.js';
 import { useQuery, queryPath } from '../queries.js';
@@ -137,6 +137,16 @@ export function Production({ data, initialBom, onChanged }) {
   const saved = async (order, text, stockChanged = false) => {
     setDetail(order); setEditor(null); setMessage(text); setRevision(n => n + 1);
     if (stockChanged) await onChanged?.();
+  };
+  const remove = order => {
+    if (!window.confirm(`确定删除已作废生产单「${order.number}」？删除无法恢复，耗料、废料、完工批次、配方快照及相关物料操作历史将一并清理，库存和成本保持作废后的结果。`)) return;
+    action.run(async () => {
+      setMessage('');
+      await send(`/production-orders/${order.id}/delete`, { version: order.version }, { warehouseId: data.warehouse_id });
+      setDetail(null); setEditor(null);
+      if (list.result?.orders.length === 1 && offset > 0) setOffset(n => Math.max(0, n - 30));
+      setRevision(n => n + 1); setMessage('生产单已删除。');
+    });
   };
   const batchDefaults = quantity => {
     const standards = detail.snapshot_format === 2 ? new Map(calculateBomNodes(detail.nodes, quantity).rows.map(row => [row.product_id, row.required])) : null;
@@ -293,6 +303,7 @@ export function Production({ data, initialBom, onChanged }) {
         {['draft', 'in_progress'].includes(detail.status) && <Button kind="primary" icon={Check} disabled={action.busy} onClick={beginCompletion}>登记完工</Button>}
         {detail.status === 'in_progress' && <Button disabled={action.busy} onClick={finishOrder}>结束生产</Button>}
         {detail.status !== 'void' && can('corrections') && <Button icon={XCircle} disabled={action.busy} onClick={() => begin({ kind: 'void', reason: '' })}>作废生产单</Button>}
+        {detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>删除生产单</Button>}
         <Button disabled={action.busy} onClick={() => open(detail.id)}>刷新单据与库存</Button>
       </div>
     </section>
@@ -325,7 +336,8 @@ export function Production({ data, initialBom, onChanged }) {
         <div className="bom-list-info"><strong>{order.product_name}</strong><p>{order.number}</p><small>{order.barcode} · {order.bom_name} #{order.bom_id}</small>
           <small>计划 {count(order.planned_quantity)} {order.unit}{order.completed_at ? ` · 合格 ${count(order.completed_quantity)} ${order.unit}` : ''} · 创建人 {order.created_by_name}</small>
           <small>{time(order.created_at)}</small>{statusBadge(order.status)}</div>
-        <Button icon={ClipboardList} disabled={action.busy} onClick={() => open(order.id)} aria-label={`查看生产单 ${order.number}`}>查看详情</Button>
+        <div className="bom-actions"><Button icon={ClipboardList} disabled={action.busy} onClick={() => open(order.id)} aria-label={`查看生产单 ${order.number}`}>查看详情</Button>
+          {order.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(order)}>删除生产单</Button>}</div>
       </article>)}</div>
       {list.result && !list.result.orders.length && <p className="bom-empty">暂无匹配的生产单。选择已有BOM，建立第一张生产草稿。</p>}
       {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination"><Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>上一页</Button><span>共 {list.result.total} 张</span><Button disabled={!list.result.has_more} onClick={() => setOffset(n => n + 30)}>下一页</Button></div>}

@@ -367,6 +367,16 @@ export function installProduction(app, db) {
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number });
     return current(req);
   }, true));
+  app.post('/api/production-orders/:id/delete', route(req => {
+    const order = current(req); version(req, order);
+    if (order.status !== 'void') fail('仅已作废的生产单可以删除，请先作废。', 409);
+    for (const table of ['production_batch_scraps', 'production_batch_items'])
+      db.prepare(`DELETE FROM ${table} WHERE batch_id IN (SELECT id FROM production_batches WHERE production_id=?)`).run(order.id);
+    for (const table of ['production_batches', 'production_bom_nodes', 'production_scraps', 'production_items'])
+      db.prepare(`DELETE FROM ${table} WHERE production_id=?`).run(order.id);
+    db.prepare('DELETE FROM production_orders WHERE id=?').run(order.id);
+    return { ok: true };
+  }, true));
 }
 
 export function validateProductionBackup(data) {
