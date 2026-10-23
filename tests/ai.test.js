@@ -82,6 +82,13 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} BOM tools
   // Queries remain available while AI write previews are disabled.
   assert.equal((await f.request(f.admin, '/settings/ai', { ...f.settings, writes: false }, 'PUT')).status, 200);
   f.use('get_bom', { bom_id: id }); assert.equal((await f.chat(f.staff)).status, 200);
+  assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /AI不创建、修改或删除BOM/);
+  assert.equal((await f.request(f.admin, `/boms/${id}/delete`, { request_id: randomUUID(), version: saved.data.version })).status, 200);
+  f.use('search_boms', { query: 'AI用料' }); await f.chat(f.staff);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.total, 0);
+  f.use('get_bom', { bom_id: id }); await f.chat(f.staff);
+  assert.match(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).error, /BOM不存在/);
 });
 
 for (const lossMethod of ['internal', 'external']) test(`${lossMethod} production AI queries require production permission, use saved snapshots, hide costs and cannot mutate stock`, async t => {

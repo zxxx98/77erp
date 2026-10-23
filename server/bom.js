@@ -260,5 +260,19 @@ export function installBom(app, db) {
       .run(req.body.enabled, req.user.name || req.user.username, new Date().toISOString(), bom.id);
     return current(req);
   }, true));
+  app.post('/api/boms/:id/delete', route(req => {
+    const bom = current(req);
+    if (!Number.isSafeInteger(req.body.version) || req.body.version !== bom.version)
+      fail('BOM已被修改，请刷新列表后再删除。', 409);
+    if (db.prepare('SELECT 1 FROM bom_items WHERE child_bom_id=? LIMIT 1').get(bom.id))
+      fail('此配方已被上级BOM引用，请先解除关联，或改为停用。', 409);
+    if (db.prepare('SELECT 1 FROM production_orders WHERE bom_id=? LIMIT 1').get(bom.id) ||
+        db.prepare('SELECT 1 FROM production_bom_nodes WHERE bom_id=? OR child_bom_id=? LIMIT 1').get(bom.id, bom.id))
+      fail('此配方已被生产单引用，不能删除，可改为停用。', 409);
+    db.prepare('DELETE FROM bom_scraps WHERE bom_id=?').run(bom.id);
+    db.prepare('DELETE FROM bom_items WHERE bom_id=?').run(bom.id);
+    db.prepare('DELETE FROM boms WHERE id=?').run(bom.id);
+    return { ok: true };
+  }, true));
   app.post('/api/boms/:id/calculate', route(req => calculateBom(db, req.warehouse, Number(req.params.id), req.body.production_quantity, req.body.version, req.body.schema_version)));
 }

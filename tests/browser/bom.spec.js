@@ -28,6 +28,46 @@ async function fixture(page) {
 }
 
 for (const mobile of [false, true]) {
+  test(`${mobile ? 'mobile' : 'desktop'} confirms BOM deletion and preserves stale or referenced recipes`, async ({ page }) => {
+    if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
+    const f = await fixture(page);
+    try {
+      const bom = await f.post('/boms', f.definition);
+      await page.goto(f.base + '/#bom');
+      const row = page.locator('.bom-list-item');
+      await expect(row).toHaveCount(1);
+      page.once('dialog', dialog => dialog.dismiss());
+      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await expect(row).toHaveCount(1);
+      expect(f.db.prepare('SELECT COUNT(*) n FROM boms').get().n).toBe(1);
+
+      const updated = await f.post(`/boms/${bom.id}`, { ...f.definition, version: bom.version, name: '另一设备更新的配方' });
+      page.once('dialog', dialog => dialog.accept());
+      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await expect(page.getByRole('alert')).toContainText('BOM已被修改');
+      expect(f.db.prepare('SELECT name FROM boms WHERE id=?').get(bom.id).name).toBe(updated.name);
+
+      await page.reload();
+      await expect(row).toContainText(updated.name);
+      page.once('dialog', async dialog => { expect(dialog.message()).toContain(updated.name); await dialog.accept(); });
+      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await expect(page.locator('.bom-success')).toContainText('BOM已删除');
+      await expect(row).toHaveCount(0);
+      await page.reload();
+      await expect(row).toHaveCount(0);
+      await expect(page.getByText('暂无匹配的BOM，可以新建一份成品配方。')).toBeVisible();
+
+      const linked = await f.post('/boms', f.definition);
+      await f.post('/production-orders', { bom_id: linked.id, bom_version: linked.version, planned_quantity: 1, note: '' });
+      await page.reload();
+      await expect(row).toHaveCount(1);
+      page.once('dialog', dialog => dialog.accept());
+      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await expect(page.getByRole('alert')).toContainText('此配方已被生产单引用');
+      await expect(row).toHaveCount(1);
+    } finally { await f.close(); }
+  });
+
   test(`${mobile ? 'mobile' : 'desktop'} creates a recipe, merges repeated materials, calculates and exports frozen stock, copies and toggles status`, async ({ page }) => {
     test.setTimeout(60000);
     if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }

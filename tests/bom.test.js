@@ -312,6 +312,7 @@ test('BOM permission independently gates all endpoints without granting inventor
   const user = (await f.request('/users', { username: 'bomstaff', password: 'Test-staff-123' })).data.id;
   const staff = (await f.request('/auth/login', { username: 'bomstaff', password: 'Test-staff-123' }, { cookie: null })).cookie;
   assert.equal((await f.request('/boms', undefined, { cookie: staff })).status, 403);
+  assert.equal((await f.command(`/boms/${bom.id}/delete`, { version: bom.version }, { cookie: staff })).status, 403);
   const version = f.db.prepare('SELECT permissions_version FROM users WHERE id=?').get(user).permissions_version;
   assert.equal((await f.request(`/users/${user}/permissions`, { version, permissions: ['bom'] }, { method: 'PUT' })).status, 200);
   const options = { cookie: staff };
@@ -321,6 +322,63 @@ test('BOM permission independently gates all endpoints without granting inventor
   assert.equal((await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version }), options)).status, 200);
   assert.equal((await f.command('/stock/reduce', { product_id: f.material, quantity: 1, reason: '不应获权' }, options)).status, 403);
   assert.equal((await f.request('/products', { name: '不应获权' }, options)).status, 403);
+  const current = (await f.request(`/boms/${bom.id}`, undefined, options)).data;
+  assert.equal((await f.command(`/boms/${bom.id}/delete`, { version: current.version }, options)).status, 200);
+});
+
+test('BOM deletion is versioned, isolated, idempotent and removes rules without changing goods', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP');
+  const bom = await f.create({ scraps: [{ product_id: scrap, method: 'output', source_product_id: null, quantity: 1, unit: '个', note: '' }] });
+  const path = `/boms/${bom.id}/delete`, body = { version: bom.version, request_id: randomUUID() };
+  const before = f.db.prepare('SELECT * FROM products ORDER BY id').all();
+  const revision = (await f.request('/workspace')).data.revision;
+  assert.equal((await f.request(path, body, { cookie: null })).status, 401);
+  const other = (await f.request('/warehouses', { name: '删除隔离仓库' })).data.id;
+  assert.equal((await f.command(path, { version: bom.version }, { warehouseId: other })).status, 404);
+  assert.equal((await f.command(path, {})).status, 409);
+  assert.equal((await f.command(path, { version: String(bom.version) })).status, 409);
+  const edited = await f.command(`/boms/${bom.id}/status`, { version: bom.version, enabled: 0 });
+  assert.equal((await f.request(path, body)).status, 409);
+  assert.deepEqual((await f.request(`/boms/${bom.id}`)).data, edited.data);
+  body.version = edited.data.version;
+  const deleted = await f.request(path, body);
+  assert.equal(deleted.status, 200); assert.deepEqual(deleted.data, { ok: true });
+  assert.deepEqual((await f.request(path, body)).data, deleted.data);
+  assert.equal((await f.command(path, { version: body.version })).status, 404);
+  for (const table of ['boms', 'bom_items', 'bom_scraps']) assert.equal(f.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n, 0);
+  assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
+  assert.notDeepEqual((await f.request('/workspace')).data.revision, revision);
+  const recreated = await f.create();
+  assert.ok(recreated.version > body.version);
+  assert.equal((await f.command(`/boms/${recreated.id}/delete`, { version: body.version })).status, 409);
+  assert.equal((await f.request('/backup')).data.data.boms.length, 1);
+});
+
+test('BOM deletion preserves parent links and production snapshots including void orders', async t => {
+  const f = await fixture(t), raw = await f.product('RAW');
+  const child = await f.create({ name: '下级配方', product_id: f.material, items: [{ product_id: raw, quantity: 1, unit: '个', note: '' }] });
+  const root = await f.create({ items: [{ product_id: f.material, quantity: 1, unit: '个', note: '', usage_mode: 'explode', child_bom_id: child.id }] });
+  const remove = bom => f.command(`/boms/${bom.id}/delete`, { version: bom.version });
+  const blocked = await remove(child);
+  assert.equal(blocked.status, 409); assert.match(blocked.data.error, /上级BOM/);
+  const plan = (await f.request(`/boms/${root.id}/calculate`, { production_quantity: 1, schema_version: 2 })).data;
+  const order = await f.command('/production-orders', { bom_id: root.id, bom_version: root.version, planned_quantity: 1, note: '', schema_version: 2, structure_token: plan.structure_token });
+  assert.equal(order.status, 200);
+  const edited = await f.command(`/boms/${root.id}`, f.definition({ version: root.version,
+    items: [{ product_id: f.material, quantity: 1, unit: '个', note: '', usage_mode: 'stock', child_bom_id: null }] }));
+  assert.equal(edited.status, 200);
+  for (const bom of [child, edited.data]) {
+    const result = await remove(bom);
+    assert.equal(result.status, 409); assert.match(result.data.error, /生产单/);
+    assert.deepEqual((await f.request(`/boms/${bom.id}`)).data, bom);
+  }
+  const voided = await f.command(`/production-orders/${order.data.id}/void`, { version: order.data.version, schema_version: 2, reason: '取消生产' });
+  assert.equal(voided.status, 200);
+  assert.equal((await remove(child)).status, 409);
+  assert.equal((await remove(edited.data)).status, 409);
+  const loaded = (await f.request(`/production-orders/${order.data.id}`)).data;
+  assert.deepEqual(loaded, { ...voided.data, captured_at: loaded.captured_at });
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
 });
 
 test('BOM CSV exports the exact snapshot, retains fractional quantities and protects text cells from spreadsheet formulas', () => {

@@ -292,7 +292,16 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
           <Button disabled={action.busy} onClick={() => action.run(async () => {
             await action.send(`/boms/${bom.id}/status`, { version: bom.version, enabled: bom.enabled ? 0 : 1 }, { warehouseId: data.warehouse_id });
             setRevision(n => n + 1); setMessage(bom.enabled ? 'BOM已停用。' : 'BOM已启用。');
-          })}>{bom.enabled ? '停用' : '启用'}</Button></div>
+          })}>{bom.enabled ? '停用' : '启用'}</Button>
+          <Button icon={Trash2} kind="danger" disabled={action.busy} onClick={() => {
+            if (!window.confirm(`确定删除「${bom.name}」（BOM #${bom.id}）？删除无法恢复；被上级BOM或生产单引用的配方不能删除，可改为停用。`)) return;
+            action.run(async () => {
+              setMessage('');
+              await action.send(`/boms/${bom.id}/delete`, { version: bom.version }, { warehouseId: data.warehouse_id });
+              if (list.result.boms.length === 1 && offset > 0) setOffset(n => Math.max(0, n - 30));
+              setRevision(n => n + 1); setMessage('BOM已删除。');
+            });
+          }}>删除</Button></div>
       </article>)}</div>
       {list.result && !list.result.boms.length && <p className="bom-empty">暂无匹配的BOM，可以新建一份成品配方。</p>}
       {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination"><Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>上一页</Button>
