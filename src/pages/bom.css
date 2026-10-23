@@ -27,9 +27,12 @@
 .bom-search-product > .btn { flex-shrink: 0; }
 .bom-search-results > .bom-actions { padding: 12px 0; }
 .bom-empty { padding: 28px 10px; text-align: center; color: #7e8798; font-size: 13px; }
-.bom-material { display: grid; grid-template-columns: minmax(150px, 2fr) minmax(100px, 1fr) minmax(100px, 1fr) minmax(120px, 1.5fr) auto; align-items: end; column-gap: 18px; row-gap: 8px; border-top: 1px solid #e9ecf1; padding: 18px 0; }
+.bom-material { display: grid; grid-template-columns: minmax(140px, 1.4fr) minmax(90px, .8fr) minmax(110px, .9fr) minmax(150px, 1.2fr) minmax(120px, 1fr) auto; align-items: end; column-gap: 14px; row-gap: 12px; border-top: 1px solid #e9ecf1; padding: 18px 0; }
 .bom-material-name { min-width: 0; align-self: center; }
-.bom-material > .bom-usage-preview { grid-column: 2 / -1; grid-row: 2; margin: 0; align-self: start; }
+.bom-material > label { line-height: 20px; }
+.bom-material > label > input, .bom-material .dropdown-control, .bom-material > .btn { height: 44px; }
+.bom-material .dropdown { width: 100%; min-width: 0; }
+.bom-material > .bom-usage-preview { grid-column: 1 / -1; margin: 0; align-self: start; }
 .bom-warning, .bom-shortage { color: #b45309; }
 .bom-warning { font-size: 12px; display: block; margin-top: 5px; }
 .bom-error { padding: 0 2px 14px; }
@@ -56,9 +59,8 @@
 @media (max-width: 1100px) {
   .bom-list-item { align-items: flex-start; flex-direction: column; gap: 16px; }
   .bom-material { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
-  .bom-material-name { grid-column: 1 / -1; }
-  .bom-material > .btn { grid-column: 2; justify-self: end; align-self: start; }
-  .bom-material > .bom-usage-preview { grid-column: 1 / -1; grid-row: auto; }
+  .bom-material-name { grid-column: 1; grid-row: 1; }
+  .bom-material > .btn { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; }
 }
 @media (max-width: 600px) {
   .bom-section { padding: 18px 14px; margin-bottom: 16px; }
@@ -66,6 +68,8 @@
   .bom-search-row { flex-wrap: wrap; }
   .bom-search-row > input { flex-basis: 100%; }
   .bom-page input:not([type=checkbox]), .bom-page textarea { font-size: 16px; }
+  .bom-material .dropdown-input { font-size: 16px; }
+  .bom-material > .bom-material-usage, .bom-material > .bom-material-note { grid-column: 1 / -1; }
   .bom-page .btn { min-height: 42px; }
   .bom-page .page-heading .heading-actions { margin-top: 16px; }
   .bom-list-filters { align-items: stretch; flex-direction: column; }
@@ -93,10 +97,41 @@
   .bom-scrap-fields, .scrap-output { grid-template-columns: minmax(0, 1fr); }
 }
 
-.bom-child-picker, .bom-structure { grid-column: 1 / -1; min-width: 0; padding: 12px; border: 1px solid #dce2ea; border-radius: 8px; margin: 12px 0; overflow-wrap: anywhere; }
-.bom-child-picker summary, .bom-structure summary { cursor: pointer; padding: 8px 0; color: #334565; }
-.bom-child-preview { padding: 12px 0; }
-.bom-structure-list { list-style: none; margin: 8px 0; padding-left: 12px; border-left: 2px solid #e9ecf1; }
-.bom-structure-list li { margin: 12px 0; min-width: 0; }
-.bom-structure-list strong, .bom-structure-list span { display: block; }
-@media (max-width: 600px) { .bom-structure-list { padding-left: 6px; } .bom-child-picker .bom-search-product { flex-wrap: wrap; } }
+.bom-child-picker, .bom-structure { grid-column: 1 / -1; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
+.bom-child-picker { background: #f7f9fc; }
+.bom-child-picker > .bom-hint { margin: 0 0 10px; }
+.bom-child-selected { margin: 0 0 12px; color: #647084; font-size: 13px; line-height: 1.65; }
+.bom-child-selected strong { color: #304563; font-weight: 500; }
+.bom-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 10px 12px; border-radius: 8px; list-style: none; cursor: pointer; color: #304563; font-size: 13px; line-height: 1.6; transition: background .16s; }
+.bom-disclosure > summary::-webkit-details-marker { display: none; }
+.bom-disclosure > summary::marker { content: ''; }
+.bom-disclosure > summary:hover { background: var(--accent-light); }
+.bom-disclosure > summary:focus-visible { outline: 2px solid #7ca9f7; outline-offset: 2px; }
+.bom-disclosure-chevron { flex-shrink: 0; color: var(--muted); transition: transform .16s; }
+.bom-disclosure[open] > summary > .bom-disclosure-chevron, .bom-child-preview-toggle[aria-expanded="true"] > .bom-disclosure-chevron { transform: rotate(180deg); }
+.bom-disclosure-copy { min-width: 0; flex: 1; }
+.bom-child-choices { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.bom-child-options { padding: 12px; border-top: 1px solid var(--border); }
+.bom-child-options > .bom-actions { margin-top: 12px; }
+.bom-child-preview-toggle { margin-top: 12px; }
+.bom-child-preview { margin-top: 12px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.bom-child-preview p { font-size: 12px; line-height: 1.65; margin: 8px 0 0; }
+.bom-structure { margin: 12px 0; padding: 6px; }
+.bom-structure > summary { font-weight: 500; background: #f7f9fc; }
+.bom-structure > .bom-hint, .bom-structure > .bom-structure-list { margin: 12px; }
+.bom-structure-list { list-style: none; margin: 12px 0 0; padding-left: 14px; border-left: 2px solid #e9ecf1; }
+.bom-structure-list li { margin: 10px 0; min-width: 0; }
+.bom-structure-list li > div { padding: 10px 12px; }
+.bom-structure-list strong { display: block; font-size: 13px; font-weight: 500; line-height: 1.6; }
+.bom-disclosure-copy > span { display: block; color: #647084; font-size: 12px; }
+.bom-structure-list li > div > span { display: block; color: #647084; font-size: 12px; line-height: 1.6; }
+.bom-structure-list .bom-disclosure[open] > summary { background: var(--accent-light); }
+.bom-structure-list .bom-disclosure > small { margin: 8px 12px; }
+.bom-structure-list .bom-structure-list { margin-left: 12px; }
+@media (max-width: 600px) {
+  .bom-structure-list { padding-left: 8px; }
+  .bom-structure > .bom-hint, .bom-structure > .bom-structure-list { margin: 10px 6px; }
+  .bom-structure-list .bom-structure-list { margin-left: 6px; }
+  .bom-child-picker .bom-search-product { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .bom-disclosure > summary, .bom-disclosure-chevron { transition: none; } }

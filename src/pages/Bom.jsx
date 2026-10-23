@@ -217,16 +217,16 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} /></label>
           <label>标准损耗率（%）<input aria-label={`${item.product.name}标准损耗率`} aria-describedby="bom-loss-help" inputMode="decimal" maxLength={20} required value={item.loss_rate} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, loss_rate: e.target.value } : row) })} /></label>
-          <label>材料备注<input aria-label={`${item.product.name}备注`} maxLength={200} value={item.note} disabled={action.busy}
-            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
-          <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除材料 ${item.product.name}`} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>移除</Button>
-          <label>用料方式<Select aria-label={`${item.product.name}用料方式`} value={item.usage_mode ?? 'stock'} disabled={action.busy}
+          <label className="bom-material-usage">用料方式<Select aria-label={`${item.product.name}用料方式`} value={item.usage_mode ?? 'stock'} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, usage_mode: e.target.value, child_bom_id: null, child_bom: null } : row) })}>
             <option value="stock">领用本物料</option><option value="explode">展开下级 BOM</option>
           </Select></label>
+          <label className="bom-material-note">材料备注<input aria-label={`${item.product.name}备注`} maxLength={200} value={item.note} disabled={action.busy}
+            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
+          <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除材料 ${item.product.name}`} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>移除</Button>
+          <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} lossMethod={editor.loss_method} />
           {item.usage_mode === 'explode' && <ChildBomPicker item={item} data={queryData} disabled={action.busy}
             onChange={patch => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, ...patch } : row) })} />}
-          <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} lossMethod={editor.loss_method} />
         </div>)}</div>
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>废料产出</h2><span className="bom-hint">可选 · {editor.scraps.length} / 100 种</span></div>
