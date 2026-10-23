@@ -42,6 +42,7 @@ import {
   Announcements,
   Quality,
   Bom,
+  Production,
   AnnouncementDetail,
   AnnouncementEditor,
   Products,
@@ -87,6 +88,7 @@ function App({ admin, onLogout }) {
   });
   const [mode, setMode] = useState(initialNavigation.mode);
   const [bomProduct, setBomProduct] = useState(null);
+  const [productionBom, setProductionBom] = useState(null);
   const modeRef = useRef(mode);
   const lastPages = useRef(initialNavigation.pages);
   const [page, setPage] = useState(initialNavigation.page);
@@ -228,6 +230,7 @@ function App({ admin, onLogout }) {
     pageRef.current = id;
     setPage(id);
     if (id !== 'bom') setBomProduct(null);
+    if (id !== 'production') setProductionBom(null);
     acceptedHash.current = navigationHash(id, nextMode);
     location.hash = acceptedHash.current;
     setNotification(false);
@@ -260,6 +263,7 @@ function App({ admin, onLogout }) {
       }
       setWarehouseId(id);
       setBomProduct(null);
+      setProductionBom(null);
       setData({ ...workspace, products: [], orders: [] });
       setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
     } catch (e) { notify(e.message, 'error'); }
@@ -306,7 +310,8 @@ function App({ admin, onLogout }) {
         announcementCount={announcementCount}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">没有品质管理权限，请联系管理员。</div>}
-        renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} /> : <div className="info-box">没有用料清单权限，请联系管理员。</div>}
+        renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有用料清单权限，请联系管理员。</div>}
+        renderProduction={() => can('production') ? <Production key={data.warehouse_id} data={data} initialBom={productionBom} onChanged={reload} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>
@@ -544,7 +549,8 @@ function App({ admin, onLogout }) {
               {page === 'announcements' && <Announcements data={data} openModal={setModal} />}
               {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
               {page === 'quality' && !can('quality') && <div className="info-box">没有品质管理权限，请联系管理员。</div>}
-              {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} /> : <div className="info-box">没有用料清单权限，请联系管理员。</div>)}
+              {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有用料清单权限，请联系管理员。</div>)}
+              {page === 'production' && (can('production') ? <Production key={data.warehouse_id} data={data} initialBom={productionBom} onChanged={reload} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>)}
               {page === "products" && (
                 <Products
                   data={data}

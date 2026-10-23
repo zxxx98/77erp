@@ -20,6 +20,7 @@ export const Dashboard = deferred(() => import('./pages/Dashboard.jsx'), 'Dashbo
 export const Announcements = deferred(() => import('./pages/Announcements.jsx'), 'Announcements');
 export const Quality = deferred(() => import('./pages/Quality.jsx'), 'Quality');
 export const Bom = deferred(() => import('./pages/Bom.jsx'), 'Bom');
+export const Production = deferred(() => import('./pages/Production.jsx'), 'Production');
 export const ProductQualityCharts = deferred(() => import('./pages/ProductQualityCharts.jsx'), 'ProductQualityCharts');
 export const AnnouncementDetail = deferred(() => import('./pages/Announcements.jsx'), 'AnnouncementDetail');
 export const AnnouncementEditor = deferred(() => import('./pages/Announcements.jsx'), 'AnnouncementEditor');

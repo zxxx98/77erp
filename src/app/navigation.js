@@ -1,4 +1,4 @@
-import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, ScanLine, History, Megaphone, PackageCheck, Settings, ListTree } from 'lucide-react';
+import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, ScanLine, History, Megaphone, PackageCheck, Settings, ListTree, ClipboardList } from 'lucide-react';
 
 export const navItems = [
   { id: 'overview', name: '工作台', icon: LayoutDashboard, mode: 'warehouse', group: 'main', mobile: '工作台' },
@@ -10,6 +10,7 @@ export const navItems = [
   { id: 'history', name: '操作记录', icon: History, mode: 'warehouse', group: 'tools', mobile: '单据' },
   { id: 'quality', name: '品质管理', icon: PackageCheck, mode: 'production', group: 'main', mobile: '品质', permission: 'quality' },
   { id: 'bom', name: '用料清单', icon: ListTree, mode: 'production', group: 'main', mobile: '用料', permission: 'bom' },
+  { id: 'production', name: '生产单', icon: ClipboardList, mode: 'production', group: 'main', mobile: '生产单', permission: 'production' },
   { id: 'announcements', name: '公告中心', icon: Megaphone, group: 'tools' },
   { id: 'more', name: '工作空间', icon: Settings, mobile: '更多' },
 ];

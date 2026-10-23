@@ -20,7 +20,7 @@ import './mobile.css';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
 
-export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, announcementCount, updateNotice }) {
+export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProduction, announcementCount, updateNotice }) {
   const { can } = usePermissions();
   const tabs = modeItems(mode, can).filter(item => item.mobile);
   const { online } = usePwa();
@@ -77,6 +77,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
           {page === 'more' && <More mode={mode} user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'quality' && renderQuality()}
           {page === 'bom' && renderBom()}
+          {page === 'production' && renderProduction()}
           {page === 'scanner' && renderScanner()}
           {page === 'announcements' && renderAnnouncements()}
           <div className="mw-refresh"><span className="mw-muted">{updated ? `读取于 ${updated.toLocaleTimeString('zh-CN', { hour12: false })}` : '数据保存在服务器'}</span><button type="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}刷新数据</button></div>
@@ -187,6 +188,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     {(user.role === 'admin' || user.permissions?.includes('ai')) && <section className="mw-card"><Button icon={Settings} onClick={() => openModal({ kind: 'ai' })}>AI 助手</Button></section>}
     {mode === 'production' && can('quality') && <section className="mw-card"><Button icon={FilePenLine} onClick={() => navigate('quality')}>品质管理 · 在线验收</Button></section>}
     {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('bom')}>用料清单 · 备料测算</Button></section>}
+    {mode === 'production' && can('production') && <section className="mw-card"><Button onClick={() => navigate('production')}>生产单 · 完工入库</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>商户与仓库设置</Button>}</section>
     <Button onClick={() => openModal({ kind: 'account' })}>修改密码</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>业务管理</Button>
     {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>出入库二维码</Button>}

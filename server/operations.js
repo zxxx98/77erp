@@ -10,6 +10,7 @@ import { installTransfers } from './transfers.js';
 import { validInspectionDate } from '../shared/inspection.js';
 import { qualityTables, clearQuality, validateQualityBackup } from './quality.js';
 import { bomTables, clearBom, validateBomBackup } from './bom.js';
+import { productionTables, clearProduction, validateProductionBackup } from './production.js';
 
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -404,7 +405,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "product_changes", "templates", "payments", ...stockQrTables, ...qualityTables, ...bomTables];
+  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "product_changes", "templates", "payments", ...stockQrTables, ...qualityTables, ...bomTables, ...productionTables];
   const columns = Object.fromEntries(
     tables.map((table) => [
       table,
@@ -423,7 +424,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 23,
+    version: 24,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -431,11 +432,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 24) for (const table of productionTables) data[table] = [];
     if (value.version < 23) for (const table of bomTables) data[table] = [];
     if (value.version < 17) for (const table of qualityTables) data[table] = [];
     if (value.version < 18) data.quality_acceptances = [];
@@ -710,6 +712,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     validateStockQrBackup(data);
     validateQualityBackup(data);
     validateBomBackup(data);
+    validateProductionBackup(data);
     return data;
   }
   app.get(
@@ -730,6 +733,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
         quality_templates: data.quality_templates.length, quality_acceptances: data.quality_acceptances.length, quality_charts: data.quality_charts.length, quality_files: data.quality_template_files.length,
         boms: data.boms.length,
+        production_orders: data.production_orders.length,
       };
     }),
   );
@@ -748,6 +752,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         // Deferred references allow return records to refer to original orders regardless of array order.
         clearStockQr(db);
         clearQuality(db);
+        clearProduction(db);
         clearBom(db);
         db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
         db.exec(

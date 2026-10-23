@@ -58,7 +58,7 @@ function ProductPicker({ data, material = false, onSelect, disabled }) {
   </div>;
 }
 
-function BomCalculation({ bom, data, onBack }) {
+function BomCalculation({ bom, data, onBack, onCreateProduction }) {
   const [quantity, setQuantity] = useState(String(bom.base_quantity)), [snapshot, setSnapshot] = useState(null);
   const action = useBusiness();
   return <>
@@ -83,6 +83,7 @@ function BomCalculation({ bom, data, onBack }) {
         <Button icon={Download} onClick={() => downloadFile(bomCSV(snapshot), `备料表-${snapshot.product.barcode}-${snapshot.captured_at.slice(0, 10)}.csv`, 'text/csv;charset=utf-8')}>导出备料表</Button>
       </div>
       <p className="bom-result-summary" role="status">共 {snapshot.rows.length} 种材料，{snapshot.rows.filter(row => row.shortage > 0).length} 种缺料。</p>
+      {onCreateProduction && <Button onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>按本次数量新建生产单</Button>}
       <div className="bom-result-table"><table><thead><tr><th>材料</th><th>基准用量</th><th>本次需求</th><th>账面库存</th><th>缺料数量</th><th>备注</th></tr></thead>
         <tbody>{snapshot.rows.map(row => <tr key={row.product_id}>
           <td><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small></td>
@@ -94,7 +95,7 @@ function BomCalculation({ bom, data, onBack }) {
   </>;
 }
 
-export function Bom({ data, initialProduct }) {
+export function Bom({ data, initialProduct, onCreateProduction }) {
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0);
   const [filterProduct, setFilterProduct] = useState(initialProduct || null), [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [calculation, setCalculation] = useState(null);
@@ -133,7 +134,7 @@ export function Bom({ data, initialProduct }) {
       setEditor(null); setRevision(n => n + 1); setMessage('用料清单已保存。');
     });
   };
-  if (calculation) return <div className="bom-page"><BomCalculation key={`${calculation.id}:${calculation.version}`} bom={calculation} data={data} onBack={back} /></div>;
+  if (calculation) return <div className="bom-page"><BomCalculation key={`${calculation.id}:${calculation.version}`} bom={calculation} data={data} onBack={back} onCreateProduction={onCreateProduction} /></div>;
   if (editor) return <div className="bom-page">
     <PageHeading title={editor.id ? '编辑用料清单' : '新建用料清单'} description="配置基准产量和材料用量，保存后可按生产数量测算备料。">
       <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>返回用料清单</Button>
@@ -196,6 +197,7 @@ export function Bom({ data, initialProduct }) {
           <small>基准产量 {count(bom.base_quantity)} {bom.base_unit} · {bom.item_count} 种材料 · 更新人 {bom.updated_by_name}</small>
           <div><Badge tone={bom.enabled ? 'green' : 'orange'}>{bom.enabled ? '已启用' : '已停用'}</Badge>{!bom.product_active && <Badge tone="orange">成品已停用</Badge>}</div></div>
         <div className="bom-actions"><Button icon={Calculator} disabled={action.busy || !bom.enabled} onClick={() => open(bom.id, 'calculate')}>测算备料</Button>
+          {onCreateProduction && <Button disabled={action.busy || !bom.enabled || !bom.product_active} onClick={() => onCreateProduction(bom)}>新建生产单</Button>}
           <Button disabled={action.busy} onClick={() => open(bom.id, 'edit')}>编辑</Button>
           <Button icon={Copy} disabled={action.busy} onClick={() => open(bom.id, 'copy')}>复制</Button>
           <Button disabled={action.busy} onClick={() => action.run(async () => {

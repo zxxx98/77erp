@@ -16,29 +16,48 @@ export function installProductHistory(app, db) {
         o.created_at,o.partner,o.note,o.created_by_name AS operator,
         i.quantity,CASE WHEN o.stock_applied=0 THEN NULL WHEN o.type='in' THEN i.quantity ELSE -i.quantity END AS delta,
         NULL AS before_stock,NULL AS after_stock,
-        NULL AS before_cost,NULL AS after_cost,NULL AS before_price,NULL AS after_price
+        NULL AS before_cost,NULL AS after_cost,NULL AS before_price,NULL AS after_price,NULL AS unit
       FROM order_items i JOIN orders o ON o.id=i.order_id
       WHERE i.product_id=? AND o.warehouse_id=?
       UNION ALL
       SELECT 'void',i.id,o.id,o.number,o.type,o.kind,o.status,
         o.voided_at,o.partner,o.void_reason,'',i.quantity,
-        CASE WHEN o.stock_applied=0 THEN NULL WHEN o.type='in' THEN -i.quantity ELSE i.quantity END,NULL,NULL,NULL,NULL,NULL,NULL
+        CASE WHEN o.stock_applied=0 THEN NULL WHEN o.type='in' THEN -i.quantity ELSE i.quantity END,NULL,NULL,NULL,NULL,NULL,NULL,NULL
       FROM order_items i JOIN orders o ON o.id=i.order_id
       WHERE i.product_id=? AND o.warehouse_id=? AND o.status='void'
       UNION ALL
       SELECT a.kind,a.id,NULL,'','','','',a.created_at,'',a.reason,'',
-        NULL,ROUND(a.after_stock-a.before_stock,6),a.before_stock,a.after_stock,NULL,NULL,NULL,NULL
+        NULL,ROUND(a.after_stock-a.before_stock,6),a.before_stock,a.after_stock,NULL,NULL,NULL,NULL,NULL
       FROM stock_adjustments a JOIN products p ON p.id=a.product_id
       WHERE a.product_id=? AND p.warehouse_id=? AND ?
       UNION ALL
       SELECT 'price_change',c.id,NULL,'','','','',c.created_at,'','',c.created_by_name,
-        NULL,NULL,NULL,NULL,c.before_cost,c.after_cost,c.before_price,c.after_price
+        NULL,NULL,NULL,NULL,c.before_cost,c.after_cost,c.before_price,c.after_price,NULL
       FROM product_changes c JOIN products p ON p.id=c.product_id
       WHERE c.product_id=? AND p.warehouse_id=? AND ?
+      UNION ALL
+      SELECT 'production_in',o.id,NULL,o.number,'in','production',o.status,
+        o.completed_at,'',o.note,o.completed_by_name,o.completed_quantity,o.completed_quantity,NULL,NULL,NULL,NULL,NULL,NULL,o.unit
+      FROM production_orders o WHERE o.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND ?
+      UNION ALL
+      SELECT 'production_out',i.id,NULL,o.number,'out','production',o.status,
+        o.completed_at,'',o.note,o.completed_by_name,i.actual_quantity,-i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
+      FROM production_items i JOIN production_orders o ON o.id=i.production_id
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND i.actual_quantity>0 AND ?
+      UNION ALL
+      SELECT 'production_void_out',o.id,NULL,o.number,'out','production',o.status,
+        o.voided_at,'',o.void_reason,o.voided_by_name,o.completed_quantity,-o.completed_quantity,NULL,NULL,NULL,NULL,NULL,NULL,o.unit
+      FROM production_orders o WHERE o.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND o.status='void' AND ?
+      UNION ALL
+      SELECT 'production_void_in',i.id,NULL,o.number,'in','production',o.status,
+        o.voided_at,'',o.void_reason,o.voided_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
+      FROM production_items i JOIN production_orders o ON o.id=i.production_id
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND o.status='void' AND i.actual_quantity>0 AND ?
     ) ORDER BY created_at DESC,event_id DESC,event DESC LIMIT ? OFFSET ?`)
       .all(product.id, req.warehouse.id, product.id, req.warehouse.id,
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'stocktake')),
-        product.id, req.warehouse.id, Number(hasPermission(req.user, 'finance')), limit + 1, offset);
+        product.id, req.warehouse.id, Number(hasPermission(req.user, 'finance')),
+        ...Array.from({ length: 4 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(), limit + 1, offset);
     const records = rows.slice(0, limit).map(row => {
       if (row.event === 'price_change') return row;
       const { before_cost, after_cost, before_price, after_price, ...record } = row;

@@ -6,8 +6,8 @@ import './product-history.css';
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 const money = value => Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const label = record => record.event === 'price_change' ? '物料改价' : record.event === 'void' ? `作废${orderLabel({ ...record, status: 'active' })}`
-  : record.event === 'order' ? orderLabel(record) : record.event === 'reduce' ? '减少库存（报损）' : record.event === 'increase' ? '增加库存（退料）' : '库存盘点';
+const label = record => ({ production_in: '生产完工入库', production_out: '生产实际耗料', production_void_out: '作废生产扣回成品', production_void_in: '作废生产退回材料' }[record.event]) || (record.event === 'price_change' ? '物料改价' : record.event === 'void' ? `作废${orderLabel({ ...record, status: 'active' })}`
+  : record.event === 'order' ? orderLabel(record) : record.event === 'reduce' ? '减少库存（报损）' : record.event === 'increase' ? '增加库存（退料）' : '库存盘点');
 
 export function ProductHistory({ product, onViewOrder }) {
   const [opened, setOpened] = useState(false);
@@ -38,11 +38,12 @@ export function ProductHistory({ product, onViewOrder }) {
     }}>{opened ? '收起操作记录' : '查看操作记录'}</button>
     {opened && <div className="product-history-body">
       <h4>当前物料操作记录</h4>
-      <p className="muted">当前仓库的出入库、退货、作废记录，以及有权限查看的盘点／报损／退料、改价记录，按时间倒序显示。</p>
+      <p className="muted">当前仓库的出入库、退货、作废记录，以及有权限查看的生产、盘点／报损／退料、改价记录，按时间倒序显示。</p>
       <ol className="product-history-list">{records.map(record => <li key={`${record.event}:${record.event_id}`}>
-        <div className="product-history-title"><strong>{label(record)}</strong>{record.event !== 'price_change' && <span>{record.delta === null ? '期初已结转' : `${record.delta > 0 ? '+' : ''}${count(record.delta)} ${product.unit}`}</span>}</div>
+        <div className="product-history-title"><strong>{label(record)}</strong>{record.event !== 'price_change' && <span>{record.delta === null ? '期初已结转' : `${record.delta > 0 ? '+' : ''}${count(record.delta)} ${record.unit || product.unit}`}</span>}</div>
         <time dateTime={record.created_at}>{new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}</time>
         {record.order_id && <div><button type="button" className="text-button" onClick={() => onViewOrder(record.order_id)}>{record.number}</button>{record.partner && <span> · {record.partner}</span>}</div>}
+        {record.kind === 'production' && <p>{record.number}</p>}
         {record.before_stock !== null && <p>库存：{count(record.before_stock)} → {count(record.after_stock)} {product.unit}</p>}
         {record.event === 'price_change' && <>
           {record.before_cost !== record.after_cost && <p>成本价：¥{money(record.before_cost)} → ¥{money(record.after_cost)}</p>}

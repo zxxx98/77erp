@@ -169,7 +169,7 @@ test('referenced goods cannot be deleted, unit or lifecycle changes require revi
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 23);
+  assert.equal(backup.version, 24);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },

@@ -236,6 +236,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const post = req.method === 'POST';
     if (/^\/quality(?:\/|$)/.test(path) && hasPermission(req.user, 'quality')) return next();
     if (/^\/boms(?:\/|$)/.test(path) && hasPermission(req.user, 'bom')) return next();
+    if (/^\/production-orders(?:\/|$)/.test(path) && hasPermission(req.user, 'production') &&
+        (!/\/void$/.test(path) || hasPermission(req.user, 'corrections'))) return next();
     if (read && path === '/updates') return next();
     if ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
         (post && /^\/announcements\/\d+\/read$/.test(path))) return next();

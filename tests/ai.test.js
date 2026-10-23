@@ -80,6 +80,44 @@ test('BOM tools require independent permission, read actual single-level recipes
   f.use('get_bom', { bom_id: id }); assert.equal((await f.chat(f.staff)).status, 200);
 });
 
+test('production AI queries require production permission, use saved snapshots, hide costs and cannot mutate stock', async t => {
+  const f = await fixture(t);
+  const parent = f.db.prepare('SELECT * FROM products WHERE id=1').get(), material = f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const bom = (await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI生产配方', product_id: parent.id,
+    base_quantity: 1, base_unit: parent.unit, note: '', enabled: 1,
+    items: [{ product_id: material.id, quantity: 0.3, unit: material.unit, note: '' }] })).data;
+  const created = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), bom_id: bom.id, bom_version: bom.version, planned_quantity: 2, note: '真实生产草稿' });
+  assert.equal(created.status, 200); const order = created.data;
+  await f.permissions(['ai', 'bom']);
+  await f.chat(f.staff);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool => /^(search_production_orders|get_production_order)$/.test(tool.function.name)));
+  f.use('get_production_order', { production_id: order.id }); assert.equal((await f.chat(f.staff)).status, 403);
+  await f.permissions(['ai', 'production', 'finance']);
+  assert.equal((await f.request(f.admin, '/settings/ai', { ...f.settings, writes: false }, 'PUT')).status, 200);
+  const before = f.db.prepare('SELECT * FROM products ORDER BY id').all();
+  f.use('search_production_orders', { query: order.number, status: 'draft' });
+  const response = await f.chat(f.staff); assert.equal(response.status, 200); assert.deepEqual(response.data.actions, []);
+  let result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.total, 1); assert.equal(result.orders[0].planned_quantity, 2);
+  for (const name of ['search_production_orders', 'get_production_order']) assert.ok(f.calls.at(-1).body.tools.some(tool => tool.function.name === name));
+  assert.ok(!f.calls.at(-1).body.tools.some(tool => /(?:preview|complete|void).*production/.test(tool.function.name)));
+  f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.items[0].planned_quantity, 0.6); assert.equal(result.bom_version, bom.version);
+  assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
+  assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
+  const prompt = f.calls.at(-1).body.messages.find(message => message.role === 'system').content;
+  assert.match(prompt, /AI不创建、修改、完工或作废生产单/);
+  assert.match(prompt, /绝不能用采购入库、销售出库、盘点等工具代替生产记账/);
+  f.use('search_production_orders', { status: 'madeup' }); await f.chat(f.staff);
+  assert.match(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).error, /筛选/);
+  const remote = (await f.request(f.admin, '/warehouses', { name: 'AI生产空仓' })).data.id;
+  f.use('get_production_order', { production_id: order.id });
+  await f.request(f.staff, '/ai/chat', { message: '查询生产单' }, 'POST', remote);
+  assert.match(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).error, /当前仓库/);
+});
+
 test('AI configuration encrypts credentials, remains admin-only and requires separate usage permission', async t => {
   const f = await fixture(t);
   assert.equal((await f.chat(null)).status, 401);

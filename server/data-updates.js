@@ -15,6 +15,8 @@ export function installDataUpdates(app, db) {
     quality_charts: row => `'warehouse:' || ${row}.warehouse_id`,
     boms: row => `'warehouse:' || ${row}.warehouse_id`,
     bom_items: row => `'warehouse:' || (SELECT warehouse_id FROM boms WHERE id=${row}.bom_id)`,
+    production_orders: row => `'warehouse:' || ${row}.warehouse_id`,
+    production_items: row => `'warehouse:' || (SELECT warehouse_id FROM production_orders WHERE id=${row}.production_id)`,
     order_items: row => `'warehouse:' || (SELECT warehouse_id FROM orders WHERE id=${row}.order_id)`,
     payments: row => `'warehouse:' || (SELECT warehouse_id FROM orders WHERE id=${row}.order_id)`,
     stock_adjustments: row => `'warehouse:' || (SELECT warehouse_id FROM products WHERE id=${row}.product_id)`,
