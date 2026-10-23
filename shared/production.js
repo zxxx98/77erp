@@ -28,10 +28,10 @@ export function validateProductionCompletion(value, items) {
 // Compare against the saved recipe scaled to actual good output, not the plan.
 // Derived analysis must never prevent an otherwise valid stock posting. Older
 // orders may have actual output whose theoretical requirement exceeds the cap.
-export function productionMaterialAnalysis(item, completedQuantity, baseQuantity, actualQuantity) {
+export function productionMaterialAnalysis(item, completedQuantity, baseQuantity, actualQuantity, lossMethod = 'internal') {
   try {
     if (!validQuantity(actualQuantity)) throw new Error('实际耗料无效。');
-    const standard = productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate);
+    const standard = productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate, lossMethod);
     const difference = quantityUnits(actualQuantity) - quantityUnits(standard);
     return { standard_quantity: standard, variance_quantity: difference / QUANTITY_SCALE,
       variance_rate: difference * 100 / quantityUnits(standard), analysis_error: '' };

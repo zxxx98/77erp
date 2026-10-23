@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
+import { chooseOption } from './dropdown-helpers.js';
 
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 async function fixture(page) {
@@ -104,7 +105,8 @@ test('installed mobile PWA completes and reverses a production order with the se
   finally { await context.close(); }
 });
 
-async function standardLossFlow(page, pwa = false) {
+async function standardLossFlow(page, pwa = false, lossMethod = 'internal') {
+  const external = lossMethod === 'external', methodLabel = external ? '外包法' : '内扣法';
   const f = await fixture(page), errors = []; page.on('pageerror', error => errors.push(error.message));
   try {
     const scrap = await f.post('/products', { name: '回收料', barcode: 'LOSS-SCRAP', unit: '千克', category: '生产', cost: 1, price: 2, threshold: 0 });
@@ -114,6 +116,9 @@ async function standardLossFlow(page, pwa = false) {
     await page.goto(f.base + '/#bom');
     if (pwa) { await page.evaluate(() => navigator.serviceWorker.ready); await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true); }
     await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true })).toHaveValue('内扣法');
+    await chooseOption(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true }), lossMethod);
+    await expect(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true })).toHaveValue(methodLabel);
     await expect(page.getByLabel('材料甲标准损耗率', { exact: true })).toHaveValue('0');
     await page.getByLabel('材料甲用量', { exact: true }).fill('9');
     await page.getByLabel('材料甲标准损耗率', { exact: true }).fill('100');
@@ -121,7 +126,7 @@ async function standardLossFlow(page, pwa = false) {
     await expect(page.getByRole('alert')).toContainText('标准损耗率');
     await expect(page.getByLabel('材料甲用量', { exact: true })).toHaveValue('9');
     await page.getByLabel('材料甲标准损耗率', { exact: true }).fill('10');
-    await expect(page.locator('.bom-material').first()).toContainText('含损耗标准投入 10 千克');
+    await expect(page.locator('.bom-material').first()).toContainText(external ? '含损耗标准投入 9.9 千克' : '含损耗标准投入 10 千克');
     await page.screenshot({ path: test.info().outputPath('standard-loss-editor.png'), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: '保存BOM', exact: true }).click();
@@ -130,34 +135,35 @@ async function standardLossFlow(page, pwa = false) {
     await page.getByLabel('生产数量', { exact: true }).fill('10');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await expect(page.locator('.bom-result-table tbody tr').first()).toContainText('标准损耗率 10%');
-    await expect(page.locator('.bom-result-table tbody tr').first().locator('td').nth(2)).toHaveText('50 千克');
-    await expect(page.locator('.scrap-output')).toContainText('3 千克');
+    await expect(page.locator('.bom-result-table tbody tr').first().locator('td').nth(2)).toHaveText(external ? '49.5 千克' : '50 千克');
+    await expect(page.locator('.scrap-output')).toContainText(external ? '2.97 千克' : '3 千克');
     await page.getByRole('button', { name: '按本次数量新建生产单', exact: true }).click();
     await page.getByLabel('计划产量', { exact: true }).fill('4');
-    await expect(page.locator('.production-material').first()).toContainText('20 千克');
-    await expect(page.locator('.scrap-output')).toContainText('1.2 千克');
+    await expect(page.locator('.production-material').first()).toContainText(external ? '19.8 千克' : '20 千克');
+    await expect(page.locator('.scrap-output')).toContainText(external ? '1.188 千克' : '1.2 千克');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('库存未变动');
     const live = f.db.prepare('SELECT * FROM boms WHERE id=?').get(f.bom.id);
-    await f.post(`/boms/${live.id}`, { ...f.definition, version: live.version,
+    await f.post(`/boms/${live.id}`, { ...f.definition, version: live.version, loss_method: external ? 'internal' : 'external',
       items: [{ ...f.definition.items[0], quantity: 9, loss_rate: 25 }, f.definition.items[1]] });
     await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
+    await expect(page.getByText(`标准损耗计算方式：${methodLabel}`, { exact: false })).toBeVisible();
     await page.getByLabel('计划产量', { exact: true }).fill('6');
     await expect(page.locator('.production-material').first()).toContainText('标准损耗率 10%');
-    await expect(page.locator('.production-material').first()).toContainText('30 千克');
+    await expect(page.locator('.production-material').first()).toContainText(external ? '29.7 千克' : '30 千克');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
     await page.getByRole('button', { name: '登记完工', exact: true }).click();
     await page.getByLabel('合格成品数量', { exact: true }).fill('4');
     await page.getByLabel('材料甲实际耗料', { exact: true }).fill('22');
     const analysis = page.getByRole('group', { name: '材料甲耗料差异分析', exact: true });
-    await expect(analysis).toContainText('20 千克'); await expect(analysis).toContainText('+2 千克'); await expect(analysis).toContainText('+10%');
+    await expect(analysis).toContainText(external ? '19.8 千克' : '20 千克'); await expect(analysis).toContainText(external ? '+2.2 千克' : '+2 千克'); await expect(analysis).toContainText(external ? '+11.111111%' : '+10%');
     await expect(page.locator('.scrap-output')).toContainText('1.32 千克');
     await page.getByRole('button', { name: '回收料采用预计数量', exact: true }).click();
     await expect(page.getByLabel('回收料实际废料', { exact: true })).toHaveValue('1.32');
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
-    await expect(page.getByRole('group', { name: '材料甲耗料差异分析', exact: true })).toContainText('+2 千克');
+    await expect(page.getByRole('group', { name: '材料甲耗料差异分析', exact: true })).toContainText(external ? '+2.2 千克' : '+2 千克');
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[1].id).stock).toBe(78);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(scrap.id).stock).toBe(1.32);
     await page.screenshot({ path: test.info().outputPath('standard-loss-detail.png'), fullPage: true });
@@ -171,18 +177,18 @@ async function standardLossFlow(page, pwa = false) {
   } finally { await f.close(); }
 }
 
-for (const mobile of [false, true]) {
-  test(`${mobile ? 'mobile' : 'desktop'} configures standard loss and preserves its snapshot through planning, scrap, completion and void`, async ({ page }) => {
+for (const lossMethod of ['internal', 'external']) for (const mobile of [false, true]) {
+  test(`${mobile ? 'mobile' : 'desktop'} ${lossMethod} configures standard loss and preserves its snapshot through planning, scrap, completion and void`, async ({ page }) => {
     test.setTimeout(60000);
     if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
-    await standardLossFlow(page);
+    await standardLossFlow(page, false, lossMethod);
   });
 }
 
-test('mobile PWA uses standard loss with an active service worker', async ({ browser }) => {
+for (const lossMethod of ['internal', 'external']) test(`mobile PWA uses ${lossMethod} standard loss with an active service worker`, async ({ browser }) => {
   test.setTimeout(60000);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
-  try { await standardLossFlow(await context.newPage(), true); }
+  try { await standardLossFlow(await context.newPage(), true, lossMethod); }
   finally { await context.close(); }
 });
 

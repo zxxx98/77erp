@@ -10,7 +10,7 @@ import { Select } from '../Dropdown.jsx';
 import { downloadFile } from '../app/download.js';
 import { bomCSV } from '../bom-csv.js';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
-import { BOM_MAX_ITEMS, parseBomQuantity, validateBom, bomRequiredQuantity } from '../../shared/bom.js';
+import { BOM_MAX_ITEMS, parseBomQuantity, validateBom, bomRequiredQuantity, bomLossMethodLabels, bomLossMethodFormulas } from '../../shared/bom.js';
 import { validateScrapRules } from '../../shared/scrap.js';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import './bom.css';
@@ -19,7 +19,7 @@ const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDi
 const editable = bom => ({ ...bom, items: bom.items.map(item => ({ ...item, quantity: item.quantity_fraction || item.quantity })),
   scraps: (bom.scraps || []).map(row => ({ ...row, quantity: row.quantity_fraction || row.quantity })) });
 const newBom = product => ({ name: product ? `${product.name}BOM`.slice(0, 100) : '', product: product || null,
-  product_id: product?.id || null, base_quantity: 1, base_unit: product?.unit || '', note: '', enabled: 1, items: [], scraps: [] });
+  product_id: product?.id || null, base_quantity: 1, base_unit: product?.unit || '', loss_method: 'internal', note: '', enabled: 1, items: [], scraps: [] });
 
 function incrementUsage(value) {
   const parsed = parseBomQuantity(value);
@@ -30,10 +30,10 @@ function incrementUsage(value) {
   return next;
 }
 
-function UsagePreview({ value, unit, lossRate }) {
+function UsagePreview({ value, unit, lossRate, lossMethod }) {
   try {
     const parsed = parseBomQuantity(value);
-    const rate = parseQuantity(lossRate), gross = bomRequiredQuantity(parsed.quantity, 1, 1, parsed.quantity_fraction, rate);
+    const rate = parseQuantity(lossRate), gross = bomRequiredQuantity(parsed.quantity, 1, 1, parsed.quantity_fraction, rate, lossMethod);
     return <small className="bom-hint bom-usage-preview">{parsed.quantity_fraction && <>折合约 {count(parsed.quantity)} {unit}，按原分数测算。 </>}含损耗标准投入 {count(gross)} {unit}（对应基准产量）。</small>;
   } catch { return null; }
 }
@@ -96,7 +96,7 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
           setSnapshot(result);
         })}>{snapshot ? '重新测算' : '开始测算'}</Button>
       </div>
-      <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。材料需求包含标准损耗：净用量 ÷（1－损耗率），最终向上保留 6 位小数。</p>
+      <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。标准损耗采用{bomLossMethodLabels[bom.loss_method]}：{bomLossMethodFormulas[bom.loss_method]}，再按生产数量 ÷ 基准产量折算，最终向上保留 6 位小数。</p>
       {action.error && <p className="form-error" role="alert">{action.error}</p>}
     </section>
     {snapshot && <section className="panel bom-section">
@@ -140,7 +140,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
   const open = (id, kind) => action.run(async () => {
     const bom = await api(`/boms/${id}`, { warehouseId: data.warehouse_id });
     if (kind === 'calculate') { setCalculation(bom); action.setError(''); setMessage(''); }
-    else if (kind === 'copy') apply({ ...newBom(null), name: `${bom.name}副本`.slice(0, 100), base_quantity: bom.base_quantity, note: bom.note, items: editable(bom).items, scraps: editable(bom).scraps });
+    else if (kind === 'copy') apply({ ...newBom(null), name: `${bom.name}副本`.slice(0, 100), base_quantity: bom.base_quantity, loss_method: bom.loss_method, note: bom.note, items: editable(bom).items, scraps: editable(bom).scraps });
     else apply(bom);
   });
   const update = change => { setEditor(previous => ({ ...previous, ...change })); action.setError(''); };
@@ -148,7 +148,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
     event.preventDefault();
     action.run(async () => {
       const body = { name: editor.name, product_id: editor.product_id, base_quantity: parseQuantity(editor.base_quantity, true),
-        base_unit: editor.product?.unit || '', note: editor.note, enabled: editor.enabled,
+        base_unit: editor.product?.unit || '', loss_method: editor.loss_method, note: editor.note, enabled: editor.enabled,
         items: editor.items.map(item => ({ product_id: item.product_id, ...parseBomQuantity(item.quantity), loss_rate: parseQuantity(item.loss_rate), unit: item.product.unit, note: item.note })),
         scraps: editor.scraps.map(row => ({ product_id: row.product_id, method: row.method, source_product_id: row.source_product_id,
           ...parseBomQuantity(row.quantity), unit: row.product.unit, note: row.note })),
@@ -180,7 +180,9 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>材料用量</h2><span className="bom-hint">已添加 {editor.items.length} / {BOM_MAX_ITEMS} 种</span></div>
         <p className="bom-hint">填写生产 {editor.base_quantity || '…'} {editor.product?.unit || '单位成品'} 所需的材料净用量。半成品按一项材料计算。</p>
-        <p className="bom-hint" id="bom-loss-help">标准损耗率按投入量计算，范围 0%（含）至 100%（不含）。标准投入＝净用量 ÷（1－损耗率）；例如净用量 90、损耗率 10%，需投入 100。用量已含损耗时，请先核对净用量，避免重复计算。废料另按规则计算，不再加到投入量上。</p>
+        <label className="bom-loss-method">标准损耗计算方式<Select aria-label="标准损耗计算方式" aria-describedby="bom-loss-help" value={editor.loss_method} disabled={action.busy}
+          onChange={e => update({ loss_method: e.target.value })}>{Object.entries(bomLossMethodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
+        <p className="bom-hint" id="bom-loss-help">本张 BOM 全部材料采用{bomLossMethodLabels[editor.loss_method]}，标准投入＝{bomLossMethodFormulas[editor.loss_method]}。{editor.loss_method === 'external' ? '损耗率按净用量计算；例如净用量 90、损耗率 10%，需投入 99。' : '损耗率按投入量计算；例如净用量 90、损耗率 10%，需投入 100。'}标准损耗率范围 0%（含）至 100%（不含）。用量已含损耗时，请先核对净用量，避免重复计算。废料另按规则计算，不再加到投入量上。</p>
         <p className="bom-hint" id="bom-usage-help">用量支持小数或分数，如 1/40 表示每 40 件成品分摊 1 份材料（基准产量为 1 时）。分数按原比例测算，不自动按整箱取整；实际耗料在生产完工时核对。</p>
         <ProductPicker data={data} material disabled={action.busy} onSelect={product => {
           if (product.id === editor.product_id) { action.setError('成品不能作为自身的材料。'); return; }
@@ -202,7 +204,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
           <label>材料备注<input aria-label={`${item.product.name}备注`} maxLength={200} value={item.note} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
           <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除材料 ${item.product.name}`} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>移除</Button>
-          <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} />
+          <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} lossMethod={editor.loss_method} />
         </div>)}</div>
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>废料产出</h2><span className="bom-hint">可选 · {editor.scraps.length} / 100 种</span></div>

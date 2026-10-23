@@ -1,7 +1,12 @@
 import { MAX_QUANTITY, QUANTITY_SCALE, validQuantity, quantityUnits, parseQuantity } from './quantity.js';
 
 export const BOM_MAX_ITEMS = 100;
-// Percentage points: 10 means 10% of gross input, not a 10% markup on net use.
+export const bomLossMethodLabels = { internal: '内扣法', external: '外包法' };
+export const bomLossMethodFormulas = { internal: '净用量 ÷（1－损耗率）', external: '净用量 ×（1＋损耗率）' };
+export function validateBomLossMethod(value) {
+  if (!['internal', 'external'].includes(value)) throw new Error('请选择有效的标准损耗计算方式（内扣法或外包法）。');
+}
+// Percentage points: 10 means 10%; the BOM selects the calculation method.
 export function validateBomLossRate(value) {
   if (!validQuantity(value) || value >= 100) throw new Error('标准损耗率需为 0（含）至 100（不含）的百分数，最多 6 位小数。');
 }
@@ -37,6 +42,7 @@ export function validateBom(value) {
   if (!value || !id(value.product_id)) throw new Error('请选择成品物料。');
   if (!text(value.name, 100, true)) throw new Error('请填写 1–100 字的BOM名称。');
   if (!validQuantity(value.base_quantity, true)) throw new Error('基准产量需为正数，最多 6 位小数。');
+  validateBomLossMethod(value.loss_method === undefined ? 'internal' : value.loss_method);
   if (!text(value.base_unit, 100, true) || !text(value.note, 500) || ![0, 1].includes(value.enabled))
     throw new Error('单位、备注或启用状态无效。');
   if (!Array.isArray(value.items) || !value.items.length || value.items.length > BOM_MAX_ITEMS)
@@ -54,17 +60,20 @@ export function validateBom(value) {
   return value;
 }
 
-// Keep fractions and the gross-input loss allowance exact through scaling;
+// Keep fractions and the selected loss allowance exact through scaling;
 // round only the final demand up to a millionth.
-export function bomRequiredQuantity(quantity, productionQuantity, baseQuantity, fraction = '', lossRate = 0) {
+export function bomRequiredQuantity(quantity, productionQuantity, baseQuantity, fraction = '', lossRate = 0, lossMethod = 'internal') {
   if (![quantity, productionQuantity, baseQuantity].every(value => validQuantity(value, true)))
     throw new Error('生产数量和用量需为正数，最多 6 位小数。');
   validateBomQuantity(quantity, fraction);
   validateBomLossRate(lossRate);
+  validateBomLossMethod(lossMethod);
   const [numerator, denominator] = fraction ? fractionParts(fraction) : [BigInt(quantityUnits(quantity)), BigInt(QUANTITY_SCALE)];
   const percentScale = BigInt(100 * QUANTITY_SCALE);
-  const divisor = denominator * BigInt(quantityUnits(baseQuantity)) * (percentScale - BigInt(quantityUnits(lossRate)));
-  const result = ceilDivide(numerator * BigInt(quantityUnits(productionQuantity)) * BigInt(QUANTITY_SCALE) * percentScale, divisor);
+  const rate = BigInt(quantityUnits(lossRate));
+  const multiplier = lossMethod === 'external' ? percentScale + rate : percentScale;
+  const divisor = denominator * BigInt(quantityUnits(baseQuantity)) * (lossMethod === 'external' ? percentScale : percentScale - rate);
+  const result = ceilDivide(numerator * BigInt(quantityUnits(productionQuantity)) * BigInt(QUANTITY_SCALE) * multiplier, divisor);
   if (result > BigInt(MAX_QUANTITY * QUANTITY_SCALE)) throw new Error('材料需求超出数量上限，请减少生产数量。');
   return Number(result) / QUANTITY_SCALE;
 }

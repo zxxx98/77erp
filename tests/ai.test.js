@@ -37,10 +37,10 @@ async function fixture(t, dbPath = ':memory:') {
   return { db, request, admin, staff, id, permissions, settings, calls, replies, use, chat, order };
 }
 
-test('BOM tools require independent permission, read actual single-level recipes and never write inventory', async t => {
+for (const lossMethod of ['internal', 'external']) test(`${lossMethod} BOM tools require independent permission, read actual single-level recipes and never write inventory`, async t => {
   const f = await fixture(t);
   const parent = f.db.prepare('SELECT * FROM products WHERE id=1').get(), material = f.db.prepare('SELECT * FROM products WHERE id=2').get();
-  const saved = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI用料表', product_id: parent.id,
+  const saved = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI用料表', product_id: parent.id, loss_method: lossMethod,
     base_quantity: 10, base_unit: parent.unit, note: '', enabled: 1,
     items: [{ product_id: material.id, quantity: 0.025, quantity_fraction: '1/40', loss_rate: 20, unit: material.unit, note: '实际配方' }],
     scraps: [{ product_id: 3, method: 'output', source_product_id: null, quantity: 2, unit: f.db.prepare('SELECT unit FROM products WHERE id=3').get().unit, note: '回收' }] });
@@ -61,14 +61,14 @@ test('BOM tools require independent permission, read actual single-level recipes
   f.use('get_bom', { bom_id: id }); await f.chat(f.staff);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].quantity, 2); assert.equal(result.scraps[0].method, 'output');
-  assert.equal(result.items[0].loss_rate, 20); assert.equal(result.items[0].quantity, 0.025); assert.equal(result.items[0].quantity_fraction, '1/40'); assert.equal(result.items[0].product.id, material.id);
+  assert.equal(result.loss_method, lossMethod); assert.equal(result.items[0].loss_rate, 20); assert.equal(result.items[0].quantity, 0.025); assert.equal(result.items[0].quantity_fraction, '1/40'); assert.equal(result.items[0].product.id, material.id);
   assert.ok(!JSON.stringify(result).includes('inventory_value_cents'));
   f.use('calculate_bom', { bom_id: id, production_quantity: 2 });
   const calculation = await f.chat(f.staff);
   assert.equal(calculation.status, 200); assert.deepEqual(calculation.data.actions, []);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].planned_quantity, 0.4);
-  assert.equal(result.rows[0].required, 0.00625); assert.equal(result.rows[0].quantity_fraction, '1/40'); assert.equal(result.rows[0].stock, material.stock);
+  assert.equal(result.loss_method, lossMethod); assert.equal(result.rows[0].required, lossMethod === 'internal' ? 0.00625 : 0.006); assert.equal(result.rows[0].quantity_fraction, '1/40'); assert.equal(result.rows[0].stock, material.stock);
   assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /展示用量时优先使用原分数/);
   assert.ok(!JSON.stringify(result).includes('cost'));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
@@ -84,10 +84,10 @@ test('BOM tools require independent permission, read actual single-level recipes
   f.use('get_bom', { bom_id: id }); assert.equal((await f.chat(f.staff)).status, 200);
 });
 
-test('production AI queries require production permission, use saved snapshots, hide costs and cannot mutate stock', async t => {
+for (const lossMethod of ['internal', 'external']) test(`${lossMethod} production AI queries require production permission, use saved snapshots, hide costs and cannot mutate stock`, async t => {
   const f = await fixture(t);
   const parent = f.db.prepare('SELECT * FROM products WHERE id=1').get(), material = f.db.prepare('SELECT * FROM products WHERE id=2').get();
-  const bom = (await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI生产配方', product_id: parent.id,
+  const bom = (await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI生产配方', product_id: parent.id, loss_method: lossMethod,
     base_quantity: 1, base_unit: parent.unit, note: '', enabled: 1,
     items: [{ product_id: material.id, quantity: 0.333334, quantity_fraction: '1/3', loss_rate: 20, unit: material.unit, note: '' }],
     scraps: [{ product_id: 3, method: 'output', source_product_id: null, quantity: 0.5, unit: f.db.prepare('SELECT unit FROM products WHERE id=3').get().unit, note: '' }] })).data;
@@ -110,14 +110,14 @@ test('production AI queries require production permission, use saved snapshots, 
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].planned_quantity, 1.5); assert.equal(result.scraps[0].actual_quantity, null);
   assert.equal(result.items[0].standard_quantity, null);
-  assert.equal(result.items[0].planned_quantity, 1.25); assert.equal(result.items[0].base_quantity_fraction, '1/3'); assert.equal(result.bom_version, bom.version);
+  assert.equal(result.loss_method, lossMethod); assert.equal(result.items[0].planned_quantity, lossMethod === 'internal' ? 1.25 : 1.2); assert.equal(result.items[0].base_quantity_fraction, '1/3'); assert.equal(result.bom_version, bom.version);
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
   const prompt = f.calls.at(-1).body.messages.find(message => message.role === 'system').content;
   assert.match(prompt, /废料产出规则/);
-  assert.match(prompt, /loss_rate 是按投入量计算/);
-  assert.match(prompt, /不是净用量乘/);
+  assert.match(prompt, /internal 内扣法按投入量计算/);
+  assert.match(prompt, /external 外包法按净用量计算/);
   assert.match(prompt, /生产单保存自己的损耗率快照/);
   assert.match(prompt, /variance_rate是以标准耗料为分母的百分数/);
   assert.match(prompt, /不按计划产量或当前BOM重算/);
@@ -129,8 +129,8 @@ test('production AI queries require production permission, use saved snapshots, 
   const afterCompletion = f.db.prepare('SELECT * FROM products ORDER BY id').all();
   f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
-  assert.equal(result.items[0].loss_rate, 20); assert.equal(result.items[0].standard_quantity, 1.25); assert.equal(result.items[0].variance_quantity, -0.05);
-  assert.equal(result.items[0].variance_rate, -4); assert.equal(result.items[0].variance_reason, '调机耗料');
+  assert.equal(result.items[0].loss_rate, 20); assert.equal(result.loss_method, lossMethod); assert.equal(result.items[0].standard_quantity, lossMethod === 'internal' ? 1.25 : 1.2); assert.equal(result.items[0].variance_quantity, lossMethod === 'internal' ? -0.05 : 0);
+  assert.equal(result.items[0].variance_rate, lossMethod === 'internal' ? -4 : 0); assert.equal(result.items[0].variance_reason, '调机耗料');
   assert.equal(result.scraps[0].expected_quantity, 1.5); assert.equal(result.scraps[0].actual_quantity, 1.4); assert.equal(result.scraps[0].disposition, 'stock');
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), afterCompletion);

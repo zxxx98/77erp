@@ -6,7 +6,7 @@ import { notifyStockChanges } from './notifications.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity } from '../shared/quantity.js';
-import { validateBomLossRate } from '../shared/bom.js';
+import { validateBomLossRate, validateBomLossMethod } from '../shared/bom.js';
 import { validateProductionPlan, validateProductionCompletion, productionPlannedQuantity, productionMaterialAnalysis } from '../shared/production.js';
 import { productionBatchSummary } from '../shared/production-batches.js';
 
@@ -66,6 +66,8 @@ export function migrateProduction(db) {
     db.exec("ALTER TABLE production_items ADD COLUMN variance_reason TEXT NOT NULL DEFAULT ''");
   if (!db.prepare('PRAGMA table_info(production_items)').all().some(column => column.name === 'loss_rate'))
     db.exec('ALTER TABLE production_items ADD COLUMN loss_rate REAL NOT NULL DEFAULT 0 CHECK(loss_rate>=0 AND loss_rate<100)');
+  if (!db.prepare('PRAGMA table_info(production_orders)').all().some(column => column.name === 'loss_method'))
+    db.exec("ALTER TABLE production_orders ADD COLUMN loss_method TEXT NOT NULL DEFAULT 'internal' CHECK(loss_method IN ('internal','external'))");
   db.exec(`CREATE TABLE IF NOT EXISTS production_batches (
     id INTEGER PRIMARY KEY, production_id INTEGER NOT NULL REFERENCES production_orders(id), batch_number INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','void')), completed_quantity REAL NOT NULL,
@@ -159,13 +161,13 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
     }
     order.batches = order.batches.map(batch => ({ ...batch,
       items: batch.items.map(row => { const item = order.items.find(item => item.product_id === row.product_id); return { ...item, ...row,
-        ...productionMaterialAnalysis(item, batch.completed_quantity, order.base_quantity, row.actual_quantity), variance_reasons: undefined }; }),
+        ...productionMaterialAnalysis(item, batch.completed_quantity, order.base_quantity, row.actual_quantity, order.loss_method), variance_reasons: undefined }; }),
       scraps: batch.scraps.map(row => ({ ...order.scraps.find(item => item.product_id === row.product_id), ...row, stock_quantity: undefined, discard_quantity: undefined })),
     }));
     order.status = publicStatus(order);
     order.batch_count = order.batches.filter(batch => batch.status === 'active').length;
     order.items = order.items.map(item => ({ ...item, ...(order.completed_at
-      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity)
+      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method)
       : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
     order.captured_at = new Date().toISOString();
     return costs ? order : productionWithoutCosts(order);
@@ -214,10 +216,10 @@ export function installProduction(app, db) {
     const plan = prepareProduction(db, req), bom = getBom(db, req.warehouse.id, plan.bom_id);
     const at = new Date().toISOString(), owner = actor(req), number = `SC${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const id = Number(db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,
-      product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,note,
-      created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
+      product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,
+      created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
       .run(number, req.warehouse.id, bom.id, bom.version, bom.name, bom.product_id, bom.product.name, bom.product.barcode,
-        bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
+        bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, bom.loss_method, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
     const insert = db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,base_quantity_fraction,loss_rate,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
     plan.rows.forEach((row, index) => insert.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.required, row.note, index));
     const insertScrap = db.prepare(`INSERT INTO production_scraps(production_id,product_id,name,barcode,specification,unit,method,source_product_id,quantity,quantity_fraction,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -227,9 +229,9 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id', route(req => {
     const order = current(req); draft(req, order); validateProductionPlan(req.body);
     for (const item of order.items) db.prepare('UPDATE production_items SET planned_quantity=? WHERE id=?')
-      .run(productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate), item.id);
+      .run(productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate, order.loss_method), item.id);
     const plannedMaterials = order.items.map(item => ({ product_id: item.product_id,
-      quantity: productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate) }));
+      quantity: productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate, order.loss_method) }));
     for (const row of order.scraps) db.prepare('UPDATE production_scraps SET planned_quantity=? WHERE id=?')
       .run(scrapExpectedQuantity(row, req.body.planned_quantity, order.base_quantity, plannedMaterials), row.id);
     db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
@@ -357,6 +359,7 @@ export function validateProductionBackup(data) {
   for (const order of orders.values()) {
     const rows = grouped.get(order.id) || [], completed = order.completed_at !== null, batches = batchGroups.get(order.id) || [];
     validateProductionPlan(order);
+    validateBomLossMethod(order.loss_method);
     if (![0, 1].includes(order.batch_tracking) || (batches.length && order.batch_tracking !== 1) || (order.batch_tracking === 1 && completed && !batches.length) ||
         !['draft', 'completed', 'void'].includes(order.status) || !isId(order.version) || !isId(order.bom_version) ||
         !text(order.number, 100, true) || !/^SC\d{8}-[a-f0-9]{12}$/.test(order.number) || numbers.has(order.number) || !text(order.bom_name, 100, true) ||
@@ -390,7 +393,7 @@ export function validateProductionBackup(data) {
       if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || row.product_id === order.product_id ||
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) || !text(row.variance_reason, 500) || (!completed && row.variance_reason !== '') ||
           !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 || !validQuantity(row.base_quantity, true) ||
-          row.planned_quantity !== productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity, row.base_quantity_fraction, row.loss_rate) ||
+          row.planned_quantity !== productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity, row.base_quantity_fraction, row.loss_rate, order.loss_method) ||
           (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))
         fail('备份生产材料数量、成本或快照无效。');
     }

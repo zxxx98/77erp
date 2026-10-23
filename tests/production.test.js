@@ -94,7 +94,7 @@ test('loss snapshots drive plans and actual-output variance without double-count
     scraps: [{ product_id: scrap, quantity: 2, disposition: 'stock' }, { product_id: outputScrap, quantity: 1.5, disposition: 'discard' }] }));
   assert.equal(done.items[0].standard_quantity, 30); assert.equal(done.items[0].variance_quantity, 3); assert.equal(done.items[0].variance_rate, 10);
   assert.deepEqual(done.scraps.map(row => row.expected_quantity), [1.98, 1.5], 'completion uses actual input, not a second loss multiplier');
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 30);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 31);
   for (const change of [
     data => { data.bom_items[0].loss_rate = 100; },
     data => { data.production_items.at(-1).loss_rate = 25; },
@@ -130,6 +130,55 @@ test('database upgrades and format 27 restore zero loss rates without changing o
     f.db.exec(`DROP TRIGGER data_revision_${table}_UPDATE; ALTER TABLE ${table} DROP COLUMN loss_rate;`);
   migrateBom(f.db); migrateProduction(f.db);
   for (const table of ['bom_items', 'production_items']) assert.ok(f.db.prepare(`SELECT loss_rate FROM ${table}`).all().every(row => row.loss_rate === 0));
+});
+
+test('external loss snapshots drive rescaling, batch standards and restore independently of the current BOM', async t => {
+  const f = await fixture(t);
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, loss_method: 'external',
+    items: [{ product_id: f.material, quantity: 9, loss_rate: 10, unit: '件', note: '' }] })));
+  const draft = await f.create({ bom_version: bom.version });
+  assert.equal(draft.loss_method, 'external'); assert.equal(draft.items[0].planned_quantity, 49.5);
+  f.ok(await f.command(`/boms/${bom.id}`, { ...bom, loss_method: 'internal' }));
+  const resized = f.ok(await f.command(`/production-orders/${draft.id}`, { version: draft.version, planned_quantity: 6, note: '' }));
+  assert.equal(resized.loss_method, 'external'); assert.equal(resized.items[0].planned_quantity, 29.7);
+  const batch = f.ok(await f.command(`/production-orders/${draft.id}/complete`, { version: resized.version, completed_quantity: 2,
+    finish_order: false, items: [{ product_id: f.material, quantity: 11 }] }));
+  const done = f.ok(await f.command(`/production-orders/${draft.id}/complete`, { version: batch.version, completed_quantity: 4,
+    items: [{ product_id: f.material, quantity: 22 }] }));
+  assert.equal(done.items[0].standard_quantity, 29.7); assert.equal(done.items[0].variance_quantity, 3.3);
+  assert.deepEqual(done.batches.map(batch => batch.items[0].standard_quantity), [9.9, 19.8]);
+  const backup = f.ok(await f.request('/backup'));
+  for (const change of [
+    data => { data.boms[0].loss_method = 'invalid'; },
+    data => { delete data.boms[0].loss_method; },
+    data => { data.production_orders[0].loss_method = 'internal'; },
+    data => { data.production_orders[0].loss_method = null; },
+    data => { delete data.production_orders[0].loss_method; },
+  ]) {
+    const invalid = structuredClone(backup); change(invalid.data);
+    assert.equal((await f.request('/backup/preview', { backup: invalid })).status, 400);
+  }
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  const loaded = f.ok(await f.request(`/production-orders/${done.id}`));
+  assert.equal(loaded.loss_method, 'external'); assert.equal(loaded.items[0].standard_quantity, 29.7);
+});
+
+test('format 30 backups and existing databases default to internal loss without changing saved standards', async t => {
+  const f = await fixture(t);
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version,
+    items: [{ product_id: f.material, quantity: 9, loss_rate: 10, unit: '件', note: '' }] })));
+  const draft = await f.create({ bom_version: bom.version });
+  const backup = f.ok(await f.request('/backup')); backup.version = 30;
+  for (const table of ['boms', 'production_orders']) for (const row of backup.data[table]) delete row.loss_method;
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal((await f.request(`/boms/${bom.id}`)).data.loss_method, 'internal');
+  const loaded = f.ok(await f.request(`/production-orders/${draft.id}`));
+  assert.equal(loaded.loss_method, 'internal'); assert.equal(loaded.items[0].planned_quantity, 50);
+  for (const table of ['boms', 'production_orders']) f.db.exec(`DROP TRIGGER data_revision_${table}_UPDATE; ALTER TABLE ${table} DROP COLUMN loss_method;`);
+  migrateBom(f.db); migrateProduction(f.db); migrateBom(f.db); migrateProduction(f.db);
+  for (const table of ['boms', 'production_orders']) assert.equal(f.db.prepare(`SELECT loss_method FROM ${table} LIMIT 1`).get().loss_method, 'internal');
 });
 
 test('fractional recipes survive production snapshots, rescaling, completion, backup and reversal', async t => {
@@ -377,7 +426,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 30); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 31); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -522,7 +571,7 @@ test('scrap backup validates rule relations and completion state, restores quant
   const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
   const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
-  assert.equal(backup.version, 30);
+  assert.equal(backup.version, 31);
   for (const tamper of [
     data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
     data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
@@ -639,7 +688,7 @@ test('variance reasons survive backup and void, reject malformed drafts, and for
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
     { product_id: f.material, quantity: 16, variance_reason: '调机\n材料偏差' }, { product_id: f.second, quantity: 1.5, variance_reason: '字'.repeat(500) },
   ] })));
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 30);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 31);
   assert.ok(backup.data.production_items.every(item => !('standard_quantity' in item)));
   for (const change of [
     data => { data.production_items[0].variance_reason = '草稿不得提前记完工原因'; },

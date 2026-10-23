@@ -14,6 +14,8 @@
 .bom-page .bom-checkbox { flex-direction: row; align-items: center; margin-top: 18px; }
 .bom-checkbox input { width: 17px; height: 17px; }
 .bom-note { margin-top: 20px; }
+.bom-loss-method { max-width: 320px; }
+.bom-loss-method .dropdown { width: 100%; min-width: 0; }
 .bom-selected-product { padding: 12px 14px; background: #eff5ff; border-radius: 8px; margin-bottom: 14px; }
 .bom-search-row, .bom-actions, .bom-list-filters, .bom-calculate-form, .bom-editor-actions, .bom-filter-product { display: flex; align-items: center; gap: 10px; }
 .bom-search-row > input { flex: 1; }

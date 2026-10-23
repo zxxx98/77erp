@@ -107,6 +107,42 @@ test('loss rates belong to individual BOM materials, preserve older-client edits
   assert.equal(reset.status, 200); assert.equal(reset.data.items[0].loss_rate, 0);
 });
 
+test('external loss keeps exact fractions, rounds only final demand and rejects invalid methods', () => {
+  assert.equal(bomRequiredQuantity(90, 1, 1, '', 10, 'external'), 99);
+  assert.equal(bomRequiredQuantity(100, 1, 1, '', 5, 'external'), 105);
+  assert.equal(bomRequiredQuantity(0.333334, 3, 1, '1/3', 20, 'external'), 1.2);
+  assert.equal(bomRequiredQuantity(0.333334, 3, 2, '1/3', 20, 'external'), 0.6);
+  assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 0.000001, 'external'), 0.000002);
+  assert.equal(bomRequiredQuantity(90, 1, 1, '', 0, 'external'), 90);
+  assert.throws(() => bomRequiredQuantity(99999999, 1, 1, '', 1, 'external'), /上限/);
+  for (const method of ['', null, 0, 'other', 'constructor'])
+    assert.throws(() => bomRequiredQuantity(1, 1, 1, '', 10, method), /计算方式/);
+});
+
+test('BOM loss method controls demand and scrap, survives older clients and invalidates stale calculations', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP');
+  const bom = await f.create({ loss_method: 'external', items: [{ product_id: f.material, quantity: 90, loss_rate: 10, unit: '个', note: '' }],
+    scraps: [{ product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 6, unit: '个', note: '' }] });
+  assert.equal(bom.loss_method, 'external');
+  const plan = (await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1 })).data;
+  assert.equal(plan.loss_method, 'external'); assert.equal(plan.rows[0].required, 99); assert.equal(plan.rows[0].shortage, 99);
+  assert.equal(plan.scraps[0].planned_quantity, 5.94);
+  const csv = parseCSV(bomCSV(plan)); assert.equal(csv[3][5], '外包法');
+  assert.match(csv.at(-1)[1], /净用量 ×（1＋损耗率）/);
+  const edited = await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version }));
+  assert.equal(edited.status, 200); assert.equal(edited.data.loss_method, 'external');
+  for (const loss_method of ['', null, 1, 'other']) {
+    const invalid = await f.command(`/boms/${bom.id}`, { ...edited.data, loss_method });
+    assert.equal(invalid.status, 400); assert.match(invalid.data.error, /计算方式/);
+  }
+  const switched = await f.command(`/boms/${bom.id}`, { ...edited.data, loss_method: 'internal' });
+  assert.equal(switched.status, 200); assert.equal(switched.data.loss_method, 'internal');
+  assert.notEqual(switched.data.version, edited.data.version);
+  assert.equal((await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1, version: edited.data.version })).status, 409);
+  const recalculated = (await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1 })).data;
+  assert.equal(recalculated.rows[0].required, 1.388889);
+});
+
 test('BOM rejects malformed, duplicate, self, inactive, unit-mismatched and cross-warehouse materials atomically', async t => {
   const f = await fixture(t);
   const other = (await f.request('/warehouses', { name: '外仓' })).data.id;
@@ -232,7 +268,7 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 30);
+  assert.equal(backup.version, 31);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },
