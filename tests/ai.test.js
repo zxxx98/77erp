@@ -897,3 +897,31 @@ test('AI charts expose datetime and false boolean fields and preview percent val
   f.use('preview_quality_chart',{...f.chart,config:{...f.chart.config,groupBy:{fieldId:'company'}}});
   const preview=await f.chat(f.admin);assert.equal(preview.status,200);assert.deepEqual(preview.data.actions[0].preview.rows.map(row=>[row.x,row.series,row.value]),[['2026-10-20','false',95]]);
 });
+
+test('AI distinguishes partial production, reports active batch facts and hides all nested batch costs', async t => {
+  const f = await fixture(t), material = f.db.prepare('SELECT * FROM products WHERE id=2').get(), parent = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  const post = async (path, body) => {
+    const result = await f.request(f.admin, path, { request_id: randomUUID(), ...body });
+    assert.equal(result.status, 200, JSON.stringify(result.data)); return result.data;
+  };
+  const bom = await post('/boms', { product_id: parent.id, name: '分批生产配方', base_quantity: 1, base_unit: parent.unit, note: '', enabled: 1,
+    items: [{ product_id: material.id, quantity: 1, loss_rate: 20, unit: material.unit, note: '' }] });
+  const order = await post('/production-orders', { bom_id: bom.id, bom_version: bom.version, planned_quantity: 10, note: '' });
+  const partial = await post(`/production-orders/${order.id}/complete`, { version: order.version, completed_quantity: 2, finish_order: false,
+    items: [{ product_id: material.id, quantity: 3, variance_reason: '首批调机' }], note: '首批' });
+  await f.permissions(['ai', 'production', 'finance']);
+  f.use('search_production_orders', { status: 'in_progress' }); await f.chat(f.staff);
+  let result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.total, 1); assert.equal(result.orders[0].status, 'in_progress'); assert.equal(result.orders[0].completed_quantity, 2);
+  assert.ok(f.calls.at(-1).body.tools.find(tool => tool.function.name === 'search_production_orders').function.parameters.properties.status.enum.includes('in_progress'));
+  f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.batches[0].items[0].standard_quantity, 2.5); assert.equal(result.batches[0].items[0].variance_quantity, 0.5);
+  assert.equal(result.batches[0].note, '首批'); assert.equal(/cost|inventory_value|price/.test(JSON.stringify(result)), false);
+  assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /in_progress表示已有有效批次/);
+  const reversed = await post(`/production-orders/${order.id}/batches/${partial.batches[0].id}/void`, { version: partial.version, reason: '更正首批' });
+  assert.equal(reversed.status, 'draft');
+  f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.completed_quantity, null); assert.equal(result.batches[0].status, 'void'); assert.equal(result.items[0].standard_quantity, null);
+});

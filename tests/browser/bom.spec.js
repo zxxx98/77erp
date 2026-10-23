@@ -205,7 +205,7 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await expect(page.getByLabel('包装纸箱实际耗料', { exact: true })).toHaveValue('0.15');
     await expect(page.getByLabel('分摊辅料实际耗料', { exact: true })).toHaveValue('2');
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[1].id).stock).toBe(9.85);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[2].id).stock).toBe(8);

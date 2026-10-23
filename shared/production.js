@@ -1,7 +1,7 @@
 import { validQuantity, quantityUnits, QUANTITY_SCALE } from './quantity.js';
 import { bomRequiredQuantity } from './bom.js';
 
-export const productionStatusLabels = { draft: '待生产', completed: '已完工', void: '已作废' };
+export const productionStatusLabels = { draft: '待生产', in_progress: '生产中', completed: '已完工', void: '已作废' };
 export const productionPlannedQuantity = bomRequiredQuantity;
 
 export function validateProductionPlan(value) {
@@ -11,6 +11,8 @@ export function validateProductionPlan(value) {
 
 export function validateProductionCompletion(value, items) {
   if (!value || !validQuantity(value.completed_quantity, true)) throw new Error('合格成品数量需为正数，最多 6 位小数。');
+  if (value.finish_order !== undefined && typeof value.finish_order !== 'boolean') throw new Error('请明确本批入库后是否结束生产。');
+  if (value.note !== undefined && (typeof value.note !== 'string' || value.note.length > 500)) throw new Error('本批备注最多 500 字。');
   if (!Array.isArray(value.items) || value.items.length !== items.length) throw new Error('请核对全部材料的实际耗料。');
   const expected = new Set(items.map(item => item.product_id)), seen = new Set();
   for (const item of value.items) {

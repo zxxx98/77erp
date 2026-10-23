@@ -5,6 +5,11 @@
 .production-audit { color: #647084; font-size: 12px; line-height: 1.7; margin: 18px 0 22px; }
 .production-audit p { margin: 6px 0; overflow-wrap: anywhere; }
 .production-note { font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.production-batch { border-top: 1px solid #e9ecf1; padding: 20px 0; min-width: 0; }
+.production-batch .bom-actions { margin-top: 14px; }
+.production-batch-detail { margin-top: 18px; }
+.production-batch-material { padding: 16px 0; font-size: 13px; }
+.production-batch-material > p { line-height: 1.7; }
 .production-material { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(100px, 1fr)); gap: 20px; align-items: center; padding: 20px 0; border-top: 1px solid #e9ecf1; font-size: 13px; }
 .production-material > div, .production-material > label { min-width: 0; }
 .production-material span { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

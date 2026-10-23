@@ -19,6 +19,8 @@ export function MaterialVariance({ row, analysis, complete, disabled, onReason }
     {complete ? <label>耗料差异原因（可选）<textarea aria-label={`${row.name}耗料差异原因`} rows={2} maxLength={500}
       placeholder="例如：调机耗料、返工、材料问题" disabled={disabled} value={row.variance_reason ?? ''}
       onChange={event => onReason(row.product_id, event.target.value)} /></label>
-      : <div className="production-variance-reason"><small>耗料差异原因</small><p>{row.variance_reason || '未填写'}</p></div>}
+      : <div className="production-variance-reason"><small>耗料差异原因</small>{row.variance_reasons?.length
+        ? row.variance_reasons.map(entry => <p key={entry.batch_number}>第 {entry.batch_number} 批：{entry.reason}</p>)
+        : <p>{row.variance_reason || '未填写'}</p>}</div>}
   </div>;
 }

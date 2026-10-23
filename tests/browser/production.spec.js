@@ -53,7 +53,7 @@ async function productionFlow(page, pwa = false) {
     await page.getByLabel('材料甲耗料差异原因', { exact: true }).fill('调机耗料');
     await page.getByLabel('材料乙实际耗料', { exact: true }).fill('51');
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('材料乙库存不足');
     await expect(page.getByLabel('材料甲耗料差异原因', { exact: true })).toHaveValue('调机耗料');
     expect(f.inventory()).toEqual(before);
@@ -64,7 +64,7 @@ async function productionFlow(page, pwa = false) {
     await page.screenshot({ path: test.info().outputPath('production-completion.png'), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
     await expect(page.getByText('已完工', { exact: true })).toBeVisible();
     await expect(page.locator('.production-summary')).toContainText('21.25');
@@ -155,7 +155,7 @@ async function standardLossFlow(page, pwa = false) {
     await page.getByRole('button', { name: '回收料采用预计数量', exact: true }).click();
     await expect(page.getByLabel('回收料实际废料', { exact: true })).toHaveValue('1.32');
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
     await expect(page.getByRole('group', { name: '材料甲耗料差异分析', exact: true })).toContainText('+2 千克');
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[1].id).stock).toBe(78);
@@ -225,7 +225,7 @@ test('concurrent changes preserve completion input and production-only employees
     await page.getByLabel('材料甲耗料差异原因', { exact: true }).fill('并发时保留的原因');
     f.db.prepare('UPDATE production_orders SET note=? WHERE id=?').run('另一人已修改', order.id);
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('生产单已变化');
     await expect(page.getByLabel('材料甲耗料差异原因', { exact: true })).toHaveValue('并发时保留的原因');
     await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveValue('9');
@@ -234,7 +234,7 @@ test('concurrent changes preserve completion input and production-only employees
     await expect(page.getByText('另一人已修改', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '登记完工', exact: true }).click();
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.getByText('已完工', { exact: true })).toBeVisible();
     await expect(page.getByText('材料成本合计', { exact: true })).toHaveCount(0);
     await expect(page.getByText('材料成本', { exact: true })).toHaveCount(0);
@@ -297,7 +297,7 @@ async function scrapProductionFlow(page, pwa = false) {
     await page.screenshot({ path: test.info().outputPath('production-scrap-completion.png'), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.getByRole('heading', { name: '废料产出记录', exact: true })).toBeVisible();
     await expect(page.locator('.scrap-output').first()).toContainText('+0.1 千克');
     expect(f.db.prepare('SELECT stock,inventory_value_cents FROM products WHERE id=?').get(scrap.id)).toEqual({ stock: 0.9, inventory_value_cents: 0 });
@@ -368,7 +368,7 @@ async function varianceFlow(page, pwa = false) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(f.inventory()).toEqual(before);
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.getByText('已完工', { exact: true })).toBeVisible();
     await expect(first).toContainText('超耗+0.2 千克'); await expect(first).toContainText('调机');
     expect(f.db.prepare('SELECT variance_reason FROM production_items WHERE production_id=? ORDER BY position').all(order.id).map(row => row.variance_reason)).toEqual(['调机\n额外用料', '本次未使用']);
@@ -401,5 +401,89 @@ test('mobile PWA analyzes consumption differences and persists reasons with the 
   test.setTimeout(60000);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { await varianceFlow(await context.newPage(), true); }
+  finally { await context.close(); }
+});
+
+async function partialProductionFlow(page, pwa = false) {
+  const f = await fixture(page), errors = []; page.on('pageerror', error => errors.push(error.message));
+  try {
+    const scrap = await f.post('/products', { name: '分批废料', barcode: 'BATCH-SCRAP', unit: '千克', category: '生产', cost: 1, price: 2, threshold: 0 });
+    await f.post(`/boms/${f.bom.id}`, { ...f.definition, version: f.bom.version,
+      items: [{ ...f.definition.items[0], loss_rate: 20 }, f.definition.items[1]],
+      scraps: [{ product_id: scrap.id, method: 'input_ratio', source_product_id: f.products[1].id, quantity: 6, unit: '千克', note: '' }] });
+    const before = f.inventory();
+    await page.goto(f.base + '/#production');
+    if (pwa) { await page.evaluate(() => navigator.serviceWorker.ready); await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true); }
+    await page.getByRole('button', { name: '新建生产单', exact: true }).click();
+    await page.getByRole('button', { name: '选择配方 示例成品', exact: true }).click();
+    await page.getByLabel('计划产量', { exact: true }).fill('10');
+    await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
+    await page.getByRole('button', { name: '登记完工', exact: true }).click();
+    await page.getByLabel('合格成品数量', { exact: true }).fill('4');
+    await page.getByRole('button', { name: '按本批产量带出耗料', exact: true }).click();
+    await expect(page.getByLabel('材料甲实际耗料', { exact: true })).toHaveValue('7.5');
+    await page.getByLabel('材料甲实际耗料', { exact: true }).fill('8');
+    await page.getByLabel('材料甲耗料差异原因', { exact: true }).fill('首批调机');
+    await page.getByLabel('本批备注', { exact: true }).fill('首批交货');
+    await page.getByRole('button', { name: '分批废料采用预计数量', exact: true }).click();
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '本批入库并继续生产', exact: true }).click();
+    await expect(page.getByText('生产中', { exact: true })).toBeVisible();
+    await expect(page.locator('.production-summary')).toContainText('4 件');
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[0].id).stock).toBe(4);
+    await page.getByRole('button', { name: '登记完工', exact: true }).click();
+    await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveValue('6');
+    await expect(page.getByLabel('材料甲实际耗料', { exact: true })).toHaveValue('11.25');
+    await page.getByLabel('材料甲实际耗料', { exact: true }).fill('12');
+    await page.getByLabel('材料甲耗料差异原因', { exact: true }).fill('末批修整');
+    await page.getByRole('button', { name: '分批废料采用预计数量', exact: true }).click();
+    await page.getByRole('combobox', { name: '分批废料处理方式', exact: true }).click();
+    await page.getByRole('option', { name: '直接处置', exact: true }).click();
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
+    await expect(page.getByText('已完工', { exact: true })).toBeVisible();
+    const cumulative = page.locator('.production-materials').getByRole('group', { name: '材料甲耗料差异分析', exact: true });
+    await expect(cumulative).toContainText('18.75 千克'); await expect(cumulative).toContainText('+1.25 千克');
+    await expect(cumulative).toContainText('第 1 批：首批调机'); await expect(cumulative).toContainText('第 2 批：末批修整');
+    await expect(page.locator('.scrap-output')).toContainText('入库 0.48 · 直接处置 0.72 千克');
+    await page.getByRole('button', { name: '查看第 1 批明细', exact: true }).click();
+    await expect(page.locator('.production-batch-detail')).toContainText('7.5 千克');
+    await expect(page.locator('.production-batch-detail')).toContainText('首批调机');
+    await page.evaluate(() => window.scrollTo({ top: 0 }));
+    await page.screenshot({ path: test.info().outputPath('production-batches-detail.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('button', { name: '作废第 1 批', exact: true }).click();
+    await page.getByLabel('作废原因', { exact: true }).fill('首批误报，单独回退');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认作废', exact: true }).click();
+    await expect(page.getByText('生产中', { exact: true })).toBeVisible();
+    await expect(page.locator('.production-summary')).toContainText('6 件');
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[1].id).stock).toBe(88);
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(scrap.id).stock).toBe(0);
+    const afterCorrection = f.inventory();
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '结束生产', exact: true }).click();
+    await expect(page.getByText('已完工', { exact: true })).toBeVisible(); expect(f.inventory()).toEqual(afterCorrection);
+    await page.getByRole('button', { name: '作废生产单', exact: true }).click();
+    await page.getByLabel('作废原因', { exact: true }).fill('剩余批次整单回退');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认作废', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('原成本已回退');
+    expect(f.inventory()).toEqual(before); expect(errors).toEqual([]);
+  } finally { await f.close(); }
+}
+
+for (const mobile of [false, true]) {
+  test(`${mobile ? 'mobile' : 'desktop'} posts partial batches, compares cumulative losses, reverses one batch and closes the order`, async ({ page }) => {
+    test.setTimeout(60000);
+    if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
+    await partialProductionFlow(page);
+  });
+}
+
+test('mobile PWA posts and corrects partial production batches with an active service worker', async ({ browser }) => {
+  test.setTimeout(60000);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  try { await partialProductionFlow(await context.newPage(), true); }
   finally { await context.close(); }
 });

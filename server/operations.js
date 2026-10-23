@@ -10,7 +10,7 @@ import { installTransfers } from './transfers.js';
 import { validInspectionDate } from '../shared/inspection.js';
 import { qualityTables, clearQuality, validateQualityBackup } from './quality.js';
 import { bomTables, clearBom, validateBomBackup } from './bom.js';
-import { productionTables, clearProduction, validateProductionBackup } from './production.js';
+import { productionTables, productionBatchTables, clearProduction, validateProductionBackup } from './production.js';
 
 const hash = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -424,7 +424,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 28,
+    version: 29,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -432,11 +432,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 29) {
+      for (const table of productionBatchTables) data[table] = [];
+      for (const row of data.production_orders || []) row.batch_tracking = 0;
+    }
     if (value.version < 28) for (const table of ['bom_items', 'production_items'])
       for (const row of data[table] || []) row.loss_rate = 0;
     if (value.version < 27) for (const row of data.production_items || []) row.variance_reason = '';
@@ -741,7 +745,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
         quality_templates: data.quality_templates.length, quality_acceptances: data.quality_acceptances.length, quality_charts: data.quality_charts.length, quality_files: data.quality_template_files.length,
         boms: data.boms.length, bom_scraps: data.bom_scraps.length, production_scraps: data.production_scraps.length,
-        production_orders: data.production_orders.length,
+        production_orders: data.production_orders.length, production_batches: data.production_batches.length,
       };
     }),
   );

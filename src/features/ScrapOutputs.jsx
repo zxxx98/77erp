@@ -4,7 +4,7 @@ import { quantityUnits, QUANTITY_SCALE, validQuantity } from '../../shared/quant
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 
-export function ScrapOutputs({ rows, materials = [], complete = false, completed = false, disabled = false, onChange }) {
+export function ScrapOutputs({ rows, materials = [], complete = false, completed = false, showPlan = true, disabled = false, onChange }) {
   if (!rows.length) return null;
   return <section className="scrap-outputs" aria-label="废料产出">
     <h2>{complete ? '核对废料产出' : completed ? '废料产出记录' : '预计废料产出'}</h2>
@@ -19,7 +19,7 @@ export function ScrapOutputs({ rows, materials = [], complete = false, completed
       const difference = expected != null && validActual ? (quantityUnits(Number(actual)) - quantityUnits(expected)) / QUANTITY_SCALE : null;
       return <article className="scrap-output" key={row.product_id}>
         <div><strong>{name}</strong><small>{row.barcode || row.product?.barcode} · {row.method === 'input_ratio' ? `${sourceName}${complete || completed ? '实际耗料' : '含标准损耗投入'}的 ${count(row.quantity)}%` : `基准产量对应 ${row.quantity_fraction || count(row.quantity)} ${row.unit}`}</small>
-          {(complete || completed) && <small>计划预计 {count(row.planned_quantity)} {row.unit}</small>}
+          {showPlan && (complete || completed) && <small>计划预计 {count(row.planned_quantity)} {row.unit}</small>}
           {row.note && <small>{row.note}</small>}
           {row.product && row.unit !== row.product.unit && <p className="bom-warning">单位已变为 {row.product.unit}，本单保留 {row.unit}。</p>}
           {row.product && !row.product.active && <p className="bom-warning">废料物料已停用</p>}</div>
@@ -31,7 +31,8 @@ export function ScrapOutputs({ rows, materials = [], complete = false, completed
             <option value="stock">入库</option><option value="discard">直接处置</option>
           </Select></label>
           <Button type="button" disabled={disabled || expected == null} onClick={() => onChange(row.product_id, { quantity: String(expected) })} aria-label={`${name}采用预计数量`}>采用预计数量</Button>
-        </> : completed && <div><small>实际产出 · {row.disposition === 'stock' ? '入库' : '直接处置'}</small><span>{count(actual)} {row.unit}</span></div>}
+        </> : completed && <div><small>实际产出 · {row.disposition === 'mixed' ? '分批入库／处置' : row.disposition === 'stock' ? '入库' : '直接处置'}</small><span>{count(actual)} {row.unit}</span>
+          {row.stock_quantity != null && <small>入库 {count(row.stock_quantity)} · 直接处置 {count(row.discard_quantity)} {row.unit}</small>}</div>}
         {(complete || completed) && difference != null && <small className={difference ? 'bom-warning' : ''}>较完工预计 {difference > 0 ? '+' : ''}{count(difference)} {row.unit}</small>}
       </article>;
     })}

@@ -641,7 +641,7 @@ export function Backup({ onSaved }) {
             恢复后出入库二维码将停用，旧标签失效，需核对、启用并重新打印。备份时间：{backup.created_at}；仓库 {preview.warehouses ?? 1} 个，物料 {preview.products} 件，单据{" "}
             {preview.orders} 张，库存调整 {preview.adjustments} 条。往来单位 {preview.contacts ?? 0} 个，模板 {preview.templates ?? 0} 张，收付款 {preview.payments ?? 0} 条，出入库二维码 {preview.stock_qrs ?? 0} 个。
             品质模板 {preview.quality_templates ?? 0} 个，验收单 {preview.quality_acceptances ?? 0} 张，品质图表 {preview.quality_charts ?? 0} 个，R2 Excel 文件引用 {preview.quality_files ?? 0} 个，原文件需在 R2 保留。
-            BOM {preview.boms ?? 0} 张（废料规则 {preview.bom_scraps ?? 0} 条），生产单 {preview.production_orders ?? 0} 张（废料记录 {preview.production_scraps ?? 0} 条）。
+            BOM {preview.boms ?? 0} 张（废料规则 {preview.bom_scraps ?? 0} 条），生产单 {preview.production_orders ?? 0} 张（完工批次 {preview.production_batches ?? 0} 批，废料记录 {preview.production_scraps ?? 0} 条）。
           </p>
           <button
             type="button"
