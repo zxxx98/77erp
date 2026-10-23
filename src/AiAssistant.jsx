@@ -7,6 +7,7 @@ import { Sparkles, Plus, ArrowUp, ArrowUpRight, PackageSearch, ChartColumn, Arro
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './ai.css';
+import { moneyBase, priceBase, baseCurrencySymbol } from './app/format.js';
 
 const AiChartView=React.lazy(()=>import('./pages/QualityChartView.jsx').then(module=>({default:module.QualityChartView})));
 
@@ -88,8 +89,8 @@ function ActionPreview({ action, busy, confirm }) {
       <p><strong>{o.warehouse_name} · {orderLabel(o)}</strong> · {o.partner}</p>
       {o.kind === "internal" && <p>内部流转不计入采购、销售、利润及应收应付。</p>}
       {o.note && <p>备注：{o.note}</p>}
-      <div className="ai-table"><table><thead><tr>{['物料 / 条码', '规格', '数量', '单价', '金额', '库存变化'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{o.items.map((i, n) => <tr key={n}><td>{i.name}<small>{i.barcode}</small></td><td>{i.specification || '—'}</td><td>{i.quantity} {i.unit}</td><td>{i.price.toFixed(2)}</td><td>{(i.quantity * i.price).toFixed(2)}</td><td>{i.stock} → {i.after_stock}</td></tr>)}</tbody></table></div>
-      <p>合计：¥{(o.items.reduce((n, i) => n + Math.round(i.quantity * i.price * 100), 0) / 100).toFixed(2)}</p>
+      <div className="ai-table"><table><thead><tr>{['物料 / 条码', '规格', '数量', '单价', '金额', '库存变化'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{o.items.map((i, n) => <tr key={n}><td>{i.name}<small>{i.barcode}</small></td><td>{i.specification || '—'}</td><td>{i.quantity} {i.unit}</td><td>{baseCurrencySymbol()}{priceBase(i.price)}</td><td>{baseCurrencySymbol()}{moneyBase(i.quantity * i.price)}</td><td>{i.stock} → {i.after_stock}</td></tr>)}</tbody></table></div>
+      <p>合计：{baseCurrencySymbol()}{moneyBase(o.items.reduce((n, i) => n + Math.round(i.quantity * i.price * 100), 0) / 100)}</p>
     </div>)}
     {p.transfer && <>
       <p><strong>{p.transfer.warehouse_name} → {p.transfer.target_name}</strong> · 原因：{p.transfer.reason}</p>

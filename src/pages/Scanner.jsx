@@ -18,7 +18,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { CameraScanner, StockQrExecution } from '../LazyComponents.jsx';
-import { stockStatus, money, stockTone } from '../app/format.js';
+import { stockStatus, price, money, stockTone, currencySymbol } from '../app/format.js';
 
 function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onSaved }) {
   const { can } = usePermissions();
@@ -210,10 +210,10 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
               </div>
               <div className="scan-result-prices">
                 <span>
-                  参考采购价 <strong>¥ {money(product.cost)}</strong>
+                  参考采购价 <strong>{currencySymbol()} {price(product.cost)}</strong>
                 </span>
                 <span>
-                  参考销售价 <strong>¥ {money(product.price)}</strong>
+                  参考销售价 <strong>{currencySymbol()} {price(product.price)}</strong>
                 </span>
               </div>
               <div className="scan-result-actions">

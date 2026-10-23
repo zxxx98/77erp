@@ -3,9 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { api } from './api.js';
 import { orderLabel } from './order-utils.js';
 import './product-history.css';
+import { price, currencySymbol } from './app/format.js';
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
-const money = value => Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const label = record => ({ production_scrap_in: '生产废料入库', production_scrap_void_out: '作废生产扣回废料', production_in: '生产完工入库', production_out: '生产实际耗料', production_void_out: '作废生产扣回成品', production_void_in: '作废生产退回材料' }[record.event]) || (record.event === 'price_change' ? '物料改价' : record.event === 'void' ? `作废${orderLabel({ ...record, status: 'active' })}`
   : record.event === 'order' ? orderLabel(record) : record.event === 'reduce' ? '减少库存（报损）' : record.event === 'increase' ? '增加库存（退料）' : '库存盘点');
 
@@ -46,8 +46,8 @@ export function ProductHistory({ product, onViewOrder }) {
         {record.kind === 'production' && <p>{record.number}</p>}
         {record.before_stock !== null && <p>库存：{count(record.before_stock)} → {count(record.after_stock)} {product.unit}</p>}
         {record.event === 'price_change' && <>
-          {record.before_cost !== record.after_cost && <p>成本价：¥{money(record.before_cost)} → ¥{money(record.after_cost)}</p>}
-          {record.before_price !== record.after_price && <p>售价：¥{money(record.before_price)} → ¥{money(record.after_price)}</p>}
+          {record.before_cost !== record.after_cost && <p>成本价：{currencySymbol()} {price(record.before_cost)} → {currencySymbol()} {price(record.after_cost)}</p>}
+          {record.before_price !== record.after_price && <p>售价：{currencySymbol()} {price(record.before_price)} → {currencySymbol()} {price(record.after_price)}</p>}
         </>}
         {record.operator && <p>操作人：{record.operator}</p>}
         {record.note && <p>{record.note}</p>}

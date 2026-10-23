@@ -76,9 +76,9 @@ export function rowsToProducts(table) {
       try { return parseQuantity(s); }
       catch (error) { throw new Error(`第 ${row} 行：${error.message}`); }
     }
-    if (!/^\d+(\.\d{1,2})?$/.test(s))
+    if (!/^\d+(\.\d{1,4})?$/.test(s))
       throw new Error(
-        `第 ${row} 行：数量最多 6 位小数，金额最多两位小数，不能留空。`,
+        `第 ${row} 行：数量最多 6 位小数，单价最多四位小数，不能留空。`,
       );
     return Number(s);
   };

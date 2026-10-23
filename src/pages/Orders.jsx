@@ -2,7 +2,7 @@ import { downloadFile } from '../app/download.js';
 import { api } from '../api.js';
 import { orderLabel } from '../order-utils.js';
 import { orderLineAmount } from '../../shared/money.js';
-import { todayKey, money, count, dateTime } from '../app/format.js';
+import { todayKey, money, count, dateTime, currencySymbol } from '../app/format.js';
 import { usePermissions } from '../permissions.jsx';
 import { useState, useEffect } from 'react';
 import { useQuery, queryPath } from '../queries.js';
@@ -122,7 +122,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
             筛选内净额（不含作废、调拨及内部流转，扣除退货）
           </span>
           <strong>
-            <small>¥ </small>
+            <small>{currencySymbol()} </small>
             {money(aggregate?.net_total || 0)}
           </strong>
         </div>
@@ -251,7 +251,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                     {o.kind === "transfer" ? (
                       <span className="muted">不涉及金额</span>
                     ) : (
-                      `${o.kind === "internal" ? "参考 " : ""}¥ ${money(o.total)}`
+                      `${o.kind === "internal" ? "参考 " : ""}${currencySymbol()} ${money(o.total)}`
                     )}
                   </td>
                   <td className="muted">{dateTime(o.created_at)}</td>

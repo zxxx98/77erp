@@ -6,6 +6,7 @@ import { useRef, useState, useEffect } from 'react';
 import { api } from '../api.js';
 import { WarehouseManager } from '../Warehouses.jsx';
 import { version as appVersion } from '../../package.json';
+import { CURRENCY_LABELS, CURRENCY_SYMBOLS } from '../currency.js';
 import {
   UserManager,
   ChangePassword,
@@ -71,7 +72,9 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
   const [visited, setVisited] = useState(() => new Set([initialSection]));
   const [form, setForm] = useState(() => ({ ...settings, units: settings.units || ["个"] })),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [rateBusy, setRateBusy] = useState(false),
+    [rateNotice, setRateNotice] = useState("");
   useEffect(() => setForm(current => ({ ...current, warehouse_name: settings.warehouse_name })), [settings.warehouse_name]);
   const submit = async (e) => {
     e.preventDefault();
@@ -80,6 +83,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
     setBusy(true);
     setError("");
     try {
+      await api("/settings/currency", { method: "PUT", body: { display_currency: form.display_currency, usd_cny_rate: Number(form.usd_cny_rate) } });
       await api("/settings", { method: "PUT", body: form });
       await onSaved("工作空间设置已保存");
     } catch (e) {
@@ -87,6 +91,21 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
     } finally {
       lock.current = false;
       setBusy(false);
+    }
+  };
+  const syncRate = async () => {
+    if (rateBusy || busy) return;
+    setRateBusy(true);
+    setError("");
+    setRateNotice("");
+    try {
+      const result = await api("/settings/currency/sync-rate", { method: "POST" });
+      setForm(current => ({ ...current, usd_cny_rate: result.usd_cny_rate, rate_updated_at: result.rate_updated_at }));
+      setRateNotice(`已同步最新汇率：1 USD = ${result.usd_cny_rate} CNY`);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRateBusy(false);
     }
   };
   const reset = async () => {
@@ -147,6 +166,41 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             />
           </label>
           </div>
+          <section className="currency-settings" aria-label="币种设置">
+            <div className="settings-section-heading"><h3>币种与汇率</h3><p>业务数据以基准币种存储。切换到其他币种只用于参考展示，不改变账务数据。</p></div>
+            <div className="form-grid">
+              <label>
+                基准币种（不可修改）
+                <input value={`${CURRENCY_LABELS[form.base_currency] || '美元'}（${form.base_currency || 'USD'}）`} readOnly disabled />
+              </label>
+              <label>
+                显示币种
+                <Select aria-label="显示币种" value={form.display_currency || form.base_currency || 'USD'} disabled={busy || rateBusy} onChange={(e) => setForm(current => ({ ...current, display_currency: e.target.value }))}>
+                  {Object.entries(CURRENCY_LABELS).map(([code, label]) => <option key={code} value={code}>{label}（{code}）</option>)}
+                </Select>
+              </label>
+            </div>
+            <label>
+              汇率（1 USD = ? CNY）
+              <input
+                type="number"
+                inputMode="decimal"
+                required
+                min="0.000001"
+                max="1000000"
+                step="0.000001"
+                value={form.usd_cny_rate ?? 7.2}
+                disabled={busy || rateBusy}
+                onChange={(e) => setForm(current => ({ ...current, usd_cny_rate: e.target.value }))}
+              />
+            </label>
+            <div className="currency-rate-actions">
+              <Button type="button" onClick={syncRate} disabled={busy || rateBusy}>{rateBusy ? '正在同步…' : '同步最新汇率'}</Button>
+              <small>{form.rate_updated_at ? `上次同步：${new Date(form.rate_updated_at).toLocaleString('zh-CN')}` : '尚未从网络同步过汇率'}</small>
+            </div>
+            {rateNotice && <p className="currency-rate-notice">{rateNotice}</p>}
+            <p className="currency-rate-hint">当前显示：{CURRENCY_LABELS[form.display_currency || form.base_currency || 'USD']}（{CURRENCY_SYMBOLS[form.display_currency || form.base_currency || 'USD']}）。金额保留 2 位小数，单价最多 4 位小数。</p>
+          </section>
           <section className="unit-manager" aria-label="计量单位管理">
             <div className="settings-section-heading"><h3>计量单位</h3><p>各仓库共用，第一项作为新增物料的默认单位。修改列表不会改变已有物料的单位。</p></div>
             <div className="unit-list">

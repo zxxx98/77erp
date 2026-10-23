@@ -69,6 +69,7 @@ import {
 } from '../LazyComponents.jsx';
 import { Select } from '../Dropdown.jsx';
 import { stockStatus } from './format.js';
+import { setCurrencySettings } from '../currency.js';
 import { Button, Modal } from '../components/common.jsx';
 import { version as appVersion } from '../../package.json';
 
@@ -172,6 +173,7 @@ function App({ admin, onLogout }) {
         return;
       }
       setWarehouseId(d.warehouse_id);
+      setCurrencySettings(d.settings);
       setData({ ...d, products: [], orders: [] });
       setLoadError("");
     } catch (e) {
@@ -264,6 +266,7 @@ function App({ admin, onLogout }) {
       setWarehouseId(id);
       setBomProduct(null);
       setProductionBom(null);
+      setCurrencySettings(workspace.settings);
       setData({ ...workspace, products: [], orders: [] });
       setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
     } catch (e) { notify(e.message, 'error'); }

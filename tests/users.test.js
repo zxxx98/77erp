@@ -198,7 +198,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 29);
+  assert.equal(backup.version, 30);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -243,7 +243,7 @@ const routeRoles = new Map(Object.entries({
   'get /api/settings/ai': 'admin', 'put /api/settings/ai': 'admin', 'post /api/settings/ai/test': 'admin', 'get /api/settings/ai/audit': 'admin',
   // Legacy employees do not inherit the new AI permission; dedicated AI tests cover opt-in access.
   'get /api/ai/conversations': 'ai', 'get /api/ai/conversations/:id': 'ai', 'post /api/ai/chat': 'ai', 'post /api/ai/confirm': 'ai',
-  'put /api/settings': 'admin', 'post /api/settings/reset': 'admin',
+  'put /api/settings': 'admin', 'put /api/settings/currency': 'admin', 'post /api/settings/currency/sync-rate': 'admin', 'post /api/settings/reset': 'admin',
   'get /api/settings/imagebed': 'admin', 'put /api/settings/imagebed': 'admin', 'post /api/uploads/product-image': 'employee',
   'get /api/settings/r2-backup': 'admin', 'put /api/settings/r2-backup': 'admin',
   'post /api/settings/r2-backup/run': 'admin',

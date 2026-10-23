@@ -9,7 +9,8 @@ import { useQuery } from '../queries.js';
 import { addQuantity } from '../../shared/quantity.js';
 import { Modal, QueryStatus, Button, ProductArt } from '../components/common.jsx';
 import { FilePenLine, Camera, ScanLine, Plus, Search, X, CircleCheck, Trash2, TriangleAlert, Check } from 'lucide-react';
-import { money, count } from '../app/format.js';
+import { moneyBase, baseCurrencySymbol, count } from '../app/format.js';
+import { baseCurrency } from '../currency.js';
 
 function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSaved }) {
   const { templates } = usePermissions();
@@ -263,7 +264,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                 <tr>
                   <th>物料</th>
                   <th style={{ width: 100 }}>数量</th>
-                  <th style={{ width: 110 }}>单价（元）</th>
+                  <th style={{ width: 110 }}>单价（{baseCurrency()}）</th>
                   <th className="number-cell">小计</th>
                   <th />
                 </tr>
@@ -305,7 +306,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                           type="number"
                           min="0"
                           max="99999999"
-                          step="0.01"
+                          step="0.0001"
                           required
                           value={i.price}
                           onChange={(e) =>
@@ -314,7 +315,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         />
                       </td>
                       <td className="number-cell">
-                        ¥ {money(Number(i.quantity) * Number(i.price))}
+                        {baseCurrencySymbol()} {moneyBase(Number(i.quantity) * Number(i.price))}
                       </td>
                       <td>
                         <button
@@ -342,7 +343,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                     <td>总计 · {items.length} 种物料</td>
                     <td className="number-cell">{count(totalQuantity)}</td>
                     <td />
-                    <td className="number-cell">¥ {money(total)}</td>
+                    <td className="number-cell">{baseCurrencySymbol()} {moneyBase(total)}</td>
                     <td />
                   </tr>
                 </tfoot>

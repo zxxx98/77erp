@@ -1,4 +1,4 @@
-import { orderLineAmount } from "../shared/money.js";
+import { orderLineAmount, validUnitPrice } from "../shared/money.js";
 import { validQuantity, quantityUnits, addQuantity } from "../shared/quantity.js";
 import { contactMatchesDirection, contactRoleLabels } from '../shared/contacts.js';
 
@@ -190,10 +190,9 @@ export function validateTemplate(db, body) {
       !["string", "number"].includes(typeof i.price) ||
       !/^\d+(\.\d{1,6})?$/.test(String(i.quantity)) ||
       !validQuantity(Number(i.quantity), true) ||
-      !/^\d+(\.\d{1,2})?$/.test(String(i.price))
+      !validUnitPrice(Number(i.price))
     )
-      fail("模板物料无效，请填写正数数量（最多 6 位小数）和最多两位小数的非负单价。");
-    cents(Number(i.price));
+      fail("模板物料无效，请填写正数数量（最多 6 位小数）和最多四位小数的非负单价。");
     seen.add(i.product_id);
   }
 }

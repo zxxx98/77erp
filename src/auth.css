@@ -80,6 +80,7 @@
 .auth-input > svg { position: absolute; left: 14px; color: #9ba7b8; pointer-events: none; }
 .auth-input input { height: 46px; width: 100%; min-width: 0; border: 1px solid #e1e6ee; border-radius: 8px; padding: 0 42px; background: #fff; color: #17243c; transition: border-color .16s, box-shadow .16s; }
 .auth-input input::placeholder { color: #a6aebb; font-size: 12px; }
+.auth-input select { height: 46px; width: 100%; min-width: 0; border: 1px solid #e1e6ee; border-radius: 8px; padding: 0 42px; background: #fff; color: #17243c; appearance: none; transition: border-color .16s, box-shadow .16s; }
 .auth-input button { position: absolute; right: 6px; display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 5px; background: transparent; color: #8795a9; }
 .auth-input button:hover { background: #f3f6fa; }
 .auth-field-hint { margin-top: 7px; color: #96a0af; font-size: 10px; }
@@ -99,5 +100,5 @@
   .auth-form-panel { flex: 1; padding: 10px 26px 25px; }
   .auth-form-wrap { padding: 22px 0 50px; }
   .auth-form-heading h1 { font-size: 25px; }
-  .auth-input input { font-size: 16px; }
+  .auth-input input, .auth-input select { font-size: 16px; }
 }

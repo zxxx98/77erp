@@ -35,6 +35,7 @@ function publicConfig(db) {
 }
 function formatMessage(event) {
   const d = event.data;
+  const cur = event.currency_symbol || '$';
   const lines = [`77 ERP · ${labels[event.event] || '测试通知'}`, `时间：${event.occurred_at}`];
   if (event.warehouse) lines.push(`仓库：${event.warehouse.name}`);
   if (event.actor) lines.push(`操作人：${event.actor.username}`);
@@ -49,9 +50,9 @@ function formatMessage(event) {
   if (d.partner) lines.push(`往来单位：${d.partner}`);
   if (d.action) lines.push(`操作：${d.action}`);
   if (d.reason) lines.push(`原因：${d.reason}`);
-  if (d.total_cents != null) lines.push(`单据金额：¥${(d.total_cents / 100).toFixed(2)}`);
-  if (d.amount_cents != null) lines.push(`本次收付：¥${(d.amount_cents / 100).toFixed(2)}`);
-  if (d.due_cents != null) lines.push(`剩余未收／未付：¥${(d.due_cents / 100).toFixed(2)}`);
+  if (d.total_cents != null) lines.push(`单据金额：${cur}${(d.total_cents / 100).toFixed(2)}`);
+  if (d.amount_cents != null) lines.push(`本次收付：${cur}${(d.amount_cents / 100).toFixed(2)}`);
+  if (d.due_cents != null) lines.push(`剩余未收／未付：${cur}${(d.due_cents / 100).toFixed(2)}`);
   if (d.payment_status) lines.push(`收付状态：${d.payment_status === 'paid' ? '已结清' : '未结清'}`);
   if (d.target_user) lines.push(`账号：${d.target_user}`);
   if (d.products != null) lines.push(`物料：${d.products} 种；单据：${d.orders} 张`);
@@ -64,7 +65,7 @@ function formatMessage(event) {
   if (d.day) lines.push(`统计日期：${d.day}（${d.timezone}，截至发送时）`);
   for (const row of d.warehouses || []) {
     lines.push(`${row.name}：采购 ${row.purchase_count} 单，销售 ${row.sales_count} 单，退货 ${row.return_count} 单；低库存 ${row.low_stock} 种，缺货 ${row.out_of_stock} 种`);
-    if (row.purchase_cents != null) lines.push(`采购净额 ¥${(row.purchase_cents / 100).toFixed(2)}，销售净额 ¥${(row.sales_cents / 100).toFixed(2)}；采购退货 ¥${(row.purchase_returns_cents / 100).toFixed(2)}，销售退货 ¥${(row.sales_returns_cents / 100).toFixed(2)}`);
+    if (row.purchase_cents != null) lines.push(`采购净额 ${cur}${(row.purchase_cents / 100).toFixed(2)}，销售净额 ${cur}${(row.sales_cents / 100).toFixed(2)}；采购退货 ${cur}${(row.purchase_returns_cents / 100).toFixed(2)}，销售退货 ${cur}${(row.sales_returns_cents / 100).toFixed(2)}`);
   }
   return lines.join('\n');
 }
@@ -75,9 +76,11 @@ export function queueNotification(db, req, event, data, { global = false, dedupe
   if (!config.url || (event !== 'test' && (!config.enabled || !config.events.includes(event)))) return null;
   const warehouse = global ? null : req?.warehouse || null;
   if (warehouse && config.warehouse_ids.length && !config.warehouse_ids.includes(warehouse.id)) return null;
+  const settings = db.prepare('SELECT business_name,base_currency FROM settings WHERE id=1').get();
   const payload = {
     id: randomUUID(), version: 1, event, occurred_at: at,
-    business_name: db.prepare('SELECT business_name FROM settings WHERE id=1').get().business_name,
+    business_name: settings.business_name,
+    currency_symbol: settings.base_currency === 'CNY' ? '¥' : '$',
     warehouse: warehouse ? { id: warehouse.id, name: warehouse.name } : null,
     actor: req?.user ? { id: req.user.id, username: req.user.username } : null,
     data: config.include_amounts ? data : withoutAmounts(data),

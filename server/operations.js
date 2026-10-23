@@ -1,5 +1,5 @@
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
-import { orderLineAmount } from "../shared/money.js";
+import { orderLineAmount, validUnitPrice } from "../shared/money.js";
 import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.js';
 import { installCommerce, moveInventory, allocate } from "./commerce.js";
@@ -424,7 +424,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 29,
+    version: 30,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -432,11 +432,34 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 30) {
+      for (const item of data.stock_qr_items || []) {
+        if (item && item.price_e4 == null && item.price_cents != null) {
+          item.price_e4 = item.price_cents * 100;
+          delete item.price_cents;
+        }
+      }
+      for (const table of ['stock_qr_revisions', 'stock_qr_usages', 'stock_qr_previews']) {
+        for (const row of data[table] || []) {
+          try {
+            const snapshot = JSON.parse(row.snapshot);
+            if (!Array.isArray(snapshot.items)) continue;
+            for (const item of snapshot.items) {
+              if (item && item.price_e4 == null && item.price_cents != null) {
+                item.price_e4 = item.price_cents * 100;
+                delete item.price_cents;
+              }
+            }
+            row.snapshot = JSON.stringify(snapshot);
+          } catch {}
+        }
+      }
+    }
     if (value.version < 29) {
       for (const table of productionBatchTables) data[table] = [];
       for (const row of data.production_orders || []) row.batch_tracking = 0;
@@ -651,10 +674,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !text(i.name, 100) ||
         !text(i.barcode, 64) ||
         !validQuantity(i.quantity, true) ||
-        !Number.isFinite(i.price) ||
-        i.price < 0 ||
-        i.price > 99999999 ||
-        Math.abs(i.price * 100 - Math.round(i.price * 100)) > 0.00001
+        !validUnitPrice(i.price)
       )
         fail("备份单据明细无效。");
       if (['normal', 'internal'].includes(orders.get(i.order_id).kind) && orderLineAmount(i) !== Math.round(i.quantity * i.price * 100))
@@ -703,8 +723,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const change of data.product_changes) {
       if (!products.has(change.product_id) ||
           !['before_cost','after_cost','before_price','after_price'].every(key =>
-            Number.isFinite(change[key]) && change[key] >= 0 && change[key] <= 99999999 &&
-            Math.abs(change[key] * 100 - Math.round(change[key] * 100)) <= 0.00001) ||
+            validUnitPrice(change[key])) ||
           (change.before_cost === change.after_cost && change.before_price === change.after_price) ||
           !(change.created_by === null || (Number.isSafeInteger(change.created_by) && change.created_by > 0)) ||
           !text(change.created_by_name, 60) || !text(change.created_at, 100))
@@ -719,7 +738,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const d of data.templates) {
       if (!['in','out'].includes(d.type) || !text(d.name,100) || !Number.isSafeInteger(d.version) || d.version < 1 || typeof d.partner !== 'string' || d.partner.length > 100 || typeof d.note !== 'string' || d.note.length > 500 || (d.partner_id !== null && !contacts.has(d.partner_id)) || !text(d.updated_at,100)) fail('备份模板无效。');
       const items = JSON.parse(d.items);
-      if (!Array.isArray(items) || !items.length || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !validQuantity(i.quantity, true) || typeof i.price !== 'number' || !Number.isFinite(i.price) || i.price < 0 || !Number.isSafeInteger(Math.round(i.price * 100)) || Math.abs(i.price * 100 - Math.round(i.price * 100)) > 0.00001)) fail('备份模板明细无效。');
+      if (!Array.isArray(items) || !items.length || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !validQuantity(i.quantity, true) || !validUnitPrice(i.price))) fail('备份模板明细无效。');
     }
     validateStockQrBackup(data);
     validateQualityBackup(data);

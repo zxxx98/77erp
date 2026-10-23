@@ -24,7 +24,7 @@ import {
   Minus,
   ShieldCheck,
 } from 'lucide-react';
-import { count, money, stockStatus, stockTone } from '../app/format.js';
+import { count, money, stockStatus, stockTone, currencySymbol } from '../app/format.js';
 
 function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceStock, increaseStock, showBarcode, showProduct }) {
   const { can, costs } = usePermissions();
@@ -84,7 +84,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           <span>
             <small>库存成本金额</small>
             <strong>
-              <em>¥ </em>
+              <em>{currencySymbol()} </em>
               {costs ? money((summary?.active_value_cents || 0) / 100) : '—'}
             </strong>
           </span>
@@ -202,7 +202,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
                       {stockStatus(p)}
                     </Badge>
                   </td>
-                  <td className="number-cell">¥ {costs ? money((p.inventory_value_cents ?? Math.round(p.cost * p.stock * 100)) / 100) : '—'}</td>
+                  <td className="number-cell">{currencySymbol()} {costs ? money((p.inventory_value_cents ?? Math.round(p.cost * p.stock * 100)) / 100) : '—'}</td>
                   <td className="number-cell">
                     <div className="row-actions">
                       <button

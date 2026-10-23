@@ -4895,6 +4895,11 @@ table {
 .unit-row { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
 .unit-row label { flex: 1; min-width: 0; }
 .unit-row > .btn { flex-shrink: 0; height: 44px; }
+.currency-settings { display: grid; gap: 16px; }
+.currency-rate-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.currency-rate-actions small { color: #647084; font-size: 12px; }
+.currency-rate-notice { color: #16a383; font-size: 12px; }
+.currency-rate-hint { color: #647084; font-size: 12px; }
 .settings-content .operation-panel { padding: 0; border: 0; gap: 18px; }
 .settings-content .operation-tabs { border-bottom: 1px solid #e9ecf1; padding-bottom: 14px; }
 .settings-content .operation-panel button { margin: 0; }

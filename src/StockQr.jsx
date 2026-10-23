@@ -8,8 +8,10 @@ import { mobileDevice } from './device.js';
 import { api } from "./api.js";
 import { stockQrPayload, newRequestId } from "./stock-qr-client.js";
 import { download } from "./data-files.js";
+import { moneyBase, baseCurrencySymbol, priceBase } from './app/format.js';
 import "./stock-qr.css";
-const money = (n) => `¥${(n / 100).toFixed(2)}`;
+const money = (n) => `${baseCurrencySymbol()}${moneyBase(n / 100)}`;
+const unitPrice = (e4) => `${baseCurrencySymbol()}${priceBase(e4 / 10000)}`;
 const button = "btn";
 const configSnapshot = form => JSON.stringify([
   ...['name', 'type', 'partner', 'partner_id', 'note']
@@ -30,8 +32,8 @@ function Lines({ items }) {
             </small>
           </div>
           <div>
-            {i.quantity} {i.unit} × {money(i.price_cents)}
-            <small>{money(i.amount_cents ?? i.quantity * i.price_cents)}</small>
+            {i.quantity} {i.unit} × {unitPrice(i.price_e4)}
+            <small>{money(i.amount_cents ?? Math.round(i.quantity * i.price_e4 / 100))}</small>
           </div>
         </div>
       ))}
@@ -209,7 +211,7 @@ export function StockQrManager({
             items: q.items.map((i) => ({
               ...i,
               quantity: String(i.quantity),
-              price: String(i.price_cents / 100),
+              price: String(i.price_e4 / 10000),
             })),
           }
         : {
@@ -284,7 +286,7 @@ export function StockQrManager({
         items: form.items.map((i) => ({
           product_id: i.product_id,
           quantity: Number(i.quantity),
-          price_cents: Math.round(Number(i.price) * 100),
+          price_e4: Math.round(Number(i.price) * 10000),
         })),
         ...(selected ? { version: selected.version } : {}),
       };
@@ -294,11 +296,11 @@ export function StockQrManager({
             !i.price.trim() ||
             !Number.isFinite(Number(i.price)) ||
             Math.abs(
-              Number(i.price) * 100 - Math.round(Number(i.price) * 100),
+              Number(i.price) * 10000 - Math.round(Number(i.price) * 10000),
             ) > 0.00001,
         )
       )
-        throw new Error("各物料成交单价最多两位小数。");
+        throw new Error("各物料成交单价最多四位小数。");
       const q = await send(
         selected ? `/stock-qrs/${selected.qr_id}` : "/stock-qrs",
         selected ? "PUT" : "POST",
@@ -514,7 +516,7 @@ export function StockQrManager({
                       required
                       min={0}
                       max={99999999}
-                      step="0.01"
+                      step="0.0001"
                       value={i.price}
                       onChange={(e) =>
                         updateLine(i.product_id, "price", e.target.value)

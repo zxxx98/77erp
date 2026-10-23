@@ -205,7 +205,7 @@ test('returns, voids, stocktakes, damage, payments and permission changes produc
 test('QR orders share notifications and replaying a preview does not duplicate them', async t => {
   const f = await fixture(t); await f.configure({ events: ['purchase_in'] });
   const id = await f.product();
-  const q = await f.request('/stock-qrs', 'POST', { request_id: randomUUID(), name: '通知二维码', type: 'in', partner: '供应商', items: [{ product_id: id, quantity: 5, price_cents: 1000 }], max_scans: 3 });
+  const q = await f.request('/stock-qrs', 'POST', { request_id: randomUUID(), name: '通知二维码', type: 'in', partner: '供应商', items: [{ product_id: id, quantity: 5, price_e4: 100000 }], max_scans: 3 });
   assert.equal(q.status, 201, JSON.stringify(q.data));
   const source = f.db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
   const preview = await f.request('/stock-qrs/preview', 'POST', { mode: 'in', label: { format: '77erp', version: 1, type: 'stock_operation', source_id: source, warehouse_id: 1, qr_id: q.data.qr_id } });

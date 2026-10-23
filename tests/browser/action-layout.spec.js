@@ -47,7 +47,7 @@ for (const scenario of [
       }
       for (const [index, name] of [[1, '短二维码'], [2, '很长的二维码名称，用于检查操作区是否会因为名称变化而错位或者超出手机屏幕']]) {
         await post('/stock-qrs', { name, type: 'in', partner: '布局供应商', max_scans: 3, request_id: `layout-qr-${index}`,
-          items: [{ product_id: products[0].id, quantity: 1, price_cents: 100 }] });
+          items: [{ product_id: products[0].id, quantity: 1, price_e4: 10000 }] });
       }
       const page = await context.newPage();
       await page.goto(scenario.mobile ? '/#more' : '/#products');

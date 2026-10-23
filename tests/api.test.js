@@ -228,7 +228,7 @@ test("invalid quantity, negative amounts, missing products, and duplicate items 
     [{ product_id: 1, quantity: 0, price: 1 }],
     [{ product_id: 1, quantity: 1.0000001, price: 1 }],
     [{ product_id: 1, quantity: 1, price: -1 }],
-    [{ product_id: 1, quantity: 1, price: 1.001 }],
+    [{ product_id: 1, quantity: 1, price: 1.00001 }],
     [{ product_id: 9999, quantity: 1, price: 1 }],
     [
       { product_id: 1, quantity: 1, price: 1 },
@@ -255,4 +255,113 @@ test("stock cannot be overwritten by product edit and settings persist", async (
   );
   const { data } = await request("/data");
   assert.equal(data.settings.business_name, "新商户");
+});
+
+test("unit prices accept 4 decimal places while line amounts and totals round to 2 decimal places", async () => {
+  const created = await request("/products", "POST", {
+    name: "四位小数物料",
+    category: "其他",
+    unit: "个",
+    cost: 0.1234,
+    price: 1.5678,
+    threshold: 1,
+    color: "blue",
+  });
+  assert.equal(created.status, 201);
+  const storedProduct = db.prepare("SELECT cost, price FROM products WHERE id=?").get(created.data.id);
+  assert.equal(storedProduct.cost, 0.1234);
+  assert.equal(storedProduct.price, 1.5678);
+
+  const tooManyDecimals = await request("/products", "POST", {
+    name: "五位小数物料",
+    category: "其他",
+    unit: "个",
+    cost: 0.12345,
+    price: 1,
+    threshold: 1,
+    color: "blue",
+  });
+  assert.equal(tooManyDecimals.status, 400);
+
+  const inbound = await order("in", [
+    { product_id: created.data.id, quantity: 3, price: 0.1234 },
+  ]);
+  assert.equal(inbound.status, 201);
+  const storedOrder = db.prepare("SELECT total FROM orders WHERE id=?").get(inbound.data.id);
+  assert.equal(storedOrder.total, 0.37);
+  const item = db
+    .prepare("SELECT price FROM order_items WHERE order_id=?")
+    .get(inbound.data.id);
+  assert.equal(item.price, 0.1234);
+});
+
+test("base currency defaults to USD, can be chosen during setup, is locked afterwards, and supports display currency & rate sync", async () => {
+  const { data: initial } = await request("/data");
+  assert.equal(initial.settings.base_currency, "USD");
+  assert.equal(initial.settings.display_currency, "USD");
+  assert.equal(typeof initial.settings.usd_cny_rate, "number");
+
+  const updated = await request("/settings/currency", "PUT", {
+    display_currency: "CNY",
+    usd_cny_rate: 7.1856,
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.data.base_currency, "USD");
+  assert.equal(updated.data.display_currency, "CNY");
+  assert.equal(updated.data.usd_cny_rate, 7.1856);
+
+  const invalidRate = await request("/settings/currency", "PUT", {
+    display_currency: "CNY",
+    usd_cny_rate: -1,
+  });
+  assert.equal(invalidRate.status, 400);
+
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url, opts) => {
+      if (String(url).includes("open.er-api.com") || String(url).includes("frankfurter")) {
+        return {
+          ok: true,
+          async json() {
+            return { result: "success", rates: { CNY: 7.23456 } };
+          },
+        };
+      }
+      return originalFetch(url, opts);
+    };
+    const synced = await request("/settings/currency/sync-rate", "POST", {});
+    assert.equal(synced.status, 200);
+    assert.equal(synced.data.usd_cny_rate, 7.23456);
+    assert.ok(synced.data.rate_updated_at);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // Fresh instance setup can choose CNY as base currency and locks it once initialized
+  const fresh = createApp(":memory:");
+  const freshServer = fresh.app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => freshServer.once("listening", resolve));
+  const freshBase = `http://127.0.0.1:${freshServer.address().port}/api`;
+  try {
+    const setupRes = await fetch(freshBase + "/auth/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "admin",
+        password: "Test-admin-123",
+        base_currency: "CNY",
+      }),
+    });
+    assert.equal(setupRes.status, 201);
+    const freshCookie = setupRes.headers.get("set-cookie").split(";")[0];
+    const wsRes = await fetch(freshBase + "/data", {
+      headers: { Cookie: freshCookie },
+    });
+    const ws = await wsRes.json();
+    assert.equal(ws.settings.base_currency, "CNY");
+    assert.equal(ws.settings.display_currency, "CNY");
+  } finally {
+    await new Promise((resolve) => freshServer.close(resolve));
+    fresh.db.close();
+  }
 });

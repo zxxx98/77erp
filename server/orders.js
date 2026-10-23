@@ -1,11 +1,10 @@
 import { validQuantity, addQuantity } from "../shared/quantity.js";
+import { validUnitPrice } from "../shared/money.js";
 import { resolveContact, moveInventory } from "./commerce.js";
 import { notifyOrder } from './notifications.js';
 const validNumber = (n) =>
   typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 99999999;
 const validInteger = (n) => validNumber(n) && Number.isInteger(n);
-const validMoney = (n) =>
-  validNumber(n) && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
 // The caller owns the transaction, including inventory, QR quotas and request receipts.
 export function createOrder(db, req, body) {
   const { type, partner, note = "", items } = body;
@@ -27,9 +26,9 @@ export function createOrder(db, req, body) {
     if (
       !validInteger(item.product_id) ||
       !validQuantity(item.quantity, true) ||
-      !validMoney(item.price)
+      !validUnitPrice(item.price)
     )
-      throw new Error("物料数量必须为正数且最多 6 位小数，单价最多两位小数且不能为负数。");
+      throw new Error("物料数量必须为正数且最多 6 位小数，单价最多四位小数且不能为负数。");
     if (seen.has(item.product_id))
       throw new Error("同一物料不能重复添加，请合并数量。");
     seen.add(item.product_id);

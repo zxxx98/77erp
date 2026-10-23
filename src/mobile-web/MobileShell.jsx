@@ -15,7 +15,7 @@ import { ProductImage } from '../ProductImage.jsx';
 import { CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
 import { ProductHistory } from '../ProductHistory.jsx';
 import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
-import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
+import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, price, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
 import './mobile.css';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
@@ -250,7 +250,7 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
       { [['使用状态', product.active === 0 ? '已停用' : '已启用'], ['固定资产', product.is_fixed_asset ? '是' : '否'], ['当前库存', `${count(product.stock)} ${product.unit}`], ['安全库存', `${count(product.threshold)} ${product.unit}`], ['分类', product.category], ['规格型号', product.specification || '未填写'], ['备注', product.note || '未填写']].map(([label, value]) => <DetailRow key={label} label={label}>{value}</DetailRow>)}</section>
     {product.customer_part_numbers?.length > 0 && <div className="mw-card"><CustomerPartNumbersDetail value={product.customer_part_numbers} /></div>}
     <section className="mw-card mw-stack"><DetailRow label="下次校验日期">{product.inspection_date || '未配置'}</DetailRow><DetailRow label="校验周期">{inspectionCycleLabel(product)}</DetailRow><DetailRow label="上次校验">{product.last_inspected_on || '暂无记录'}</DetailRow></section>
-    <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? money(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{money(product.price)}</DetailRow></section>
+    <section className="mw-card mw-stack"><DetailRow label="参考采购价">{costs ? price(product.cost) : '—'}</DetailRow><DetailRow label="参考销售价">{price(product.price)}</DetailRow></section>
     <ProductHistory key={product.id} product={product} onViewOrder={id => openOrderDetail?.(id)} />
     <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted"><LoadingStatus>读取中…</LoadingStatus></p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一物料</p>}
       {mobileExpressionValue !== null && <DetailRow label={mobileExpressionText}><strong className={`stock-diff-${mobileExpressionValue > 0 ? 'positive' : mobileExpressionValue < 0 ? 'negative' : 'zero'}`}>{`${mobileExpressionValue > 0 ? '+' : ''}${count(mobileExpressionValue)} ${product.unit}`}</strong></DetailRow>}</section>

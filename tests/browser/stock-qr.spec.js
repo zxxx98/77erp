@@ -43,7 +43,7 @@ async function fixture(page) {
         items: products.map((p, i) => ({
           product_id: p.id,
           quantity: i ? 2 : 5,
-          price_cents: 1000,
+          price_e4: 100000,
         })),
         request_id: randomUUID(),
         ...overrides,

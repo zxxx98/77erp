@@ -1,8 +1,23 @@
-const money = (v) =>
-  new Intl.NumberFormat("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(v);
+import {
+  currencySymbol,
+  baseCurrencySymbol,
+  displayAmount,
+} from '../currency.js';
+
+const moneyFormat = new Intl.NumberFormat("zh-CN", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const priceFormat = new Intl.NumberFormat("zh-CN", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+const money = (v) => moneyFormat.format(displayAmount(v));
+const moneyBase = (v) => moneyFormat.format(Number(v) || 0);
+const price = (v) => priceFormat.format(displayAmount(v));
+const priceBase = (v) => priceFormat.format(Number(v) || 0);
 
 const count = (v) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(v);
 
@@ -29,4 +44,18 @@ const stockStatus = (p) =>
 const stockTone = (p) =>
   p.threshold <= 0 ? "gray" : p.stock === 0 ? "red" : p.stock <= p.threshold ? "orange" : "green";
 
-export { money, count, shortDate, dateTime, todayKey, sameDay, stockStatus, stockTone };
+export {
+  money,
+  moneyBase,
+  price,
+  priceBase,
+  currencySymbol,
+  baseCurrencySymbol,
+  count,
+  shortDate,
+  dateTime,
+  todayKey,
+  sameDay,
+  stockStatus,
+  stockTone,
+};

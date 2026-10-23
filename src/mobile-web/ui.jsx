@@ -1,11 +1,13 @@
-import { stockStatus, stockTone } from '../app/format.js';
+import { stockStatus, stockTone, money as formatMoney, moneyBase as formatMoneyBase, price as formatPrice, currencySymbol, baseCurrencySymbol } from '../app/format.js';
 import { LoadingIndicator } from '../Loading.jsx';
 import React from 'react';
 import { Box, ChevronRight, Search, TriangleAlert, X } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
 import { ProductImage } from '../ProductImage.jsx';
 
-export const money = value => `¥${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const money = value => `${currencySymbol()}${formatMoney(value)}`;
+export const moneyBase = value => `${baseCurrencySymbol()}${formatMoneyBase(value)}`;
+export const price = value => `${currencySymbol()}${formatPrice(value)}`;
 export const count = value => Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 export const dateTime = value => new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 export const stockLabel = stockStatus;
@@ -45,7 +47,7 @@ export function ProductRow({ product, onOpen }) {
       <span className="mw-muted">{product.barcode}</span>
       {product.specification && <span className="mw-muted">{product.specification}</span>}
       <span className="mw-product-state"><span className="mw-muted">{product.category}</span><StockBadge product={product} /></span>
-      <span className="mw-product-facts"><span>库存 {count(product.stock)} {product.unit}</span><span>参考销售价 {money(product.price)}</span></span>
+      <span className="mw-product-facts"><span>库存 {count(product.stock)} {product.unit}</span><span>参考销售价 {price(product.price)}</span></span>
     </button>
   </article>;
 }

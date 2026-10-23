@@ -817,7 +817,7 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
               {record.direction === "in" ? `来自 ${record.counterpart_name}` : `发往 ${record.counterpart_name}`}
               {" · "}{new Date(record.created_at).toLocaleString("zh-CN", { hour12: false })}
               {" · "}{record.item_count} 种物料
-              {costs && record.cost_cents != null ? ` · 成本 ¥${(record.cost_cents / 100).toFixed(2)}` : ""}
+              {costs && record.cost_cents != null ? ` · 成本 ${currencySymbol()}${formatMoney(record.cost_cents / 100)}` : ""}
             </small>
             <small>{record.items.map((i) => `${i.name} ${i.quantity}`).join("；")}</small>
             {record.note && <small>原因：{record.note}</small>}

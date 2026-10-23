@@ -11,7 +11,7 @@ import { Stocktake, ProductImport, ProductExport, Transfer } from './Operations.
 import { orderLabel } from './order-utils.js';
 import "./commerce.css";
 import { MultiStocktake } from './MultiStocktake.jsx';
-const money = (n) => `¥ ${(n / 100).toFixed(2)}`;
+const money = (n) => `${currencySymbol()}${formatMoney(n / 100)}`;
 export const paymentLabel = {
   unverified: "待核对",
   unpaid: "未收付",

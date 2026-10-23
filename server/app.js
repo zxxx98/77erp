@@ -9,6 +9,7 @@ import { installAi } from './ai.js';
 import { migrateOrderIndexes, warehouseOrders } from "./order-history.js";
 import { installProductHistory } from './product-history.js';
 import { validQuantity } from '../shared/quantity.js';
+import { validUnitPrice } from '../shared/money.js';
 import { inspectionToday, inspectionCompletion } from '../shared/inspection.js';
 import { hasPermission } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
@@ -33,6 +34,7 @@ import { migrateTransfers } from './transfers.js';
 import { installQueries } from './queries.js';
 import { installDataUpdates } from './data-updates.js';
 import { migrateNotifications, installNotifications, queueNotification } from './notifications.js';
+import { migrateCurrency, installCurrency } from './currency.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const tokens = {
@@ -79,7 +81,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     new Date().toISOString(),
   );
   db.prepare(
-    "INSERT OR IGNORE INTO settings VALUES (1, '七七商贸', '主仓库')",
+    "INSERT OR IGNORE INTO settings(id,business_name,warehouse_name) VALUES (1, '七七商贸', '主仓库')",
   ).run();
 
   if (!db.prepare("SELECT 1 FROM app_metadata WHERE key='demo_initialized'").get() &&
@@ -278,12 +280,14 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateNotifications(db);
   migrateBom(db);
   migrateProduction(db);
+  migrateCurrency(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use("/api/ai", express.json({ limit: "1mb" }));
   app.use('/api/quality', express.json({ limit: '2mb' }));
   app.use(express.json({ limit: "100kb" }));
   const { sessionUser } = installAuth(app, db, options);
+  installCurrency(app, db);
   installAnnouncements(app, db);
   migrateProductChanges(db);
   const { warehouses } = installWarehouses(app, db);
@@ -385,10 +389,6 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       })),
     });
   });
-  const validNumber = (n) =>
-    typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 99999999;
-  const validMoney = (n) =>
-    validNumber(n) && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
   function productValues(body) {
     const { name, barcode, unit, cost, price, threshold } = body;
     const category = body.category ?? (Number.isSafeInteger(body.category_id) ? db.prepare("SELECT name FROM categories WHERE id=?").get(body.category_id)?.name : undefined);
@@ -400,12 +400,12 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       !(typeof category === "string" && category.trim() && category.length <= 1100) ||
       (barcode != null && typeof barcode !== "string") ||
       (normalizedBarcode && !/^[\w.-]{3,64}$/.test(normalizedBarcode)) ||
-      !validMoney(cost) ||
-      !validMoney(price) ||
+      !validUnitPrice(cost) ||
+      !validUnitPrice(price) ||
       !validQuantity(threshold)
     )
       throw new Error(
-        "请填写有效的物料信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，金额最多两位小数且不能为负数，预警值需为非负数且最多 6 位小数。",
+        "请填写有效的物料信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，单价最多四位小数且不能为负数，预警值需为非负数且最多 6 位小数。",
       );
     return [
       name.trim(),

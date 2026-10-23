@@ -15,7 +15,7 @@ import {
 } from '../components/common.jsx';
 import { Plus, Search, X, List, Grid2X2, ScanLine, ChevronRight } from 'lucide-react';
 import { LoadingStatus } from '../Loading.jsx';
-import { money, count, stockStatus, stockTone } from '../app/format.js';
+import { money, price, count, stockStatus, stockTone, currencySymbol } from '../app/format.js';
 import { CategoryManager } from '../LazyComponents.jsx';
 
 function Products({ data, search, setSearch, edit, showProduct, barcode, onCategoriesChanged, onSaved, isAdmin }) {
@@ -150,8 +150,8 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       </td>
                       <td className="number-cell">
                         <div className="price-pair">
-                          <strong>¥ {money(p.price)}</strong>
-                          <small>采购 ¥ {money(p.cost)}</small>
+                          <strong>{currencySymbol()} {price(p.price)}</strong>
+                          <small>采购 {currencySymbol()} {price(p.cost)}</small>
                         </div>
                       </td>
                       <td className="number-cell">
@@ -212,7 +212,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                   {p.specification && <p className="product-spec">{p.specification}</p>}
                   {p.note && <p className="product-note" title={p.note}>{p.note}</p>}
                   <div className="product-grid-stats">
-                    <strong>¥ {money(p.price)}</strong>
+                    <strong>{currencySymbol()} {price(p.price)}</strong>
                     <span>
                       库存 {p.stock} {p.unit}
                     </span>

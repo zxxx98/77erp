@@ -91,7 +91,7 @@ test('permissions affect existing sessions immediately and cannot be bypassed by
   const f = await fixture(t);
   const source = f.db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
   const qr = async type => (await f.command(f.admin, '/stock-qrs', { name: type, type, partner: type === 'in' ? '供应商' : '客户',
-    require_confirmation: false, max_scans: null, items: [{ product_id: 1, quantity: 1, price_cents: 1000 }] })).data;
+    require_confirmation: false, max_scans: null, items: [{ product_id: 1, quantity: 1, price_e4: 100000 }] })).data;
   const incoming = await qr('in'), outgoing = await qr('out');
   const label = q => ({ format: '77erp', version: 1, type: 'stock_operation', source_id: source, warehouse_id: 1, qr_id: q.qr_id });
   await f.set(['purchase', 'business']);

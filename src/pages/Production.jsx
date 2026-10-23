@@ -14,9 +14,10 @@ import { MaterialVariance } from '../features/MaterialVariance.jsx';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import './bom.css';
 import './production.css';
+import { money as formatMoney, currencySymbol } from '../app/format.js';
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
-const money = value => (value / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = value => `${currencySymbol()}${formatMoney(value / 100)}`;
 const time = value => new Date(value).toLocaleString('zh-CN', { hour12: false });
 const statusBadge = status => <Badge tone={status === 'completed' ? 'green' : status === 'draft' ? 'blue' : 'orange'}>{productionStatusLabels[status]}</Badge>;
 
@@ -60,7 +61,7 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
         onChange={e => onQuantity(row.product_id, e.target.value)} /></label> : showActual && <div><small>实际耗料</small><span>{count(row.actual_quantity)} {row.unit}</span></div>}
       {!showActual && row.product && <div><small>账面库存</small><span>{count(row.product.stock)} {row.unit}</span>
         {shortage > 0 && <strong className="bom-shortage">缺料 {count(shortage)} {row.unit}</strong>}</div>}
-      {costs && showActual && <div><small>材料成本</small><span>¥ {money(row.cost_cents)}</span></div>}
+      {costs && showActual && <div><small>材料成本</small><span>{money(row.cost_cents)}</span></div>}
       {(complete || showActual) && <MaterialVariance row={row} analysis={analysis} complete={complete} disabled={disabled} onReason={onReason} />}
     </article>;
   })}</div>;
@@ -73,13 +74,13 @@ function ProductionBatches({ order, costs, canVoid, disabled, onVoid }) {
     <h2>完工批次</h2><p className="bom-hint">累计进度和耗料仅汇总有效批次。作废记录保留供追溯，整单作废后累计数为作废前的历史记录。</p>
     {order.batches.map(batch => <article key={batch.id} className="production-batch">
       <div className="bom-section-heading"><strong>第 {batch.batch_number} 批 · {count(batch.completed_quantity)} {order.unit}</strong><Badge tone={batch.status === 'active' ? 'green' : 'orange'}>{batch.status === 'active' ? '有效' : '本批已作废'}</Badge></div>
-      <small>{batch.created_by_name} · {time(batch.created_at)}{costs && ` · 材料成本 ¥ ${money(batch.total_cost_cents)}`}</small>
+      <small>{batch.created_by_name} · {time(batch.created_at)}{costs && ` · 材料成本 ${money(batch.total_cost_cents)}`}</small>
       {batch.note && <p className="production-note">{batch.note}</p>}
       {batch.status === 'void' && <p className="bom-hint">作废：{batch.voided_by_name} · {time(batch.voided_at)} · {batch.void_reason}</p>}
       <div className="bom-actions"><Button disabled={disabled} aria-expanded={expanded === batch.id} onClick={() => setExpanded(expanded === batch.id ? null : batch.id)}>{expanded === batch.id ? '收起' : '查看'}第 {batch.batch_number} 批明细</Button>
         {canVoid && batch.status === 'active' && order.status !== 'void' && <Button disabled={disabled} onClick={() => onVoid(batch)}>作废第 {batch.batch_number} 批</Button>}</div>
       {expanded === batch.id && <div className="production-batch-detail">
-        {batch.items.map(item => <div className="production-batch-material" key={item.product_id}><strong>{item.name}</strong><p>实际耗料 {count(item.actual_quantity)} {item.unit}{costs && ` · 材料成本 ¥ ${money(item.cost_cents)}`}</p><MaterialVariance row={item} analysis={item} /></div>)}
+        {batch.items.map(item => <div className="production-batch-material" key={item.product_id}><strong>{item.name}</strong><p>实际耗料 {count(item.actual_quantity)} {item.unit}{costs && ` · 材料成本 ${money(item.cost_cents)}`}</p><MaterialVariance row={item} analysis={item} /></div>)}
         <ScrapOutputs rows={batch.scraps} materials={batch.items} completed showPlan={false} />
       </div>}
     </article>)}
@@ -263,7 +264,7 @@ export function Production({ data, initialBom, onChanged }) {
       <div className="production-summary"><div><small>计划产量</small><strong>{count(detail.planned_quantity)} {detail.unit}</strong></div>
         <div><small>合格成品</small><strong>{detail.completed_at ? `${count(detail.completed_quantity)} ${detail.unit}` : '待完工'}</strong></div>
         <div><small>剩余计划</small><strong>{count(Math.max(0, quantityUnits(detail.planned_quantity) - quantityUnits(detail.completed_quantity ?? 0)) / QUANTITY_SCALE)} {detail.unit}</strong></div>
-        {can('finance') && detail.completed_at && <div><small>材料成本合计</small><strong>¥ {money(detail.total_cost_cents)}</strong></div>}
+        {can('finance') && detail.completed_at && <div><small>材料成本合计</small><strong>{money(detail.total_cost_cents)}</strong></div>}
       </div>
       <p className="bom-hint">配方：{detail.bom_name} · 基准产量 {count(detail.base_quantity)} {detail.unit} · 保留建单时的材料配方</p>
       {detail.note && <p className="production-note">{detail.note}</p>}

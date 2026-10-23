@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useId } from 'react';
 import { FullscreenChart } from '../components/FullscreenChart.jsx';
 import { InspectionPanel } from '../InspectionPanel.jsx';
-import { sameDay, shortDate, money, count, dateTime } from '../app/format.js';
+import { sameDay, shortDate, money, count, dateTime, currencySymbol } from '../app/format.js';
 import { usePermissions } from '../permissions.jsx';
 import { useQuery, queryPath } from '../queries.js';
 import {
@@ -203,11 +203,11 @@ function TrendChart({ orders, days, fullscreen = false }) {
           <strong>{shortDate(series[hover].date)}</strong>
           <span>
             <i className="legend-dot blue" />
-            销售 ¥{money(series[hover].out)}
+            销售 {currencySymbol()}{money(series[hover].out)}
           </span>
           <span>
             <i className="legend-dot pale" />
-            采购 ¥{money(series[hover].in)}
+            采购 {currencySymbol()}{money(series[hover].in)}
           </span>
         </div>
       )}
@@ -249,7 +249,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     {
       label: "库存总金额",
       value: costs ? money(value) : '—',
-      prefix: "¥",
+      prefix: currencySymbol(),
       icon: Warehouse,
       tone: "purple",
       footer: (
@@ -262,7 +262,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     {
       label: "今日采购",
       value: money((summary?.today.purchase_cents || 0) / 100),
-      prefix: "¥",
+      prefix: currencySymbol(),
       icon: ArrowDownLeft,
       tone: "green",
       footer: (
@@ -278,7 +278,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     {
       label: "今日销售",
       value: money((summary?.today.sales_cents || 0) / 100),
-      prefix: "¥",
+      prefix: currencySymbol(),
       icon: ArrowUpRight,
       tone: "orange",
       footer: (
@@ -357,7 +357,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         >
           <div className="trend-summary">
             <span className="trend-amount">
-              <span>¥</span>
+              <span>{currencySymbol()}</span>
               {money(salesSum)}
               <small>期间销售额</small>
             </span>
@@ -483,7 +483,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                     </td>
                     <td>{o.partner}</td>
                     <td className="number-cell amount-cell">
-                      {o.kind === "internal" ? "参考 ¥ " : "¥ "}{money(o.total)}
+                      {o.kind === "internal" ? `参考 ${currencySymbol()} ` : `${currencySymbol()} `}{money(o.total)}
                     </td>
                     <td>
                       <Badge>已完成</Badge>

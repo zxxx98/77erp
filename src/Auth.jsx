@@ -64,6 +64,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [baseCurrency, setBaseCurrency] = useState("USD");
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -78,7 +79,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
     setBusy(true);
     try {
       const state = await api(setup ? "/auth/setup" : "/auth/login", {
-        method: "POST", body: { username: username.trim(), password, ...(setup ? { name } : {}) },
+        method: "POST", body: { username: username.trim(), password, ...(setup ? { name, base_currency: baseCurrency } : {}) },
       });
       onSuccess(state);
     } catch (e) {
@@ -129,6 +130,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
             </div>
             {setup && <p className="auth-field-hint">3–32 位字母、数字或 ._-</p>}
             {setup && <><label htmlFor="auth-name">管理员名称（选填）</label><div className="auth-input"><UserRound size={17} /><input id="auth-name" maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} /></div></>}
+            {setup && <><label htmlFor="auth-currency">基准币种</label><div className="auth-input auth-select"><Warehouse size={17} /><select id="auth-currency" value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} disabled={busy}><option value="USD">美元（USD）</option><option value="CNY">人民币（CNY）</option></select></div><p className="auth-field-hint">初始化后不可修改，业务数据将以该币种为准。</p></>}
             <label htmlFor="auth-password">{setup ? "设置密码" : "密码"}</label>
             <div className="auth-input">
               <LockKeyhole size={17} />

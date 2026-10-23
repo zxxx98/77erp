@@ -244,7 +244,7 @@ test('v11 backups round trip multiple warehouses and sync groups, reject crossed
   await f.order(remote.id, 'in', 3, w);
   await f.command('/templates', { name: '常用模板', type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: 1, price: 10 }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 29);
+  assert.equal(backup.version, 30);
   for (const corrupt of ['warehouse', 'item', 'template', 'sync', 'barcode', 'category-owner', 'category-parent', 'category-warehouse']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;
@@ -306,7 +306,7 @@ test('legacy backups v3 through v9 migrate shared trees into independent warehou
     const restore = await f.command('/backup/restore', { backup: legacy, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' });
     assert.equal(restore.status, 200, `v${version}: ${JSON.stringify(restore.data)}`);
     const restored = (await f.request('/backup')).data;
-    assert.equal(restored.version, 29);
+    assert.equal(restored.version, 30);
     for (const warehouseId of [1, w, empty]) {
       const rows = (await f.request('/categories', 'GET', undefined, warehouseId)).data;
       assert.equal(rows.length, 3);
@@ -395,7 +395,7 @@ test('warehouse deletion clears local catalogs and zero-stock history, preserves
     await f.request('/categories', 'POST', { name: '同名子分类', parent_id: parent }, w);
   }
   assert.equal((await f.command('/templates', { name: '待删除模板', type: 'in', partner: '', note: '', items: [{ product_id: local, quantity: 1, price: 10 }] }, w)).status, 200);
-  assert.equal((await f.command('/stock-qrs', { name: '待删除二维码', type: 'in', partner: '供应商', require_confirmation: false, max_scans: null, items: [{ product_id: local, quantity: 1, price_cents: 1000 }] }, w)).status, 201);
+  assert.equal((await f.command('/stock-qrs', { name: '待删除二维码', type: 'in', partner: '供应商', require_confirmation: false, max_scans: null, items: [{ product_id: local, quantity: 1, price_e4: 100000 }] }, w)).status, 201);
   f.db.prepare('UPDATE notification_settings SET warehouse_ids=? WHERE id=1').run(JSON.stringify([w]));
   f.db.prepare('UPDATE products SET stock=1 WHERE id=?').run(local);
   assert.equal((await f.request(`/warehouses/${w}`, 'DELETE', {})).status, 400);
@@ -428,7 +428,7 @@ test('deleting a zero-stock warehouse removes orders, returns, payments, adjustm
   for (const warehouse of [1, w]) {
     const p = (await f.request('/products/barcode/WH-001', 'GET', undefined, warehouse)).data;
     const qr = await f.command('/stock-qrs', { name: '有使用记录的二维码', type: 'in', partner: '共享供应商', require_confirmation: false, max_scans: null,
-      items: [{ product_id: p.id, quantity: 3, price_cents: 1000 }] }, warehouse);
+      items: [{ product_id: p.id, quantity: 3, price_e4: 100000 }] }, warehouse);
     assert.equal(qr.status, 201);
     const preview = await f.request('/stock-qrs/preview', 'POST', { mode: 'in', label: { format: '77erp', version: 1, type: 'stock_operation', source_id: sourceId, warehouse_id: warehouse, qr_id: qr.data.qr_id } }, warehouse);
     assert.equal(preview.status, 200);

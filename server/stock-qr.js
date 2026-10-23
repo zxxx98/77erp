@@ -38,7 +38,7 @@ export function migrateStockQr(db) {
     id INTEGER PRIMARY KEY, stock_qr_id INTEGER NOT NULL REFERENCES stock_qr_codes(id),
     product_id INTEGER NOT NULL REFERENCES products(id), product_barcode TEXT NOT NULL, product_unit TEXT NOT NULL,
     quantity REAL NOT NULL CHECK(quantity > 0 AND quantity <= 99999999),
-    price_cents INTEGER NOT NULL CHECK(price_cents BETWEEN 0 AND 9999999900), sort_order INTEGER NOT NULL,
+    price_e4 INTEGER NOT NULL CHECK(price_e4 BETWEEN 0 AND 999999990000), sort_order INTEGER NOT NULL,
     UNIQUE(stock_qr_id,product_id), UNIQUE(stock_qr_id,sort_order));
     CREATE TABLE IF NOT EXISTS stock_qr_revisions (
     id INTEGER PRIMARY KEY, stock_qr_id INTEGER NOT NULL REFERENCES stock_qr_codes(id), version INTEGER NOT NULL,
@@ -71,6 +71,43 @@ export function migrateStockQr(db) {
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  // Unit prices now carry four decimals, so QR items store ten-thousandths of a currency unit.
+  const priceColumns = db.prepare("PRAGMA table_info(stock_qr_items)").all();
+  if (priceColumns.some((c) => c.name === "price_cents") && !priceColumns.some((c) => c.name === "price_e4")) {
+    const objects = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name='stock_qr_items' AND type IN ('index','trigger') AND sql IS NOT NULL").all();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.exec(`CREATE TABLE stock_qr_items_e4 (
+        id INTEGER PRIMARY KEY, stock_qr_id INTEGER NOT NULL REFERENCES stock_qr_codes(id),
+        product_id INTEGER NOT NULL REFERENCES products(id), product_barcode TEXT NOT NULL, product_unit TEXT NOT NULL,
+        quantity REAL NOT NULL CHECK(quantity > 0 AND quantity <= 99999999),
+        price_e4 INTEGER NOT NULL CHECK(price_e4 BETWEEN 0 AND 999999990000), sort_order INTEGER NOT NULL,
+        UNIQUE(stock_qr_id,product_id), UNIQUE(stock_qr_id,sort_order));`);
+      db.exec("INSERT INTO stock_qr_items_e4(id,stock_qr_id,product_id,product_barcode,product_unit,quantity,price_e4,sort_order) SELECT id,stock_qr_id,product_id,product_barcode,product_unit,quantity,price_cents*100,sort_order FROM stock_qr_items");
+      db.exec("DROP TABLE stock_qr_items; ALTER TABLE stock_qr_items_e4 RENAME TO stock_qr_items;");
+      for (const object of objects) db.exec(object.sql);
+      for (const table of ["stock_qr_revisions", "stock_qr_usages"]) {
+        for (const row of db.prepare(`SELECT id,snapshot FROM ${table}`).all()) {
+          let snapshot;
+          try { snapshot = JSON.parse(row.snapshot); } catch { continue; }
+          if (!Array.isArray(snapshot.items)) continue;
+          let changed = false;
+          snapshot.items = snapshot.items.map((item) => {
+            if (!item || item.price_e4 != null || item.price_cents == null) return item;
+            changed = true;
+            const { price_cents, ...rest } = item;
+            return { ...rest, price_e4: price_cents * 100 };
+          });
+          if (changed) db.prepare(`UPDATE ${table} SET snapshot=? WHERE id=?`).run(JSON.stringify(snapshot), row.id);
+        }
+      }
+      db.exec("DELETE FROM stock_qr_previews;");
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
       throw error;
     }
   }
@@ -109,7 +146,7 @@ function checkConfig(body, used = 0, editing = false) {
         !i ||
         !integer(i.product_id, 1) ||
         !validQuantity(i.quantity, true) ||
-        !integer(i.price_cents, 0, 9999999900),
+        !integer(i.price_e4, 0, 999999990000),
     )
   )
     fail(
@@ -119,7 +156,7 @@ function checkConfig(body, used = 0, editing = false) {
     );
   let total = 0;
   for (const i of body.items) {
-    const amount = Math.round(i.quantity * (i.price_cents / 100) * 100);
+    const amount = Math.round(i.quantity * (i.price_e4 / 10000) * 100);
     if (
       !Number.isSafeInteger(amount) ||
       !Number.isSafeInteger((total += amount))
@@ -172,7 +209,7 @@ export function installStockQr(app, db) {
         unit: p.unit,
         stock: p.stock,
         active: p.active,
-        amount_cents: Math.round(i.quantity * (i.price_cents / 100) * 100),
+        amount_cents: Math.round(i.quantity * (i.price_e4 / 10000) * 100),
         product_changed:
           p.barcode !== i.product_barcode || p.unit !== i.product_unit,
       };
@@ -385,7 +422,7 @@ export function installStockQr(app, db) {
   function replaceItems(id, items, warehouse) {
     db.prepare("DELETE FROM stock_qr_items WHERE stock_qr_id=?").run(id);
     const insert = db.prepare(
-      "INSERT INTO stock_qr_items(stock_qr_id,product_id,product_barcode,product_unit,quantity,price_cents,sort_order) VALUES (?,?,?,?,?,?,?)",
+      "INSERT INTO stock_qr_items(stock_qr_id,product_id,product_barcode,product_unit,quantity,price_e4,sort_order) VALUES (?,?,?,?,?,?,?)",
     );
     items.forEach((i, n) => {
       const p = db
@@ -393,7 +430,7 @@ export function installStockQr(app, db) {
         .get(i.product_id);
       if (!p || p.warehouse_id !== warehouse)
         fail("WAREHOUSE_MISMATCH", "物料不存在或不属于当前仓库。", 400);
-      insert.run(id, p.id, p.barcode, p.unit, i.quantity, i.price_cents, n);
+      insert.run(id, p.id, p.barcode, p.unit, i.quantity, i.price_e4, n);
     });
   }
   app.get(
@@ -568,7 +605,7 @@ export function installStockQr(app, db) {
             items: view.items.map((i) => ({
               product_id: i.product_id,
               quantity: i.quantity,
-              price: i.price_cents / 100,
+              price: i.price_e4 / 10000,
             })),
           });
           if (
@@ -611,6 +648,26 @@ export function installStockQr(app, db) {
 }
 
 export function validateStockQrBackup(data) {
+  const normalizePrice = (item) => {
+    if (item && item.price_e4 == null && item.price_cents != null) {
+      item.price_e4 = item.price_cents * 100;
+      delete item.price_cents;
+    }
+  };
+  for (const table of ["stock_qr_items", "stock_qr_revisions", "stock_qr_usages"]) {
+    for (const row of data[table] || []) {
+      if (table === "stock_qr_items") normalizePrice(row);
+      else {
+        try {
+          const snapshot = JSON.parse(row.snapshot);
+          if (Array.isArray(snapshot.items)) {
+            snapshot.items.forEach(normalizePrice);
+            row.snapshot = JSON.stringify(snapshot);
+          }
+        } catch {}
+      }
+    }
+  }
   const bad = () =>
     fail("INVALID_BACKUP", "备份出入库二维码配置、明细或使用记录无效。", 400);
   const codes = new Map(data.stock_qr_codes.map((q) => [q.id, q]));
@@ -665,16 +722,16 @@ export function validateStockQrBackup(data) {
       !text(i.product_barcode, 64) ||
       !text(i.product_unit, 100) ||
       !validQuantity(i.quantity, true) ||
-      !integer(i.price_cents, 0, 9999999900) ||
+      !integer(i.price_e4, 0, 999999990000) ||
       !integer(i.sort_order, 0, 99)
     )
       bad();
     itemKeys.add(key);
     positions.add(pos);
     counts.set(q.id, (counts.get(q.id) || 0) + 1);
-    const total = (amounts.get(q.id) || 0) + Math.round(i.quantity * (i.price_cents / 100) * 100);
+    const total = (amounts.get(q.id) || 0) + Math.round(i.quantity * (i.price_e4 / 10000) * 100);
     if (
-      !Number.isSafeInteger(Math.round(i.quantity * (i.price_cents / 100) * 100)) ||
+      !Number.isSafeInteger(Math.round(i.quantity * (i.price_e4 / 10000) * 100)) ||
       !Number.isSafeInteger(total)
     )
       bad();
@@ -702,7 +759,7 @@ export function validateStockQrBackup(data) {
           !i ||
           !integer(i.product_id, 1) ||
           !validQuantity(i.quantity, true) ||
-          !integer(i.price_cents, 0, 9999999900) ||
+          !integer(i.price_e4, 0, 999999990000) ||
           !text(i.name, 100) ||
           !text(i.product_barcode, 64) ||
           !text(i.product_unit, 100),
@@ -764,7 +821,7 @@ export function validateStockQrBackup(data) {
             (j) =>
               j.product_id === i.product_id &&
               j.quantity === i.quantity &&
-              Math.round(j.price * 100) === i.price_cents,
+              Math.round(j.price * 10000) === i.price_e4,
           ),
       )
     )

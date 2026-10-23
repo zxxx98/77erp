@@ -89,7 +89,7 @@ async function fixture(t) {
     items: products.map((p, i) => ({
       product_id: p.id,
       quantity: i ? 2 : 5,
-      price_cents: 1000,
+      price_e4: 100000,
     })),
     max_scans: 3,
   };
@@ -145,7 +145,7 @@ test('internal units work with receipt and issue QR codes and survive backup res
   const f = await fixture(t);
   const contact = await f.request('/contacts', 'POST', { request_id: randomUUID(), role: 'internal', name: '扫码产线', person: '', phone: '', address: '', note: '', active: 1 });
   assert.equal(contact.status, 200);
-  const items = [{ product_id: f.products[0].id, quantity: 2, price_cents: 1000 }];
+  const items = [{ product_id: f.products[0].id, quantity: 2, price_e4: 100000 }];
   for (const type of ['in', 'out']) {
     const qr = await f.create({ type, partner: '扫码产线', partner_id: contact.data.id, items });
     const preview = await f.preview(qr);
@@ -169,7 +169,7 @@ test('internal units work with receipt and issue QR codes and survive backup res
 
 test("fractional QR receipts and sales round line amounts and survive backup restore", async (t) => {
   const f = await fixture(t);
-  const items = [{ product_id: f.products[0].id, quantity: 0.125, price_cents: 123 }];
+  const items = [{ product_id: f.products[0].id, quantity: 0.125, price_e4: 12300 }];
   const receipt = await f.create({ items });
   const preview = (await f.preview(receipt)).data;
   assert.equal(preview.items[0].amount_cents, 15);
@@ -202,7 +202,7 @@ test("legacy QR quantity constraint migrates idempotently and preserves existing
   assert.deepEqual(f.db.prepare("SELECT * FROM stock_qr_items ORDER BY id").all(), rows);
   assert.equal((await f.preview(original)).status, 200);
   assert.deepEqual(f.db.prepare("PRAGMA foreign_key_check").all(), []);
-  const fractional = await f.create({ items: [{ product_id: f.products[0].id, quantity: 0.000001, price_cents: 1000 }] });
+  const fractional = await f.create({ items: [{ product_id: f.products[0].id, quantity: 0.000001, price_e4: 100000 }] });
   assert.equal((await f.execute(fractional, (await f.preview(fractional)).data)).status, 201);
   assert.equal(f.stocks()[0].stock, 0.000001);
 });
@@ -289,7 +289,7 @@ test("insufficient stock in any line, including changes after preview, rejects e
     items: f.products.map((p, i) => ({
       product_id: p.id,
       quantity: i ? 2 : 1,
-      price_cents: 2000,
+      price_e4: 200000,
     })),
   });
   const p = (await f.preview(q)).data;
@@ -347,7 +347,7 @@ test("editing replaces composition atomically, preserves count and invalidates p
     ...f.body,
     require_confirmation: true,
     version: 1,
-    items: [{ product_id: f.products[1].id, quantity: 7, price_cents: 3000 }],
+    items: [{ product_id: f.products[1].id, quantity: 7, price_e4: 300000 }],
     max_scans: 5,
     request_id: randomUUID(),
   };
@@ -404,11 +404,11 @@ test("invalid combinations, cross-warehouse items, prices and boolean values nev
     { items: [p, p] },
     { items: Array.from({ length: 101 }, () => p) },
     { items: [{ ...p, quantity: 0 }] },
-    { items: [{ ...p, price_cents: 1.5 }] },
+    { items: [{ ...p, price_e4: 1.5 }] },
     { items: [p, { ...p, product_id: other.id }] },
     { require_confirmation: "false" },
     { max_scans: 0 },
-    { items: [{ ...p, quantity: 99999999, price_cents: 9999999900 }] },
+    { items: [{ ...p, quantity: 99999999, price_e4: 999999990001 }] },
   ]) {
     const r = await f.request("/stock-qrs", "POST", {
       ...f.body,
@@ -498,7 +498,7 @@ test("backup v7 preserves multi-item history, restore rotates labels and disable
     q = await f.create();
   await f.execute(q, (await f.preview(q)).data);
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 29);
+  assert.equal(backup.version, 30);
   const restore = async (value) => {
     const p = await f.request("/backup/preview", "POST", { backup: value });
     assert.equal(p.status, 200, JSON.stringify(p.data));

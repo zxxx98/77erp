@@ -11,7 +11,7 @@ import { useBusiness } from '../business-api.js';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
 import { draftScope, localId, removeDraft, saveDraft } from '../pwa/drafts.js';
 import { usePwa } from '../pwa/Pwa.jsx';
-import { MobileButton as Button, MobileIcon, Notice, SearchField, ProductRow, money, count } from './ui.jsx';
+import { MobileButton as Button, MobileIcon, Notice, SearchField, ProductRow, moneyBase, count } from './ui.jsx';
 
 export function MobileOrderForm({ type, initialProduct, initialTemplate, initialDraft, data, userId, Modal, CameraScanner, onClose, onSaved }) {
   const { templates: manageTemplates } = usePermissions();
@@ -118,7 +118,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
       if (seen.has(p.id)) throw new Error('同一物料不能重复添加。');
       seen.add(p.id);
       const quantity = parseQuantity(line.quantity, true), price = Number(line.price);
-      if (!/^\d+(\.\d{1,2})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(`${p.name} 单价需为非负金额，最多两位小数。`);
+      if (!/^\d+(\.\d{1,4})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(`${p.name} 单价需为非负金额，最多四位小数。`);
       if (type === 'out' && quantity > p.stock) throw new Error(`${p.name} 库存不足（当前 ${count(p.stock)} ${p.unit}）。`);
       return { product_id: p.id, quantity, price };
     }) };
@@ -219,15 +219,15 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             {items.map(line => {
               const p = data.products.find(p => p.id === line.product_id);
               const name = p?.name || line.name || '物料已不存在';
-              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已停用）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '物料已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<input type="number" inputMode="decimal" min="0.000001" max="99999999" step="0.000001" required aria-label={`${name} 数量`} value={line.quantity} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></label><label className="mw-field">单价<input type="number" inputMode="decimal" min="0" max="99999999" step="0.01" required aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.000001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{money(Math.round(Number(line.quantity) * Number(line.price) * 100) / 100)}</strong></div></section>;
+              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已停用）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '物料已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<input type="number" inputMode="decimal" min="0.000001" max="99999999" step="0.000001" required aria-label={`${name} 数量`} value={line.quantity} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></label><label className="mw-field">单价<input type="number" inputMode="decimal" min="0" max="99999999" step="0.0001" required aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.000001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round(Number(line.quantity) * Number(line.price) * 100) / 100)}</strong></div></section>;
             })}
             <label className="mw-field">备注（选填）<textarea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
           </fieldset>
         </div>
-        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料 · 总量 {count(totalQuantity)}</span><h2>{money(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
+        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料 · 总量 {count(totalQuantity)}</span><h2>{moneyBase(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
       </form>
     </Modal>
-    {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {money(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
+    {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {moneyBase(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
     {closing && <Modal title={pending ? '保存待核对单据？' : '保存本地草稿？'} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? '提交结果尚未确认，请保留草稿，联网后核对原提交。' : '保存后可从“更多 → 本地草稿”继续编辑。'}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>保存草稿并关闭</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>放弃草稿</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>继续编辑</Button></div></Modal>}
   </>;
 }

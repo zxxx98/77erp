@@ -3,7 +3,7 @@ import { Modal, Badge, Button } from '../components/common.jsx';
 import { orderLabel } from '../order-utils.js';
 import { OrderActions, Payments } from '../LazyComponents.jsx';
 import { CheckCheck } from 'lucide-react';
-import { money, count } from '../app/format.js';
+import { money, price, count, currencySymbol } from '../app/format.js';
 import { orderLineAmount } from '../../shared/money.js';
 
 function OrderDetail({ order, onClose, onSaved, isAdmin }) {
@@ -68,14 +68,14 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
                   <td className="number-cell">{i.quantity}</td>
                   {transfer ? (
                     <>
-                      <td className="number-cell">{costs && i.cost_cents != null ? `¥ ${money(i.cost_cents / 100 / i.quantity)}` : "—"}</td>
-                      <td className="number-cell">{costs && i.cost_cents != null ? `¥ ${money(i.cost_cents / 100)}` : "—"}</td>
+                      <td className="number-cell">{costs && i.cost_cents != null ? `${currencySymbol()} ${price(i.cost_cents / 100 / i.quantity)}` : "—"}</td>
+                      <td className="number-cell">{costs && i.cost_cents != null ? `${currencySymbol()} ${money(i.cost_cents / 100)}` : "—"}</td>
                     </>
                   ) : (
                     <>
-                      <td className="number-cell">¥ {money(i.price)}</td>
+                      <td className="number-cell">{currencySymbol()} {price(i.price)}</td>
                       <td className="number-cell">
-                        ¥ {money(orderLineAmount(i) / 100)}
+                        {currencySymbol()} {money(orderLineAmount(i) / 100)}
                       </td>
                     </>
                   )}
@@ -88,7 +88,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
                 <td className="number-cell">{count(totalQuantity)}</td>
                 <td />
                 <td className="number-cell">
-                  {transfer ? (costs ? `¥ ${money(costTotal)}` : "—") : <>¥ {money(order.total)}</>}
+                  {transfer ? (costs ? `${currencySymbol()} ${money(costTotal)}` : "—") : <>{currencySymbol()} {money(order.total)}</>}
                 </td>
               </tr>
             </tfoot>

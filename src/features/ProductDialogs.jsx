@@ -7,7 +7,8 @@ import { Download, ScanLine, ImagePlus, Plus, Package, TriangleAlert, Check, Min
 import { usePermissions } from '../permissions.jsx';
 import { api } from '../api.js';
 import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
-import { money, count, stockStatus } from '../app/format.js';
+import { price, count, stockStatus, currencySymbol } from '../app/format.js';
+import { baseCurrency } from '../currency.js';
 import { ProductHistory } from '../ProductHistory.jsx';
 import { flattenCategories, readProductImage, categoryBranch } from '../catalog.js';
 import { Select } from '../Dropdown.jsx';
@@ -119,8 +120,8 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
     ["物料分类", product.category],
     ["计量单位", product.unit],
     ["所属仓库", warehouseName],
-    ["参考销售价", `¥ ${money(product.price)}`],
-    ...(costs ? [["参考采购价", `¥ ${money(product.cost)}`]] : []),
+    ["参考销售价", `${currencySymbol()} ${price(product.price)}`],
+    ...(costs ? [["参考采购价", `${currencySymbol()} ${price(product.cost)}`]] : []),
     ["当前库存", `${count(product.stock)} ${product.unit}`],
     ["安全库存", `${count(product.threshold)} ${product.unit}`],
     ["库存状态", stockStatus(product)],
@@ -250,27 +251,27 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   const priceFields = (
     <>
       <label>
-        参考采购价（元） <span>*</span>
+        参考采购价（{baseCurrency()}） <span>*</span>
         <input
           type="number"
           required
           min="0"
           max="99999999"
-          step="0.01"
-          placeholder="0.00"
+          step="0.0001"
+          placeholder="0.0000"
           value={form.cost}
           onChange={(e) => change("cost", e.target.value)}
         />
       </label>
       <label>
-        参考销售价（元） <span>*</span>
+        参考销售价（{baseCurrency()}） <span>*</span>
         <input
           type="number"
           required
           min="0"
           max="99999999"
-          step="0.01"
-          placeholder="0.00"
+          step="0.0001"
+          placeholder="0.0000"
           value={form.price}
           onChange={(e) => change("price", e.target.value)}
         />

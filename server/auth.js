@@ -147,7 +147,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   });
   app.post("/api/auth/setup", authLimit, async (req, res) => {
     if (initialized()) return res.status(409).json({ error: "管理员已设置，请直接登录。" });
-    const { username, password, name = '' } = req.body || {};
+    const { username, password, name = '', base_currency = 'USD' } = req.body || {};
     if (typeof username !== "string" || !/^[A-Za-z0-9_.-]{3,32}$/.test(username.trim())) {
       return res.status(400).json({ error: "账号需为 3–32 位字母、数字或 ._-。" });
     }
@@ -155,6 +155,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       return res.status(400).json({ error: "密码需为 8–128 位字符。" });
     }
     if (!validName(name)) return res.status(400).json({ error: '名称最多 60 个字。' });
+    if (!['USD','CNY'].includes(base_currency)) return res.status(400).json({ error: '请选择有效的基准币种。' });
     const salt = randomBytes(16).toString("hex");
     const hash = (await deriveKey(password, salt, 64)).toString("hex");
     // Recheck inside a write transaction: competing setup requests cannot replace the admin.
@@ -166,6 +167,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       }
       db.prepare("INSERT INTO users(id,username,password_salt,password_hash,role,created_at,name) VALUES (1,?,?,?,'admin',?,?)")
         .run(username.trim(), salt, hash, new Date().toISOString(), name.trim());
+      db.prepare("UPDATE settings SET base_currency=?,display_currency=? WHERE id=1").run(base_currency, base_currency);
       const state = issueSession(req, res, { id: 1, username: username.trim(), name: name.trim(), role: 'admin' });
       db.exec("COMMIT");
       clearAttempts(req);
