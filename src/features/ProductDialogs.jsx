@@ -94,7 +94,7 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
   );
 }
 
-function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
+function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onViewBom }) {
   const { costs, can } = usePermissions();
   const [tab,setTab]=useState('details');
   const showQuality=!mobileDevice&&can('quality');
@@ -167,7 +167,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose }) {
       </section>
       </div>}
     </div>
-    <div className="modal-footer"><Button onClick={onClose}>关闭</Button></div>
+    <div className="modal-footer">{can('bom') && onViewBom && <Button onClick={onViewBom}>查看用料清单</Button>}<Button onClick={onClose}>关闭</Button></div>
   </Modal>;
 }
 

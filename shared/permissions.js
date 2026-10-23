@@ -8,6 +8,7 @@ export const permissionOptions = [
   { key: 'stocktake', label: '库存盘点', description: '盘点记录、提交盘点、库存调整、减少库存、增加库存（退料）及多仓库盘点 CSV 导出' },
   { key: 'business', label: '业务资料管理', description: '往来单位、自己的模板及出入库二维码配置' },
   { key: 'quality', label: '品质管理', description: '桌面验收模板配置、验收单解析与物料绑定、品质图表及原始 Excel 下载' },
+  { key: 'bom', label: '用料清单', description: '单层 BOM 的维护、启停、备料测算及导出' },
   { key: 'finance', label: '财务管理', description: '收付款、欠款、库存成本及毛利报表' },
   { key: 'data_io', label: '数据导入导出', description: '物料批量导入及单据 CSV 导出' },
 ];

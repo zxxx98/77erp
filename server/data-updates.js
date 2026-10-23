@@ -13,6 +13,8 @@ export function installDataUpdates(app, db) {
     quality_acceptances: row => `'warehouse:' || ${row}.warehouse_id`,
     quality_templates: row => `'warehouse:' || ${row}.warehouse_id`,
     quality_charts: row => `'warehouse:' || ${row}.warehouse_id`,
+    boms: row => `'warehouse:' || ${row}.warehouse_id`,
+    bom_items: row => `'warehouse:' || (SELECT warehouse_id FROM boms WHERE id=${row}.bom_id)`,
     order_items: row => `'warehouse:' || (SELECT warehouse_id FROM orders WHERE id=${row}.order_id)`,
     payments: row => `'warehouse:' || (SELECT warehouse_id FROM orders WHERE id=${row}.order_id)`,
     stock_adjustments: row => `'warehouse:' || (SELECT warehouse_id FROM products WHERE id=${row}.product_id)`,

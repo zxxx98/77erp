@@ -20,7 +20,7 @@ import './mobile.css';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
 
-export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, announcementCount, updateNotice }) {
+export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, announcementCount, updateNotice }) {
   const { can } = usePermissions();
   const tabs = modeItems(mode, can).filter(item => item.mobile);
   const { online } = usePwa();
@@ -76,6 +76,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
           {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} />}
           {page === 'more' && <More mode={mode} user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'quality' && renderQuality()}
+          {page === 'bom' && renderBom()}
           {page === 'scanner' && renderScanner()}
           {page === 'announcements' && renderAnnouncements()}
           <div className="mw-refresh"><span className="mw-muted">{updated ? `读取于 ${updated.toLocaleTimeString('zh-CN', { hour12: false })}` : '数据保存在服务器'}</span><button type="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}刷新数据</button></div>
@@ -185,6 +186,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     <section className="mw-card"><div className="mw-account"><ShieldCheck size={30} /><div><h2>{user.name || user.username}</h2><p className="mw-muted">账号：{user.username}</p><p className="mw-muted">{user.role === 'admin' ? '管理员账号' : '员工账号'}</p></div></div></section>
     {(user.role === 'admin' || user.permissions?.includes('ai')) && <section className="mw-card"><Button icon={Settings} onClick={() => openModal({ kind: 'ai' })}>AI 助手</Button></section>}
     {mode === 'production' && can('quality') && <section className="mw-card"><Button icon={FilePenLine} onClick={() => navigate('quality')}>品质管理 · 在线验收</Button></section>}
+    {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('bom')}>用料清单 · 备料测算</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>商户与仓库设置</Button>}</section>
     <Button onClick={() => openModal({ kind: 'account' })}>修改密码</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>业务管理</Button>
     {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>出入库二维码</Button>}
@@ -213,7 +215,7 @@ export function DraftList({ data, userId, onOpen, onClose, Modal }) {
   </div></Modal>;
 }
 
-export function MobileProductDetail({ product, data, Modal, openOrder, openModal, openOrderDetail, onClose, onSaved }) {
+export function MobileProductDetail({ product, data, Modal, openOrder, openModal, openOrderDetail, onClose, onSaved, onViewBom }) {
   const { can, manage, costs } = usePermissions();
   const { online } = usePwa();
   const [others, setOthers] = useState(null);
@@ -251,6 +253,7 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
     <section className="mw-card mw-stack"><h2>其他仓库库存</h2><Notice>{otherError}</Notice>{others === null && !otherError ? <p className="mw-muted"><LoadingStatus>读取中…</LoadingStatus></p> : others?.length ? others.map(w => <DetailRow key={w.warehouse_id} label={w.warehouse_name}>{count(w.stock)} {w.unit}</DetailRow>) : !otherError && <p className="mw-muted">其他仓库暂无同一物料</p>}
       {mobileExpressionValue !== null && <DetailRow label={mobileExpressionText}><strong className={`stock-diff-${mobileExpressionValue > 0 ? 'positive' : mobileExpressionValue < 0 ? 'negative' : 'zero'}`}>{`${mobileExpressionValue > 0 ? '+' : ''}${count(mobileExpressionValue)} ${product.unit}`}</strong></DetailRow>}</section>
     <Button onClick={() => openModal({ kind: 'barcode', product })}>物料条码</Button>
+    {can('bom') && onViewBom && <Button onClick={onViewBom}>查看用料清单</Button>}
     {can('products') && <Button disabled={busy} onClick={() => openModal({ kind: 'product', product })}>编辑物料</Button>}
     {manage('business') && <Button disabled={busy} onClick={() => openModal({ kind: 'stockQr', product })}>出入库二维码</Button>}
     {can('stocktake') && <Button disabled={busy || !online} onClick={() => openModal({ kind: 'increase', product })}>增加库存（退料）</Button>}

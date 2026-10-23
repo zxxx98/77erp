@@ -19,8 +19,8 @@ export function useBusiness() {
       setBusy(false);
     }
   };
-  const send = async (path, body) => {
-    const fingerprint = JSON.stringify([path, body]);
+  const send = async (path, body, options = {}) => {
+    const fingerprint = JSON.stringify([path, body, options]);
     if (key.current.fingerprint !== fingerprint)
       key.current = {
         fingerprint,
@@ -30,6 +30,7 @@ export function useBusiness() {
       };
     const id = key.current.id;
     const result = await api(path, {
+      ...options,
       method: "POST",
       body: { ...body, request_id: id },
     });

@@ -37,6 +37,49 @@ async function fixture(t, dbPath = ':memory:') {
   return { db, request, admin, staff, id, permissions, settings, calls, replies, use, chat, order };
 }
 
+test('BOM tools require independent permission, read actual single-level recipes and never write inventory', async t => {
+  const f = await fixture(t);
+  const parent = f.db.prepare('SELECT * FROM products WHERE id=1').get(), material = f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const saved = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI用料表', product_id: parent.id,
+    base_quantity: 10, base_unit: parent.unit, note: '', enabled: 1,
+    items: [{ product_id: material.id, quantity: 3, unit: material.unit, note: '实际配方' }] });
+  assert.equal(saved.status, 200);
+  const id = saved.data.id;
+  await f.permissions(['ai']);
+  await f.chat(f.staff);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool => /^(search_boms|get_bom|calculate_bom)$/.test(tool.function.name)));
+  f.use('get_bom', { bom_id: id }); assert.equal((await f.chat(f.staff)).status, 403);
+  await f.permissions(['ai', 'bom']);
+  const before = f.db.prepare('SELECT * FROM products ORDER BY id').all();
+  f.use('search_boms', { query: 'AI用料' });
+  assert.equal((await f.chat(f.staff)).status, 200);
+  let result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.total, 1); assert.equal(result.boms[0].id, id);
+  for (const name of ['search_boms', 'get_bom', 'calculate_bom'])
+    assert.ok(f.calls.at(-1).body.tools.some(tool => tool.function.name === name));
+  f.use('get_bom', { bom_id: id }); await f.chat(f.staff);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.items[0].quantity, 3); assert.equal(result.items[0].product.id, material.id);
+  assert.ok(!JSON.stringify(result).includes('inventory_value_cents'));
+  f.use('calculate_bom', { bom_id: id, production_quantity: 2 });
+  const calculation = await f.chat(f.staff);
+  assert.equal(calculation.status, 200); assert.deepEqual(calculation.data.actions, []);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.rows[0].required, 0.6); assert.equal(result.rows[0].stock, material.stock);
+  assert.ok(!JSON.stringify(result).includes('cost'));
+  assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
+  f.use('calculate_bom', { bom_id: id, production_quantity: 0 }); await f.chat(f.staff);
+  assert.match(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).error, /生产数量/);
+  const remote = (await f.request(f.admin, '/warehouses', { name: 'AI BOM空仓' })).data.id;
+  f.use('get_bom', { bom_id: id });
+  await f.request(f.staff, '/ai/chat', { message: '查询用料清单' }, 'POST', remote);
+  assert.match(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).error, /当前仓库/);
+  // Queries remain available while AI write previews are disabled.
+  assert.equal((await f.request(f.admin, '/settings/ai', { ...f.settings, writes: false }, 'PUT')).status, 200);
+  f.use('get_bom', { bom_id: id }); assert.equal((await f.chat(f.staff)).status, 200);
+});
+
 test('AI configuration encrypts credentials, remains admin-only and requires separate usage permission', async t => {
   const f = await fixture(t);
   assert.equal((await f.chat(null)).status, 401);

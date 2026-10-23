@@ -41,6 +41,7 @@ import {
   Dashboard,
   Announcements,
   Quality,
+  Bom,
   AnnouncementDetail,
   AnnouncementEditor,
   Products,
@@ -85,6 +86,7 @@ function App({ admin, onLogout }) {
     return { mode, page: navItems.some(item => item.id === initial) ? initial : fallback, pages: stored.pages && typeof stored.pages === 'object' && !Array.isArray(stored.pages) ? stored.pages : {} };
   });
   const [mode, setMode] = useState(initialNavigation.mode);
+  const [bomProduct, setBomProduct] = useState(null);
   const modeRef = useRef(mode);
   const lastPages = useRef(initialNavigation.pages);
   const [page, setPage] = useState(initialNavigation.page);
@@ -225,6 +227,7 @@ function App({ admin, onLogout }) {
     setMode(nextMode);
     pageRef.current = id;
     setPage(id);
+    if (id !== 'bom') setBomProduct(null);
     acceptedHash.current = navigationHash(id, nextMode);
     location.hash = acceptedHash.current;
     setNotification(false);
@@ -256,6 +259,7 @@ function App({ admin, onLogout }) {
         return;
       }
       setWarehouseId(id);
+      setBomProduct(null);
       setData({ ...workspace, products: [], orders: [] });
       setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
     } catch (e) { notify(e.message, 'error'); }
@@ -302,6 +306,7 @@ function App({ admin, onLogout }) {
         announcementCount={announcementCount}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">没有品质管理权限，请联系管理员。</div>}
+        renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} /> : <div className="info-box">没有用料清单权限，请联系管理员。</div>}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>
@@ -539,6 +544,7 @@ function App({ admin, onLogout }) {
               {page === 'announcements' && <Announcements data={data} openModal={setModal} />}
               {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
               {page === 'quality' && !can('quality') && <div className="info-box">没有品质管理权限，请联系管理员。</div>}
+              {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} /> : <div className="info-box">没有用料清单权限，请联系管理员。</div>)}
               {page === "products" && (
                 <Products
                   data={data}
@@ -632,7 +638,7 @@ function App({ admin, onLogout }) {
         />
       )}
       {manage('business') && modal?.kind === "stockQr" && <StockQrManager data={data} initialProduct={modal.product} Modal={Modal} CameraScanner={CameraScanner} onClose={() => setModal(null)} />}
-      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} openOrderDetail={openOrderDetail} onClose={() => setModal(null)} onSaved={saved} /> : <ProductDetail product={modal.product} data={data} warehouseName={data.settings.warehouse_name} onViewOrder={openOrderDetail} onClose={() => setModal(null)} />)}
+      {modal?.kind === "productDetail" && (mobileDevice ? <MobileProductDetail product={data.products.find(p => p.id === modal.product.id) || modal.product} data={data} Modal={Modal} openOrder={openOrder} openModal={setModal} openOrderDetail={openOrderDetail} onClose={() => setModal(null)} onSaved={saved} onViewBom={() => { const product = modal.product; setModal(null); navigate('bom'); setBomProduct(product); }} /> : <ProductDetail product={modal.product} data={data} warehouseName={data.settings.warehouse_name} onViewOrder={openOrderDetail} onClose={() => setModal(null)} onViewBom={() => { const product = modal.product; setModal(null); navigate('bom'); setBomProduct(product); }} />)}
       {modal?.kind === "barcode" && (
         <ProductCodeModal
           product={modal.product}

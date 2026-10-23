@@ -198,7 +198,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 22);
+  assert.equal(backup.version, 23);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -266,6 +266,9 @@ const routeRoles = new Map(Object.entries({
   'get /api/workspace': 'employee', 'get /api/updates': 'employee', 'get /api/products/:id': 'employee',
   'get /api/products': 'employee', 'get /api/orders': 'employee', 'get /api/orders/:id': 'employee', 'get /api/dashboard': 'employee',
   'get /api/transfers': 'admin', 'post /api/transfers': 'admin', 'post /api/transfers/:id/void': 'admin',
+  // BOM access is opt-in; legacy employees do not inherit its permission.
+  'get /api/boms': 'bom', 'get /api/boms/:id': 'bom', 'post /api/boms': 'bom',
+  'post /api/boms/:id': 'bom', 'post /api/boms/:id/status': 'bom', 'post /api/boms/:id/calculate': 'bom',
 }));
 
 test('every API route declares its role, and employee access matches that declaration', async t => {
@@ -286,7 +289,7 @@ test('every API route declares its role, and employee access matches that declar
     const [method, path] = key.split(' ');
     const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':announcementId', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
     const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
-    assert.equal(response.status === 403, ['admin', 'ai'].includes(role), `${key} 返回 ${response.status}`);
+    assert.equal(response.status === 403, ['admin', 'ai', 'bom'].includes(role), `${key} 返回 ${response.status}`);
   }
   assert.deepEqual(counts(), before, '权限探测不应改动业务数据');
   assert.equal((await f.request(employee.cookie, '/auth/logout', {}, 'POST')).status, 200);
