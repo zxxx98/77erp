@@ -49,6 +49,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const templateAction = useBusiness();
   const reportError = message => setError(value => ({ message, revision: value.revision + 1 }));
   const total = items.reduce((sum, line) => sum + Math.round(Number(line.quantity) * Number(line.price) * 100), 0) / 100;
+  const totalQuantity = items.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
   const dirty = !!(items.length || note || (partner && partner !== (type === 'out' ? '零售客户' : '')) || pending);
   const disabled = busy || templateAction.busy || !!pending;
   const draft = { id, type, partner, partnerId, note, items, template: template ? { id: template.id, version: template.version, name: template.name } : null, templateName, pending };
@@ -223,7 +224,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             <label className="mw-field">备注（选填）<textarea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
           </fieldset>
         </div>
-        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料</span><h2>{money(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
+        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料 · 总量 {count(totalQuantity)}</span><h2>{money(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
       </form>
     </Modal>
     {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {money(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}

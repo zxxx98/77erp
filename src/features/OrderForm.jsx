@@ -9,7 +9,7 @@ import { useQuery } from '../queries.js';
 import { addQuantity } from '../../shared/quantity.js';
 import { Modal, QueryStatus, Button, ProductArt } from '../components/common.jsx';
 import { FilePenLine, Camera, ScanLine, Plus, Search, X, CircleCheck, Trash2, TriangleAlert, Check } from 'lucide-react';
-import { money } from '../app/format.js';
+import { money, count } from '../app/format.js';
 
 function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSaved }) {
   const { templates } = usePermissions();
@@ -89,6 +89,10 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
       (s, i) => s + Math.round(Number(i.quantity) * Number(i.price) * 100),
       0,
     ) / 100;
+  const totalQuantity = items.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0),
+    0,
+  );
   const submit = async (e) => {
     e.preventDefault();
     if (!items.length) {
@@ -332,6 +336,17 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                   );
                 })}
               </tbody>
+              {!!items.length && (
+                <tfoot>
+                  <tr className="table-total-row">
+                    <td>总计 · {items.length} 种物料</td>
+                    <td className="number-cell">{count(totalQuantity)}</td>
+                    <td />
+                    <td className="number-cell">¥ {money(total)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
             </table>
             {!items.length && (
               <div className="order-form-empty">
@@ -359,10 +374,10 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
         </div>
         <div className="modal-footer order-form-footer">
           <div>
-            <small>合计金额</small>
+            <small>物料种类</small>
             <strong>
-              <span>¥ </span>
-              {money(total)}
+              {items.length}
+              <span> 种</span>
             </strong>
           </div>
           <div>

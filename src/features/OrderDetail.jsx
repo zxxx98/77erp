@@ -3,7 +3,7 @@ import { Modal, Badge, Button } from '../components/common.jsx';
 import { orderLabel } from '../order-utils.js';
 import { OrderActions, Payments } from '../LazyComponents.jsx';
 import { CheckCheck } from 'lucide-react';
-import { money } from '../app/format.js';
+import { money, count } from '../app/format.js';
 import { orderLineAmount } from '../../shared/money.js';
 
 function OrderDetail({ order, onClose, onSaved, isAdmin }) {
@@ -12,6 +12,12 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
   // the line value shown is the moved moving-average cost.
   const transfer = order.kind === "transfer";
   const costTotal = order.items.reduce((sum, i) => sum + (i.cost_cents || 0), 0) / 100;
+  const totalQuantity = order.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const totalLabel = transfer
+    ? "总计（调拨成本）"
+    : order.kind === "internal"
+      ? "总计（参考金额）"
+      : "总计";
   return (
     <Modal
       title={`${orderLabel(order)}单详情`}
@@ -76,6 +82,16 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="table-total-row">
+                <td colSpan={2}>{totalLabel} · {order.items.length} 种物料</td>
+                <td className="number-cell">{count(totalQuantity)}</td>
+                <td />
+                <td className="number-cell">
+                  {transfer ? (costs ? `¥ ${money(costTotal)}` : "—") : <>¥ {money(order.total)}</>}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         <div className="detail-note">
@@ -94,9 +110,10 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
       </div>
       <div className="modal-footer order-form-footer">
         <div>
-          <small>{transfer ? "调拨成本" : order.kind === "internal" ? "参考金额" : "合计金额"}</small>
+          <small>物料种类</small>
           <strong>
-            {transfer ? (costs ? `¥ ${money(costTotal)}` : "—") : <><span>¥ </span>{money(order.total)}</>}
+            {order.items.length}
+            <span> 种</span>
           </strong>
         </div>
         <Button onClick={onClose}>关闭详情</Button>

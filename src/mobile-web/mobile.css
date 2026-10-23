@@ -55,6 +55,8 @@
 .mw-badge.green {background:#edf7f4;color:#16866d;}
 .mw-order-summary {display:flex;width:100%;flex-direction:column;gap:10px;text-align:left;padding:12px 0;border:0;background:transparent;overflow-wrap:anywhere;}
 .mw-order-summary>strong {font-size:15px;font-weight:600;}
+.mw-order-total {background:#f8faff;border-color:#e6edf8;}
+.mw-order-total strong {font-variant-numeric:tabular-nums;}
 .mw-search {display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e9ecf1;border-radius:10px;min-height:48px;padding-left:12px;min-width:0;color:#647084;}
 .mw-search input {border:0!important;background:transparent;box-shadow:none!important;flex:1;min-width:0;width:100%;min-height:48px;padding:12px;font:inherit;font-size:16px;color:#17243c;}
 .mw-search input::-webkit-search-cancel-button {display:none;}

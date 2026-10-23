@@ -1304,6 +1304,17 @@ table {
   font-size: 11px;
   letter-spacing: -0.3px;
 }
+.data-table tfoot td {
+  background: #f8faff;
+  border-top: 1px solid #e6edf8;
+  border-bottom: 0;
+  color: #486b9d;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.data-table tfoot .number-cell {
+  color: #486b9d;
+}
 .recent-table th {
   padding: 11px 15px;
 }
