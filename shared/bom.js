@@ -1,6 +1,10 @@
 import { MAX_QUANTITY, QUANTITY_SCALE, validQuantity, quantityUnits, parseQuantity } from './quantity.js';
 
 export const BOM_MAX_ITEMS = 100;
+// Percentage points: 10 means 10% of gross input, not a 10% markup on net use.
+export function validateBomLossRate(value) {
+  if (!validQuantity(value) || value >= 100) throw new Error('标准损耗率需为 0（含）至 100（不含）的百分数，最多 6 位小数。');
+}
 const text = (value, max, required = false) => typeof value === 'string' && value.length <= max && (!required || !!value.trim());
 const id = value => Number.isSafeInteger(value) && value > 0;
 
@@ -42,6 +46,7 @@ export function validateBom(value) {
     if (!item || !id(item.product_id) || !validQuantity(item.quantity, true) || !text(item.unit, 100, true) || !text(item.note, 200))
       throw new Error('材料、用量、单位或备注无效，用量需为正数且最多 6 位小数。');
     validateBomQuantity(item.quantity, item.quantity_fraction);
+    validateBomLossRate(item.loss_rate === undefined ? 0 : item.loss_rate);
     if (item.product_id === value.product_id) throw new Error('成品不能作为自身的材料。');
     if (seen.has(item.product_id)) throw new Error('同一材料不能重复添加，请合并用量。');
     seen.add(item.product_id);
@@ -49,15 +54,17 @@ export function validateBom(value) {
   return value;
 }
 
-// Keep fractions exact through scaling; round only the final demand up to a
-// millionth. The numeric quantity remains available to older clients.
-export function bomRequiredQuantity(quantity, productionQuantity, baseQuantity, fraction = '') {
+// Keep fractions and the gross-input loss allowance exact through scaling;
+// round only the final demand up to a millionth.
+export function bomRequiredQuantity(quantity, productionQuantity, baseQuantity, fraction = '', lossRate = 0) {
   if (![quantity, productionQuantity, baseQuantity].every(value => validQuantity(value, true)))
     throw new Error('生产数量和用量需为正数，最多 6 位小数。');
   validateBomQuantity(quantity, fraction);
+  validateBomLossRate(lossRate);
   const [numerator, denominator] = fraction ? fractionParts(fraction) : [BigInt(quantityUnits(quantity)), BigInt(QUANTITY_SCALE)];
-  const divisor = denominator * BigInt(quantityUnits(baseQuantity));
-  const result = ceilDivide(numerator * BigInt(quantityUnits(productionQuantity)) * BigInt(QUANTITY_SCALE), divisor);
+  const percentScale = BigInt(100 * QUANTITY_SCALE);
+  const divisor = denominator * BigInt(quantityUnits(baseQuantity)) * (percentScale - BigInt(quantityUnits(lossRate)));
+  const result = ceilDivide(numerator * BigInt(quantityUnits(productionQuantity)) * BigInt(QUANTITY_SCALE) * percentScale, divisor);
   if (result > BigInt(MAX_QUANTITY * QUANTITY_SCALE)) throw new Error('材料需求超出数量上限，请减少生产数量。');
   return Number(result) / QUANTITY_SCALE;
 }

@@ -155,7 +155,7 @@ async function fractionalRecipeFlow(page, pwa = false) {
     const carton = page.getByLabel('包装纸箱用量', { exact: true });
     await expect(carton).toHaveAttribute('inputmode', 'text');
     await carton.fill('1/40');
-    await expect(page.getByText('折合约 0.025 个，按原分数测算。', { exact: true })).toBeVisible();
+    await expect(page.getByText('折合约 0.025 个，按原分数测算。', { exact: false })).toBeVisible();
     await search.fill('CARTON');
     await page.getByRole('button', { name: '按条码添加', exact: true }).click();
     await expect(carton).toHaveValue('41/40');
@@ -184,7 +184,7 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await page.getByLabel('生产数量', { exact: true }).fill('40');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     const rows = page.locator('.bom-result-table tbody tr');
-    await expect(rows.first().locator('td').nth(1)).toHaveText('1/40 个');
+    await expect(rows.first().locator('td').nth(1)).toHaveText('1/40 个标准损耗率 0%');
     await expect(rows.first().locator('td').nth(2)).toHaveText('1 个');
     const downloaded = page.waitForEvent('download');
     await page.getByRole('button', { name: '导出备料表', exact: true }).click();

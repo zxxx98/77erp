@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBomQuantity, bomRequiredQuantity } from '../shared/bom.js';
+import { parseBomQuantity, bomRequiredQuantity, validateBomLossRate } from '../shared/bom.js';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 import { bomCSV } from '../src/bom-csv.js';
@@ -68,6 +68,43 @@ test('BOM maintenance is idempotent, warehouse-scoped, searchable and does not c
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM orders').get().n, 0);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM stock_adjustments').get().n, 0);
+});
+
+test('standard loss uses gross-input percentages and combines exact fractions before a single upward rounding', () => {
+  assert.equal(bomRequiredQuantity(90, 1, 1, '', 10), 100);
+  assert.equal(bomRequiredQuantity(100, 1, 1, '', 5), 105.263158);
+  assert.equal(bomRequiredQuantity(0.333334, 3, 1, '1/3', 20), 1.25);
+  assert.equal(bomRequiredQuantity(0.333334, 3, 2, '1/3', 20), 0.625);
+  assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 99.999999), 100);
+  assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 0.000001), 0.000002);
+  assert.throws(() => bomRequiredQuantity(1, 1, 1, '', 99.999999), /上限/);
+  for (const rate of [-1, 100, 101, 0.0000001, '10', null, NaN, Infinity]) {
+    assert.throws(() => validateBomLossRate(rate), /标准损耗率/);
+    assert.throws(() => bomRequiredQuantity(1, 1, 1, '', rate), /标准损耗率/);
+  }
+});
+
+test('loss rates belong to individual BOM materials, preserve older-client edits and scale scrap from gross demand', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP');
+  const bom = await f.create({ items: [{ product_id: f.material, quantity: 90, loss_rate: 10, unit: '个', note: '' }],
+    scraps: [{ product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 6, unit: '个', note: '' }] });
+  const secondParent = await f.product('OTHER-FINISHED');
+  const other = await f.create({ product_id: secondParent, items: [{ product_id: f.material, quantity: 90, loss_rate: 25, unit: '个', note: '' }] });
+  assert.equal(other.items[0].loss_rate, 25); assert.equal(bom.items[0].loss_rate, 10);
+  const plan = (await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1 })).data;
+  assert.equal(plan.rows[0].required, 100); assert.equal(plan.rows[0].shortage, 100);
+  assert.equal(plan.rows[0].loss_rate, 10); assert.equal(plan.scraps[0].planned_quantity, 6);
+  const csv = parseCSV(bomCSV(plan)); assert.equal(csv[4][9], '标准损耗率（%）'); assert.equal(csv[5][9], '10');
+  const edited = await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version }));
+  assert.equal(edited.status, 200); assert.equal(edited.data.items[0].loss_rate, 10, 'omitted rates retain the saved allowance');
+  for (const loss_rate of [-1, 100, 0.0000001, '10', null]) {
+    const response = await f.command(`/boms/${bom.id}`, f.definition({ version: edited.data.version,
+      items: [{ ...f.definition().items[0], loss_rate }] }));
+    assert.equal(response.status, 400); assert.match(response.data.error, /标准损耗率/);
+  }
+  const reset = await f.command(`/boms/${bom.id}`, f.definition({ version: edited.data.version,
+    items: [{ ...f.definition().items[0], loss_rate: 0 }] }));
+  assert.equal(reset.status, 200); assert.equal(reset.data.items[0].loss_rate, 0);
 });
 
 test('BOM rejects malformed, duplicate, self, inactive, unit-mismatched and cross-warehouse materials atomically', async t => {
@@ -195,7 +232,7 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 27);
+  assert.equal(backup.version, 28);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },
@@ -258,7 +295,7 @@ test('BOM CSV exports the exact snapshot, retains fractional quantities and prot
   const csv = bomCSV(snapshot), rows = parseCSV(csv);
   assert.equal(csv[0], '\ufeff');
   assert.equal(rows[0][1], "'=配方");
-  assert.deepEqual(rows[5], ["'+螺丝", 'A,"001"', "'@规格", '颗', '0.3', '3', '2.123456', '0.876544', "'-备注"]);
+  assert.deepEqual(rows[5], ["'+螺丝", 'A,"001"', "'@规格", '颗', '0.3', '3', '2.123456', '0.876544', "'-备注", '0']);
   snapshot.rows[0].quantity = 0.333334; snapshot.rows[0].quantity_fraction = '1/3';
   assert.equal(parseCSV(bomCSV(snapshot))[5][4], '1/3（约 0.333334）');
   assert.ok(rows.at(-1)[1].includes('未预留或扣减'));

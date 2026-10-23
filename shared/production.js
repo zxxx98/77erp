@@ -29,7 +29,7 @@ export function validateProductionCompletion(value, items) {
 export function productionMaterialAnalysis(item, completedQuantity, baseQuantity, actualQuantity) {
   try {
     if (!validQuantity(actualQuantity)) throw new Error('实际耗料无效。');
-    const standard = productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '');
+    const standard = productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate);
     const difference = quantityUnits(actualQuantity) - quantityUnits(standard);
     return { standard_quantity: standard, variance_quantity: difference / QUANTITY_SCALE,
       variance_rate: difference * 100 / quantityUnits(standard), analysis_error: '' };

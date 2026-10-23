@@ -71,6 +71,67 @@ test('production drafts preserve exact BOM snapshots, rescale batches and never 
   assert.equal(rounded.items[0].planned_quantity, 0.000099);
 });
 
+test('loss snapshots drive plans and actual-output variance without double-counting scrap, survive restore and reverse exactly', async t => {
+  const f = await fixture(t), oldDraft = await f.create(), scrap = await f.product('LOSS-SCRAP'), outputScrap = await f.product('OUTPUT-SCRAP');
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version,
+    items: [{ product_id: f.material, quantity: 9, loss_rate: 10, unit: '件', note: '' }],
+    scraps: [{ product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 6, unit: '件', note: '' },
+      { product_id: outputScrap, method: 'output', source_product_id: null, quantity: 0.5, unit: '件', note: '' }] })));
+  const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
+  const prepared = f.ok(await f.request('/production-orders/prepare', f.plan({ bom_version: bom.version })));
+  assert.equal(prepared.rows[0].required, 50); assert.equal(prepared.rows[0].loss_rate, 10);
+  assert.deepEqual(prepared.scraps.map(row => row.planned_quantity), [3, 2.5]);
+  const draft = await f.create({ bom_version: bom.version });
+  assert.equal(draft.items[0].loss_rate, 10); assert.equal(draft.items[0].planned_quantity, 50);
+  assert.equal((await f.request(`/production-orders/${oldDraft.id}`)).data.items[0].loss_rate, 0);
+  // Changing the live recipe must not affect either previously saved order.
+  f.ok(await f.command(`/boms/${bom.id}`, { ...bom, items: [{ ...bom.items[0], loss_rate: 25 }] }));
+  const resized = f.ok(await f.command(`/production-orders/${draft.id}`, { version: draft.version, planned_quantity: 4, note: '' }));
+  assert.equal(resized.items[0].loss_rate, 10); assert.equal(resized.items[0].planned_quantity, 20);
+  assert.deepEqual(resized.scraps.map(row => row.planned_quantity), [1.2, 1]);
+  const done = f.ok(await f.command(`/production-orders/${draft.id}/complete`, { version: resized.version, completed_quantity: 6,
+    items: [{ product_id: f.material, quantity: 33, variance_reason: '额外调机' }],
+    scraps: [{ product_id: scrap, quantity: 2, disposition: 'stock' }, { product_id: outputScrap, quantity: 1.5, disposition: 'discard' }] }));
+  assert.equal(done.items[0].standard_quantity, 30); assert.equal(done.items[0].variance_quantity, 3); assert.equal(done.items[0].variance_rate, 10);
+  assert.deepEqual(done.scraps.map(row => row.expected_quantity), [1.98, 1.5], 'completion uses actual input, not a second loss multiplier');
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 28);
+  for (const change of [
+    data => { data.bom_items[0].loss_rate = 100; },
+    data => { data.production_items.at(-1).loss_rate = 25; },
+    data => { data.production_items.at(-1).loss_rate = null; },
+    data => { delete data.bom_items[0].loss_rate; },
+    data => { delete data.production_items.at(-1).loss_rate; },
+  ]) {
+    const invalid = structuredClone(backup); change(invalid.data);
+    assert.equal((await f.request('/backup/preview', { backup: invalid })).status, 400);
+  }
+  const after = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.deepEqual(f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]), after);
+  const loaded = f.ok(await f.request(`/production-orders/${done.id}`));
+  assert.equal(loaded.items[0].loss_rate, 10); assert.equal(loaded.items[0].standard_quantity, 30);
+  const voided = f.ok(await f.command(`/production-orders/${loaded.id}/void`, { version: loaded.version, reason: '测试回退' }));
+  assert.equal(voided.items[0].standard_quantity, 30); assert.equal(voided.items[0].variance_reason, '额外调机');
+  assert.deepEqual(f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]), before);
+});
+
+test('database upgrades and format 27 restore zero loss rates without changing old production analysis', async t => {
+  const f = await fixture(t), done = await f.complete(await f.create());
+  const backup = f.ok(await f.request('/backup')); backup.version = 27;
+  for (const table of ['bom_items', 'production_items']) for (const row of backup.data[table]) delete row.loss_rate;
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.ok((await f.request(`/boms/${f.bom.id}`)).data.items.every(row => row.loss_rate === 0));
+  const loaded = f.ok(await f.request(`/production-orders/${done.id}`));
+  assert.ok(loaded.items.every(row => row.loss_rate === 0));
+  assert.deepEqual(loaded.items.map(row => row.standard_quantity), done.items.map(row => row.standard_quantity));
+  for (const table of ['bom_items', 'production_items'])
+    f.db.exec(`DROP TRIGGER data_revision_${table}_UPDATE; ALTER TABLE ${table} DROP COLUMN loss_rate;`);
+  migrateBom(f.db); migrateProduction(f.db);
+  for (const table of ['bom_items', 'production_items']) assert.ok(f.db.prepare(`SELECT loss_rate FROM ${table}`).all().every(row => row.loss_rate === 0));
+});
+
 test('fractional recipes survive production snapshots, rescaling, completion, backup and reversal', async t => {
   const f = await fixture(t), before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, base_quantity: 1,
@@ -316,7 +377,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 27); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 28); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -461,7 +522,7 @@ test('scrap backup validates rule relations and completion state, restores quant
   const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
   const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
-  assert.equal(backup.version, 27);
+  assert.equal(backup.version, 28);
   for (const tamper of [
     data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
     data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
@@ -578,7 +639,7 @@ test('variance reasons survive backup and void, reject malformed drafts, and for
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
     { product_id: f.material, quantity: 16, variance_reason: '调机\n材料偏差' }, { product_id: f.second, quantity: 1.5, variance_reason: '字'.repeat(500) },
   ] })));
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 27);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 28);
   assert.ok(backup.data.production_items.every(item => !('standard_quantity' in item)));
   for (const change of [
     data => { data.production_items[0].variance_reason = '草稿不得提前记完工原因'; },

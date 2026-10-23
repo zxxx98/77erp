@@ -10,7 +10,7 @@ import { Select } from '../Dropdown.jsx';
 import { downloadFile } from '../app/download.js';
 import { bomCSV } from '../bom-csv.js';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
-import { BOM_MAX_ITEMS, parseBomQuantity, validateBom } from '../../shared/bom.js';
+import { BOM_MAX_ITEMS, parseBomQuantity, validateBom, bomRequiredQuantity } from '../../shared/bom.js';
 import { validateScrapRules } from '../../shared/scrap.js';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import './bom.css';
@@ -30,10 +30,11 @@ function incrementUsage(value) {
   return next;
 }
 
-function UsagePreview({ value, unit }) {
+function UsagePreview({ value, unit, lossRate }) {
   try {
     const parsed = parseBomQuantity(value);
-    return parsed.quantity_fraction && <small className="bom-hint bom-usage-preview">折合约 {count(parsed.quantity)} {unit}，按原分数测算。</small>;
+    const rate = parseQuantity(lossRate), gross = bomRequiredQuantity(parsed.quantity, 1, 1, parsed.quantity_fraction, rate);
+    return <small className="bom-hint bom-usage-preview">{parsed.quantity_fraction && <>折合约 {count(parsed.quantity)} {unit}，按原分数测算。 </>}含损耗标准投入 {count(gross)} {unit}（对应基准产量）。</small>;
   } catch { return null; }
 }
 
@@ -95,7 +96,7 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
           setSnapshot(result);
         })}>{snapshot ? '重新测算' : '开始测算'}</Button>
       </div>
-      <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。按单层清单计算材料需求，超过 6 位小数的部分向上进位。</p>
+      <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。材料需求包含标准损耗：净用量 ÷（1－损耗率），最终向上保留 6 位小数。</p>
       {action.error && <p className="form-error" role="alert">{action.error}</p>}
     </section>
     {snapshot && <section className="panel bom-section">
@@ -104,10 +105,10 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
       </div>
       <p className="bom-result-summary" role="status">共 {snapshot.rows.length} 种材料，{snapshot.rows.filter(row => row.shortage > 0).length} 种缺料。</p>
       {onCreateProduction && <Button onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>按本次数量新建生产单</Button>}
-      <div className="bom-result-table"><table><thead><tr><th>材料</th><th>基准用量</th><th>本次需求</th><th>账面库存</th><th>缺料数量</th><th>备注</th></tr></thead>
+      <div className="bom-result-table"><table><thead><tr><th>材料</th><th>基准净用量</th><th>本次需求（含损耗）</th><th>账面库存</th><th>缺料数量</th><th>备注</th></tr></thead>
         <tbody>{snapshot.rows.map(row => <tr key={row.product_id}>
           <td><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small></td>
-          <td data-label="基准用量">{row.quantity_fraction || count(row.quantity)} {row.unit}</td><td data-label="本次需求">{count(row.required)} {row.unit}</td><td data-label="账面库存">{count(row.stock)} {row.unit}</td>
+          <td data-label="基准净用量">{row.quantity_fraction || count(row.quantity)} {row.unit}<small>标准损耗率 {count(row.loss_rate)}%</small></td><td data-label="本次需求（含损耗）">{count(row.required)} {row.unit}</td><td data-label="账面库存">{count(row.stock)} {row.unit}</td>
           <td data-label="缺料数量" className={row.shortage > 0 ? 'bom-shortage' : ''}>{count(row.shortage)} {row.unit}</td><td data-label="备注">{row.note || '—'}</td>
         </tr>)}</tbody></table></div>
       <ScrapOutputs rows={snapshot.scraps || []} materials={snapshot.rows} />
@@ -148,7 +149,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
     action.run(async () => {
       const body = { name: editor.name, product_id: editor.product_id, base_quantity: parseQuantity(editor.base_quantity, true),
         base_unit: editor.product?.unit || '', note: editor.note, enabled: editor.enabled,
-        items: editor.items.map(item => ({ product_id: item.product_id, ...parseBomQuantity(item.quantity), unit: item.product.unit, note: item.note })),
+        items: editor.items.map(item => ({ product_id: item.product_id, ...parseBomQuantity(item.quantity), loss_rate: parseQuantity(item.loss_rate), unit: item.product.unit, note: item.note })),
         scraps: editor.scraps.map(row => ({ product_id: row.product_id, method: row.method, source_product_id: row.source_product_id,
           ...parseBomQuantity(row.quantity), unit: row.product.unit, note: row.note })),
         ...(editor.id ? { version: editor.version } : {}) };
@@ -178,7 +179,8 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
         <label className="bom-checkbox"><input type="checkbox" checked={!!editor.enabled} disabled={action.busy} onChange={e => update({ enabled: e.target.checked ? 1 : 0 })} />启用此 BOM</label>
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>材料用量</h2><span className="bom-hint">已添加 {editor.items.length} / {BOM_MAX_ITEMS} 种</span></div>
-        <p className="bom-hint">填写生产 {editor.base_quantity || '…'} {editor.product?.unit || '单位成品'} 所需的材料量。半成品按一项材料计算。</p>
+        <p className="bom-hint">填写生产 {editor.base_quantity || '…'} {editor.product?.unit || '单位成品'} 所需的材料净用量。半成品按一项材料计算。</p>
+        <p className="bom-hint" id="bom-loss-help">标准损耗率按投入量计算，范围 0%（含）至 100%（不含）。标准投入＝净用量 ÷（1－损耗率）；例如净用量 90、损耗率 10%，需投入 100。用量已含损耗时，请先核对净用量，避免重复计算。废料另按规则计算，不再加到投入量上。</p>
         <p className="bom-hint" id="bom-usage-help">用量支持小数或分数，如 1/40 表示每 40 件成品分摊 1 份材料（基准产量为 1 时）。分数按原比例测算，不自动按整箱取整；实际耗料在生产完工时核对。</p>
         <ProductPicker data={data} material disabled={action.busy} onSelect={product => {
           if (product.id === editor.product_id) { action.setError('成品不能作为自身的材料。'); return; }
@@ -186,23 +188,25 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
           const found = editor.items.find(item => item.product_id === product.id);
           if (!found && editor.items.length >= BOM_MAX_ITEMS) { action.setError(`最多添加 ${BOM_MAX_ITEMS} 种材料。`); return; }
           try { update({ items: found ? editor.items.map(item => item.product_id === product.id ? { ...item, product, quantity: incrementUsage(item.quantity) } : item)
-            : [...editor.items, { product_id: product.id, product, quantity: 1, unit: product.unit, note: '' }] }); }
+            : [...editor.items, { product_id: product.id, product, quantity: 1, loss_rate: 0, unit: product.unit, note: '' }] }); }
           catch (error) { action.setError(error.message); }
         }} />
         {!editor.items.length && <p className="bom-empty">搜索或扫码添加材料。</p>}
         <div className="bom-materials">{editor.items.map(item => <div className="bom-material" key={item.product_id}>
           <div className="bom-material-name"><strong>{item.product.name}</strong><small>{item.product.barcode} · {item.product.specification || '无规格'}{!item.product.active && ' · 已停用'}</small>
             {item.unit !== item.product.unit && <span className="bom-warning">单位已从 {item.unit} 改为 {item.product.unit}，请核对用量。</span>}</div>
-          <label>用量（{item.product.unit}）<input aria-label={`${item.product.name}用量`} aria-describedby="bom-usage-help" inputMode="text" placeholder="如 0.025 或 1/40" maxLength={60} spellCheck={false} required value={item.quantity} disabled={action.busy}
+          <label>净用量（{item.product.unit}）<input aria-label={`${item.product.name}用量`} aria-describedby="bom-usage-help bom-loss-help" inputMode="text" placeholder="如 0.025 或 1/40" maxLength={60} spellCheck={false} required value={item.quantity} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} /></label>
+          <label>标准损耗率（%）<input aria-label={`${item.product.name}标准损耗率`} aria-describedby="bom-loss-help" inputMode="decimal" maxLength={20} required value={item.loss_rate} disabled={action.busy}
+            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, loss_rate: e.target.value } : row) })} /></label>
           <label>材料备注<input aria-label={`${item.product.name}备注`} maxLength={200} value={item.note} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
           <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除材料 ${item.product.name}`} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>移除</Button>
-          <UsagePreview value={item.quantity} unit={item.product.unit} />
+          <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} />
         </div>)}</div>
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>废料产出</h2><span className="bom-hint">可选 · {editor.scraps.length} / 100 种</span></div>
-        <p className="bom-hint">选择现有物料，每张 BOM 独立设置规则。按产量填写基准产量对应的废料量；按投入比例填写指定材料净投入的百分数，单位须一致。预计值在完工时核对，废料按零成本入库。</p>
+        <p className="bom-hint">选择现有物料，每张 BOM 独立设置规则。按产量填写基准产量对应的废料量；按投入比例使用含标准损耗的计划投入，完工时按实际耗料计算，单位须一致。预计值在完工时核对，废料按零成本入库。</p>
         <ProductPicker data={data} scrap disabled={action.busy} onSelect={product => {
           if (product.id === editor.product_id || editor.items.some(row => row.product_id === product.id)) { action.setError('废料不能与成品或投入材料相同。'); return; }
           if (editor.scraps.some(row => row.product_id === product.id)) { action.setError('此废料已添加，请修改已有规则。'); return; }

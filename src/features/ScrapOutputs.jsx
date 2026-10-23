@@ -18,7 +18,7 @@ export function ScrapOutputs({ rows, materials = [], complete = false, completed
       const validActual = actual !== '' && actual != null && validQuantity(Number(actual));
       const difference = expected != null && validActual ? (quantityUnits(Number(actual)) - quantityUnits(expected)) / QUANTITY_SCALE : null;
       return <article className="scrap-output" key={row.product_id}>
-        <div><strong>{name}</strong><small>{row.barcode || row.product?.barcode} · {row.method === 'input_ratio' ? `${sourceName}净投入的 ${count(row.quantity)}%` : `基准产量对应 ${row.quantity_fraction || count(row.quantity)} ${row.unit}`}</small>
+        <div><strong>{name}</strong><small>{row.barcode || row.product?.barcode} · {row.method === 'input_ratio' ? `${sourceName}${complete || completed ? '实际耗料' : '含标准损耗投入'}的 ${count(row.quantity)}%` : `基准产量对应 ${row.quantity_fraction || count(row.quantity)} ${row.unit}`}</small>
           {(complete || completed) && <small>计划预计 {count(row.planned_quantity)} {row.unit}</small>}
           {row.note && <small>{row.note}</small>}
           {row.product && row.unit !== row.product.unit && <p className="bom-warning">单位已变为 {row.product.unit}，本单保留 {row.unit}。</p>}

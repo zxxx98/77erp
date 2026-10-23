@@ -41,6 +41,8 @@ export function migrateBom(db) {
     UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT COALESCE(MAX(version),0) FROM boms)) WHERE key='bom_version';`);
   if (!db.prepare('PRAGMA table_info(bom_items)').all().some(column => column.name === 'quantity_fraction'))
     db.exec("ALTER TABLE bom_items ADD COLUMN quantity_fraction TEXT NOT NULL DEFAULT ''");
+  if (!db.prepare('PRAGMA table_info(bom_items)').all().some(column => column.name === 'loss_rate'))
+    db.exec('ALTER TABLE bom_items ADD COLUMN loss_rate REAL NOT NULL DEFAULT 0 CHECK(loss_rate>=0 AND loss_rate<100)');
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='bom_version';
     UPDATE boms SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='bom_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS bom_version_insert AFTER INSERT ON boms BEGIN ${advance} END;
@@ -100,9 +102,9 @@ export function calculateBom(db, warehouse, id, productionQuantity, version) {
   if (bom.base_unit !== bom.product.unit || [...bom.items, ...bom.scraps].some(item => item.unit !== item.product.unit))
     fail('物料单位已变化，请编辑BOM、核对用量并重新保存后测算。', 409);
   const rows = bom.items.map(item => {
-    const required = bomRequiredQuantity(item.quantity, productionQuantity, bom.base_quantity, item.quantity_fraction);
+    const required = bomRequiredQuantity(item.quantity, productionQuantity, bom.base_quantity, item.quantity_fraction, item.loss_rate);
     return { product_id: item.product_id, name: item.product.name, barcode: item.product.barcode, specification: item.product.specification,
-      unit: item.unit, quantity: item.quantity, quantity_fraction: item.quantity_fraction, required, stock: item.product.stock, shortage: bomShortage(required, item.product.stock), note: item.note };
+      unit: item.unit, quantity: item.quantity, quantity_fraction: item.quantity_fraction, loss_rate: item.loss_rate, required, stock: item.product.stock, shortage: bomShortage(required, item.product.stock), note: item.note };
   });
   return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity,
     scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
@@ -116,7 +118,7 @@ export function validateBomBackup(data) {
   const boms = new Map(data.boms.map(b => [b.id, b]));
   const grouped = new Map();
   for (const item of data.bom_items) {
-    if (!boms.has(item.bom_id) || !Number.isSafeInteger(item.position) || item.position < 0 || item.position >= 100)
+    if (item.loss_rate === undefined || !boms.has(item.bom_id) || !Number.isSafeInteger(item.position) || item.position < 0 || item.position >= 100)
       fail('备份BOM明细关联或排序无效。');
     const items = grouped.get(item.bom_id) || [];
     items.push(item); grouped.set(item.bom_id, items);
@@ -165,7 +167,9 @@ export function installBom(app, db) {
     if (!Number.isSafeInteger(req.body.version) || req.body.version !== bom.version) fail('BOM已被修改，请重新打开后再保存。当前填写内容已保留。', 409);
   };
   const save = (req, existing) => {
-    const body = validateBom(req.body);
+    // Older clients preserve existing rates instead of silently resetting them.
+    const body = validateBom({ ...req.body, items: Array.isArray(req.body.items) ? req.body.items.map(item => item && ({ ...item,
+      loss_rate: item.loss_rate === undefined ? (existing?.items.find(row => row.product_id === item.product_id)?.loss_rate ?? 0) : item.loss_rate })) : req.body.items });
     // An older client editing a BOM must not silently delete its output rules.
     const scraps = body.scraps === undefined ? (existing?.scraps || []) : body.scraps;
     validateScrapRules(scraps, body.product_id, body.items);
@@ -187,8 +191,8 @@ export function installBom(app, db) {
       db.prepare('DELETE FROM bom_items WHERE bom_id=?').run(id);
     } else id = Number(db.prepare('INSERT INTO boms(warehouse_id,product_id,name,base_quantity,base_unit,note,enabled,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
       .run(req.warehouse.id, body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.note.trim(), body.enabled, owner, owner, at, at).lastInsertRowid);
-    const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?)');
-    body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.unit, item.note.trim(), index));
+    const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,loss_rate,unit,note,position) VALUES (?,?,?,?,?,?,?,?)');
+    body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.loss_rate, item.unit, item.note.trim(), index));
     const insertScrap = db.prepare('INSERT INTO bom_scraps(bom_id,product_id,method,source_product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?,?,?)');
     scraps.forEach((row, index) => insertScrap.run(id, row.product_id, row.method, row.source_product_id, row.quantity, row.quantity_fraction ?? '', row.unit, row.note.trim(), index));
     return getBom(db, req.warehouse.id, id);

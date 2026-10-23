@@ -51,7 +51,7 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
     }
     return <article className="production-material" key={row.product_id}>
       <div className="production-material-name"><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small>
-        {row.base_quantity_fraction && <small>基准用量 {row.base_quantity_fraction} {row.unit}</small>}
+        <small>基准净用量 {row.base_quantity_fraction || count(row.base_quantity)} {row.unit} · 标准损耗率 {count(row.loss_rate ?? 0)}%</small>
         {row.note && <small>{row.note}</small>}
         {row.product && row.unit !== row.product.unit && <p className="bom-warning">当前单位已变为 {row.product.unit}，此单保留 {row.unit}。</p>}
         {row.product && !row.product.active && <p className="bom-warning">材料已停用</p>}</div>
@@ -149,7 +149,7 @@ export function Production({ data, initialBom, onChanged }) {
     if (planning && source) {
       try {
         const quantity = parseQuantity(editor.planned_quantity, true);
-        rows = rows.map(row => ({ ...row, planned_quantity: productionPlannedQuantity(row.base_quantity, quantity, source.base_quantity, row.base_quantity_fraction) }));
+        rows = rows.map(row => ({ ...row, planned_quantity: productionPlannedQuantity(row.base_quantity, quantity, source.base_quantity, row.base_quantity_fraction, row.loss_rate) }));
       } catch (error) { quantityError = error.message; }
     }
     if (editor.kind === 'complete') rows = rows.map(row => ({ ...row, ...editor.items.find(item => item.product_id === row.product_id) }));
@@ -174,7 +174,7 @@ export function Production({ data, initialBom, onChanged }) {
           {planning ? <>
             <div className="bom-form-grid production-fields"><label>计划产量（{unit}）<input aria-label="计划产量" inputMode="decimal" required value={editor.planned_quantity} disabled={action.busy} onChange={e => update({ planned_quantity: e.target.value })} /></label>
               <label>生产备注<textarea aria-label="生产备注" rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label></div>
-            <p className="bom-hint">配方随生产单保存。草稿不预留、不扣减库存，完工时再核对实际耗料。</p>
+            <p className="bom-hint">净用量与标准损耗率随生产单保存，计划用量已含标准损耗。草稿不预留、不扣减库存，完工时再核对实际耗料。</p>
           </> : editor.kind === 'complete' ? <>
             <p className="bom-hint">计划产量 {count(detail.planned_quantity)} {unit}。实际耗料默认按计划用量带出，请按本次实际情况核对。</p>
             <label className="production-output">合格成品数量（{unit}）<input aria-label="合格成品数量" inputMode="decimal" required disabled={action.busy} value={editor.completed_quantity} onChange={e => update({ completed_quantity: e.target.value })} /></label>
@@ -186,7 +186,7 @@ export function Production({ data, initialBom, onChanged }) {
         </section>}
         {source && editor.kind !== 'void' && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? '核对实际耗料' : '计划备料'}</h2><span className="bom-hint">共 {rows.length} 种材料</span></div>
           {quantityError && <p className="form-error" role="alert">{quantityError}</p>}
-          {editor.kind === 'complete' && <p className="bom-hint">标准耗料按本单保存的配方和实际合格产量计算。差异 = 实际耗料 − 标准耗料，正数为超耗、负数为节省；差异率以标准耗料为分母。废料单独核对，耗料差异不直接视为损耗或废料。</p>}
+          {editor.kind === 'complete' && <p className="bom-hint">标准耗料按本单保存的净用量、标准损耗率和实际合格产量计算，已包含允许的标准损耗。差异 = 实际耗料 − 标准耗料，正数为超耗、负数为节省；差异率以标准耗料为分母。废料单独核对，耗料差异不直接视为损耗或废料。</p>}
           <Materials rows={rows} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity}
             onReason={(id, variance_reason) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, variance_reason } : item) })} complete={editor.kind === 'complete'} disabled={action.busy}
             onQuantity={(id, quantity) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, quantity } : item) })} />
@@ -231,7 +231,7 @@ export function Production({ data, initialBom, onChanged }) {
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">本单已作废，以上废料记录保留，已入库数量已扣回。</p>}
     </section>}
     <section className="panel bom-section"><h2>{detail.completed_at ? '耗料记录' : '计划备料'}</h2>
-      {detail.completed_at && <p className="bom-hint">标准耗料按本单配方快照及实际合格产量计算；差异 = 实际耗料 − 标准耗料，差异率 = 差异 ÷ 标准耗料。各材料分别比较，不跨单位合计，也不从实际耗料中再次扣除废料。</p>}
+      {detail.completed_at && <p className="bom-hint">标准耗料按本单净用量、标准损耗率快照及实际合格产量计算，已含标准损耗；差异 = 实际耗料 − 标准耗料，差异率 = 差异 ÷ 标准耗料。各材料分别比较，不跨单位合计，也不从实际耗料中再次扣除废料。</p>}
       <Materials rows={detail.items} showActual={!!detail.completed_at} costs={can('finance')} />
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">以上保留原完工记录；本单已作废，相关库存和成本已回退。</p>}
       {!detail.completed_at && <p className="bom-hint">库存读取于 {time(detail.captured_at)}。草稿未预留库存，完工时重新校验。</p>}
