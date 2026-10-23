@@ -10,13 +10,29 @@ import { Select } from '../Dropdown.jsx';
 import { downloadFile } from '../app/download.js';
 import { bomCSV } from '../bom-csv.js';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
-import { BOM_MAX_ITEMS, validateBom } from '../../shared/bom.js';
+import { BOM_MAX_ITEMS, parseBomQuantity, validateBom } from '../../shared/bom.js';
 import './bom.css';
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
-const editable = bom => ({ ...bom, items: bom.items.map(item => ({ ...item })) });
+const editable = bom => ({ ...bom, items: bom.items.map(item => ({ ...item, quantity: item.quantity_fraction || item.quantity })) });
 const newBom = product => ({ name: product ? `${product.name}用料清单`.slice(0, 100) : '', product: product || null,
   product_id: product?.id || null, base_quantity: 1, base_unit: product?.unit || '', note: '', enabled: 1, items: [] });
+
+function incrementUsage(value) {
+  const parsed = parseBomQuantity(value);
+  if (!parsed.quantity_fraction) return parseQuantity(addQuantity(parsed.quantity, 1), true);
+  const [numerator, denominator] = parsed.quantity_fraction.split('/').map(Number);
+  const next = `${numerator + denominator}/${denominator}`;
+  parseBomQuantity(next);
+  return next;
+}
+
+function UsagePreview({ value, unit }) {
+  try {
+    const parsed = parseBomQuantity(value);
+    return parsed.quantity_fraction && <small className="bom-hint">折合约 {count(parsed.quantity)} {unit}，按原分数测算。</small>;
+  } catch { return null; }
+}
 
 function ProductPicker({ data, material = false, onSelect, disabled }) {
   const [q, setQ] = useState(''), [offset, setOffset] = useState(0), [camera, setCamera] = useState(false);
@@ -87,7 +103,7 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
       <div className="bom-result-table"><table><thead><tr><th>材料</th><th>基准用量</th><th>本次需求</th><th>账面库存</th><th>缺料数量</th><th>备注</th></tr></thead>
         <tbody>{snapshot.rows.map(row => <tr key={row.product_id}>
           <td><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small></td>
-          <td data-label="基准用量">{count(row.quantity)} {row.unit}</td><td data-label="本次需求">{count(row.required)} {row.unit}</td><td data-label="账面库存">{count(row.stock)} {row.unit}</td>
+          <td data-label="基准用量">{row.quantity_fraction || count(row.quantity)} {row.unit}</td><td data-label="本次需求">{count(row.required)} {row.unit}</td><td data-label="账面库存">{count(row.stock)} {row.unit}</td>
           <td data-label="缺料数量" className={row.shortage > 0 ? 'bom-shortage' : ''}>{count(row.shortage)} {row.unit}</td><td data-label="备注">{row.note || '—'}</td>
         </tr>)}</tbody></table></div>
       <p className="bom-hint">结果与导出保留本次读取的账面库存，未预留或扣减库存。库存变化后请重新测算。</p>
@@ -113,7 +129,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
-  const apply = bom => { setEditor(editable(bom)); setBaseline(JSON.stringify(bom)); setCalculation(null); action.setError(''); setMessage(''); };
+  const apply = bom => { const value = editable(bom); setEditor(value); setBaseline(JSON.stringify(value)); setCalculation(null); action.setError(''); setMessage(''); };
   const back = () => { if (action.busy || dirty && !window.confirm('用料清单尚未保存，确定离开？')) return; setEditor(null); setCalculation(null); action.setError(''); };
   const open = (id, kind) => action.run(async () => {
     const bom = await api(`/boms/${id}`, { warehouseId: data.warehouse_id });
@@ -127,7 +143,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
     action.run(async () => {
       const body = { name: editor.name, product_id: editor.product_id, base_quantity: parseQuantity(editor.base_quantity, true),
         base_unit: editor.product?.unit || '', note: editor.note, enabled: editor.enabled,
-        items: editor.items.map(item => ({ product_id: item.product_id, quantity: parseQuantity(item.quantity, true), unit: item.product.unit, note: item.note })),
+        items: editor.items.map(item => ({ product_id: item.product_id, ...parseBomQuantity(item.quantity), unit: item.product.unit, note: item.note })),
         ...(editor.id ? { version: editor.version } : {}) };
       validateBom(body);
       await action.send(editor.id ? `/boms/${editor.id}` : '/boms', body, { warehouseId: data.warehouse_id });
@@ -155,11 +171,12 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>材料用量</h2><span className="bom-hint">已添加 {editor.items.length} / {BOM_MAX_ITEMS} 种</span></div>
         <p className="bom-hint">填写生产 {editor.base_quantity || '…'} {editor.product?.unit || '单位成品'} 所需的材料量。半成品按一项材料计算。</p>
+        <p className="bom-hint" id="bom-usage-help">用量支持小数或分数，如 1/40 表示每 40 件成品分摊 1 份材料（基准产量为 1 时）。分数按原比例测算，不自动按整箱取整；实际耗料在生产完工时核对。</p>
         <ProductPicker data={data} material disabled={action.busy} onSelect={product => {
           if (product.id === editor.product_id) { action.setError('成品不能作为自身的材料。'); return; }
           const found = editor.items.find(item => item.product_id === product.id);
           if (!found && editor.items.length >= BOM_MAX_ITEMS) { action.setError(`最多添加 ${BOM_MAX_ITEMS} 种材料。`); return; }
-          try { update({ items: found ? editor.items.map(item => item.product_id === product.id ? { ...item, product, quantity: addQuantity(parseQuantity(item.quantity, true), 1) } : item)
+          try { update({ items: found ? editor.items.map(item => item.product_id === product.id ? { ...item, product, quantity: incrementUsage(item.quantity) } : item)
             : [...editor.items, { product_id: product.id, product, quantity: 1, unit: product.unit, note: '' }] }); }
           catch (error) { action.setError(error.message); }
         }} />
@@ -167,8 +184,9 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
         <div className="bom-materials">{editor.items.map(item => <div className="bom-material" key={item.product_id}>
           <div className="bom-material-name"><strong>{item.product.name}</strong><small>{item.product.barcode} · {item.product.specification || '无规格'}{!item.product.active && ' · 已停用'}</small>
             {item.unit !== item.product.unit && <span className="bom-warning">单位已从 {item.unit} 改为 {item.product.unit}，请核对用量。</span>}</div>
-          <label>用量（{item.product.unit}）<input aria-label={`${item.product.name}用量`} inputMode="decimal" required value={item.quantity} disabled={action.busy}
-            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} /></label>
+          <label>用量（{item.product.unit}）<input aria-label={`${item.product.name}用量`} aria-describedby="bom-usage-help" inputMode="text" placeholder="如 0.025 或 1/40" maxLength={60} spellCheck={false} required value={item.quantity} disabled={action.busy}
+            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} />
+            <UsagePreview value={item.quantity} unit={item.product.unit} /></label>
           <label>材料备注<input aria-label={`${item.product.name}备注`} maxLength={200} value={item.note} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
           <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除材料 ${item.product.name}`} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>移除</Button>

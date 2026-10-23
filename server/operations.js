@@ -424,7 +424,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 24,
+    version: 25,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -432,13 +432,17 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
     if (value.version < 24) for (const table of productionTables) data[table] = [];
     if (value.version < 23) for (const table of bomTables) data[table] = [];
+    if (value.version < 25) {
+      for (const row of data.bom_items || []) row.quantity_fraction = '';
+      for (const row of data.production_items || []) row.base_quantity_fraction = '';
+    }
     if (value.version < 17) for (const table of qualityTables) data[table] = [];
     if (value.version < 18) data.quality_acceptances = [];
     if (value.version < 21) data.quality_charts = [];

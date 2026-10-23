@@ -42,7 +42,7 @@ test('BOM tools require independent permission, read actual single-level recipes
   const parent = f.db.prepare('SELECT * FROM products WHERE id=1').get(), material = f.db.prepare('SELECT * FROM products WHERE id=2').get();
   const saved = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI用料表', product_id: parent.id,
     base_quantity: 10, base_unit: parent.unit, note: '', enabled: 1,
-    items: [{ product_id: material.id, quantity: 3, unit: material.unit, note: '实际配方' }] });
+    items: [{ product_id: material.id, quantity: 0.025, quantity_fraction: '1/40', unit: material.unit, note: '实际配方' }] });
   assert.equal(saved.status, 200);
   const id = saved.data.id;
   await f.permissions(['ai']);
@@ -59,13 +59,14 @@ test('BOM tools require independent permission, read actual single-level recipes
     assert.ok(f.calls.at(-1).body.tools.some(tool => tool.function.name === name));
   f.use('get_bom', { bom_id: id }); await f.chat(f.staff);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
-  assert.equal(result.items[0].quantity, 3); assert.equal(result.items[0].product.id, material.id);
+  assert.equal(result.items[0].quantity, 0.025); assert.equal(result.items[0].quantity_fraction, '1/40'); assert.equal(result.items[0].product.id, material.id);
   assert.ok(!JSON.stringify(result).includes('inventory_value_cents'));
   f.use('calculate_bom', { bom_id: id, production_quantity: 2 });
   const calculation = await f.chat(f.staff);
   assert.equal(calculation.status, 200); assert.deepEqual(calculation.data.actions, []);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
-  assert.equal(result.rows[0].required, 0.6); assert.equal(result.rows[0].stock, material.stock);
+  assert.equal(result.rows[0].required, 0.005); assert.equal(result.rows[0].quantity_fraction, '1/40'); assert.equal(result.rows[0].stock, material.stock);
+  assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /展示用量时优先使用原分数/);
   assert.ok(!JSON.stringify(result).includes('cost'));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
@@ -85,8 +86,8 @@ test('production AI queries require production permission, use saved snapshots, 
   const parent = f.db.prepare('SELECT * FROM products WHERE id=1').get(), material = f.db.prepare('SELECT * FROM products WHERE id=2').get();
   const bom = (await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI生产配方', product_id: parent.id,
     base_quantity: 1, base_unit: parent.unit, note: '', enabled: 1,
-    items: [{ product_id: material.id, quantity: 0.3, unit: material.unit, note: '' }] })).data;
-  const created = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), bom_id: bom.id, bom_version: bom.version, planned_quantity: 2, note: '真实生产草稿' });
+    items: [{ product_id: material.id, quantity: 0.333334, quantity_fraction: '1/3', unit: material.unit, note: '' }] })).data;
+  const created = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), bom_id: bom.id, bom_version: bom.version, planned_quantity: 3, note: '真实生产草稿' });
   assert.equal(created.status, 200); const order = created.data;
   await f.permissions(['ai', 'bom']);
   await f.chat(f.staff);
@@ -98,12 +99,12 @@ test('production AI queries require production permission, use saved snapshots, 
   f.use('search_production_orders', { query: order.number, status: 'draft' });
   const response = await f.chat(f.staff); assert.equal(response.status, 200); assert.deepEqual(response.data.actions, []);
   let result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
-  assert.equal(result.total, 1); assert.equal(result.orders[0].planned_quantity, 2);
+  assert.equal(result.total, 1); assert.equal(result.orders[0].planned_quantity, 3);
   for (const name of ['search_production_orders', 'get_production_order']) assert.ok(f.calls.at(-1).body.tools.some(tool => tool.function.name === name));
   assert.ok(!f.calls.at(-1).body.tools.some(tool => /(?:preview|complete|void).*production/.test(tool.function.name)));
   f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
-  assert.equal(result.items[0].planned_quantity, 0.6); assert.equal(result.bom_version, bom.version);
+  assert.equal(result.items[0].planned_quantity, 1); assert.equal(result.items[0].base_quantity_fraction, '1/3'); assert.equal(result.bom_version, bom.version);
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);

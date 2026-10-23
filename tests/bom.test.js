@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { parseBomQuantity, bomRequiredQuantity } from '../shared/bom.js';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
-import { bomRequiredQuantity } from '../shared/bom.js';
 import { bomCSV } from '../src/bom-csv.js';
 import { parseCSV } from '../src/data-files.js';
 
@@ -166,10 +166,36 @@ test('referenced goods cannot be deleted, unit or lifecycle changes require revi
   assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
 });
 
+test('BOM fractions retain exact ratios through scaling and reject invalid or inconsistent quantities', async t => {
+  for (const raw of ['1/0', '0/40', '-1/40', '1/-40', '1/2/3', '1.5/40', '1/100000000', '100000000/1', '1+2', '=1/40'])
+    assert.throws(() => parseBomQuantity(raw), undefined, raw);
+  assert.deepEqual(parseBomQuantity(' 01 / 040 '), { quantity: 0.025, quantity_fraction: '1/40' });
+  assert.deepEqual(parseBomQuantity('0.025'), { quantity: 0.025, quantity_fraction: '' });
+  const third = parseBomQuantity('1/3');
+  assert.equal(bomRequiredQuantity(third.quantity, 3, 1, third.quantity_fraction), 1);
+  assert.equal(bomRequiredQuantity(third.quantity, 1, 1, third.quantity_fraction), 0.333334);
+  assert.equal(bomRequiredQuantity(third.quantity, 3, 2, third.quantity_fraction), 0.5);
+  assert.equal(bomRequiredQuantity(0.000001, 99999999, 1, '1/99999999'), 1);
+  const f = await fixture(t);
+  const bom = await f.create({ items: [{ product_id: f.material, ...parseBomQuantity('1/40'), unit: '个', note: '每箱 40 件' }] });
+  assert.equal(bom.items[0].quantity_fraction, '1/40');
+  for (const [production_quantity, expected] of [[1, 0.025], [40, 1], [80, 2], [41, 1.025]]) {
+    const result = await f.request(`/boms/${bom.id}/calculate`, { production_quantity });
+    assert.equal(result.status, 200); assert.equal(result.data.rows[0].required, expected);
+    assert.equal(result.data.rows[0].quantity_fraction, '1/40');
+  }
+  for (const quantity_fraction of ['1/0', '1/3', null, 40, '0.025', '=1/40']) {
+    const response = await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version,
+      items: [{ product_id: f.material, quantity: 0.025, quantity_fraction, unit: '个', note: '' }] }));
+    assert.equal(response.status, 400, String(quantity_fraction));
+  }
+  assert.equal((await f.request(`/boms/${bom.id}`)).data.items[0].quantity_fraction, '1/40');
+});
+
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 24);
+  assert.equal(backup.version, 25);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },
@@ -178,6 +204,8 @@ test('BOM backup restores all relations, rejects tampering, refreshes edit versi
     value => { value.data.boms[0].warehouse_id = 999; },
     value => { value.data.bom_items[0].position = -1; },
     value => { value.data.boms[0].version = '1'; },
+    value => { value.data.bom_items[0].quantity_fraction = '1/40'; },
+    value => { value.data.bom_items[0].quantity_fraction = null; },
   ]) {
     const bad = structuredClone(backup); tamper(bad);
     assert.equal((await f.request('/backup/preview', { backup: bad })).status, 400);
@@ -189,6 +217,10 @@ test('BOM backup restores all relations, rejects tampering, refreshes edit versi
   const restored = (await f.request(`/boms/${bom.id}`)).data;
   assert.notEqual(restored.version, bom.version);
   assert.equal(restored.items[0].product_id, f.material);
+  const legacy = structuredClone(backup); legacy.version = 24;
+  for (const row of legacy.data.bom_items) delete row.quantity_fraction;
+  const legacyPreview = await f.request('/backup/preview', { backup: legacy });
+  assert.equal(legacyPreview.status, 200);
   assert.equal((await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version }))).status, 409);
   // Preview must also detect changes to a BOM, even if inventory did not change.
   const secondPreview = (await f.request('/backup/preview', { backup })).data;
@@ -227,5 +259,7 @@ test('BOM CSV exports the exact snapshot, retains fractional quantities and prot
   assert.equal(csv[0], '\ufeff');
   assert.equal(rows[0][1], "'=配方");
   assert.deepEqual(rows[5], ["'+螺丝", 'A,"001"', "'@规格", '颗', '0.3', '3', '2.123456', '0.876544', "'-备注"]);
+  snapshot.rows[0].quantity = 0.333334; snapshot.rows[0].quantity_fraction = '1/3';
+  assert.equal(parseCSV(bomCSV(snapshot))[5][4], '1/3（约 0.333334）');
   assert.ok(rows.at(-1)[1].includes('未预留或扣减'));
 });

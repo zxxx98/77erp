@@ -134,6 +134,100 @@ for (const mobile of [false, true]) {
   });
 }
 
+async function fractionalRecipeFlow(page, pwa = false) {
+  const f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    const products = [];
+    for (const [name, barcode, unit] of [['电线成品', 'WIRE', '条'], ['包装纸箱', 'CARTON', '个'], ['分摊辅料', 'EXTRA', '米']]) {
+      const product = await f.post('/products', { name, barcode, unit, category: '生产', cost: 1, price: 2, threshold: 0 });
+      products.push(product);
+    }
+    for (const product of products.slice(1)) f.db.prepare('UPDATE products SET stock=10,inventory_value_cents=1000 WHERE id=?').run(product.id);
+    await page.goto(f.base + '/#bom');
+    if (pwa) await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '新建用料清单', exact: true }).click();
+    await page.getByRole('searchbox', { name: '搜索成品', exact: true }).fill('WIRE');
+    await page.getByRole('button', { name: '选择成品 电线成品', exact: true }).click();
+    const search = page.getByRole('searchbox', { name: '搜索材料', exact: true });
+    await search.fill('CARTON');
+    await page.getByRole('button', { name: '按条码添加', exact: true }).click();
+    const carton = page.getByLabel('包装纸箱用量', { exact: true });
+    await expect(carton).toHaveAttribute('inputmode', 'text');
+    await carton.fill('1/40');
+    await expect(page.getByText('折合约 0.025 个，按原分数测算。', { exact: true })).toBeVisible();
+    await search.fill('CARTON');
+    await page.getByRole('button', { name: '按条码添加', exact: true }).click();
+    await expect(carton).toHaveValue('41/40');
+    await carton.fill('1/0');
+    await page.getByRole('button', { name: '保存用料清单', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('分子、分母');
+    await expect(carton).toHaveValue('1/0');
+    await carton.fill('1/40');
+    await search.fill('EXTRA');
+    await page.getByRole('button', { name: '按条码添加', exact: true }).click();
+    await page.getByLabel('分摊辅料用量', { exact: true }).fill('1/3');
+    await page.screenshot({ path: test.info().outputPath('bom-fractions.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('button', { name: '保存用料清单', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('用料清单已保存');
+    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1/40');
+    await expect(page.getByLabel('分摊辅料用量', { exact: true })).toHaveValue('1/3');
+    // Merely opening a saved fractional recipe must not mark it as changed.
+    await page.getByRole('button', { name: '返回用料清单', exact: true }).click();
+    await page.getByRole('button', { name: '复制', exact: true }).click();
+    await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1/40');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByLabel('生产数量', { exact: true }).fill('40');
+    await page.getByRole('button', { name: '开始测算', exact: true }).click();
+    const rows = page.locator('.bom-result-table tbody tr');
+    await expect(rows.first().locator('td').nth(1)).toHaveText('1/40 个');
+    await expect(rows.first().locator('td').nth(2)).toHaveText('1 个');
+    const downloaded = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出备料表', exact: true }).click();
+    const csv = parseCSV(await readFile(await (await downloaded).path(), 'utf8'));
+    expect(csv[5][4]).toBe('1/40（约 0.025）');
+    await page.getByLabel('生产数量', { exact: true }).fill('3');
+    await page.getByRole('button', { name: '开始测算', exact: true }).click();
+    await expect(rows.nth(1).locator('td').nth(2)).toHaveText('1 米');
+    await page.getByRole('button', { name: '按本次数量新建生产单', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '新建生产单', exact: true })).toBeVisible();
+    await expect(page.locator('.production-material').nth(1)).toContainText('计划用量1 米');
+    await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
+    await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
+    await page.getByLabel('计划产量', { exact: true }).fill('6');
+    await expect(page.locator('.production-material').nth(1)).toContainText('计划用量2 米');
+    await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
+    await page.getByRole('button', { name: '登记完工', exact: true }).click();
+    await expect(page.getByLabel('包装纸箱实际耗料', { exact: true })).toHaveValue('0.15');
+    await expect(page.getByLabel('分摊辅料实际耗料', { exact: true })).toHaveValue('2');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[1].id).stock).toBe(9.85);
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[2].id).stock).toBe(8);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); }
+}
+
+for (const mobile of [false, true]) {
+  test(`${mobile ? 'mobile' : 'desktop'} enters and preserves fractions, exports ratios and completes production with exact scaled consumption`, async ({ page }) => {
+    test.setTimeout(60000);
+    if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
+    await fractionalRecipeFlow(page);
+  });
+}
+
+test('mobile PWA preserves fractional BOM recipes and exact production quantities with an active service worker', async ({ browser }) => {
+  test.setTimeout(60000);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  try { await fractionalRecipeFlow(await context.newPage(), true); }
+  finally { await context.close(); }
+});
+
 test('mobile PWA loads the BOM route, scans a material and keeps the form when returning from the camera', async ({ browser }) => {
   test.setTimeout(60000);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });

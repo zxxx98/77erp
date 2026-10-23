@@ -219,7 +219,7 @@ test('transfers survive backup and restore, and reject tampered pairs', async (t
   await f.receive(source, 6, 10);
   const created = await f.command('/transfers', { to_warehouse_id: target, note: '备份用例', items: [{ product_id: source, quantity: 2 }] });
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 24);
+  assert.equal(backup.version, 25);
   assert.equal(backup.data.orders.filter((o) => o.kind === 'transfer').length, 2);
   const before = structuredClone(backup.data);
   const preview = (await f.request('/backup/preview', 'POST', { backup })).data;

@@ -48,6 +48,8 @@ export function migrateProduction(db) {
     CREATE INDEX IF NOT EXISTS production_item_product ON production_items(product_id);
     INSERT OR IGNORE INTO app_metadata(key,value) VALUES ('production_version','0');
     UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT COALESCE(MAX(version),0) FROM production_orders)) WHERE key='production_version';`);
+  if (!db.prepare('PRAGMA table_info(production_items)').all().some(column => column.name === 'base_quantity_fraction'))
+    db.exec("ALTER TABLE production_items ADD COLUMN base_quantity_fraction TEXT NOT NULL DEFAULT ''");
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='production_version';
     UPDATE production_orders SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='production_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
@@ -133,14 +135,14 @@ export function installProduction(app, db) {
       created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(number, req.warehouse.id, bom.id, bom.version, bom.name, bom.product_id, bom.product.name, bom.product.barcode,
         bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
-    const insert = db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?)`);
-    plan.rows.forEach((row, index) => insert.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.required, row.note, index));
+    const insert = db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,base_quantity_fraction,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+    plan.rows.forEach((row, index) => insert.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.required, row.note, index));
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id', route(req => {
     const order = current(req); draft(req, order); validateProductionPlan(req.body);
     for (const item of order.items) db.prepare('UPDATE production_items SET planned_quantity=? WHERE id=?')
-      .run(productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity), item.id);
+      .run(productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction), item.id);
     db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
       .run(req.body.planned_quantity, req.body.note.trim(), actor(req), new Date().toISOString(), order.id);
     return current(req);
@@ -217,7 +219,7 @@ export function validateProductionBackup(data) {
       if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || row.product_id === order.product_id ||
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) ||
           !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 || !validQuantity(row.base_quantity, true) ||
-          row.planned_quantity !== productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity) ||
+          row.planned_quantity !== productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity, row.base_quantity_fraction) ||
           (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))
         fail('备份生产材料数量、成本或快照无效。');
     }

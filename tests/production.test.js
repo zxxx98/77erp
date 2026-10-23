@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 import { moveInventory } from '../server/commerce.js';
+import { parseBomQuantity } from '../shared/bom.js';
+import { migrateBom } from '../server/bom.js';
+import { migrateProduction } from '../server/production.js';
 
 async function fixture(t) {
   const { app, db } = createApp(':memory:');
@@ -65,6 +68,47 @@ test('production drafts preserve exact BOM snapshots, rescale batches and never 
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM stock_adjustments').get().n, 0);
   const rounded = await f.create({ bom_id: changed.id, bom_version: changed.version, planned_quantity: 0.000001 });
   assert.equal(rounded.items[0].planned_quantity, 0.000099);
+});
+
+test('fractional recipes survive production snapshots, rescaling, completion, backup and reversal', async t => {
+  const f = await fixture(t), before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, base_quantity: 1,
+    items: [{ product_id: f.material, ...parseBomQuantity('1/40'), unit: '件', note: '每 40 件一箱' },
+      { product_id: f.second, ...parseBomQuantity('1/3'), unit: '件', note: '' }] })));
+  const draft = await f.create({ bom_version: bom.version, planned_quantity: 40 });
+  assert.deepEqual(draft.items.map(item => item.planned_quantity), [1, 13.333334]);
+  assert.deepEqual(draft.items.map(item => item.base_quantity_fraction), ['1/40', '1/3']);
+  f.ok(await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version })));
+  const updated = f.ok(await f.command(`/production-orders/${draft.id}`, { version: draft.version, planned_quantity: 3, note: '' }));
+  assert.deepEqual(updated.items.map(item => item.planned_quantity), [0.075, 1]);
+  const done = f.ok(await f.command(`/production-orders/${draft.id}/complete`, { version: updated.version, completed_quantity: 3,
+    items: updated.items.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity })) }));
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.material).stock, 99.925);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.second).stock, 49);
+  const backup = f.ok(await f.request('/backup'));
+  const tampered = structuredClone(backup); tampered.data.production_items[0].base_quantity_fraction = '1/3';
+  assert.equal((await f.request('/backup/preview', { backup: tampered })).status, 400);
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  const restored = f.ok(await f.request(`/production-orders/${done.id}`));
+  assert.equal(restored.items[0].base_quantity_fraction, '1/40');
+  f.ok(await f.command(`/production-orders/${done.id}/void`, { version: restored.version, reason: '核对分数耗料回退' }));
+  assert.deepEqual(f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]), before);
+});
+
+test('existing decimal BOMs and production records migrate with empty fractions and accept version 24 backups', async t => {
+  const f = await fixture(t), order = await f.create();
+  f.db.exec(`DROP TRIGGER data_revision_bom_items_UPDATE; DROP TRIGGER data_revision_production_items_UPDATE;
+    ALTER TABLE bom_items DROP COLUMN quantity_fraction; ALTER TABLE production_items DROP COLUMN base_quantity_fraction;`);
+  migrateBom(f.db); migrateProduction(f.db); migrateBom(f.db); migrateProduction(f.db);
+  assert.equal(f.db.prepare('SELECT quantity_fraction FROM bom_items LIMIT 1').get().quantity_fraction, '');
+  assert.equal(f.db.prepare('SELECT base_quantity_fraction FROM production_items LIMIT 1').get().base_quantity_fraction, '');
+  const backup = f.ok(await f.request('/backup')); backup.version = 24;
+  for (const row of backup.data.bom_items) delete row.quantity_fraction;
+  for (const row of backup.data.production_items) delete row.base_quantity_fraction;
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.deepEqual(f.ok(await f.request(`/production-orders/${order.id}`)).items.map(item => item.planned_quantity), [15, 1]);
 });
 
 test('actual consumption transfers weighted inventory value to good output exactly once, and void restores original quantities and costs', async t => {
@@ -270,7 +314,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 24); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 25); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },

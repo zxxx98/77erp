@@ -43,6 +43,7 @@ function Materials({ rows, complete, disabled, onQuantity, showActual, costs }) 
     const shortage = valid && row.product ? bomShortage(value, row.product.stock) : 0;
     return <article className="production-material" key={row.product_id}>
       <div className="production-material-name"><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small>
+        {row.base_quantity_fraction && <small>基准用量 {row.base_quantity_fraction} {row.unit}</small>}
         {row.note && <small>{row.note}</small>}
         {row.product && row.unit !== row.product.unit && <p className="bom-warning">当前单位已变为 {row.product.unit}，此单保留 {row.unit}。</p>}
         {row.product && !row.product.active && <p className="bom-warning">材料已停用</p>}</div>
@@ -132,12 +133,12 @@ export function Production({ data, initialBom, onChanged }) {
 
   if (editor) {
     const planning = ['new', 'edit'].includes(editor.kind), source = editor.kind === 'new' ? editor.plan : detail;
-    let rows = source?.items || source?.rows.map(row => ({ ...row, base_quantity: row.quantity, planned_quantity: row.required, product: { stock: row.stock, unit: row.unit, active: 1 } })) || [];
+    let rows = source?.items || source?.rows.map(row => ({ ...row, base_quantity: row.quantity, base_quantity_fraction: row.quantity_fraction, planned_quantity: row.required, product: { stock: row.stock, unit: row.unit, active: 1 } })) || [];
     let quantityError = '';
     if (planning && source) {
       try {
         const quantity = parseQuantity(editor.planned_quantity, true);
-        rows = rows.map(row => ({ ...row, planned_quantity: productionPlannedQuantity(row.base_quantity, quantity, source.base_quantity) }));
+        rows = rows.map(row => ({ ...row, planned_quantity: productionPlannedQuantity(row.base_quantity, quantity, source.base_quantity, row.base_quantity_fraction) }));
       } catch (error) { quantityError = error.message; }
     }
     if (editor.kind === 'complete') rows = rows.map(row => ({ ...row, quantity: editor.items.find(item => item.product_id === row.product_id).quantity }));
