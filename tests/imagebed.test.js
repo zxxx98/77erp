@@ -84,7 +84,7 @@ test('upload forwards a decoded image to cfr2 and persists only a URL through sy
   assert.equal((await f.request('/products', 'POST', { ...product, image: 'data:image/png;base64,AAAA' })).status, 400);
   assert.equal((await f.request('/products', 'POST', { ...product, image: 'https://other.example/file/x.jpg' })).status, 400);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 25); assert.ok(!JSON.stringify(backup).includes('data:image'));
+  assert.equal(backup.version, 26); assert.ok(!JSON.stringify(backup).includes('data:image'));
   await f.request('/settings/imagebed', 'PUT', { ...config, base_url: 'https://new.example.com' });
   assert.equal((await f.request(`/products/${created.data.id}`, 'PUT', { ...product, version: created.data.version, image: uploaded.data.url })).status, 200);
   const preview = await f.request('/backup/preview', 'POST', { backup });

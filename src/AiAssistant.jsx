@@ -232,9 +232,9 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
       <div className="ai-context"><span className="ai-context-title"><Sparkles size={17} />{warehouseName || '当前仓库'} · {mode === 'production' ? '生产' : '仓储'}</span><span className="ai-context-note">库存与业务，随时问我</span><div className="ai-mobile-tools"><button className="ai-icon" aria-label="查看历史对话" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></button><button className="ai-icon" aria-label="开始新对话" disabled={busy} onClick={newThread}><Plus size={19} /></button></div></div>
       <div className="ai-feed" ref={feed}>
         {!thread.messages.length && !busy && <div className="ai-welcome">
-          <div className="ai-welcome-icon"><Sparkles size={30} /></div><h3>今天，有什么<br />可以帮你？</h3><p>{mode === 'production' ? '查询生产单、测算备料、推荐品质图表。' : '查库存、整理单据、导入物料。'}<br />把需求告诉我，剩下的一起完成。</p>
+          <div className="ai-welcome-icon"><Sparkles size={30} /></div><h3>今天，有什么<br />可以帮你？</h3><p>{mode === 'production' ? '查询生产单、测算备料和废料、推荐品质图表。' : '查库存、整理单据、导入物料。'}<br />把需求告诉我，剩下的一起完成。</p>
           <div className="ai-suggestions">{[
-            mode === 'production' ? [PackageSearch, '查询用料清单', '当前仓库有哪些用料清单？请列出成品和基准产量。'] : [PackageSearch, '查询物料数量', '当前仓库有多少种物料？'],
+            mode === 'production' ? [PackageSearch, '查询BOM', '当前仓库有哪些BOM？请列出成品和基准产量。'] : [PackageSearch, '查询物料数量', '当前仓库有多少种物料？'],
             mode === 'production' ? [ArrowLeftRight, '查询待生产任务', '当前仓库有哪些待生产的生产单？请列出成品、计划产量和单号。'] : [ArrowLeftRight, '查询跨仓库库存', '我想对比不同仓库的物料库存，请先列出仓库。'],
             [ChartColumn, '推荐品质图表', '请查看当前仓库已保存的验收数据，推荐可以生成哪些品质图表，并说明统计口径。'],
             [FileSpreadsheet, '上传表格，新增物料', '我想上传表格新增物料档案，请帮我核对列对应关系。'],

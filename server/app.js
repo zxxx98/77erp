@@ -558,11 +558,13 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (db.prepare("SELECT 1 FROM quality_acceptances a,json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=? LIMIT 1").get(product.id))
         throw new Error("物料已绑定验收单，不能删除，请使用停用。");
       if (db.prepare('SELECT 1 FROM production_orders WHERE product_id=? LIMIT 1').get(product.id) ||
-          db.prepare('SELECT 1 FROM production_items WHERE product_id=? LIMIT 1').get(product.id))
+          db.prepare('SELECT 1 FROM production_items WHERE product_id=? LIMIT 1').get(product.id) ||
+          db.prepare('SELECT 1 FROM production_scraps WHERE product_id=? LIMIT 1').get(product.id))
         throw new Error('物料被生产单引用，不能删除，请使用停用。');
       if (db.prepare('SELECT 1 FROM boms WHERE product_id=? LIMIT 1').get(product.id) ||
-          db.prepare('SELECT 1 FROM bom_items WHERE product_id=? LIMIT 1').get(product.id))
-        throw new Error('物料被用料清单引用，不能删除，请移除引用或使用停用。');
+          db.prepare('SELECT 1 FROM bom_items WHERE product_id=? LIMIT 1').get(product.id) ||
+          db.prepare('SELECT 1 FROM bom_scraps WHERE product_id=? LIMIT 1').get(product.id))
+        throw new Error('物料被BOM引用，不能删除，请移除引用或使用停用。');
       db.prepare("DELETE FROM products WHERE id=?").run(product.id);
       db.exec("COMMIT");
       inTransaction = false;

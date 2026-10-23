@@ -424,7 +424,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 25,
+    version: 26,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -432,11 +432,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
   function validateBackup(value) {
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 26) { data.bom_scraps = []; data.production_scraps = []; }
     if (value.version < 24) for (const table of productionTables) data[table] = [];
     if (value.version < 23) for (const table of bomTables) data[table] = [];
     if (value.version < 25) {
@@ -736,7 +737,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         adjustments: data.stock_adjustments.length,
         contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
         quality_templates: data.quality_templates.length, quality_acceptances: data.quality_acceptances.length, quality_charts: data.quality_charts.length, quality_files: data.quality_template_files.length,
-        boms: data.boms.length,
+        boms: data.boms.length, bom_scraps: data.bom_scraps.length, production_scraps: data.production_scraps.length,
         production_orders: data.production_orders.length,
       };
     }),

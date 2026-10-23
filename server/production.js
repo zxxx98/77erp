@@ -4,10 +4,11 @@ import { operationRequest, saveOperationRequest } from './operations.js';
 import { moveInventory } from './commerce.js';
 import { notifyStockChanges } from './notifications.js';
 import { hasPermission } from '../shared/permissions.js';
+import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity } from '../shared/quantity.js';
 import { validateProductionPlan, validateProductionCompletion, productionPlannedQuantity } from '../shared/production.js';
 
-export const productionTables = ['production_orders', 'production_items'];
+export const productionTables = ['production_orders', 'production_items', 'production_scraps'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
@@ -43,6 +44,14 @@ export function migrateProduction(db) {
     specification TEXT NOT NULL, unit TEXT NOT NULL, base_quantity REAL NOT NULL, planned_quantity REAL NOT NULL,
     actual_quantity REAL, cost_cents INTEGER, note TEXT NOT NULL, position INTEGER NOT NULL,
     UNIQUE(production_id,product_id));
+    CREATE TABLE IF NOT EXISTS production_scraps (
+    id INTEGER PRIMARY KEY, production_id INTEGER NOT NULL REFERENCES production_orders(id),
+    product_id INTEGER NOT NULL REFERENCES products(id), name TEXT NOT NULL, barcode TEXT NOT NULL,
+    specification TEXT NOT NULL, unit TEXT NOT NULL, method TEXT NOT NULL,
+    source_product_id INTEGER REFERENCES products(id), quantity REAL NOT NULL, quantity_fraction TEXT NOT NULL DEFAULT '',
+    planned_quantity REAL NOT NULL, expected_quantity REAL, actual_quantity REAL, disposition TEXT,
+    note TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL, UNIQUE(production_id,product_id));
+    CREATE INDEX IF NOT EXISTS production_scraps_product ON production_scraps(product_id);
     CREATE INDEX IF NOT EXISTS production_warehouse ON production_orders(warehouse_id,created_at DESC,id DESC);
     CREATE INDEX IF NOT EXISTS production_product ON production_orders(product_id);
     CREATE INDEX IF NOT EXISTS production_item_product ON production_items(product_id);
@@ -56,7 +65,7 @@ export function migrateProduction(db) {
     CREATE TRIGGER IF NOT EXISTS production_version_update AFTER UPDATE OF planned_quantity,note,status,updated_at ON production_orders BEGIN ${advance} END;`);
 }
 
-export function clearProduction(db) { db.exec('DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { db.exec('DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 export function listProductionOrders(db, warehouseId, query = {}, costs = false) {
   const { q = '', status = 'all', offset = '0', limit = '30' } = query;
@@ -84,13 +93,16 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
     order.items = db.prepare('SELECT * FROM production_items WHERE production_id=? ORDER BY position,id').all(id).map(item => ({
       ...item, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(item.product_id)),
     }));
+    order.scraps = db.prepare('SELECT * FROM production_scraps WHERE production_id=? ORDER BY position,id').all(id).map(row => ({
+      ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id)),
+    }));
     order.captured_at = new Date().toISOString();
     return costs ? order : productionWithoutCosts(order);
   });
 }
 
 function prepareProduction(db, req) {
-  if (!isId(req.body.bom_id) || !isId(req.body.bom_version)) fail('请选择用料清单并核对版本。');
+  if (!isId(req.body.bom_id) || !isId(req.body.bom_version)) fail('请选择BOM并核对版本。');
   return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version));
 }
 
@@ -112,12 +124,12 @@ export function installProduction(app, db) {
     if (!isId(req.body.version) || req.body.version !== order.version) fail('生产单已变化，请重新读取后核对。当前填写内容已保留。', 409);
   };
   const draft = (req, order) => { version(req, order); if (order.status !== 'draft') fail('仅待生产的单据可以编辑或完工。', 409); };
-  const stockBefore = order => [order.product_id, ...order.items.map(item => item.product_id)]
+  const stockBefore = order => [order.product_id, ...order.items.map(item => item.product_id), ...order.scraps.map(row => row.product_id)]
     .map(id => db.prepare('SELECT * FROM products WHERE id=?').get(id));
   const units = (order, active = true) => {
-    for (const row of [{ ...order, name: order.product_name }, ...order.items]) {
+    for (const row of [{ ...order, name: order.product_name }, ...order.items, ...order.scraps]) {
       if (row.unit !== row.product.unit) fail(active
-        ? `${row.name}单位已变化，请作废此草稿并按核对后的用料清单重新建单。`
+        ? `${row.name}单位已变化，请作废此草稿并按核对后的BOM重新建单。`
         : `${row.name}单位已变化，无法按原单位作废。请先核对物料单位和后续业务。`, 409);
       if (active && !row.product.active) fail(`${row.name}已停用，请先核对物料。`);
     }
@@ -137,12 +149,18 @@ export function installProduction(app, db) {
         bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
     const insert = db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,base_quantity_fraction,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
     plan.rows.forEach((row, index) => insert.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.required, row.note, index));
+    const insertScrap = db.prepare(`INSERT INTO production_scraps(production_id,product_id,name,barcode,specification,unit,method,source_product_id,quantity,quantity_fraction,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    plan.scraps.forEach((row, index) => insertScrap.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.method, row.source_product_id, row.quantity, row.quantity_fraction, row.planned_quantity, row.note, index));
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id', route(req => {
     const order = current(req); draft(req, order); validateProductionPlan(req.body);
     for (const item of order.items) db.prepare('UPDATE production_items SET planned_quantity=? WHERE id=?')
       .run(productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction), item.id);
+    const plannedMaterials = order.items.map(item => ({ product_id: item.product_id,
+      quantity: productionPlannedQuantity(item.base_quantity, req.body.planned_quantity, order.base_quantity, item.base_quantity_fraction) }));
+    for (const row of order.scraps) db.prepare('UPDATE production_scraps SET planned_quantity=? WHERE id=?')
+      .run(scrapExpectedQuantity(row, req.body.planned_quantity, order.base_quantity, plannedMaterials), row.id);
     db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
       .run(req.body.planned_quantity, req.body.note.trim(), actor(req), new Date().toISOString(), order.id);
     return current(req);
@@ -150,6 +168,7 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/complete', route(req => {
     const order = current(req); draft(req, order); units(order);
     validateProductionCompletion(req.body, order.items);
+    validateScrapActuals(req.body.scraps ?? [], order.scraps);
     const before = stockBefore(order);
     const actuals = new Map(req.body.items.map(item => [item.product_id, item.quantity]));
     let total = 0;
@@ -162,6 +181,17 @@ export function installProduction(app, db) {
       db.prepare('UPDATE production_items SET actual_quantity=?,cost_cents=? WHERE id=?').run(quantity, cost, item.id);
     }
     moveInventory(db, order.product_id, req.body.completed_quantity, total);
+    const actualScraps = new Map((req.body.scraps || []).map(row => [row.product_id, row]));
+    for (const row of order.scraps) {
+      const actual = actualScraps.get(row.product_id);
+      const expected = scrapExpectedQuantity(row, req.body.completed_quantity, order.base_quantity, req.body.items);
+      if (actual.quantity && actual.disposition === 'stock') {
+        try { moveInventory(db, row.product_id, actual.quantity, 0); }
+        catch (error) { fail(`废料 ${row.name}无法入库：${error.message}`); }
+      }
+      db.prepare('UPDATE production_scraps SET expected_quantity=?,actual_quantity=?,disposition=? WHERE id=?')
+        .run(expected, actual.quantity, actual.disposition, row.id);
+    }
     const at = new Date().toISOString(), owner = actor(req);
     db.prepare("UPDATE production_orders SET status='completed',completed_quantity=?,total_cost_cents=?,completed_by_name=?,completed_at=?,updated_by_name=?,updated_at=? WHERE id=?")
       .run(req.body.completed_quantity, total, owner, at, owner, at, order.id);
@@ -176,6 +206,10 @@ export function installProduction(app, db) {
     if (order.status === 'completed') {
       units(order, false);
       try {
+        for (const row of order.scraps) if (row.actual_quantity && row.disposition === 'stock') {
+          if (row.actual_quantity > row.product.stock) fail(`废料 ${row.name}库存不足（当前 ${row.product.stock} ${row.unit}，需扣回 ${row.actual_quantity} ${row.unit}）。`);
+          moveInventory(db, row.product_id, -row.actual_quantity, 0);
+        }
         moveInventory(db, order.product_id, -order.completed_quantity, order.total_cost_cents);
         for (const item of order.items) if (item.actual_quantity) moveInventory(db, item.product_id, item.actual_quantity, item.cost_cents);
       } catch (error) { fail(`无法回退库存和原成本：${error.message} 请先核对后续业务。`); }
@@ -198,6 +232,11 @@ export function validateProductionBackup(data) {
     if (!orders.has(item.production_id)) fail('备份生产材料关联无效。');
     const rows = grouped.get(item.production_id) || []; rows.push(item); grouped.set(item.production_id, rows);
   }
+  const scrapGroups = new Map();
+  for (const row of data.production_scraps) {
+    if (!orders.has(row.production_id)) fail('备份生产废料关联无效。');
+    const group = scrapGroups.get(row.production_id) || []; group.push(row); scrapGroups.set(row.production_id, group);
+  }
   for (const order of orders.values()) {
     const rows = grouped.get(order.id) || [], completed = order.completed_at !== null;
     validateProductionPlan(order);
@@ -215,6 +254,19 @@ export function validateProductionBackup(data) {
           : order.completed_quantity !== null || order.total_cost_cents !== null || order.completed_by_name !== ''))
       fail('备份生产单字段、状态或关联无效。');
     numbers.add(order.number);
+    const scraps = scrapGroups.get(order.id) || [];
+    validateScrapRules(scraps, order.product_id, rows);
+    if (new Set(scraps.map(row => row.position)).size !== scraps.length) fail('备份生产废料排序重复。');
+    for (const row of scraps) {
+      if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || typeof row.quantity_fraction !== 'string' ||
+          !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) ||
+          !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 ||
+          row.planned_quantity !== scrapExpectedQuantity(row, order.planned_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity }))) ||
+          (completed ? !validQuantity(row.actual_quantity) || !['stock', 'discard'].includes(row.disposition) ||
+            row.expected_quantity !== scrapExpectedQuantity(row, order.completed_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.actual_quantity })))
+            : row.actual_quantity !== null || row.expected_quantity !== null || row.disposition !== null))
+        fail('备份生产废料数量、处理方式或快照无效。');
+    }
     for (const row of rows) {
       if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || row.product_id === order.product_id ||
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) ||

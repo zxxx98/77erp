@@ -6,7 +6,7 @@ import './product-history.css';
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 const money = value => Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const label = record => ({ production_in: '生产完工入库', production_out: '生产实际耗料', production_void_out: '作废生产扣回成品', production_void_in: '作废生产退回材料' }[record.event]) || (record.event === 'price_change' ? '物料改价' : record.event === 'void' ? `作废${orderLabel({ ...record, status: 'active' })}`
+const label = record => ({ production_scrap_in: '生产废料入库', production_scrap_void_out: '作废生产扣回废料', production_in: '生产完工入库', production_out: '生产实际耗料', production_void_out: '作废生产扣回成品', production_void_in: '作废生产退回材料' }[record.event]) || (record.event === 'price_change' ? '物料改价' : record.event === 'void' ? `作废${orderLabel({ ...record, status: 'active' })}`
   : record.event === 'order' ? orderLabel(record) : record.event === 'reduce' ? '减少库存（报损）' : record.event === 'increase' ? '增加库存（退料）' : '库存盘点');
 
 export function ProductHistory({ product, onViewOrder }) {

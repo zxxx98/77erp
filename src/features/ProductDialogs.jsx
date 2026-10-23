@@ -167,7 +167,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
       </section>
       </div>}
     </div>
-    <div className="modal-footer">{can('bom') && onViewBom && <Button onClick={onViewBom}>查看用料清单</Button>}<Button onClick={onClose}>关闭</Button></div>
+    <div className="modal-footer">{can('bom') && onViewBom && <Button onClick={onViewBom}>查看BOM</Button>}<Button onClick={onClose}>关闭</Button></div>
   </Modal>;
 }
 

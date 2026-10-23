@@ -114,12 +114,12 @@ test('BOM calculation carries quantity into a production draft and navigation pr
     await nav.getByRole('link', { name: '生产单', exact: true }).click();
     await expect(page.getByLabel('生产备注', { exact: true })).toHaveValue('离开时保留的备注');
     page.once('dialog', dialog => dialog.dismiss());
-    await nav.getByRole('link', { name: '用料清单', exact: true }).click();
+    await nav.getByRole('link', { name: 'BOM', exact: true }).click();
     await expect(page).toHaveURL(/#production$/);
     await expect(page.getByLabel('生产备注', { exact: true })).toHaveValue('离开时保留的备注');
     page.once('dialog', dialog => dialog.accept());
-    await nav.getByRole('link', { name: '用料清单', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '用料清单', exact: true })).toBeVisible();
+    await nav.getByRole('link', { name: 'BOM', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'BOM', exact: true })).toBeVisible();
   } finally { await f.close(); }
 });
 
@@ -151,4 +151,89 @@ test('concurrent changes preserve completion input and production-only employees
     await expect(page.getByText('材料成本', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '作废生产单', exact: true })).toHaveCount(0);
   } finally { await f.close(); }
+});
+
+async function scrapProductionFlow(page, pwa = false) {
+  const f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    const scrap = await f.post('/products', { name: '废料甲', barcode: 'SCRAP-A', category: '废料', unit: '千克', cost: 5, price: 10, threshold: 0 });
+    const dust = await f.post('/products', { name: '废料乙', barcode: 'SCRAP-B', category: '废料', unit: '件', cost: 5, price: 10, threshold: 0 });
+    const before = f.inventory();
+    await page.goto(f.base + '/#bom');
+    if (pwa) await page.evaluate(() => navigator.serviceWorker.ready);
+    await expect(page.getByRole('heading', { name: 'BOM', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await page.getByRole('searchbox', { name: '搜索废料', exact: true }).fill('SCRAP-A');
+    await page.getByRole('button', { name: '添加废料 废料甲', exact: true }).click();
+    await page.getByRole('combobox', { name: '废料甲计算方式', exact: true }).click();
+    await page.getByRole('option', { name: '按材料投入比例', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: '废料甲来源材料', exact: true })).toHaveValue('材料甲');
+    await page.getByLabel('废料甲废料比例', { exact: true }).fill('5');
+    await page.getByRole('searchbox', { name: '搜索废料', exact: true }).fill('SCRAP-B');
+    await page.getByRole('button', { name: '按条码添加废料', exact: true }).click();
+    await page.getByLabel('废料乙基准废料量', { exact: true }).fill('1/3');
+    await page.screenshot({ path: test.info().outputPath('bom-scrap-rules.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('button', { name: '保存BOM', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('BOM已保存');
+    await page.getByRole('button', { name: '编辑', exact: true }).click();
+    await expect(page.getByLabel('废料乙基准废料量', { exact: true })).toHaveValue('1/3');
+    await expect(page.getByLabel('废料甲废料比例', { exact: true })).toHaveValue('5');
+    await page.getByRole('button', { name: '返回BOM', exact: true }).click();
+    await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByLabel('生产数量', { exact: true }).fill('10');
+    await page.getByRole('button', { name: '开始测算', exact: true }).click();
+    await expect(page.locator('.scrap-output').first()).toContainText('0.75 千克');
+    await expect(page.locator('.scrap-output').nth(1)).toContainText('1.666667 件');
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出备料表', exact: true }).click();
+    expect((await download).suggestedFilename()).toMatch(/备料表/);
+    await page.getByRole('button', { name: '按本次数量新建生产单', exact: true }).click();
+    await page.getByLabel('计划产量', { exact: true }).fill('12');
+    await expect(page.locator('.scrap-output').first()).toContainText('0.9 千克');
+    await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
+    expect(f.inventory()).toEqual(before);
+    await page.getByRole('button', { name: '登记完工', exact: true }).click();
+    await page.getByLabel('合格成品数量', { exact: true }).fill('9');
+    await page.getByLabel('材料甲实际耗料', { exact: true }).fill('16');
+    await expect(page.locator('.scrap-output').first()).toContainText('完工预计0.8 千克');
+    await expect(page.getByLabel('废料甲实际废料', { exact: true })).toHaveValue('0.9');
+    await page.getByRole('button', { name: '废料甲采用预计数量', exact: true }).click();
+    await expect(page.getByLabel('废料甲实际废料', { exact: true })).toHaveValue('0.8');
+    await page.getByLabel('废料甲实际废料', { exact: true }).fill('0.9');
+    await page.getByLabel('废料乙实际废料', { exact: true }).fill('1.4');
+    await page.getByRole('combobox', { name: '废料乙处理方式', exact: true }).click();
+    await page.getByRole('option', { name: '直接处置', exact: true }).click();
+    await page.screenshot({ path: test.info().outputPath('production-scrap-completion.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '废料产出记录', exact: true })).toBeVisible();
+    await expect(page.locator('.scrap-output').first()).toContainText('+0.1 千克');
+    expect(f.db.prepare('SELECT stock,inventory_value_cents FROM products WHERE id=?').get(scrap.id)).toEqual({ stock: 0.9, inventory_value_cents: 0 });
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(dust.id).stock).toBe(0);
+    await page.getByRole('button', { name: '作废生产单', exact: true }).click();
+    await page.getByLabel('作废原因', { exact: true }).fill('核对后整单回退');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认作废', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('原成本已回退');
+    expect(f.inventory()).toEqual(before);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); }
+}
+
+for (const mobile of [false, true]) {
+  test(`${mobile ? 'mobile' : 'desktop'} configures independent BOM scrap rules and calculates, confirms, posts and reverses waste outputs`, async ({ page }) => {
+    test.setTimeout(60000);
+    if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
+    await scrapProductionFlow(page);
+  });
+}
+
+test('mobile PWA runs scrap production with an active service worker', async ({ browser }) => {
+  test.setTimeout(60000);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  try { await scrapProductionFlow(await context.newPage(), true); }
+  finally { await context.close(); }
 });

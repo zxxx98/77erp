@@ -37,10 +37,10 @@ for (const mobile of [false, true]) {
       const before = f.db.prepare('SELECT * FROM products ORDER BY id').all();
       await page.goto(f.base + '/#bom');
       await expect(page.getByRole('group', { name: '业务模式' }).getByRole('button', { name: '生产', exact: true })).toHaveAttribute('aria-pressed', 'true');
-      await page.getByRole('button', { name: '新建用料清单', exact: true }).click();
+      await page.getByRole('button', { name: '新建BOM', exact: true }).click();
       await page.getByRole('searchbox', { name: '搜索成品', exact: true }).fill('TABLE-001');
       await page.getByRole('button', { name: '选择成品 示例桌子', exact: true }).click();
-      await page.getByLabel('清单名称', { exact: true }).fill('桌子配方');
+      await page.getByLabel('BOM 名称', { exact: true }).fill('桌子配方');
       await page.getByLabel('基准产量', { exact: true }).fill('2');
       const material = page.getByRole('searchbox', { name: '搜索材料', exact: true });
       await material.fill('桌面');
@@ -57,8 +57,8 @@ for (const mobile of [false, true]) {
       await page.getByRole('button', { name: '添加材料 螺丝材料', exact: true }).click();
       await page.getByLabel('螺丝材料用量', { exact: true }).fill('32');
       await page.screenshot({ path: test.info().outputPath('bom-editor.png'), fullPage: true });
-      await page.getByRole('button', { name: '保存用料清单', exact: true }).click();
-      await expect(page.locator('.bom-success')).toContainText('用料清单已保存');
+      await page.getByRole('button', { name: '保存BOM', exact: true }).click();
+      await expect(page.locator('.bom-success')).toContainText('BOM已保存');
       await page.getByRole('button', { name: '测算备料', exact: true }).click();
       await page.getByLabel('生产数量', { exact: true }).fill('10');
       await page.getByRole('button', { name: '开始测算', exact: true }).click();
@@ -83,14 +83,14 @@ for (const mobile of [false, true]) {
       }
       await page.getByLabel('生产数量', { exact: true }).fill('20');
       await expect(page.getByRole('button', { name: '导出备料表', exact: true })).toHaveCount(0);
-      await page.getByRole('button', { name: '返回用料清单', exact: true }).click();
+      await page.getByRole('button', { name: '返回BOM', exact: true }).click();
       await page.getByRole('button', { name: '复制', exact: true }).click();
       await expect(page.getByLabel('基准产量', { exact: true })).toHaveValue('2');
       await expect(page.getByLabel('螺丝材料用量', { exact: true })).toHaveValue('32');
-      await expect(page.getByRole('button', { name: '保存用料清单', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存BOM', exact: true })).toBeDisabled();
       await page.getByRole('searchbox', { name: '搜索成品', exact: true }).fill('TABLE-002');
       await page.getByRole('button', { name: '选择成品 小号桌子', exact: true }).click();
-      await page.getByRole('button', { name: '保存用料清单', exact: true }).click();
+      await page.getByRole('button', { name: '保存BOM', exact: true }).click();
       await expect(page.locator('.bom-list-item')).toHaveCount(2);
       const original = page.locator('.bom-list-item').filter({ has: page.getByText('桌子配方', { exact: true }) });
       await original.getByRole('button', { name: '停用', exact: true }).click();
@@ -109,27 +109,27 @@ for (const mobile of [false, true]) {
       const bom = await f.post('/boms', f.definition);
       await page.goto(f.base + '/#products');
       await page.getByRole('button', { name: mobile ? /^示例桌子，库存/ : '查看 示例桌子 物料详情' }).click();
-      await page.getByRole('button', { name: '查看用料清单', exact: true }).click();
+      await page.getByRole('button', { name: '查看BOM', exact: true }).click();
       await expect(page).toHaveURL(/#bom$/);
       await expect(page.locator('.bom-list-item')).toHaveCount(1);
       await expect(page.locator('.bom-filter-product')).toContainText('示例桌子');
       await page.getByRole('button', { name: '编辑', exact: true }).click();
-      await page.getByLabel('清单名称', { exact: true }).fill('本地未保存');
+      await page.getByLabel('BOM 名称', { exact: true }).fill('本地未保存');
       const nav = page.getByRole('navigation', { name: mobile ? '移动端主导航' : '主导航', exact: true });
-      await nav.getByRole(mobile ? 'button' : 'link', { name: mobile ? '用料' : '用料清单', exact: true }).click();
-      await expect(page.getByLabel('清单名称', { exact: true })).toHaveValue('本地未保存');
+      await nav.getByRole(mobile ? 'button' : 'link', { name: 'BOM', exact: true }).click();
+      await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('本地未保存');
       page.once('dialog', dialog => dialog.dismiss());
       await page.getByRole('group', { name: '业务模式' }).getByRole('button', { name: '仓储', exact: true }).click();
       await expect(page).toHaveURL(/#bom$/);
-      await expect(page.getByLabel('清单名称', { exact: true })).toHaveValue('本地未保存');
+      await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('本地未保存');
       await f.post(`/boms/${bom.id}`, { ...f.definition, name: '另一设备已保存', version: bom.version });
-      await page.getByRole('button', { name: '保存用料清单', exact: true }).click();
+      await page.getByRole('button', { name: '保存BOM', exact: true }).click();
       await expect(page.getByRole('alert')).toContainText('已被修改');
-      await expect(page.getByLabel('清单名称', { exact: true })).toHaveValue('本地未保存');
+      await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('本地未保存');
       page.once('dialog', dialog => dialog.accept());
-      await page.getByRole('button', { name: '重新读取已保存清单', exact: true }).click();
-      await expect(page.getByLabel('清单名称', { exact: true })).toHaveValue('另一设备已保存');
-      await page.getByRole('button', { name: '返回用料清单', exact: true }).click();
+      await page.getByRole('button', { name: '重新读取已保存 BOM', exact: true }).click();
+      await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('另一设备已保存');
+      await page.getByRole('button', { name: '返回BOM', exact: true }).click();
     } finally { await f.close(); }
   });
 }
@@ -146,7 +146,7 @@ async function fractionalRecipeFlow(page, pwa = false) {
     for (const product of products.slice(1)) f.db.prepare('UPDATE products SET stock=10,inventory_value_cents=1000 WHERE id=?').run(product.id);
     await page.goto(f.base + '/#bom');
     if (pwa) await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.getByRole('button', { name: '新建用料清单', exact: true }).click();
+    await page.getByRole('button', { name: '新建BOM', exact: true }).click();
     await page.getByRole('searchbox', { name: '搜索成品', exact: true }).fill('WIRE');
     await page.getByRole('button', { name: '选择成品 电线成品', exact: true }).click();
     const search = page.getByRole('searchbox', { name: '搜索材料', exact: true });
@@ -160,7 +160,7 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await page.getByRole('button', { name: '按条码添加', exact: true }).click();
     await expect(carton).toHaveValue('41/40');
     await carton.fill('1/0');
-    await page.getByRole('button', { name: '保存用料清单', exact: true }).click();
+    await page.getByRole('button', { name: '保存BOM', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('分子、分母');
     await expect(carton).toHaveValue('1/0');
     await carton.fill('1/40');
@@ -169,13 +169,13 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await page.getByLabel('分摊辅料用量', { exact: true }).fill('1/3');
     await page.screenshot({ path: test.info().outputPath('bom-fractions.png'), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.getByRole('button', { name: '保存用料清单', exact: true }).click();
-    await expect(page.locator('.bom-success')).toContainText('用料清单已保存');
+    await page.getByRole('button', { name: '保存BOM', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('BOM已保存');
     await page.getByRole('button', { name: '编辑', exact: true }).click();
     await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1/40');
     await expect(page.getByLabel('分摊辅料用量', { exact: true })).toHaveValue('1/3');
     // Merely opening a saved fractional recipe must not mark it as changed.
-    await page.getByRole('button', { name: '返回用料清单', exact: true }).click();
+    await page.getByRole('button', { name: '返回BOM', exact: true }).click();
     await page.getByRole('button', { name: '复制', exact: true }).click();
     await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1/40');
     page.once('dialog', dialog => dialog.accept());
@@ -243,16 +243,16 @@ test('mobile PWA loads the BOM route, scans a material and keeps the form when r
     });
     await page.goto(f.base + '/#bom');
     await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.getByRole('button', { name: '新建用料清单', exact: true }).click();
-    await page.getByLabel('清单名称', { exact: true }).fill('PWA扫码配方');
+    await page.getByRole('button', { name: '新建BOM', exact: true }).click();
+    await page.getByLabel('BOM 名称', { exact: true }).fill('PWA扫码配方');
     await page.getByRole('button', { name: '扫码添加材料', exact: true }).click();
     await expect(page.getByLabel('桌面材料用量', { exact: true })).toHaveValue('1');
-    await expect(page.getByLabel('清单名称', { exact: true })).toHaveValue('PWA扫码配方');
+    await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('PWA扫码配方');
     await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     // Saved data remains on the server; leaving the unfinished form is explicit.
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '返回用料清单', exact: true }).click();
+    await page.getByRole('button', { name: '返回BOM', exact: true }).click();
     expect(f.db.prepare('SELECT COUNT(*) n FROM boms').get().n).toBe(0);
   } finally { await context.close(); await f.close(); }
 });

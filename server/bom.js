@@ -1,8 +1,9 @@
 import { validateBom, bomRequiredQuantity, bomShortage } from '../shared/bom.js';
+import { validateScrapRules, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity } from '../shared/quantity.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 
-export const bomTables = ['boms', 'bom_items'];
+export const bomTables = ['boms', 'bom_items', 'bom_scraps'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
 const publicProduct = product => Object.fromEntries(['id', 'name', 'barcode', 'specification', 'unit', 'active', 'stock'].map(key => [key, product[key]]));
@@ -27,6 +28,13 @@ export function migrateBom(db) {
     product_id INTEGER NOT NULL REFERENCES products(id), quantity REAL NOT NULL CHECK(quantity>0),
     unit TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL,
     UNIQUE(bom_id,product_id));
+    CREATE TABLE IF NOT EXISTS bom_scraps (
+    id INTEGER PRIMARY KEY, bom_id INTEGER NOT NULL REFERENCES boms(id),
+    product_id INTEGER NOT NULL REFERENCES products(id), method TEXT NOT NULL,
+    source_product_id INTEGER REFERENCES products(id), quantity REAL NOT NULL,
+    quantity_fraction TEXT NOT NULL DEFAULT '', unit TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL, UNIQUE(bom_id,product_id));
+    CREATE INDEX IF NOT EXISTS bom_scraps_product ON bom_scraps(product_id);
     CREATE INDEX IF NOT EXISTS boms_warehouse ON boms(warehouse_id,updated_at);
     CREATE INDEX IF NOT EXISTS bom_items_product ON bom_items(product_id);
     INSERT OR IGNORE INTO app_metadata(key,value) VALUES ('bom_version','0');
@@ -40,8 +48,9 @@ export function migrateBom(db) {
 }
 
 export function clearBom(db, warehouseId) {
-  if (warehouseId === undefined) db.exec('DELETE FROM bom_items; DELETE FROM boms;');
+  if (warehouseId === undefined) db.exec('DELETE FROM bom_scraps; DELETE FROM bom_items; DELETE FROM boms;');
   else {
+    db.prepare('DELETE FROM bom_scraps WHERE bom_id IN (SELECT id FROM boms WHERE warehouse_id=?)').run(warehouseId);
     db.prepare('DELETE FROM bom_items WHERE bom_id IN (SELECT id FROM boms WHERE warehouse_id=?)').run(warehouseId);
     db.prepare('DELETE FROM boms WHERE warehouse_id=?').run(warehouseId);
   }
@@ -53,7 +62,7 @@ export function listBoms(db, warehouseId, query = {}) {
       typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
       typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100 ||
       (product_id !== undefined && (typeof product_id !== 'string' || !/^\d+$/.test(product_id) || !Number.isSafeInteger(Number(product_id)) || Number(product_id) < 1)))
-    fail('用料清单筛选或分页参数无效。');
+    fail('BOM筛选或分页参数无效。');
   const clauses = ['b.warehouse_id=?'], params = [warehouseId];
   if (q.trim()) { clauses.push("(b.name LIKE ? ESCAPE '\\' OR p.name LIKE ? ESCAPE '\\' OR p.barcode LIKE ? ESCAPE '\\')"); params.push(...Array(3).fill(pattern(q.trim()))); }
   if (status !== 'all') { clauses.push('b.enabled=?'); params.push(status === 'enabled' ? 1 : 0); }
@@ -67,13 +76,16 @@ export function listBoms(db, warehouseId, query = {}) {
 }
 
 export function getBom(db, warehouseId, id) {
-  if (!Number.isSafeInteger(id) || id < 1) fail('用料清单编号无效。');
+  if (!Number.isSafeInteger(id) || id < 1) fail('BOM编号无效。');
   return readSnapshot(db, () => {
     const bom = db.prepare('SELECT * FROM boms WHERE id=? AND warehouse_id=?').get(id, warehouseId);
-    if (!bom) fail('用料清单不存在或不属于当前仓库。', 404);
+    if (!bom) fail('BOM不存在或不属于当前仓库。', 404);
     bom.product = publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(bom.product_id, warehouseId));
     bom.items = db.prepare('SELECT * FROM bom_items WHERE bom_id=? ORDER BY position,id').all(id).map(item => ({
       ...item, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, warehouseId)),
+    }));
+    bom.scraps = db.prepare('SELECT * FROM bom_scraps WHERE bom_id=? ORDER BY position,id').all(id).map(row => ({
+      ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, warehouseId)),
     }));
     return bom;
   });
@@ -82,17 +94,19 @@ export function getBom(db, warehouseId, id) {
 export function calculateBom(db, warehouse, id, productionQuantity, version) {
   if (!validQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 6 位小数。');
   const bom = getBom(db, warehouse.id, id);
-  if (version !== undefined && version !== bom.version) fail('用料清单已变化，请重新打开后测算。', 409);
-  if (!bom.enabled) fail('用料清单已停用，请启用后测算。');
-  if (!bom.product.active || bom.items.some(item => !item.product.active)) fail('成品或材料已停用，请核对物料后测算。');
-  if (bom.base_unit !== bom.product.unit || bom.items.some(item => item.unit !== item.product.unit))
-    fail('物料单位已变化，请编辑用料清单、核对用量并重新保存后测算。', 409);
+  if (version !== undefined && version !== bom.version) fail('BOM已变化，请重新打开后测算。', 409);
+  if (!bom.enabled) fail('BOM已停用，请启用后测算。');
+  if (!bom.product.active || [...bom.items, ...bom.scraps].some(item => !item.product.active)) fail('成品、材料或废料已停用，请核对物料后测算。');
+  if (bom.base_unit !== bom.product.unit || [...bom.items, ...bom.scraps].some(item => item.unit !== item.product.unit))
+    fail('物料单位已变化，请编辑BOM、核对用量并重新保存后测算。', 409);
   const rows = bom.items.map(item => {
     const required = bomRequiredQuantity(item.quantity, productionQuantity, bom.base_quantity, item.quantity_fraction);
     return { product_id: item.product_id, name: item.product.name, barcode: item.product.barcode, specification: item.product.specification,
       unit: item.unit, quantity: item.quantity, quantity_fraction: item.quantity_fraction, required, stock: item.product.stock, shortage: bomShortage(required, item.product.stock), note: item.note };
   });
   return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity,
+    scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
+      planned_quantity: scrapExpectedQuantity(row, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
     production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
 }
 
@@ -103,14 +117,24 @@ export function validateBomBackup(data) {
   const grouped = new Map();
   for (const item of data.bom_items) {
     if (!boms.has(item.bom_id) || !Number.isSafeInteger(item.position) || item.position < 0 || item.position >= 100)
-      fail('备份用料清单明细关联或排序无效。');
+      fail('备份BOM明细关联或排序无效。');
     const items = grouped.get(item.bom_id) || [];
     items.push(item); grouped.set(item.bom_id, items);
+  }
+  const scrapGroups = new Map();
+  for (const row of data.bom_scraps) {
+    if (!boms.has(row.bom_id)) fail('备份 BOM 废料关联无效。');
+    const group = scrapGroups.get(row.bom_id) || []; group.push(row); scrapGroups.set(row.bom_id, group);
   }
   const parents = new Set();
   for (const bom of data.boms) {
     const items = grouped.get(bom.id) || [];
     validateBom({ ...bom, items });
+    const scraps = scrapGroups.get(bom.id) || [];
+    validateScrapRules(scraps, bom.product_id, items);
+    if (new Set(scraps.map(row => row.position)).size !== scraps.length || scraps.some(row =>
+        typeof row.quantity_fraction !== 'string' || !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 || products.get(row.product_id)?.warehouse_id !== bom.warehouse_id))
+      fail('备份 BOM 废料排序或仓库关联无效。');
     const key = `${bom.warehouse_id}:${bom.product_id}`;
     if (!warehouses.has(bom.warehouse_id) || products.get(bom.product_id)?.warehouse_id !== bom.warehouse_id || parents.has(key) ||
         items.some(item => products.get(item.product_id)?.warehouse_id !== bom.warehouse_id) ||
@@ -118,7 +142,7 @@ export function validateBomBackup(data) {
         !Number.isSafeInteger(bom.version) || bom.version < 1 ||
         ['created_by_name', 'updated_by_name'].some(k => typeof bom[k] !== 'string' || !bom[k].trim() || bom[k].length > 60) ||
         ['created_at', 'updated_at'].some(k => typeof bom[k] !== 'string' || bom[k].length > 100 || !Number.isFinite(Date.parse(bom[k]))))
-      fail('备份用料清单字段或仓库关联无效。');
+      fail('备份BOM字段或仓库关联无效。');
     parents.add(key);
   }
 }
@@ -133,19 +157,22 @@ export function installBom(app, db) {
       res.json(result);
     } catch (error) {
       if (write && db.isTransaction) db.exec('ROLLBACK');
-      res.status(error.status || 400).json({ error: error.message.includes('UNIQUE') ? '该成品已有用料清单，请编辑现有清单或选择其他成品。' : error.message });
+      res.status(error.status || 400).json({ error: error.message.includes('UNIQUE') ? '该成品已有BOM，请编辑现有清单或选择其他成品。' : error.message });
     }
   };
   const current = req => getBom(db, req.warehouse.id, Number(req.params.id));
   const checkVersion = (req, bom) => {
-    if (!Number.isSafeInteger(req.body.version) || req.body.version !== bom.version) fail('用料清单已被修改，请重新打开后再保存。当前填写内容已保留。', 409);
+    if (!Number.isSafeInteger(req.body.version) || req.body.version !== bom.version) fail('BOM已被修改，请重新打开后再保存。当前填写内容已保留。', 409);
   };
   const save = (req, existing) => {
     const body = validateBom(req.body);
+    // An older client editing a BOM must not silently delete its output rules.
+    const scraps = body.scraps === undefined ? (existing?.scraps || []) : body.scraps;
+    validateScrapRules(scraps, body.product_id, body.items);
     const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(body.product_id, req.warehouse.id);
     if (!product || !product.active) fail('请选择当前仓库已启用的成品物料。');
     if (product.unit !== body.base_unit) fail('成品单位已变化，请重新选择成品并核对基准产量。', 409);
-    for (const item of body.items) {
+    for (const item of [...body.items, ...scraps]) {
       const material = db.prepare('SELECT unit,active FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, req.warehouse.id);
       if (!material || !material.active) fail('材料不存在、已停用或不属于当前仓库，请重新选择。');
       if (item.unit !== material.unit) fail('材料单位已变化，请重新选择材料并核对用量。', 409);
@@ -156,11 +183,14 @@ export function installBom(app, db) {
       checkVersion(req, existing);
       db.prepare('UPDATE boms SET product_id=?,name=?,base_quantity=?,base_unit=?,note=?,enabled=?,updated_by_name=?,updated_at=? WHERE id=?')
         .run(body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.note.trim(), body.enabled, owner, at, id);
+      db.prepare('DELETE FROM bom_scraps WHERE bom_id=?').run(id);
       db.prepare('DELETE FROM bom_items WHERE bom_id=?').run(id);
     } else id = Number(db.prepare('INSERT INTO boms(warehouse_id,product_id,name,base_quantity,base_unit,note,enabled,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
       .run(req.warehouse.id, body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.note.trim(), body.enabled, owner, owner, at, at).lastInsertRowid);
     const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?)');
     body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.unit, item.note.trim(), index));
+    const insertScrap = db.prepare('INSERT INTO bom_scraps(bom_id,product_id,method,source_product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?,?,?)');
+    scraps.forEach((row, index) => insertScrap.run(id, row.product_id, row.method, row.source_product_id, row.quantity, row.quantity_fraction ?? '', row.unit, row.note.trim(), index));
     return getBom(db, req.warehouse.id, id);
   };
   app.get('/api/boms', route(req => listBoms(db, req.warehouse.id, req.query)));

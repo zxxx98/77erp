@@ -31,7 +31,7 @@ export function validateBomQuantity(quantity, fraction = '') {
 
 export function validateBom(value) {
   if (!value || !id(value.product_id)) throw new Error('请选择成品物料。');
-  if (!text(value.name, 100, true)) throw new Error('请填写 1–100 字的用料清单名称。');
+  if (!text(value.name, 100, true)) throw new Error('请填写 1–100 字的BOM名称。');
   if (!validQuantity(value.base_quantity, true)) throw new Error('基准产量需为正数，最多 6 位小数。');
   if (!text(value.base_unit, 100, true) || !text(value.note, 500) || ![0, 1].includes(value.enabled))
     throw new Error('单位、备注或启用状态无效。');

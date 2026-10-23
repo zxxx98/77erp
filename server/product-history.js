@@ -53,11 +53,21 @@ export function installProductHistory(app, db) {
         o.voided_at,'',o.void_reason,o.voided_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
       FROM production_items i JOIN production_orders o ON o.id=i.production_id
       WHERE i.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND o.status='void' AND i.actual_quantity>0 AND ?
+      UNION ALL
+      SELECT 'production_scrap_in',i.id,NULL,o.number,'in','production',o.status,
+        o.completed_at,'',i.note,o.completed_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
+      FROM production_scraps i JOIN production_orders o ON o.id=i.production_id
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND i.actual_quantity>0 AND i.disposition='stock' AND ?
+      UNION ALL
+      SELECT 'production_scrap_void_out',i.id,NULL,o.number,'out','production',o.status,
+        o.voided_at,'',o.void_reason,o.voided_by_name,i.actual_quantity,-i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
+      FROM production_scraps i JOIN production_orders o ON o.id=i.production_id
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND o.status='void' AND i.actual_quantity>0 AND i.disposition='stock' AND ?
     ) ORDER BY created_at DESC,event_id DESC,event DESC LIMIT ? OFFSET ?`)
       .all(product.id, req.warehouse.id, product.id, req.warehouse.id,
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'stocktake')),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'finance')),
-        ...Array.from({ length: 4 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(), limit + 1, offset);
+        ...Array.from({ length: 6 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(), limit + 1, offset);
     const records = rows.slice(0, limit).map(row => {
       if (row.event === 'price_change') return row;
       const { before_cost, after_cost, before_price, after_price, ...record } = row;

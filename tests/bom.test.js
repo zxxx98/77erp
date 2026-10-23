@@ -28,7 +28,7 @@ async function fixture(t) {
     assert.equal(result.status, 201, JSON.stringify(result.data)); return result.data.id;
   };
   const parent = await product('FINISHED'), material = await product('MATERIAL');
-  const definition = (extra = {}) => ({ name: '测试用料清单', product_id: parent, base_quantity: 1, base_unit: '个', note: '', enabled: 1,
+  const definition = (extra = {}) => ({ name: '测试BOM', product_id: parent, base_quantity: 1, base_unit: '个', note: '', enabled: 1,
     items: [{ product_id: material, quantity: 1.25, unit: '个', note: '' }], ...extra });
   const command = (path, body, options) => request(path, { request_id: randomUUID(), ...body }, options);
   const create = async (extra = {}) => {
@@ -145,7 +145,7 @@ test('referenced goods cannot be deleted, unit or lifecycle changes require revi
   const f = await fixture(t), bom = await f.create();
   for (const id of [f.parent, f.material]) {
     const result = await f.request(`/products/${id}`, {}, { method: 'DELETE' });
-    assert.equal(result.status, 400); assert.match(result.data.error, /用料清单/);
+    assert.equal(result.status, 400); assert.match(result.data.error, /BOM/);
   }
   f.db.prepare('UPDATE products SET unit=? WHERE id=?').run('千克', f.material);
   assert.equal((await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1 })).status, 409);
@@ -195,7 +195,7 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 25);
+  assert.equal(backup.version, 26);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },
@@ -262,4 +262,14 @@ test('BOM CSV exports the exact snapshot, retains fractional quantities and prot
   snapshot.rows[0].quantity = 0.333334; snapshot.rows[0].quantity_fraction = '1/3';
   assert.equal(parseCSV(bomCSV(snapshot))[5][4], '1/3（约 0.333334）');
   assert.ok(rows.at(-1)[1].includes('未预留或扣减'));
+  snapshot.rows[0].product_id = 20;
+  snapshot.scraps = [
+    { name: '=废料', barcode: 'S-1', specification: '', unit: 'kg', method: 'output', source_product_id: null, quantity: 0.333334, quantity_fraction: '1/3', planned_quantity: 3.333334, note: '@说明' },
+    { name: '废料乙', barcode: 'S-2', specification: '', unit: '颗', method: 'input_ratio', source_product_id: 20, quantity: 5, quantity_fraction: '', planned_quantity: 0.15, note: '' },
+  ];
+  const exported = parseCSV(bomCSV(snapshot));
+  assert.equal(exported[6][0], '预计废料名称');
+  assert.equal(exported[7][0], "'=废料"); assert.equal(exported[7][5], '1/3（约 0.333334）'); assert.equal(exported[7][8], "'@说明");
+  assert.equal(exported[8][5], '5%'); assert.equal(exported[8][6], 'A,"001"'); assert.equal(exported[8][7], '0.15');
+
 });

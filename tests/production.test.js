@@ -314,7 +314,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 25); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 26); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -350,4 +350,161 @@ test('production backup validates quantities, state, cost conservation and relat
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_orders').get().n, 0);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_items').get().n, 0);
   assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('BOM scrap rules reuse existing products with independent ratios, validate sources and preserve rules for older clients', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP'), otherScrap = await f.product('SCRAP-2');
+  const rule = { product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 3, unit: '件', note: '工艺甲' };
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [rule] })));
+  const other = await f.product('OTHER-OUTPUT');
+  const otherBom = f.ok(await f.command('/boms', f.definition({ product_id: other, scraps: [{ ...rule, quantity: 5 }] })));
+  const preview = async value => f.ok(await f.command(`/boms/${value.id}/calculate`, { version: value.version, production_quantity: 10 }));
+  assert.equal((await preview(bom)).scraps[0].planned_quantity, 0.45);
+  assert.equal((await preview(otherBom)).scraps[0].planned_quantity, 0.75);
+  const before = f.inventory();
+  for (const scraps of [null, [rule, rule], [{ ...rule, product_id: f.parent }], [{ ...rule, product_id: f.material }],
+    [{ ...rule, quantity: 0 }], [{ ...rule, quantity: 101 }], [{ ...rule, quantity: 0.0000001 }],
+    [{ ...rule, source_product_id: other }], [{ ...rule, unit: 'kg' }], [{ ...rule, method: 'unknown' }],
+    [{ ...rule, quantity: 60 }, { ...rule, product_id: otherScrap, quantity: 50 }],
+    [{ ...rule, method: 'output', source_product_id: null, quantity_fraction: '1/3', quantity: 1 }],
+  ]) {
+    assert.equal((await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version, scraps }))).status, 400);
+    assert.equal((await f.request(`/boms/${bom.id}`)).data.version, bom.version);
+    assert.deepEqual(f.inventory(), before);
+  }
+  const kept = f.ok(await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version })));
+  assert.equal(kept.scraps[0].quantity, 3, 'omitted scraps retain rules on older client edits');
+  assert.equal((await f.request(`/products/${scrap}`, {}, { method: 'DELETE' })).status, 400);
+  f.db.prepare('UPDATE products SET active=0 WHERE id=?').run(scrap);
+  assert.equal((await f.command(`/boms/${kept.id}/calculate`, { production_quantity: 10 })).status, 400);
+  f.db.prepare('UPDATE products SET active=1,unit=? WHERE id=?').run('kg', scrap);
+  assert.equal((await f.command(`/boms/${kept.id}/calculate`, { production_quantity: 10 })).status, 409);
+});
+
+test('production scraps snapshot rules, rescale fractions, calculate from actual inputs and output, and post zero-cost stock exactly once', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP'), dust = await f.product('DUST');
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [
+    { product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 3, unit: '件', note: '按净投入' },
+    { product_id: dust, method: 'output', source_product_id: null, ...parseBomQuantity('1/3'), unit: '件', note: '按产出' },
+  ] })));
+  const before = f.inventory();
+  const order = await f.create({ bom_version: bom.version });
+  assert.deepEqual(order.scraps.map(row => row.planned_quantity), [0.45, 1.666667]);
+  assert.deepEqual(f.inventory(), before);
+  // The saved production rules survive subsequent removal from the BOM.
+  f.ok(await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version, scraps: [] })));
+  const edited = f.ok(await f.command(`/production-orders/${order.id}`, { version: order.version, planned_quantity: 6, note: '' }));
+  assert.deepEqual(edited.scraps.map(row => row.planned_quantity), [0.27, 1]);
+  const body = { ...f.completion(edited, { completed_quantity: 3 }), request_id: randomUUID(),
+    scraps: [{ product_id: scrap, quantity: 0.5, disposition: 'stock' }, { product_id: dust, quantity: 0.4, disposition: 'discard' }] };
+  const path = `/production-orders/${order.id}/complete`, done = f.ok(await f.request(path, body));
+  assert.deepEqual(done.scraps.map(row => row.expected_quantity), [0.48, 0.5]);
+  assert.deepEqual(done.scraps.map(row => row.actual_quantity), [0.5, 0.4]);
+  assert.equal(done.total_cost_cents, 2125);
+  assert.deepEqual({ ...f.db.prepare('SELECT stock,inventory_value_cents FROM products WHERE id=?').get(scrap) }, { stock: 0.5, inventory_value_cents: 0 });
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(dust).stock, 0);
+  const after = f.inventory(); assert.deepEqual(f.ok(await f.request(path, body)), done); assert.deepEqual(f.inventory(), after);
+  const history = f.ok(await f.request(`/products/${scrap}/history`)).records;
+  assert.equal(history[0].event, 'production_scrap_in'); assert.equal(history[0].delta, 0.5); assert.equal(history[0].number, done.number);
+  assert.equal(f.ok(await f.request(`/products/${dust}/history`)).records.length, 0);
+  const voidBody = { version: done.version, reason: '废料同步回退', request_id: randomUUID() }, voidPath = `/production-orders/${done.id}/void`;
+  const voided = f.ok(await f.request(voidPath, voidBody));
+  assert.equal(voided.scraps[0].actual_quantity, 0.5);
+  assert.deepEqual(f.inventory().map(row => [row.stock, row.inventory_value_cents]), before.map(row => [row.stock, row.inventory_value_cents]));
+  const reverted = f.inventory(); f.ok(await f.request(voidPath, voidBody)); assert.deepEqual(f.inventory(), reverted);
+  assert.deepEqual(f.ok(await f.request(`/products/${scrap}/history`)).records.map(row => row.event).sort(), ['production_scrap_in', 'production_scrap_void_out']);
+});
+
+test('invalid scrap completions, overflow, changed units, and insufficient scrap on void roll back the entire production transaction', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP');
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [
+    { product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 5, unit: '件', note: '' },
+  ] })));
+  const order = await f.create({ bom_version: bom.version }), before = f.inventory();
+  const actual = { product_id: scrap, quantity: 1, disposition: 'stock' };
+  for (const scraps of [undefined, [], null, [actual, actual], [{ ...actual, product_id: f.second }],
+    [{ ...actual, quantity: -1 }], [{ ...actual, quantity: 0.0000001 }], [{ ...actual, disposition: 'unknown' }]]) {
+    assert.equal((await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps }))).status, 400);
+    assert.deepEqual(f.inventory(), before);
+    assert.equal(f.db.prepare('SELECT actual_quantity FROM production_items LIMIT 1').get().actual_quantity, null);
+    assert.equal(f.db.prepare('SELECT expected_quantity FROM production_scraps LIMIT 1').get().expected_quantity, null);
+  }
+  for (const [field, value, status] of [['active', 0, 400], ['unit', 'kg', 409]]) {
+    f.db.prepare(`UPDATE products SET ${field}=? WHERE id=?`).run(value, scrap);
+    assert.equal((await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [actual] }))).status, status);
+    f.db.prepare('UPDATE products SET active=1,unit=? WHERE id=?').run('件', scrap);
+  }
+  f.db.prepare('UPDATE products SET stock=99999999 WHERE id=?').run(scrap);
+  const overflow = f.inventory();
+  assert.equal((await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [actual] }))).status, 400);
+  assert.deepEqual(f.inventory(), overflow);
+  f.db.prepare('UPDATE products SET stock=0 WHERE id=?').run(scrap);
+  const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [actual] })));
+  moveInventory(f.db, scrap, -0.5, 0);
+  const consumed = f.inventory();
+  assert.equal((await f.command(`/production-orders/${done.id}/void`, { version: done.version, reason: '废料已使用' })).status, 400);
+  assert.deepEqual(f.inventory(), consumed);
+  assert.equal((await f.request(`/production-orders/${done.id}`)).data.status, 'completed');
+  moveInventory(f.db, scrap, 0.5, 0);
+  f.ok(await f.command(`/production-orders/${done.id}/void`, { version: done.version, reason: '补回后作废' }));
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(scrap).stock, 0);
+});
+
+test('scrap backup validates rule relations and completion state, restores quantities without replay, and accepts format 25', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP');
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [
+    { product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 5, unit: '件', note: '' },
+  ] })));
+  const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
+  const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
+  const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
+  assert.equal(backup.version, 26);
+  for (const tamper of [
+    data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
+    data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
+    data => { data.production_scraps[0].actual_quantity = 1; }, data => { data.production_scraps[1].expected_quantity = 999; },
+    data => { data.production_scraps[1].disposition = 'unknown'; }, data => { data.production_scraps[1].planned_quantity = 100; },
+  ]) {
+    const invalid = structuredClone(backup); tamper(invalid.data);
+    assert.equal((await f.request('/backup/preview', { backup: invalid })).status, 400);
+  }
+  const restore = async value => {
+    const preview = f.ok(await f.request('/backup/preview', { backup: value }));
+    f.ok(await f.command('/backup/restore', { backup: value, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  };
+  await restore(backup);
+  assert.deepEqual(f.inventory().map(row => [row.stock, row.inventory_value_cents]), before);
+  assert.notEqual((await f.request(`/production-orders/${draft.id}`)).data.version, draft.version);
+  const restored = f.ok(await f.request(`/production-orders/${done.id}`));
+  f.ok(await f.command(`/production-orders/${done.id}/void`, { version: restored.version, reason: '恢复后废料回退' }));
+  const old = structuredClone(backup); old.version = 25; delete old.data.bom_scraps; delete old.data.production_scraps;
+  await restore(old);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM bom_scraps').get().n, 0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_scraps').get().n, 0);
+  await restore(backup);
+  f.ok(await f.request('/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' }));
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_scraps').get().n, 0);
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('scrap rows remain warehouse-scoped and production-only permissions cannot reveal costs or bypass correction permissions', async t => {
+  const f = await fixture(t), scrap = await f.product('SCRAP');
+  const rule = { product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 5, unit: '件', note: '' };
+  const remote = (await f.request('/warehouses', { name: '废料分仓' })).data.id;
+  const remoteScrap = await f.product('REMOTE-SCRAP', remote);
+  assert.equal((await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [{ ...rule, product_id: remoteScrap }] }))).status, 400);
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [rule] })));
+  const order = await f.create({ bom_version: bom.version });
+  const user = (await f.request('/users', { username: 'scrapworker', password: 'Test-staff-123' })).data;
+  const cookie = (await f.request('/auth/login', { username: 'scrapworker', password: 'Test-staff-123' }, { cookie: null })).cookie;
+  f.ok(await f.request(`/users/${user.id}/permissions`, { permissions: ['production'], version: 1 }, { method: 'PUT' }));
+  const body = f.completion(order, { items: [{ product_id: f.material, quantity: 0 }, { product_id: f.second, quantity: 1 }],
+    scraps: [{ product_id: scrap, quantity: 0, disposition: 'stock' }] });
+  const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, body, { cookie }));
+  assert.equal(done.scraps[0].expected_quantity, 0); assert.equal(done.scraps[0].actual_quantity, 0);
+  assert.ok(!/cost|price|inventory_value/.test(JSON.stringify(done)));
+  assert.equal((await f.request(`/production-orders/${order.id}`, undefined, { warehouseId: remote })).status, 404);
+  assert.equal((await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '无纠正权限' }, { cookie })).status, 403);
+  assert.equal((await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version, scraps: [] }), { cookie })).status, 403);
+  assert.equal((await f.request(`/products/${scrap}`, {}, { method: 'DELETE' })).status, 400);
 });
