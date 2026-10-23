@@ -109,20 +109,25 @@ test('production AI queries require production permission, use saved snapshots, 
   f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].planned_quantity, 1.5); assert.equal(result.scraps[0].actual_quantity, null);
+  assert.equal(result.items[0].standard_quantity, null);
   assert.equal(result.items[0].planned_quantity, 1); assert.equal(result.items[0].base_quantity_fraction, '1/3'); assert.equal(result.bom_version, bom.version);
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
   const prompt = f.calls.at(-1).body.messages.find(message => message.role === 'system').content;
   assert.match(prompt, /废料产出规则/);
+  assert.match(prompt, /variance_rate是以标准耗料为分母的百分数/);
+  assert.match(prompt, /不按计划产量或当前BOM重算/);
   assert.match(prompt, /AI不创建、修改、完工或作废生产单/);
   assert.match(prompt, /绝不能用采购入库、销售出库、盘点等工具代替生产记账/);
   const completed = await f.request(f.admin, `/production-orders/${order.id}/complete`, { request_id: randomUUID(), version: order.version,
-    completed_quantity: 3, items: [{ product_id: material.id, quantity: 1 }], scraps: [{ product_id: 3, quantity: 1.4, disposition: 'stock' }] });
+    completed_quantity: 3, items: [{ product_id: material.id, quantity: 1.2, variance_reason: '调机耗料' }], scraps: [{ product_id: 3, quantity: 1.4, disposition: 'stock' }] });
   assert.equal(completed.status, 200);
   const afterCompletion = f.db.prepare('SELECT * FROM products ORDER BY id').all();
   f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.items[0].standard_quantity, 1); assert.equal(result.items[0].variance_quantity, 0.2);
+  assert.equal(result.items[0].variance_rate, 20); assert.equal(result.items[0].variance_reason, '调机耗料');
   assert.equal(result.scraps[0].expected_quantity, 1.5); assert.equal(result.scraps[0].actual_quantity, 1.4); assert.equal(result.scraps[0].disposition, 'stock');
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), afterCompletion);

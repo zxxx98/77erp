@@ -6,7 +6,7 @@ import { notifyStockChanges } from './notifications.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity } from '../shared/quantity.js';
-import { validateProductionPlan, validateProductionCompletion, productionPlannedQuantity } from '../shared/production.js';
+import { validateProductionPlan, validateProductionCompletion, productionPlannedQuantity, productionMaterialAnalysis } from '../shared/production.js';
 
 export const productionTables = ['production_orders', 'production_items', 'production_scraps'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -59,6 +59,8 @@ export function migrateProduction(db) {
     UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT COALESCE(MAX(version),0) FROM production_orders)) WHERE key='production_version';`);
   if (!db.prepare('PRAGMA table_info(production_items)').all().some(column => column.name === 'base_quantity_fraction'))
     db.exec("ALTER TABLE production_items ADD COLUMN base_quantity_fraction TEXT NOT NULL DEFAULT ''");
+  if (!db.prepare('PRAGMA table_info(production_items)').all().some(column => column.name === 'variance_reason'))
+    db.exec("ALTER TABLE production_items ADD COLUMN variance_reason TEXT NOT NULL DEFAULT ''");
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='production_version';
     UPDATE production_orders SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='production_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
@@ -96,6 +98,9 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
     order.scraps = db.prepare('SELECT * FROM production_scraps WHERE production_id=? ORDER BY position,id').all(id).map(row => ({
       ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id)),
     }));
+    order.items = order.items.map(item => ({ ...item, ...(order.completed_at
+      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity)
+      : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
     order.captured_at = new Date().toISOString();
     return costs ? order : productionWithoutCosts(order);
   });
@@ -170,15 +175,15 @@ export function installProduction(app, db) {
     validateProductionCompletion(req.body, order.items);
     validateScrapActuals(req.body.scraps ?? [], order.scraps);
     const before = stockBefore(order);
-    const actuals = new Map(req.body.items.map(item => [item.product_id, item.quantity]));
+    const actuals = new Map(req.body.items.map(item => [item.product_id, item]));
     let total = 0;
     for (const item of order.items) {
-      const quantity = actuals.get(item.product_id);
+      const actual = actuals.get(item.product_id), quantity = actual.quantity;
       if (quantity > item.product.stock) fail(`${item.name}库存不足（当前 ${item.product.stock} ${item.unit}）。请补料或核对实际耗料。`);
       const cost = quantity ? moveInventory(db, item.product_id, -quantity) : 0;
       total += cost;
       if (!Number.isSafeInteger(total)) fail('本次材料成本超出范围，请拆分生产单。');
-      db.prepare('UPDATE production_items SET actual_quantity=?,cost_cents=? WHERE id=?').run(quantity, cost, item.id);
+      db.prepare('UPDATE production_items SET actual_quantity=?,cost_cents=?,variance_reason=? WHERE id=?').run(quantity, cost, (actual.variance_reason ?? '').trim(), item.id);
     }
     moveInventory(db, order.product_id, req.body.completed_quantity, total);
     const actualScraps = new Map((req.body.scraps || []).map(row => [row.product_id, row]));
@@ -269,7 +274,7 @@ export function validateProductionBackup(data) {
     }
     for (const row of rows) {
       if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || row.product_id === order.product_id ||
-          !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) ||
+          !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) || !text(row.variance_reason, 500) || (!completed && row.variance_reason !== '') ||
           !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 || !validQuantity(row.base_quantity, true) ||
           row.planned_quantity !== productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity, row.base_quantity_fraction) ||
           (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))

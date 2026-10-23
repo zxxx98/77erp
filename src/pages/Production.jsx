@@ -8,8 +8,9 @@ import { PageHeading, Button, Badge, QueryStatus } from '../components/common.js
 import { Select } from '../Dropdown.jsx';
 import { parseQuantity } from '../../shared/quantity.js';
 import { bomShortage } from '../../shared/bom.js';
-import { productionStatusLabels, productionPlannedQuantity, validateProductionPlan, validateProductionCompletion } from '../../shared/production.js';
+import { productionStatusLabels, productionPlannedQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
+import { MaterialVariance } from '../features/MaterialVariance.jsx';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import './bom.css';
 import './production.css';
@@ -38,11 +39,16 @@ function BomPicker({ data, disabled, onSelect }) {
   </section>;
 }
 
-function Materials({ rows, complete, disabled, onQuantity, showActual, costs }) {
+function Materials({ rows, complete, disabled, onQuantity, onReason, completedQuantity, baseQuantity, showActual, costs }) {
   return <div className="production-materials">{rows.map(row => {
     const raw = complete ? row.quantity : showActual ? row.actual_quantity : row.planned_quantity;
     const value = Number(raw), valid = raw !== '' && Number.isFinite(value) && value >= 0;
     const shortage = valid && row.product ? bomShortage(value, row.product.stock) : 0;
+    let analysis = row;
+    if (complete) {
+      try { analysis = productionMaterialAnalysis(row, parseQuantity(completedQuantity, true), baseQuantity, parseQuantity(row.quantity)); }
+      catch { analysis = { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '请先填写有效的合格成品数量和实际耗料。' }; }
+    }
     return <article className="production-material" key={row.product_id}>
       <div className="production-material-name"><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small>
         {row.base_quantity_fraction && <small>基准用量 {row.base_quantity_fraction} {row.unit}</small>}
@@ -55,6 +61,7 @@ function Materials({ rows, complete, disabled, onQuantity, showActual, costs }) 
       {!showActual && row.product && <div><small>账面库存</small><span>{count(row.product.stock)} {row.unit}</span>
         {shortage > 0 && <strong className="bom-shortage">缺料 {count(shortage)} {row.unit}</strong>}</div>}
       {costs && showActual && <div><small>材料成本</small><span>¥ {money(row.cost_cents)}</span></div>}
+      {(complete || showActual) && <MaterialVariance row={row} analysis={analysis} complete={complete} disabled={disabled} onReason={onReason} />}
     </article>;
   })}</div>;
 }
@@ -115,7 +122,7 @@ export function Production({ data, initialBom, onChanged }) {
         await saved(await action.send(path, body, options), '生产草稿已保存，库存未变动。');
       } else if (editor.kind === 'complete') {
         const body = { version: detail.version, completed_quantity: parseQuantity(editor.completed_quantity, true),
-          items: editor.items.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity) })),
+          items: editor.items.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity), variance_reason: row.variance_reason })),
           scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity), disposition: row.disposition })) };
         validateProductionCompletion(body, detail.items);
         validateScrapActuals(body.scraps, detail.scraps || []);
@@ -145,7 +152,7 @@ export function Production({ data, initialBom, onChanged }) {
         rows = rows.map(row => ({ ...row, planned_quantity: productionPlannedQuantity(row.base_quantity, quantity, source.base_quantity, row.base_quantity_fraction) }));
       } catch (error) { quantityError = error.message; }
     }
-    if (editor.kind === 'complete') rows = rows.map(row => ({ ...row, quantity: editor.items.find(item => item.product_id === row.product_id).quantity }));
+    if (editor.kind === 'complete') rows = rows.map(row => ({ ...row, ...editor.items.find(item => item.product_id === row.product_id) }));
     const scrapRows = (source?.scraps || []).map(row => {
       let planned_quantity = row.planned_quantity, expected_quantity = null;
       try {
@@ -179,7 +186,9 @@ export function Production({ data, initialBom, onChanged }) {
         </section>}
         {source && editor.kind !== 'void' && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? '核对实际耗料' : '计划备料'}</h2><span className="bom-hint">共 {rows.length} 种材料</span></div>
           {quantityError && <p className="form-error" role="alert">{quantityError}</p>}
-          <Materials rows={rows} complete={editor.kind === 'complete'} disabled={action.busy}
+          {editor.kind === 'complete' && <p className="bom-hint">标准耗料按本单保存的配方和实际合格产量计算。差异 = 实际耗料 − 标准耗料，正数为超耗、负数为节省；差异率以标准耗料为分母。废料单独核对，耗料差异不直接视为损耗或废料。</p>}
+          <Materials rows={rows} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity}
+            onReason={(id, variance_reason) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, variance_reason } : item) })} complete={editor.kind === 'complete'} disabled={action.busy}
             onQuantity={(id, quantity) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, quantity } : item) })} />
           <p className="bom-hint">账面库存读取于 {time(source.captured_at)}，提交完工时会重新校验。</p>
         </section>}
@@ -213,7 +222,7 @@ export function Production({ data, initialBom, onChanged }) {
       </div>
       <div className="bom-actions">
         {detail.status === 'draft' && <><Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>编辑草稿</Button>
-          <Button kind="primary" icon={Check} disabled={action.busy} onClick={() => begin({ kind: 'complete', completed_quantity: String(detail.planned_quantity), items: detail.items.map(item => ({ product_id: item.product_id, quantity: String(item.planned_quantity) })), scraps: (detail.scraps || []).map(row => ({ product_id: row.product_id, quantity: String(row.planned_quantity), disposition: 'stock' })) })}>登记完工</Button></>}
+          <Button kind="primary" icon={Check} disabled={action.busy} onClick={() => begin({ kind: 'complete', completed_quantity: String(detail.planned_quantity), items: detail.items.map(item => ({ product_id: item.product_id, quantity: String(item.planned_quantity), variance_reason: item.variance_reason || '' })), scraps: (detail.scraps || []).map(row => ({ product_id: row.product_id, quantity: String(row.planned_quantity), disposition: 'stock' })) })}>登记完工</Button></>}
         {detail.status !== 'void' && can('corrections') && <Button icon={XCircle} disabled={action.busy} onClick={() => begin({ kind: 'void', reason: '' })}>作废生产单</Button>}
         <Button disabled={action.busy} onClick={() => open(detail.id)}>刷新单据与库存</Button>
       </div>
@@ -222,6 +231,7 @@ export function Production({ data, initialBom, onChanged }) {
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">本单已作废，以上废料记录保留，已入库数量已扣回。</p>}
     </section>}
     <section className="panel bom-section"><h2>{detail.completed_at ? '耗料记录' : '计划备料'}</h2>
+      {detail.completed_at && <p className="bom-hint">标准耗料按本单配方快照及实际合格产量计算；差异 = 实际耗料 − 标准耗料，差异率 = 差异 ÷ 标准耗料。各材料分别比较，不跨单位合计，也不从实际耗料中再次扣除废料。</p>}
       <Materials rows={detail.items} showActual={!!detail.completed_at} costs={can('finance')} />
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">以上保留原完工记录；本单已作废，相关库存和成本已回退。</p>}
       {!detail.completed_at && <p className="bom-hint">库存读取于 {time(detail.captured_at)}。草稿未预留库存，完工时重新校验。</p>}

@@ -87,7 +87,7 @@ test('price audit survives backup restore, validates records, supports legacy ba
   const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
   await f.request(`/products/${f.product}`, { ...product, price: 21 }, 'PUT');
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 26);
+  assert.equal(backup.version, 27);
   assert.equal(backup.data.product_changes.length, 1);
   for (const patch of [{ after_cost: -1 }, { product_id: 999999 }, { created_by: -1 }, { created_by_name: '' }]) {
     const invalid = structuredClone(backup);

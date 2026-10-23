@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 import { moveInventory } from '../server/commerce.js';
+import { productionMaterialAnalysis } from '../shared/production.js';
 import { parseBomQuantity } from '../shared/bom.js';
 import { migrateBom } from '../server/bom.js';
 import { migrateProduction } from '../server/production.js';
@@ -232,6 +233,7 @@ test('production permission is independent of BOM, writes and financial reads ar
   await permissions(['production']);
   const done = f.ok(await f.request(`/production-orders/${order.id}/complete`, completionBody, asStaff));
   assert.equal(done.completed_by_name, 'producer');
+  assert.equal(done.items[0].standard_quantity, 13.5); assert.equal(done.items[0].variance_quantity, 2.5);
   for (const value of [done, f.ok(await f.request('/production-orders', undefined, asStaff)), f.ok(await f.request(`/production-orders/${order.id}`, undefined, asStaff))])
     assert.equal(/cost|inventory_value|price/.test(JSON.stringify(value)), false);
   assert.equal((await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '无权限' }, asStaff)).status, 403);
@@ -314,7 +316,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 26); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 27); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -400,6 +402,7 @@ test('production scraps snapshot rules, rescale fractions, calculate from actual
   const path = `/production-orders/${order.id}/complete`, done = f.ok(await f.request(path, body));
   assert.deepEqual(done.scraps.map(row => row.expected_quantity), [0.48, 0.5]);
   assert.deepEqual(done.scraps.map(row => row.actual_quantity), [0.5, 0.4]);
+  assert.equal(done.items[0].standard_quantity, 4.5); assert.equal(done.items[0].variance_quantity, 11.5, 'waste is not deducted from consumption again');
   assert.equal(done.total_cost_cents, 2125);
   assert.deepEqual({ ...f.db.prepare('SELECT stock,inventory_value_cents FROM products WHERE id=?').get(scrap) }, { stock: 0.5, inventory_value_cents: 0 });
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(dust).stock, 0);
@@ -458,7 +461,7 @@ test('scrap backup validates rule relations and completion state, restores quant
   const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
   const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
-  assert.equal(backup.version, 26);
+  assert.equal(backup.version, 27);
   for (const tamper of [
     data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
     data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
@@ -507,4 +510,102 @@ test('scrap rows remain warehouse-scoped and production-only permissions cannot 
   assert.equal((await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '无纠正权限' }, { cookie })).status, 403);
   assert.equal((await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version, scraps: [] }), { cookie })).status, 403);
   assert.equal((await f.request(`/products/${scrap}`, {}, { method: 'DELETE' })).status, 400);
+});
+
+
+test('material analysis uses actual good output and saved recipes, preserves signed millionths and original inventory costs', async t => {
+  const f = await fixture(t), order = await f.create(), before = f.inventory();
+  f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version,
+    items: [{ product_id: f.material, quantity: 99, unit: '件', note: '' }] })));
+  const body = { request_id: randomUUID(), version: order.version, completed_quantity: 8,
+    items: [{ product_id: f.material, quantity: 13, variance_reason: '  调机耗料  ', standard_quantity: 999, variance_quantity: 0 },
+      { product_id: f.second, quantity: 0.6, variance_reason: '调整工艺节省' }] };
+  const path = `/production-orders/${order.id}/complete`, done = f.ok(await f.request(path, body));
+  assert.deepEqual(done.items.map(item => item.planned_quantity), [15, 1]);
+  assert.deepEqual(done.items.map(item => item.standard_quantity), [12, 0.8]);
+  assert.deepEqual(done.items.map(item => item.variance_quantity), [1, -0.2]);
+  assert.ok(Math.abs(done.items[0].variance_rate - 100 / 12) < 1e-10);
+  assert.equal(done.items[1].variance_rate, -25);
+  assert.deepEqual(done.items.map(item => item.variance_reason), ['调机耗料', '调整工艺节省']);
+  assert.ok(done.items.every(item => item.analysis_error === ''));
+  assert.equal(done.total_cost_cents, done.items.reduce((sum, item) => sum + item.cost_cents, 0));
+  const stock = f.inventory();
+  assert.deepEqual(f.ok(await f.request(path, body)), done); assert.deepEqual(f.inventory(), stock);
+  const loaded = f.ok(await f.request(`/production-orders/${done.id}`));
+  assert.equal(loaded.items[0].standard_quantity, 12); assert.equal(loaded.items[0].variance_reason, '调机耗料');
+  const voided = f.ok(await f.command(`/production-orders/${done.id}/void`, { version: done.version, reason: '保留分析供追溯' }));
+  assert.equal(voided.items[0].variance_quantity, 1); assert.equal(voided.items[0].variance_reason, '调机耗料');
+  assert.deepEqual(f.inventory().map(row => [row.stock, row.inventory_value_cents]), before.map(row => [row.stock, row.inventory_value_cents]));
+  const fractional = productionMaterialAnalysis({ base_quantity: 0.333334, base_quantity_fraction: '1/3' }, 3, 1, 0.999999);
+  assert.equal(fractional.standard_quantity, 1); assert.equal(fractional.variance_quantity, -0.000001); assert.equal(fractional.variance_rate, -0.0001);
+  const unused = productionMaterialAnalysis({ base_quantity: 1 }, 2, 1, 0);
+  assert.equal(unused.variance_quantity, -2); assert.equal(unused.variance_rate, -100);
+  const exact = productionMaterialAnalysis({ base_quantity: 1 }, 2, 1, 2);
+  assert.equal(exact.variance_quantity, 0); assert.equal(exact.variance_rate, 0);
+});
+
+test('invalid variance reasons roll back completion and absent reasons remain compatible with old clients', async t => {
+  const f = await fixture(t), order = await f.create(), before = f.inventory();
+  for (const variance_reason of [null, 123, {}, '字'.repeat(501)]) {
+    const result = await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
+      { product_id: f.material, quantity: 16, variance_reason: '第一行也须回滚' }, { product_id: f.second, quantity: 1.5, variance_reason },
+    ] }));
+    assert.equal(result.status, 400); assert.match(result.data.error, /差异原因/);
+    assert.deepEqual(f.inventory(), before);
+    assert.ok(f.db.prepare('SELECT * FROM production_items').all().every(item => item.variance_reason === '' && item.actual_quantity === null));
+  }
+  const done = await f.complete(order);
+  assert.ok(done.items.every(item => item.variance_reason === ''));
+  assert.deepEqual(done.items.map(item => item.standard_quantity), [13.5, 0.9]);
+});
+
+test('analysis overflow never blocks valid completion or historic reads and does not change actual inventory accounting', async t => {
+  const f = await fixture(t);
+  const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, base_quantity: 1,
+    items: [{ product_id: f.material, quantity: 99999999, unit: '件', note: '' }] })));
+  const order = await f.create({ bom_version: bom.version, planned_quantity: 0.000001 });
+  const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, { version: order.version, completed_quantity: 2,
+    items: [{ product_id: f.material, quantity: 1, variance_reason: '实际按核实数量登记' }] }));
+  assert.equal(done.status, 'completed'); assert.equal(done.items[0].standard_quantity, null);
+  assert.equal(done.items[0].variance_quantity, null); assert.equal(done.items[0].variance_rate, null);
+  assert.match(done.items[0].analysis_error, /上限/);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.material).stock, 99);
+  assert.equal((await f.request(`/production-orders/${order.id}`)).status, 200);
+});
+
+test('variance reasons survive backup and void, reject malformed drafts, and format 26 restores empty reasons', async t => {
+  const f = await fixture(t), draft = await f.create(), order = await f.create();
+  const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
+    { product_id: f.material, quantity: 16, variance_reason: '调机\n材料偏差' }, { product_id: f.second, quantity: 1.5, variance_reason: '字'.repeat(500) },
+  ] })));
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 27);
+  assert.ok(backup.data.production_items.every(item => !('standard_quantity' in item)));
+  for (const change of [
+    data => { data.production_items[0].variance_reason = '草稿不得提前记完工原因'; },
+    data => { data.production_items[2].variance_reason = null; },
+    data => { data.production_items[2].variance_reason = '字'.repeat(501); },
+  ]) {
+    const invalid = structuredClone(backup); change(invalid.data);
+    assert.equal((await f.request('/backup/preview', { backup: invalid })).status, 400);
+  }
+  const restore = async value => {
+    const preview = f.ok(await f.request('/backup/preview', { backup: value }));
+    f.ok(await f.command('/backup/restore', { backup: value, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  };
+  const before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
+  await restore(backup);
+  const loaded = f.ok(await f.request(`/production-orders/${done.id}`));
+  assert.equal(loaded.items[0].variance_reason, '调机\n材料偏差'); assert.equal(loaded.items[0].standard_quantity, 13.5);
+  assert.deepEqual(f.inventory().map(row => [row.stock, row.inventory_value_cents]), before);
+  assert.equal((await f.request(`/production-orders/${draft.id}`)).data.items[0].standard_quantity, null);
+  const voided = f.ok(await f.command(`/production-orders/${done.id}/void`, { version: loaded.version, reason: '恢复后回退' }));
+  assert.equal(voided.items[0].variance_reason, '调机\n材料偏差');
+  const legacy = structuredClone(backup); legacy.version = 26;
+  for (const item of legacy.data.production_items) delete item.variance_reason;
+  await restore(legacy);
+  assert.ok((await f.request(`/production-orders/${done.id}`)).data.items.every(item => item.variance_reason === ''));
+  // Simulate an existing database before the new column was introduced.
+  f.db.exec('DROP TRIGGER data_revision_production_items_UPDATE; ALTER TABLE production_items DROP COLUMN variance_reason;');
+  migrateProduction(f.db);
+  assert.ok(f.db.prepare('SELECT variance_reason FROM production_items').all().every(item => item.variance_reason === ''));
 });

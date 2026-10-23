@@ -50,10 +50,12 @@ async function productionFlow(page, pwa = false) {
     await page.getByRole('button', { name: '登记完工', exact: true }).click();
     await page.getByLabel('合格成品数量', { exact: true }).fill('9');
     await page.getByLabel('材料甲实际耗料', { exact: true }).fill('16');
+    await page.getByLabel('材料甲耗料差异原因', { exact: true }).fill('调机耗料');
     await page.getByLabel('材料乙实际耗料', { exact: true }).fill('51');
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('材料乙库存不足');
+    await expect(page.getByLabel('材料甲耗料差异原因', { exact: true })).toHaveValue('调机耗料');
     expect(f.inventory()).toEqual(before);
     await expect(page.getByLabel('材料甲实际耗料', { exact: true })).toHaveValue('16');
     await page.getByLabel('材料乙实际耗料', { exact: true }).fill('1.5');
@@ -66,6 +68,9 @@ async function productionFlow(page, pwa = false) {
     await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
     await expect(page.getByText('已完工', { exact: true })).toBeVisible();
     await expect(page.locator('.production-summary')).toContainText('21.25');
+    const analysis = page.getByRole('group', { name: '材料甲耗料差异分析', exact: true });
+    await expect(analysis).toContainText('13.5 千克'); await expect(analysis).toContainText('+2.5 千克');
+    await expect(analysis).toContainText('+18.518519%'); await expect(analysis).toContainText('调机耗料');
     expect(f.inventory()).toEqual([{ stock: 9, inventory_value_cents: 2125 }, { stock: 84, inventory_value_cents: 10370 }, { stock: 48.5, inventory_value_cents: 4850 }]);
     await page.screenshot({ path: test.info().outputPath('production-detail.png'), fullPage: true });
     await page.getByRole('button', { name: '返回生产单', exact: true }).click();
@@ -135,10 +140,12 @@ test('concurrent changes preserve completion input and production-only employees
     await expect(page.getByRole('button', { name: '作废生产单', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '登记完工', exact: true }).click();
     await page.getByLabel('合格成品数量', { exact: true }).fill('9');
+    await page.getByLabel('材料甲耗料差异原因', { exact: true }).fill('并发时保留的原因');
     f.db.prepare('UPDATE production_orders SET note=? WHERE id=?').run('另一人已修改', order.id);
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('生产单已变化');
+    await expect(page.getByLabel('材料甲耗料差异原因', { exact: true })).toHaveValue('并发时保留的原因');
     await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveValue('9');
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '重新读取生产单', exact: true }).click();
@@ -235,5 +242,82 @@ test('mobile PWA runs scrap production with an active service worker', async ({ 
   test.setTimeout(60000);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { await scrapProductionFlow(await context.newPage(), true); }
+  finally { await context.close(); }
+});
+
+
+async function varianceFlow(page, pwa = false) {
+  const f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    const bom = await f.post(`/boms/${f.bom.id}`, { ...f.definition, version: f.bom.version, base_quantity: 1,
+      items: [{ product_id: f.products[1].id, quantity: 0.333334, quantity_fraction: '1/3', unit: '千克', note: '' },
+        { product_id: f.products[2].id, quantity: 0.2, unit: '米', note: '' }] });
+    const order = await f.post('/production-orders', { bom_id: bom.id, bom_version: bom.version, planned_quantity: 10, note: '' });
+    await f.post(`/boms/${bom.id}`, { ...f.definition, version: bom.version, base_quantity: 1,
+      items: [{ product_id: f.products[1].id, quantity: 99, unit: '千克', note: '' }] });
+    const before = f.inventory();
+    await page.goto(f.base + '/#production');
+    if (pwa) await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '查看生产单', exact: false }).click();
+    await expect(page.locator('.production-variance')).toHaveCount(0);
+    await page.getByRole('button', { name: '登记完工', exact: true }).click();
+    await page.getByLabel('合格成品数量', { exact: true }).fill('3');
+    await page.getByLabel('材料甲实际耗料', { exact: true }).fill('1.2');
+    await page.getByLabel('材料乙实际耗料', { exact: true }).fill('0');
+    await page.getByLabel('材料甲耗料差异原因', { exact: true }).fill('调机\n额外用料');
+    await page.getByLabel('材料乙耗料差异原因', { exact: true }).fill('本次未使用');
+    const first = page.getByRole('group', { name: '材料甲耗料差异分析', exact: true });
+    const second = page.getByRole('group', { name: '材料乙耗料差异分析', exact: true });
+    await expect(first).toContainText('标准耗料（按合格产量）1 千克');
+    await expect(first).toContainText('超耗+0.2 千克'); await expect(first).toContainText('+20%');
+    await expect(second).toContainText('节省-0.6 米'); await expect(second).toContainText('-100%');
+    await page.getByLabel('合格成品数量', { exact: true }).fill('6');
+    await expect(first).toContainText('标准耗料（按合格产量）2 千克');
+    await expect(first).toContainText('节省-0.8 千克'); await expect(first).toContainText('-40%');
+    await expect(page.getByLabel('材料甲耗料差异原因', { exact: true })).toHaveValue('调机\n额外用料');
+    await page.getByLabel('合格成品数量', { exact: true }).fill('');
+    await expect(first).toContainText('请先填写有效的合格成品数量和实际耗料');
+    await page.getByLabel('合格成品数量', { exact: true }).fill('3');
+    await page.getByLabel('材料甲实际耗料', { exact: true }).fill('1');
+    await expect(first).toContainText('无差异0 千克'); await expect(first).toContainText('差异率0%');
+    await page.getByLabel('材料甲实际耗料', { exact: true }).fill('1.2');
+    await page.screenshot({ path: test.info().outputPath('production-variance-completion.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(f.inventory()).toEqual(before);
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认完工并入库', exact: true }).click();
+    await expect(page.getByText('已完工', { exact: true })).toBeVisible();
+    await expect(first).toContainText('超耗+0.2 千克'); await expect(first).toContainText('调机');
+    expect(f.db.prepare('SELECT variance_reason FROM production_items WHERE production_id=? ORDER BY position').all(order.id).map(row => row.variance_reason)).toEqual(['调机\n额外用料', '本次未使用']);
+    expect(f.inventory().map(row => row.stock)).toEqual([3, 98.8, 50]);
+    await page.reload();
+    await page.getByRole('button', { name: '查看生产单', exact: false }).click();
+    await expect(first).toContainText('+20%'); await expect(second).toContainText('本次未使用');
+    await page.screenshot({ path: test.info().outputPath('production-variance-detail.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('button', { name: '作废生产单', exact: true }).click();
+    await page.getByLabel('作废原因', { exact: true }).fill('保留差异分析供核对');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认作废', exact: true }).click();
+    await expect(page.getByText('已作废', { exact: true })).toBeVisible();
+    await expect(first).toContainText('额外用料');
+    expect(f.inventory()).toEqual(before);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); }
+}
+
+for (const mobile of [false, true]) {
+  test(`${mobile ? 'mobile' : 'desktop'} compares actual output to saved fractional recipes and preserves reasons through completion and void`, async ({ page }) => {
+    test.setTimeout(60000);
+    if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
+    await varianceFlow(page);
+  });
+}
+
+test('mobile PWA analyzes consumption differences and persists reasons with the service worker active', async ({ browser }) => {
+  test.setTimeout(60000);
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  try { await varianceFlow(await context.newPage(), true); }
   finally { await context.close(); }
 });
