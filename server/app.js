@@ -11,7 +11,7 @@ import { installProductHistory } from './product-history.js';
 import { validQuantity } from '../shared/quantity.js';
 import { validUnitPrice } from '../shared/money.js';
 import { inspectionToday, inspectionCompletion } from '../shared/inspection.js';
-import { hasPermission } from '../shared/permissions.js';
+import { hasPermission, isProductionOnly } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
 import { migrateProductVersions } from './product-version.js';
 import { migrateStockQr, installStockQr, clearStockQr } from './stock-qr.js';
@@ -306,6 +306,12 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   const dataRevision = installDataUpdates(app, db);
   // Lightweight bootstrap: business lists and details are queried on demand.
   app.get('/api/workspace', (req, res) => {
+    if (isProductionOnly(req.user)) {
+      return res.json({revision:dataRevision(req),user:req.user,categories:[],
+        warehouses:warehouses().map(({id,name}) => ({id,name})),warehouse_id:req.warehouse.id,
+        instance_id:db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
+        settings:{warehouse_name:req.warehouse.name,units:getUnits(db)}});
+    }
     res.json({
       revision: dataRevision(req),
       user: req.user,

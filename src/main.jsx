@@ -7,5 +7,5 @@ import { PwaProvider } from './pwa/Pwa.jsx';
 import { AuthGate } from './Auth.jsx';
 
 createRoot(document.getElementById("root")).render(
-  <UiProvider><PwaProvider><AuthGate>{(admin, onLogout) => <App key={admin.id} admin={admin} onLogout={onLogout} />}</AuthGate></PwaProvider></UiProvider>,
+  <UiProvider><PwaProvider><AuthGate>{(admin, onLogout) => <App key={`${admin.id}:${admin.permissions_version}:${admin.access_mode}`} admin={admin} onLogout={onLogout} />}</AuthGate></PwaProvider></UiProvider>,
 );

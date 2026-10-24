@@ -200,7 +200,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 36);
+  assert.equal(backup.version, 37);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -237,6 +237,8 @@ const routeRoles = new Map(Object.entries({
   'post /api/announcements': 'admin', 'put /api/announcements/:announcementId': 'admin', 'delete /api/announcements/:announcementId': 'admin',
   'get /api/users': 'admin', 'post /api/users': 'admin', 'put /api/users/:id': 'admin', 'post /api/users/:id/password': 'admin', 'put /api/users/:id/permissions': 'admin', 'put /api/users/:id/position': 'admin',
   'get /api/positions': 'admin', 'post /api/positions': 'admin', 'put /api/positions/:id': 'admin', 'delete /api/positions/:id': 'admin',
+  'get /api/production-groups': 'production', 'post /api/production-groups': 'admin', 'put /api/production-groups/:id': 'admin', 'delete /api/production-groups/:id': 'admin',
+  'put /api/users/:id/production-group': 'admin',
   'get /api/warehouses': 'employee', 'post /api/warehouses': 'admin', 'put /api/warehouses/:id': 'admin', 'delete /api/warehouses/:id': 'admin',
   'get /api/categories': 'employee', 'post /api/categories': 'admin', 'put /api/categories/:id': 'admin', 'post /api/categories/:id/delete': 'admin',
   'get /api/data': 'employee', 'get /api/style': 'employee', 'get /api/products/barcode/:barcode': 'employee', 'get /api/products/:id/other-warehouses': 'employee', 'get /api/products/:id/history': 'employee',
@@ -281,6 +283,7 @@ const routeRoles = new Map(Object.entries({
   'post /api/production-orders/:id/delete': 'production',
   'post /api/production-orders/:id/finish': 'production', 'post /api/production-orders/:id/batches/:batchId/void': 'production',
   'post /api/production-orders/:id/start': 'production', 'post /api/production-orders/:id/material-requests': 'production',
+  'post /api/production-orders/:id/assign': 'production',
   'get /api/production-material-documents': 'purchase', 'post /api/production-material-documents/:id/confirm': 'sale',
   'post /api/production-material-documents/:id/cancel': 'sale',
   'get /api/production-receipts': 'purchase', 'post /api/production-receipts/:id/confirm': 'purchase',

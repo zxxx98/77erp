@@ -29,8 +29,24 @@ export function AuthGate({ children }) {
     };
     window.addEventListener("erp:unauthorized", unauthorized);
     window.addEventListener('online', refresh);
-    return () => { window.removeEventListener("erp:unauthorized", unauthorized); window.removeEventListener('online', refresh); };
+    window.addEventListener('erp:permissions-changed', refresh);
+    return () => { window.removeEventListener("erp:unauthorized", unauthorized); window.removeEventListener('online', refresh); window.removeEventListener('erp:permissions-changed', refresh); };
   }, []);
+  useEffect(() => {
+    if (!state?.authenticated) return;
+    const controller = new AbortController();
+    let checking = false;
+    const inspect = async () => {
+      if (checking || !navigator.onLine || document.visibilityState !== 'visible') return;
+      checking = true;
+      try { const next = await api('/auth/status', { signal: controller.signal }); if (!controller.signal.aborted) setState(previous => previous?.permissions_version !== next.permissions_version || previous?.id !== next.id || previous?.access_mode !== next.access_mode ? next : previous); }
+      catch {} finally { checking = false; }
+    };
+    const timer = setInterval(inspect, 15000);
+    window.addEventListener('focus', inspect); window.addEventListener('online', inspect);
+    document.addEventListener('visibilitychange', inspect);
+    return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', inspect); window.removeEventListener('online', inspect); document.removeEventListener('visibilitychange', inspect); };
+  }, [state?.authenticated]);
   const logout = async () => {
     await api("/auth/logout", { method: "POST" });
     window.dispatchEvent(new Event('erp:logout'));

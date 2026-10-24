@@ -433,7 +433,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 36,
+    version: 37,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -442,11 +442,26 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 37) {
+      for (const row of data.production_orders || []) { row.production_group_id = null; row.production_group_name = ''; }
+      for (const row of data.production_batches || []) {
+        row.production_group_id = null; row.production_group_name = ''; row.created_by = null;
+      }
+    }
+    const validAssociation = id => id === null || (Number.isSafeInteger(id) && id > 0);
+    for (const row of [...(data.production_orders || []), ...(data.production_batches || [])]) {
+      if (!validAssociation(row.production_group_id) || typeof row.production_group_name !== 'string' || row.production_group_name.length > 60)
+        fail('备份生产班组无效。');
+    }
+    for (const row of data.production_batches || []) {
+      if (!validAssociation(row.created_by) || typeof row.created_by_name !== 'string' || row.created_by_name.length > 60)
+        fail('备份生产登记人无效。');
+    }
     if (value.version < 36) for (const row of data.products || []) row.production_type = '';
     if (value.version < 35) {
       data.production_receipts = []; data.production_receipt_items = [];
@@ -830,9 +845,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           for (const row of data[table]) {
             if (['quality_templates','quality_charts'].includes(table)) row.version = Date.now() + Math.floor(Math.random() * 1000000);
             // Cross-server user IDs must never become local owners of restored templates.
-            if (['orders','templates','product_changes'].includes(table) && row.created_by !== null &&
+            if (['orders','templates','product_changes','production_batches'].includes(table) && row.created_by !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
                  !db.prepare('SELECT 1 FROM users WHERE id=?').get(row.created_by))) row.created_by = null;
+            if (['production_orders', 'production_batches'].includes(table) && row.production_group_id !== null &&
+                (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
+                 !db.prepare('SELECT 1 FROM production_groups WHERE id=?').get(row.production_group_id))) row.production_group_id = null;
             if (table === 'stock_qr_codes') { row.qr_id = randomUUID(); row.enabled = 0; }
             if (stockQrTables.includes(table)) for (const owner of ['created_by','updated_by']) {
               if (owner in row && row[owner] !== null &&

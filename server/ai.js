@@ -6,7 +6,7 @@ import { addQuantity, validQuantity, materialQuantity } from '../shared/quantity
 import { inspectionToday, inspectionCompletion, inspectionConfig } from '../shared/inspection.js';
 import { categoryPaths } from './catalog.js';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
-import { hasPermission } from '../shared/permissions.js';
+import { hasPermission, canViewProduction } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -14,7 +14,7 @@ const digest = value => createHash('sha256').update(JSON.stringify(value)).diges
 const validTable = table => Array.isArray(table) && table.length >= 2 && table.length <= 1001 && Array.isArray(table[0]) && table[0].length > 0 && table[0].length <= 40
   && table.every(row => Array.isArray(row) && row.length <= table[0].length && row.every(v => (v === null || ['string','number'].includes(typeof v)) && String(v ?? '').length <= 1000));
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
-const authContext = user => digest([user.id, user.role, user.permissions_version, user.permissions]);
+const authContext = user => digest([user.id, user.role, user.permissions_version, user.permissions, user.access_mode, user.production_group_id, user.production_group_name]);
 // Remove import-mapping tool calls (and their results) so a newly uploaded table is
 // mapped from scratch rather than anchored to a previous document.
 const dropImportTurns = messages => {
@@ -238,9 +238,9 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     conversation(req, cid);
     if (!args || typeof args !== 'object' || Array.isArray(args)) fail('工具参数无效。');
     if (['search_production_orders', 'get_production_order'].includes(name)) {
-      requirePermission(req, 'production');
-      if (name === 'search_production_orders') return listProductionOrders(db, req.warehouse.id, { q: args.query ?? '', status: args.status ?? 'all' });
-      return getProductionOrder(db, req.warehouse.id, args.production_id);
+      if (!canViewProduction(req.user)) fail('没有此业务操作的权限。', 403);
+      if (name === 'search_production_orders') return listProductionOrders(db, req.warehouse.id, { q: args.query ?? '', status: args.status ?? 'all' }, false, req.user);
+      return getProductionOrder(db, req.warehouse.id, args.production_id, false, req.user);
     }
     if (['search_boms', 'get_bom', 'calculate_bom'].includes(name)) {
       requirePermission(req, 'bom');
@@ -625,7 +625,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
         conversation(req, cid);
         const available = tools.filter(t => {
           const name = t.function.name;
-          if (['search_production_orders', 'get_production_order'].includes(name)) return hasPermission(req.user, 'production');
+          if (['search_production_orders', 'get_production_order'].includes(name)) return canViewProduction(req.user);
           if (['search_boms', 'get_bom', 'calculate_bom'].includes(name)) return hasPermission(req.user, 'bom');
           if(['quality_chart_templates','quality_chart_data','preview_quality_chart'].includes(name))return hasPermission(req.user,'quality')&&(!name.startsWith('preview_')||!!config().writes);
           if (['read_import_table', 'replace_import_table'].includes(name)) return hasPermission(req.user, 'data_io');

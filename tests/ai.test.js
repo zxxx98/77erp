@@ -1081,3 +1081,35 @@ for (const change of ['same-permission position switch', 'position permission ed
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, count);
   assert.deepEqual((await f.request(f.staff, '/ai/conversations')).data, []);
 });
+
+test('AI registration production tools are offered and group changes invalidate conversation', async t => {
+  const f = await fixture(t);
+  await f.permissions(['ai', 'production_register']);
+  assert.equal((await f.chat(f.staff)).status, 200);
+  assert.ok(f.calls.at(-1).body.tools.some(tool => tool.function.name === 'search_production_orders'));
+  const group = (await f.request(f.admin, '/production-groups', {name:'AI group',description:''})).data;
+  const other = (await f.request(f.admin, '/production-groups', {name:'Other group',description:''})).data;
+  const staff = (await f.request(f.admin, '/users')).data.find(user=>user.id===f.id);
+  assert.equal((await f.request(f.admin, `/users/${f.id}/production-group`, {production_group_id:group.id,version:staff.permissions_version}, 'PUT')).status,200);
+  const product=f.db.prepare('SELECT * FROM products WHERE id=1').get(), material=f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const bom=(await f.request(f.admin,'/boms',{request_id:randomUUID(),name:'Grouped recipe',product_id:product.id,base_quantity:1,base_unit:product.unit,note:'',enabled:1,items:[{product_id:material.id,quantity:1,unit:material.unit,note:''}]})).data;
+  const orders=[];
+  for(const g of [group,other]) {
+    const created=await f.request(f.admin,'/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:1,note:'',production_group_id:g.id});
+    assert.equal(created.status,200); orders.push(created.data);
+  }
+  f.use('search_production_orders',{}); const response=await f.chat(f.staff); assert.equal(response.status,200);
+  const result=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
+  assert.deepEqual(result.orders.map(order=>order.id),[orders[0].id]);
+  f.use('get_production_order',{production_id:orders[1].id}); await f.chat(f.staff);
+  assert.ok(JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content).error);
+  const completed=await f.request(f.admin,`/production-orders/${orders[1].id}/complete`,{request_id:randomUUID(),version:orders[1].version,completed_quantity:1,finish_order:false,items:[{product_id:material.id,quantity:1}],scraps:[]});
+  assert.equal(completed.status,200);
+  await f.permissions(['ai','production_register','products']);
+  const history=await f.request(f.staff,`/products/${product.id}/history`);
+  assert.equal(history.status,200);
+  assert.ok(!history.data.records.some(record=>record.kind==='production'));
+  // Digest detects membership changes even if the permission version is accidentally unchanged.
+  f.db.prepare('UPDATE users SET production_group_id=? WHERE id=?').run(other.id,f.id);
+  assert.equal((await f.request(f.staff,`/ai/conversations/${response.data.conversation_id}`)).status,403);
+});

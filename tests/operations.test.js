@@ -513,3 +513,44 @@ test('material returns increase inventory once, preserve average cost, reject st
   assert.equal((await f.command('/backup/restore', { backup, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
   assert.equal(f.stock(id), 3);
 });
+
+test('business backup uses production group aware format', async t => {
+  const f = await fixture(t);
+  const backup = (await f.request('/backup')).data;
+  assert.equal(backup.version, 37);
+  const legacy = structuredClone(backup); legacy.version = 36;
+  assert.equal((await f.request('/backup/preview', { backup: legacy })).status, 200);
+});
+
+for (const crossInstance of [false, true]) test(`production backup preserves snapshots and ${crossInstance ? 'clears foreign' : 'resolves local'} group and actor IDs`, async t => {
+  const f = await fixture(t);
+  const group = (await f.request('/production-groups', {name:'Backup group',description:''})).data;
+  const product=f.db.prepare('SELECT * FROM products WHERE id=1').get(), material=f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const bom=(await f.command('/boms',{name:'Backup recipe',product_id:product.id,base_quantity:1,base_unit:product.unit,note:'',enabled:1,items:[{product_id:material.id,quantity:1,unit:material.unit,note:''}]})).data;
+  const created=await f.command('/production-orders',{bom_id:bom.id,bom_version:bom.version,planned_quantity:1,note:'',production_group_id:group.id});
+  assert.equal(created.status,200);
+  const id=created.data.id;
+  f.db.prepare('UPDATE production_orders SET material_workflow=0 WHERE id=?').run(id);
+  const completed=await f.command(`/production-orders/${id}/complete`,{version:created.data.version,completed_quantity:1,finish_order:false,items:[{product_id:material.id,quantity:1,variance_reason:''}],scraps:[]});
+  assert.equal(completed.status,200);
+  const backup=(await f.request('/backup')).data;
+  const before=backup.data.production_batches[0];
+  assert.equal(before.production_group_id,group.id); assert.ok(before.created_by);
+  if(crossInstance) backup.source_instance_id=randomUUID();
+  const preview=await f.request('/backup/preview',{backup}); assert.equal(preview.status,200);
+  assert.equal((await f.command('/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA'})).status,200);
+  const restored=(await f.request('/backup')).data.data;
+  assert.equal(restored.production_orders[0].production_group_id,crossInstance?null:group.id);
+  assert.equal(restored.production_batches[0].production_group_id,crossInstance?null:group.id);
+  assert.equal(restored.production_batches[0].created_by,crossInstance?null:before.created_by);
+  assert.equal(restored.production_batches[0].production_group_name,before.production_group_name);
+  assert.equal(restored.production_batches[0].created_by_name,before.created_by_name);
+  const legacy=structuredClone(backup); legacy.version=36;
+  for(const row of [...legacy.data.production_orders,...legacy.data.production_batches]) {delete row.production_group_id;delete row.production_group_name;}
+  for(const row of legacy.data.production_batches) delete row.created_by;
+  assert.equal((await f.request('/backup/preview',{backup:legacy})).status,200);
+  for(const [field,value] of [['production_group_id',-1],['production_group_name','x'.repeat(61)],['created_by',0],['created_by_name',null]]) {
+    const invalid=structuredClone(backup);invalid.data.production_batches[0][field]=value;
+    assert.equal((await f.request('/backup/preview',{backup:invalid})).status,400);
+  }
+});

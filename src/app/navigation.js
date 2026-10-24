@@ -10,7 +10,7 @@ export const navItems = [
   { id: 'history', name: '操作记录', icon: History, mode: 'warehouse', group: 'tools', mobile: '单据' },
   { id: 'quality', name: '品质管理', icon: PackageCheck, mode: 'production', group: 'main', mobile: '品质', permission: 'quality' },
   { id: 'bom', name: 'BOM', icon: ListTree, mode: 'production', group: 'main', mobile: 'BOM', permission: 'bom' },
-  { id: 'production', name: '生产单', icon: ClipboardList, mode: 'production', group: 'main', mobile: '生产单', permission: 'production' },
+  { id: 'production', name: '生产单', icon: ClipboardList, mode: 'production', group: 'main', mobile: '生产单', permission: 'production_view' },
   { id: 'announcements', name: '公告中心', icon: Megaphone, group: 'tools' },
   { id: 'more', name: '工作空间', icon: Settings, mobile: '更多' },
 ];

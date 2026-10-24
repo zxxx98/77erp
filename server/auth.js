@@ -1,9 +1,10 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 
-import { permissionKeys, hasPermission } from '../shared/permissions.js';
+import { permissionKeys, hasPermission, isProductionOnly } from '../shared/permissions.js';
 import { queueNotification } from './notifications.js';
 import { migratePositions, positionAuthorization, requirePosition, installPositions, recordPositionChange } from './positions.js';
+import { migrateProductionGroups, installProductionGroups, requireProductionGroup } from './production-groups.js';
 
 const deriveKey = promisify(scrypt);
 const cookieName = "77erp_session";
@@ -44,6 +45,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL
   );`);
   migratePositions(db);
+  migrateProductionGroups(db);
   // installAuth runs after the business migrations, so orders and templates already exist here.
   for (const table of ['orders', 'templates']) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -53,7 +55,9 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   }
   const initialized = () => !!db.prepare("SELECT 1 FROM users LIMIT 1").get();
   const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, role: user.role,
-    ...(user.role === 'admin' ? { permissions: permissionKeys, legacy_permissions: false, position_id: null, position_name: null } : positionAuthorization(db, user)),
+    ...(user.role === 'admin' ? { permissions: permissionKeys, legacy_permissions: false, position_id: null, position_name: null, access_mode: 'standard' } : positionAuthorization(db, user)),
+    production_group_id: user.production_group_id ?? null,
+    production_group_name: user.production_group_id ? db.prepare('SELECT name FROM production_groups WHERE id=?').get(user.production_group_id)?.name ?? null : null,
     permissions_version: user.permissions_version ?? 1 });
   const validUsername = (value) => typeof value === 'string' && /^[A-Za-z0-9_.-]{3,32}$/.test(value.trim());
   const validName = (value) => typeof value === 'string' && value.length <= 60;
@@ -81,7 +85,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   };
   const sessionUser = (req) => {
     const token = sessionToken(req);
-    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.position_id,u.permissions_version FROM auth_sessions s
+    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.position_id,u.production_group_id,u.permissions_version FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`)
       .get(digest(token), Date.now()) : undefined;
     return user ? publicUser(user) : undefined;
@@ -237,6 +241,14 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
+    const groupProductionRoute = (read && (path === '/production-orders' || /^\/production-orders\/\d+$/.test(path))) ||
+      (post && /^\/production-orders\/\d+\/complete$/.test(path));
+    if (isProductionOnly(req.user)) {
+      if (read && ['/workspace','/style','/updates'].includes(path) || groupProductionRoute && hasPermission(req.user,'production_register')) return next();
+      return res.status(403).json({error:'此岗位仅允许查看本组生产单并登记。'});
+    }
+    if (groupProductionRoute && hasPermission(req.user,'production_register')) return next();
+    if (read && path === '/production-groups' && hasPermission(req.user,'production')) return next();
     if (/^\/quality(?:\/|$)/.test(path) && hasPermission(req.user, 'quality')) return next();
     if (/^\/boms(?:\/|$)/.test(path) && hasPermission(req.user, 'bom')) return next();
     if (/^\/production-orders(?:\/|$)/.test(path) && hasPermission(req.user, 'production') &&
@@ -299,7 +311,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     return res.status(403).json({ error: '没有此操作的权限，请联系管理员。' });
   });
   installPositions(app, db);
-  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,name,role,active,created_at,position_id,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
+  installProductionGroups(app, db);
+  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,name,role,active,created_at,position_id,production_group_id,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
   app.post('/api/users', async (req, res) => {
     const { username, password, role = 'employee', name = '' } = req.body || {};
     if (!validUsername(username) || !validPassword(password) || !validName(name) || !['admin','employee'].includes(role))
@@ -312,9 +325,11 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     try {
       // Password hashing yields: the selected position may have been removed meanwhile.
       const position = role === 'employee' ? requirePosition(db, req.body.position_id) : null;
-      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,permissions,position_id) VALUES (?,?,?,?,?,?,'[]',?)")
-        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), position?.id ?? null);
+      const group = role === 'employee' ? requireProductionGroup(db,req.body.production_group_id ?? null) : null;
+      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,permissions,position_id,production_group_id) VALUES (?,?,?,?,?,?,'[]',?,?)")
+        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), position?.id ?? null,group?.id ?? null);
       if (position) recordPositionChange(db, req, '新员工分配岗位', position.id, Number(result.lastInsertRowid), null, {position_id: position.id});
+      if (group) recordPositionChange(db, req, '新员工分配生产组', position?.id ?? null, Number(result.lastInsertRowid), null, {production_group_id:group.id});
       db.exec('COMMIT');
       res.status(201).json({ id: Number(result.lastInsertRowid) });
     } catch (error) {
@@ -346,8 +361,11 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (user.role === 'employee' && role === 'employee' && req.body.position_id !== undefined && req.body.position_id !== user.position_id) {
         db.exec('ROLLBACK'); return res.status(409).json({error:'请通过调整岗位操作提交当前权限版本。'});
       }
-      db.prepare('UPDATE users SET role=?,active=?,name=?,position_id=?,permissions_version=permissions_version+? WHERE id=?')
-        .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), positionId, role !== user.role ? 1 : 0, user.id);
+      if (req.body.production_group_id !== undefined && req.body.production_group_id !== user.production_group_id) {
+        db.exec('ROLLBACK'); return res.status(409).json({error:'请通过调整生产组操作提交当前权限版本。'});
+      }
+      db.prepare('UPDATE users SET role=?,active=?,name=?,position_id=?,production_group_id=?,permissions_version=permissions_version+? WHERE id=?')
+        .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), positionId, role === 'admin' ? null : user.production_group_id, role !== user.role ? 1 : 0, user.id);
       if (positionId !== user.position_id) recordPositionChange(db, req, '账号类型变更岗位', positionId, user.id, {position_id:user.position_id}, {position_id:positionId});
       if (!active || role !== user.role) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(user.id);
       if (role !== user.role || active !== user.active) queueNotification(db, req, 'admin_action', { action: '修改账号角色／状态', target_user: user.username, before_role: user.role, role, before_active: user.active, active }, { global: true });

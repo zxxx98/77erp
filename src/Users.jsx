@@ -45,6 +45,8 @@ export function UserManager({ Modal, onChanged }) {
   const [role, setRole] = useState('employee');
   const [permissionUser, setPermissionUser] = useState(null);
   const [positions, setPositions] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [groupId, setGroupId] = useState('');
   const [positionId, setPositionId] = useState('');
   const [positionUser, setPositionUser] = useState(null);
   const [nextPosition, setNextPosition] = useState('');
@@ -56,7 +58,8 @@ export function UserManager({ Modal, onChanged }) {
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const load = async () => {
-    const [accounts, jobs] = await Promise.all([api('/users'), api('/positions')]);
+    const [accounts, jobs, teams] = await Promise.all([api('/users'), api('/positions'), api('/production-groups')]);
+    setGroups(teams);
     setUsers(accounts); setPositions(jobs); return accounts;
   };
   useEffect(() => { load().catch(e => setError(e.message)); }, []);
@@ -80,11 +83,12 @@ export function UserManager({ Modal, onChanged }) {
       <label>初始密码<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
       <label>新账号角色<Select aria-label="新账号角色" value={role} onChange={e => setRole(e)} disabled={busy}><option value="employee">员工</option><option value="admin">管理员</option></Select></label>
       {role === 'employee' && <label>新账号岗位<Select aria-label="新账号岗位" value={positionId} disabled={busy} onChange={setPositionId}><option value="" disabled>请选择岗位</option>{positions.map(position => <option key={position.id} value={position.id}>{position.name}</option>)}</Select></label>}
+      {role === 'employee' && <label>新账号生产小组<Select aria-label="新账号生产小组" value={groupId} disabled={busy} onChange={setGroupId}><option value="">未分组</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select></label>}
       {role === 'employee' && !positions.length && <p className="muted">请先到岗位配置新增岗位。</p>}
       <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
         if (role === 'employee' && !positionId) { setError('请选择新员工的岗位。'); return; }
         void run(async () => {
-        await api('/users', { method: 'POST', body: { username, password, role, name, ...(role === 'employee' ? { position_id: Number(positionId) } : {}) } });
+        await api('/users', { method: 'POST', body: { username, password, role, name, ...(role === 'employee' ? { position_id: Number(positionId), production_group_id: groupId ? Number(groupId) : null } : {}) } });
         setUsername(''); setPassword(''); setName('');
       }, '账号已创建'); }}>新增账号</AntButton>
     </div>
@@ -92,7 +96,7 @@ export function UserManager({ Modal, onChanged }) {
     {notice && <p role="status">{notice}</p>}
     <div className="table-scroll user-list">
       <table className="data-table user-table">
-        <thead><tr><th>账号</th><th>状态</th><th>角色与岗位</th><th>操作</th></tr></thead>
+        <thead><tr><th>账号</th><th>状态</th><th>角色、岗位与生产小组</th><th>操作</th></tr></thead>
         <tbody>
           {users.map(user => <tr className="user-row" key={user.id}>
             <td><strong>{user.name}</strong><small className="user-login">账号：{user.username}</small><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => { setNameUser(user); setEditName(user.name); }}>修改名称</AntButton></td>
@@ -101,7 +105,7 @@ export function UserManager({ Modal, onChanged }) {
               const nextRole = e;
               if (nextRole === 'employee') { setPositionUser({ ...user, downgrade: true }); setNextPosition(''); setError(''); setConflict(false); }
               else if (window.confirm(`修改 ${user.username} 的角色？该账号需要重新登录。`)) void update(user, { role: nextRole });
-            }}><option value="employee">员工</option><option value="admin">管理员</option></Select>{user.role === 'employee' && <Select aria-label={`${user.username}的岗位`} value={user.position_id ?? ''} disabled={busy} onChange={value => { setPositionUser(user); setNextPosition(value); setError(''); setConflict(false); }}><option value="" disabled>未分配岗位，请修复</option>{positions.map(position => <option key={position.id} value={position.id}>{position.name}</option>)}</Select>}</td>
+            }}><option value="employee">员工</option><option value="admin">管理员</option></Select>{user.role === 'employee' && <Select aria-label={`${user.username}的岗位`} value={user.position_id ?? ''} disabled={busy} onChange={value => { setPositionUser(user); setNextPosition(value); setError(''); setConflict(false); }}><option value="" disabled>未分配岗位，请修复</option>{positions.map(position => <option key={position.id} value={position.id}>{position.name}</option>)}</Select>}{user.role === 'employee' && <Select aria-label={`${user.username}的生产小组`} value={user.production_group_id ?? ''} disabled={busy} onChange={value => run(() => api(`/users/${user.id}/production-group`, { method: 'PUT', body: { production_group_id: value ? Number(value) : null, version: user.permissions_version } }), '生产小组已更新，权限立即生效')}><option value="">未分组</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select>}</td>
             <td><div className="user-actions">
               <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => {
                 if (window.confirm(`${user.active ? '停用' : '启用'}账号 ${user.username}？`)) void update(user, { active: user.active ? 0 : 1 });
@@ -124,7 +128,7 @@ export function UserManager({ Modal, onChanged }) {
       </div>
     </Modal>}
     {permissionUser && <Modal title={`${permissionUser.username} 的有效权限`} className="permission-dialog" onClose={() => setPermissionUser(null)}>
-      <div className="form-body"><p>岗位：<strong>{permissionUser.position_name || '未分配岗位'}</strong></p><p className="muted">权限由岗位统一配置，此处仅供查看。</p><EffectivePermissions permissions={permissionUser.permissions} legacy={permissionUser.legacy_permissions} /></div>
+      <div className="form-body"><p>岗位：<strong>{permissionUser.position_name || '未分配岗位'}</strong></p><p className="muted">权限由岗位统一配置，此处仅供查看。</p><EffectivePermissions permissions={permissionUser.permissions} legacy={permissionUser.legacy_permissions} accessMode={permissionUser.access_mode} /></div>
     </Modal>}
     {positionUser && <Modal title={positionUser.downgrade ? `将 ${positionUser.username} 改为员工` : `调整 ${positionUser.username} 的岗位`} onClose={() => { if (!busy) { setPositionUser(null); setError(''); setConflict(false); } }}>
       <div className="form-body account-fields"><p className="muted">{positionUser.downgrade ? '请先选择员工岗位。修改角色后，该账号需要重新登录。' : '保存后立即使用所选岗位的权限。'}</p>

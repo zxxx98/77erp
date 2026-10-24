@@ -38,7 +38,8 @@ export function migrateProductionReceipts(db) {
 export function receiptDocument(db, id, warehouseId) {
   const doc = db.prepare('SELECT * FROM production_receipts WHERE id=? AND warehouse_id=?').get(id, warehouseId);
   if (!doc) fail('生产入库单不存在或不属于当前仓库。', 404);
-  return {...doc, items: db.prepare('SELECT * FROM production_receipt_items WHERE document_id=? ORDER BY id').all(id)};
+  const group = db.prepare('SELECT production_group_id,production_group_name FROM production_orders WHERE id=?').get(doc.production_id);
+  return {...doc, ...group, items: db.prepare('SELECT * FROM production_receipt_items WHERE document_id=? ORDER BY id').all(id)};
 }
 export function receiptDocuments(db, productionId, warehouseId) {
   return db.prepare('SELECT id FROM production_receipts WHERE production_id=? ORDER BY id').all(productionId).map(row => receiptDocument(db, row.id, warehouseId));

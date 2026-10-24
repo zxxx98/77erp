@@ -33,6 +33,7 @@ export function installDataUpdates(app, db) {
     stock_qr_codes: row => `'warehouse:' || ${row}.warehouse_id`,
     users: row => `'user:' || ${row}.id`,
     positions: () => "'global'",
+    production_groups: () => "'global'",
     announcement_reads: row => `'user:' || ${row}.user_id`,
     warehouses: () => "'global'",
     contacts: () => "'global'",

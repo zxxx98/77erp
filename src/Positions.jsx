@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
+import { Select } from './Dropdown.jsx';
 import { Input, Button, Checkbox } from './ui/controls.jsx';
 import { api } from './api.js';
 import { permissionOptions } from '../shared/permissions.js';
 import { LoadingStatus } from './Loading.jsx';
 import './users.css';
 
-export function EffectivePermissions({ permissions = [], legacy = false }) {
+export function EffectivePermissions({ permissions = [], legacy = false, accessMode = 'standard' }) {
   return <div className="effective-permissions">
     {legacy && <p className="info-box">沿用旧员工权限：保留历史操作限制，以下模块不代表拥有该模块的全部操作。管理员可在岗位配置中明确切换为标准模块权限。</p>}
-    <p className="muted">物料、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。</p>
+    <p className="muted">{accessMode === 'production_only' ? '仅生产作业：仅查看本组生产单和登记批次，可修改自己的密码。' : '物料、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。'}</p>
     {permissions.length ? <ul>{permissionOptions.filter(option => permissions.includes(option.key)).map(option => <li key={option.key}><strong>{option.label}</strong>{!legacy && <small>{option.description}</small>}</li>)}</ul> : <p>只读岗位，无额外业务操作权限。</p>}
   </div>;
 }
@@ -30,7 +31,7 @@ export function PositionManager({ Modal, onChanged }) {
     catch (e) { setError(e.message); setConflict(e.status === 409); }
     finally { lock.current = false; setBusy(false); }
   };
-  const open = position => { setError(''); setConflict(false); setEditor(position ? { ...position, permissions: [...position.permissions], convert_legacy: false } : { name: '', description: '', permissions: [], member_count: 0 }); };
+  const open = position => { setError(''); setConflict(false); setEditor(position ? { ...position, permissions: [...position.permissions], convert_legacy: false } : { name: '', description: '', permissions: [], access_mode: 'standard', member_count: 0 }); };
   const refresh = () => run(async () => {
     const rows = await load();
     if (editor?.id) {
@@ -43,7 +44,7 @@ export function PositionManager({ Modal, onChanged }) {
     if (!editor.name.trim()) { setError('请填写岗位名称。'); return; }
     void run(async () => {
       await api(editor.id ? `/positions/${editor.id}` : '/positions', { method: editor.id ? 'PUT' : 'POST', body: {
-        name: editor.name, description: editor.description, permissions: editor.permissions,
+        name: editor.name, description: editor.description, permissions: editor.access_mode === 'production_only' ? ['production_register'] : editor.permissions, access_mode: editor.access_mode || 'standard',
         ...(editor.id ? { version: editor.version } : {}), ...(editor.convert_legacy ? { convert_legacy: true } : {}),
       } });
       setEditor(null);
@@ -71,7 +72,9 @@ export function PositionManager({ Modal, onChanged }) {
       {editor.legacy_permissions && <div className="position-legacy-notice"><p>此岗位沿用旧员工权限。仅修改名称或说明会保留原有操作限制。切换为标准模块权限后，同岗员工将获得所选模块的全部操作，可能扩大权限。</p><Checkbox checked={!!editor.convert_legacy} disabled={busy} onChange={e => {
         if (!e.target.checked || window.confirm(`确认将此岗位的 ${editor.member_count} 名员工切换为标准模块权限？这可能扩大原有操作范围，保存后生效。`)) setEditor(current => ({ ...current, convert_legacy: e.target.checked }));
       }}>我确认切换为标准模块权限</Checkbox></div>}
-      <div className="permission-options">{permissionOptions.map(option => <Checkbox key={option.key} checked={editor.permissions.includes(option.key)} disabled={busy || (editor.legacy_permissions && !editor.convert_legacy)} onChange={e => setEditor(current => ({ ...current, permissions: e.target.checked ? [...current.permissions, option.key] : current.permissions.filter(key => key !== option.key) }))}><span><strong>{option.label}</strong><small>{option.description}</small></span></Checkbox>)}</div>
+      <label>访问模式<Select aria-label="访问模式" value={editor.access_mode || 'standard'} disabled={busy || (editor.legacy_permissions && !editor.convert_legacy)} onChange={value => setEditor(current => ({ ...current, access_mode: value, permissions: value === 'production_only' ? ['production_register'] : current.permissions }))}><option value="standard">标准工作空间</option><option value="production_only">仅生产作业</option></Select></label>
+      {editor.access_mode === 'production_only' && <p className="info-box">只开放本组生产单与批次登记，权限固定为生产登记，不开放其他业务页面。</p>}
+      <div className="permission-options">{permissionOptions.map(option => <Checkbox key={option.key} checked={editor.permissions.includes(option.key)} disabled={busy || editor.access_mode === 'production_only' || (editor.legacy_permissions && !editor.convert_legacy)} onChange={e => setEditor(current => ({ ...current, permissions: e.target.checked ? [...current.permissions, option.key] : current.permissions.filter(key => key !== option.key) }))}><span><strong>{option.label}</strong><small>{option.description}</small></span></Checkbox>)}</div>
       {!editor.permissions.length && <p className="muted">不勾选业务模块时，该岗位为只读岗位。</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}

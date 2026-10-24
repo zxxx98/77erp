@@ -10,6 +10,8 @@ export function installProductHistory(app, db) {
     if (typeof raw !== 'string' || !/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw)))
       return res.status(400).json({ error: '记录分页参数无效。' });
     const offset = Number(raw), limit = 20;
+    // Production registration alone does not expose the cross-group inventory ledger.
+    // Purchase/sale permissions intentionally retain their warehouse approval ledger visibility.
     // Price changes require finance permission; stock adjustments retain /stocktakes permissions.
     const rows = db.prepare(`SELECT * FROM (
       SELECT 'order' AS event,i.id AS event_id,o.id AS order_id,o.number,o.type,o.kind,o.status,

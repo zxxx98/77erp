@@ -1,0 +1,7 @@
+.production-only-shell { min-height: 100dvh; background: var(--bg, #f5f6f8); padding: 24px; }
+.production-only-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; max-width: 1200px; margin: 0 auto 24px; }
+.production-only-header p { margin: 8px 0 0; }
+.production-only-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.production-only-actions label { display: grid; gap: 6px; }
+.production-only-shell main { max-width: 1200px; margin: auto; }
+@media (max-width: 640px) { .production-only-shell { padding: 16px 12px max(24px, env(safe-area-inset-bottom)); } .production-only-header { align-items: stretch; flex-direction: column; } .production-only-actions { align-items: end; } .production-only-actions button { min-height: 44px; } .production-only-actions label { flex: 1 1 100%; } }

@@ -67,11 +67,12 @@ export function requirePosition(db, id) {
 }
 
 export function positionAuthorization(db, user) {
-  const position = user.position_id ? db.prepare('SELECT id,name,permissions,legacy_permissions FROM positions WHERE id=?').get(user.position_id) : null;
+  const position = user.position_id ? db.prepare('SELECT id,name,permissions,legacy_permissions,access_mode FROM positions WHERE id=?').get(user.position_id) : null;
   // Never fall back to retired users.permissions, even for missing/corrupt associations.
   return {
     position_id: position?.id ?? null, position_name: position?.name ?? null,
     permissions: position ? JSON.parse(position.permissions) : [], legacy_permissions: !!position?.legacy_permissions,
+    access_mode: position?.access_mode ?? 'standard',
   };
 }
 
@@ -109,33 +110,37 @@ export function installPositions(app, db) {
     if (!validId(req.body?.version) || req.body.version !== row.version) fail('岗位配置已被修改，请重新打开后核对。',409);
     return row;
   };
-  const fields = body => {
+  const fields = (body, before) => {
     if (typeof body?.name !== 'string' || !body.name.trim() || body.name.trim().length > 60 ||
         (body.description !== undefined && (typeof body.description !== 'string' || body.description.length > 200)))
       fail('请填写 1–60 字的岗位名称和最多 200 字的说明。');
-    return {name:body.name.trim(),description:(body.description ?? '').trim(),permissions:normalizePermissions(body.permissions)};
+    const permissions=normalizePermissions(body.permissions), access_mode=body.access_mode ?? before?.access_mode ?? 'standard';
+    if (!['standard','production_only'].includes(access_mode)) fail('请选择有效的岗位访问模式。');
+    if (access_mode === 'production_only' && (permissions.length !== 1 || permissions[0] !== 'production_register'))
+      fail('仅生产作业岗位只能配置本组生产登记权限。');
+    return {name:body.name.trim(),description:(body.description ?? '').trim(),permissions,access_mode};
   };
   app.get('/api/positions', route(() => db.prepare(`${selectPosition} ORDER BY p.id`).all().map(present)));
   app.post('/api/positions', route(req => {
     if (req.body?.legacy_permissions !== undefined || req.body?.convert_legacy !== undefined) fail('新岗位只能使用标准模块权限。');
     const value = fields(req.body), at = new Date().toISOString();
-    const id = Number(db.prepare('INSERT INTO positions(name,description,permissions,created_at,updated_at) VALUES(?,?,?,?,?)')
-      .run(value.name,value.description,JSON.stringify(value.permissions),at,at).lastInsertRowid);
+    const id = Number(db.prepare('INSERT INTO positions(name,description,permissions,access_mode,created_at,updated_at) VALUES(?,?,?,?,?,?)')
+      .run(value.name,value.description,JSON.stringify(value.permissions),value.access_mode,at,at).lastInsertRowid);
     const result = read(id);
     recordPositionChange(db,req,'新增岗位',id,null,null,result);
     return result;
   }, {write:true,status:201}));
   app.put('/api/positions/:id', route(req => {
-    const before = current(req), value = fields(req.body), permissions = JSON.stringify(value.permissions);
+    const before = current(req), value = fields(req.body,before), permissions = JSON.stringify(value.permissions);
     if (req.body.convert_legacy !== undefined && typeof req.body.convert_legacy !== 'boolean') fail('请明确确认是否切换旧版权限。');
     if (req.body.legacy_permissions !== undefined && req.body.legacy_permissions !== !!before.legacy_permissions)
       fail('不能直接修改旧版兼容标记，请使用切换权限操作。');
-    if (before.legacy_permissions && permissions !== before.permissions && req.body.convert_legacy !== true)
+    if (before.legacy_permissions && (permissions !== before.permissions || value.access_mode !== before.access_mode) && req.body.convert_legacy !== true)
       fail('此岗位仍沿用旧版权限，请确认切换为标准模块权限后保存。',409);
     const legacy = before.legacy_permissions && req.body.convert_legacy !== true ? 1 : 0;
-    const authorizationChanged = permissions !== before.permissions || legacy !== before.legacy_permissions;
-    db.prepare('UPDATE positions SET name=?,description=?,permissions=?,legacy_permissions=?,version=version+1,updated_at=? WHERE id=?')
-      .run(value.name,value.description,permissions,legacy,new Date().toISOString(),before.id);
+    const authorizationChanged = permissions !== before.permissions || legacy !== before.legacy_permissions || value.access_mode !== before.access_mode;
+    db.prepare('UPDATE positions SET name=?,description=?,permissions=?,legacy_permissions=?,access_mode=?,version=version+1,updated_at=? WHERE id=?')
+      .run(value.name,value.description,permissions,legacy,value.access_mode,new Date().toISOString(),before.id);
     if (authorizationChanged) db.prepare("UPDATE users SET permissions_version=permissions_version+1 WHERE position_id=? AND role='employee'").run(before.id);
     const result = read(before.id);
     recordPositionChange(db,req,'修改岗位',before.id,null,present(before),result);

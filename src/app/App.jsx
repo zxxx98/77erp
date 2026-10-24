@@ -1,3 +1,4 @@
+import { ProductionOnlyShell } from './ProductionOnlyShell.jsx';
 import { Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
@@ -31,7 +32,7 @@ import './mode-switch.css';
 import { mobileDevice } from '../device.js';
 import { useState, useEffect, useRef } from 'react';
 import { api, setWarehouseId, getWarehouseId } from '../api.js';
-import { hasPermission, canManage } from '../../shared/permissions.js';
+import { hasPermission, canManage, isProductionOnly, canViewProduction } from '../../shared/permissions.js';
 import { useQuery } from '../queries.js';
 import { DataUpdateNotice, useDataUpdates } from '../DataUpdates.jsx';
 import { announcementsChanged, useAnnouncementQuery } from '../announcement-query.js';
@@ -78,7 +79,7 @@ import { version as appVersion } from '../../package.json';
 
 const navItems = allNavItems.filter(item => mobileDevice || item.id !== 'more');
 
-function App({ admin, onLogout }) {
+function StandardApp({ admin, onLogout }) {
   const isAdmin = admin.role === "admin";
   const preferenceKey = `77erp:mode:${admin.id || admin.username}`;
   const [initialNavigation] = useState(() => {
@@ -175,6 +176,7 @@ function App({ admin, onLogout }) {
         window.dispatchEvent(new Event('erp:unauthorized'));
         return;
       }
+      if (d.user?.permissions_version !== admin.permissions_version || d.user?.access_mode !== admin.access_mode) window.dispatchEvent(new Event('erp:permissions-changed'));
       setWarehouseId(d.warehouse_id);
       setCurrencySettings(d.settings);
       setData({ ...d, products: [], orders: [] });
@@ -281,10 +283,10 @@ function App({ admin, onLogout }) {
     finally { setSwitching(false); setRefreshing(false); }
   };
   const user = data.user || admin;
-  const can = key => hasPermission(user, key);
+  const can = key => key === 'production_view' ? canViewProduction(user) : hasPermission(user, key);
   const manage = key => canManage(user, key);
-  const summaryQuery = useQuery(mobileDevice ? null : '/dashboard', data);
-  const announcementQuery = useAnnouncementQuery('/announcements/unread-count', data);
+  const summaryQuery = useQuery(mobileDevice || isProductionOnly(user) ? null : '/dashboard', data);
+  const announcementQuery = useAnnouncementQuery(isProductionOnly(user) ? null : '/announcements/unread-count', data);
   const announcementCount = announcementQuery.result?.count || 0;
   const announcementSaved = async message => { announcementsChanged(); await saved(message); };
   const low = summaryQuery.result?.products.low_stock_products || [];
@@ -310,6 +312,7 @@ function App({ admin, onLogout }) {
   const visibleNav = modeItems(mode, can);
   const currentNav = navItems.find((n) => n.id === page);
   const updateNotice = updatesAvailable ? <DataUpdateNotice onRefresh={reload} busy={refreshing} disabled={!!modal} /> : null;
+  if (isProductionOnly(user)) return <ProductionOnlyShell admin={user} onLogout={onLogout} />;
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
       {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />正在切换仓库…</div>}
@@ -322,7 +325,7 @@ function App({ admin, onLogout }) {
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">没有品质管理权限，请联系管理员。</div>}
         renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有BOM权限，请联系管理员。</div>}
-        renderProduction={() => can('production') ? <Production key={data.warehouse_id} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>}
+        renderProduction={() => canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>
@@ -559,7 +562,7 @@ function App({ admin, onLogout }) {
               {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
               {page === 'quality' && !can('quality') && <div className="info-box">没有品质管理权限，请联系管理员。</div>}
               {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有BOM权限，请联系管理员。</div>)}
-              {page === 'production' && (can('production') ? <Production key={data.warehouse_id} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>)}
+              {page === 'production' && (canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>)}
               {page === "products" && (
                 <Products
                   data={data}
@@ -665,7 +668,7 @@ function App({ admin, onLogout }) {
           notify={notify}
         />
       )}
-      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant mode={mode} userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
+      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant key={`${user.id}:${user.permissions_version}:${user.production_group_id}:${user.access_mode}`} mode={mode} userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
       {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{user.name || user.username}（{user.username}） · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools data={data} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
@@ -759,4 +762,5 @@ function App({ admin, onLogout }) {
   );
 }
 
+function App(props) { return isProductionOnly(props.admin) ? <ProductionOnlyShell {...props} /> : <StandardApp {...props} />; }
 export { App };

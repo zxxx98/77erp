@@ -39,7 +39,8 @@ export function migrateProductionMaterials(db) {
 export function materialDocument(db, id, warehouseId) {
   const doc = db.prepare('SELECT * FROM production_material_documents WHERE id=? AND warehouse_id=?').get(id, warehouseId);
   if (!doc) fail('生产材料单不存在或不属于当前仓库。', 404);
-  return { ...doc, items: db.prepare('SELECT * FROM production_material_document_items WHERE document_id=? ORDER BY id').all(id) };
+  const group = db.prepare('SELECT production_group_id,production_group_name FROM production_orders WHERE id=?').get(doc.production_id);
+  return { ...doc, ...group, items: db.prepare('SELECT * FROM production_material_document_items WHERE document_id=? ORDER BY id').all(id) };
 }
 
 export function materialDocuments(db, productionId, warehouseId) {

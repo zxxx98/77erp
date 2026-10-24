@@ -9,15 +9,18 @@ export const permissionOptions = [
   { key: 'business', label: '业务资料管理', description: '往来单位、自己的模板及出入库二维码配置' },
   { key: 'quality', label: '品质管理', description: '桌面验收模板配置、验收单解析与物料绑定、品质图表及原始 Excel 下载' },
   { key: 'bom', label: 'BOM', description: '单层 BOM 的维护、启停、备料测算、废料产出规则及导出' },
-  { key: 'production', label: '生产单', description: '生产草稿、领料补料退料申请、分批登记、累计进度、耗料差异与废料产出' },
+  { key: 'production', label: '生产管理', description: '查看全部生产单、派单、生产草稿、领料补料退料申请、分批登记及结束生产' },
+  { key: 'production_register', label: '本组生产登记', description: '仅查看所属生产组的生产单并登记产量和耗料；未分组时没有可见生产单' },
   { key: 'finance', label: '财务管理', description: '收付款、欠款、库存成本及毛利报表' },
   { key: 'data_io', label: '数据导入导出', description: '物料批量导入及单据 CSV 导出' },
 ];
 export const permissionKeys = permissionOptions.map(option => option.key);
 export const legacyPermissions = ['products', 'purchase', 'sale', 'data_io'];
 export function hasPermission(user, key) {
-  return user?.role === 'admin' || !!user?.permissions?.includes(key);
+  return user?.role === 'admin' || ((!isProductionOnly(user) || key === 'production_register') && !!user?.permissions?.includes(key));
 }
+export function isProductionOnly(user) { return user?.role !== 'admin' && user?.access_mode === 'production_only'; }
+export function canViewProduction(user) { return hasPermission(user, 'production') || hasPermission(user, 'production_register'); }
 // Existing employees keep their former capabilities until an administrator saves a configuration.
 export function canManage(user, key) {
   return hasPermission(user, key) && (!user?.legacy_permissions || user?.role === 'admin');
