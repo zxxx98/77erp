@@ -5,14 +5,12 @@ import { api } from '../api.js';
 import { orderLabel } from '../order-utils.js';
 import { orderLineAmount } from '../../shared/money.js';
 import { todayKey, money, count, dateTime, currencySymbol } from '../app/format.js';
-import { usePermissions } from '../permissions.jsx';
 import { useState, useEffect } from 'react';
 import { useQuery, queryPath } from '../queries.js';
 import { QueryStatus, PageHeading, Button, Badge, Empty, Pagination } from '../components/common.jsx';
 import { Download, Plus, PackageCheck, Search, ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Select } from '../Dropdown.jsx';
-import { ProductionMaterialDocuments } from '../features/ProductionMaterialDocuments.jsx';
-import { ProductionReceipts } from '../features/ProductionReceipts.jsx';
+import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
 async function exportOrders(orders, notify) {
   try {
@@ -64,8 +62,21 @@ async function exportOrders(orders, notify) {
   } catch (error) { notify(error.message); }
 }
 
-function Orders({ page, data, openOrder, showDetail, notify, onChanged }) {
-  const { can } = usePermissions();
+function Orders(props) {
+  const { page, data, openOrder, onChanged } = props;
+  const type = page === 'purchases' ? 'in' : page === 'sales' ? 'out' : null;
+  const title = type === 'in' ? '入库' : type === 'out' ? '出库' : '操作记录';
+  return <>
+    <PageHeading title={title} description={type === 'in' ? '查看入库记录，核对成品和退料的待入库单据。' : type === 'out' ? '查看出库记录，核对生产领料和补料申请。' : '查看全部入出库单据，追溯物料、数量和往来单位。'}>
+      {type && <Button permission={type === 'in' ? 'purchase' : 'sale'} kind="primary" icon={Plus} onClick={() => openOrder(type)}>新建{title}</Button>}
+    </PageHeading>
+    <OrderApprovalWorkspace key={`${data.warehouse_id}:${page}`} data={data} type={type} onChanged={onChanged}>
+      <OrderRecords {...props} />
+    </OrderApprovalWorkspace>
+  </>;
+}
+
+function OrderRecords({ page, data, openOrder, showDetail, notify }) {
   const type = page === "purchases" ? "in" : page === "sales" ? "out" : null;
   const [query, setQuery] = useState(""),
     [days, setDays] = useState("all"),
@@ -91,37 +102,10 @@ function Orders({ page, data, openOrder, showDetail, notify, onChanged }) {
     sales: ["SALES", "出库", "出库"],
     history: ["ACTIVITY", "操作记录", "操作记录"],
   };
-  const [eyebrow, title, label] = titles[page];
+  const [, , label] = titles[page];
   return (
     <>
       <QueryStatus query={list} />
-      <PageHeading
-        eyebrow={eyebrow}
-        title={title}
-        description={
-          type === "in"
-            ? "选择供应商或内部单位入库，确认后库存自动增加。内部流转不计入采购额。"
-            : type === "out"
-              ? "选择客户或内部单位出库，确认后库存自动扣减。内部流转不计入销售额。"
-              : "查看全部入出库单据，追溯物料、数量和往来单位。"
-        }
-      >
-        <Button
-          icon={Download}
-          permission="data_io"
-          onClick={() => exportOrders(filtered, notify)}
-          disabled={!filtered.length}
-        >
-          导出单据
-        </Button>
-        {type && (
-          <Button permission={type === 'in' ? 'purchase' : 'sale'} kind="primary" icon={Plus} onClick={() => openOrder(type)}>
-            新建{label.slice(-2)}
-          </Button>
-        )}
-      </PageHeading>
-      {type && <ProductionMaterialDocuments key={type} data={data} type={type} onChanged={onChanged} />}
-      {type === 'in' && <ProductionReceipts data={data} onChanged={onChanged} />}
       <div className="order-summary">
         <div>
           <span>
@@ -183,6 +167,7 @@ function Orders({ page, data, openOrder, showDetail, notify, onChanged }) {
             ))}
           </div>
           <div className="toolbar-right">
+            <Button icon={Download} permission="data_io" onClick={() => exportOrders(filtered, notify)} disabled={!filtered.length}>导出单据</Button>
             <div className="table-search">
               <AntInput prefix={<Search size={16} />} allowClear
                 aria-label="搜索单据"

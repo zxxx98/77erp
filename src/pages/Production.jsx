@@ -387,8 +387,8 @@ export function Production({ data, initialBom, onChanged, onNavigate }) {
       <div className="bom-actions">
         {detail.status === 'in_progress' && <Button disabled={action.busy || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={() => requestMaterials('out')}>申请补料</Button>}
         {['in_progress', 'completed'].includes(detail.status) && <Button disabled={action.busy || detail.material_documents?.some(doc => doc.status === 'pending') || !detail.items.some(item => item.available_quantity > 0)} onClick={() => requestMaterials('in')}>申请退料</Button>}
-        {onNavigate && can('sale') && <Button disabled={action.busy} onClick={() => onNavigate('sales')}>前往出库</Button>}
-        {onNavigate && can('purchase') && <Button disabled={action.busy} onClick={() => onNavigate('purchases')}>前往入库</Button>}
+        {onNavigate && can('sale') && <Button disabled={action.busy} onClick={() => onNavigate('sales', { approval: 'issues', q: detail.number })}>前往出库</Button>}
+        {onNavigate && can('purchase') && <Button disabled={action.busy} onClick={() => onNavigate('purchases', { approval: 'returns', q: detail.number })}>前往入库</Button>}
       </div>
       {detail.material_documents?.some(doc => doc.status === 'pending') && <p className="bom-hint">已有待批准材料单，请先由仓库确认或取消后再提交补料、退料申请。</p>}
       <MaterialDocumentList documents={detail.material_documents || []} busy={action.busy} onCancel={detail.status !== 'void' ? cancelMaterialRequest : undefined} />
@@ -400,7 +400,7 @@ export function Production({ data, initialBom, onChanged, onNavigate }) {
       onVoid={batch => begin({ kind: 'void_batch', batchId: batch.id, reason: '' })} />
     {!!detail.receipt_documents?.length && <section className="panel bom-section" aria-label="生产成品入库单"><h2>生产成品入库单</h2>
       <p className="bom-hint">每批单独批准。待入库不增加仓库库存，结束生产后仍可入库；更正请作废对应批次。</p>
-      {onNavigate && can('purchase') && <Button className="production-receipt-action" disabled={action.busy} onClick={() => onNavigate('purchases')}>前往入库审批</Button>}
+      {onNavigate && can('purchase') && <Button className="production-receipt-action" disabled={action.busy} onClick={() => onNavigate('purchases', { approval: 'receipts', q: detail.number })}>前往入库审批</Button>}
       <ProductionReceiptList documents={detail.receipt_documents} busy={action.busy} />
     </section>}
     {(detail.scraps || []).length > 0 && <section className="panel bom-section"><ScrapOutputs rows={detail.scraps} materials={detail.items} completed={!!detail.completed_at} receiptStatus={detail.status === 'void' ? 'void' : undefined} />

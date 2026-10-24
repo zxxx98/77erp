@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Input } from '../ui/controls.jsx';
 import { Button, Badge, QueryStatus } from '../components/common.jsx';
+import { ProductionApprovalList } from './ProductionApprovalList.jsx';
+import { ProductionApprovalDialog } from './ProductionApprovalDialog.jsx';
 import { Select } from '../Dropdown.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { useBusiness } from '../business-api.js';
@@ -11,9 +13,9 @@ import './production-materials.css';
 const statusLabels = { pending: '待批准', confirmed: '已完成', cancelled: '已取消' };
 const titleFor = doc => doc.type === 'in' ? '生产退料' : doc.kind === 'supplement' ? '生产补料' : '生产领料';
 
-export function MaterialDocumentList({ documents, busy, onConfirm, onCancel }) {
+export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, defaultExpanded = false }) {
   const { can } = usePermissions();
-  const [expanded, setExpanded] = useState(null);
+  const [expanded, setExpanded] = useState(() => defaultExpanded ? documents[0]?.id : null);
   const [cancelling, setCancelling] = useState(null);
   const [reason, setReason] = useState('');
   return <div className="material-documents">{documents.map(doc => <article className="material-document" key={doc.id}>
@@ -41,35 +43,57 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel }) {
   </article>)}</div>;
 }
 
-export function ProductionMaterialDocuments({ data, type, onChanged }) {
+export function ProductionMaterialDocuments({ data, type, onChanged, initialQuery = '', onRefresh }) {
   const { can } = usePermissions();
-  const [status, setStatus] = useState('pending'), [q, setQ] = useState(''), [offset, setOffset] = useState(0);
+  const [status, setStatus] = useState(initialQuery ? 'all' : 'pending'), [q, setQ] = useState(initialQuery), [offset, setOffset] = useState(0);
   const [message, setMessage] = useState('');
+  const [selection, setSelection] = useState(null);
   const action = useBusiness();
   const allowed = can(type === 'out' ? 'sale' : 'purchase');
-  const list = useQuery(allowed ? queryPath('/production-material-documents', { type, status, q, offset, limit: 20 }) : null, data, q ? 200 : 0);
+  const list = useQuery(allowed ? queryPath('/production-material-documents', { type, status, q, offset, limit: 10 }) : null, data, q ? 200 : 0);
+  const scope = JSON.stringify([data.warehouse_id, type, status, q, offset]);
+  const documents = list.result?.documents || [];
+  const selected = selection?.scope === scope ? documents.find(doc => doc.id === selection.id) : null;
+  useEffect(() => {
+    setSelection(current => current?.scope === scope && list.result?.documents.some(doc => doc.id === current.id) ? current : null);
+  }, [scope, list.result]);
+  useEffect(() => {
+    if (list.result && offset > 0 && !list.result.documents.length) setOffset(Math.max(0, (Math.ceil(list.result.total / 10) - 1) * 10));
+  }, [list.result, offset]);
   if (!allowed) return null;
+  const completed = async () => {
+    setSelection(null);
+    if (offset > 0 && documents.length === 1 && status === 'pending') setOffset(value => Math.max(0, value - 10));
+    list.retry();
+    await Promise.all([onChanged?.(), onRefresh?.()]);
+  };
   const confirm = doc => action.run(async () => {
     const direction = doc.type === 'out' ? '出库' : '入库';
     if (!window.confirm(`确认批准 ${doc.number} 并整单${direction}？${doc.type === 'out' ? '材料将从当前仓库扣除，交付生产使用。' : '未用材料将退回当前仓库。'}`)) return;
     await action.send(`/production-material-documents/${doc.id}/confirm`, { version: doc.version }, { warehouseId: data.warehouse_id });
-    setMessage(`${doc.number} 已${direction}。`); list.retry(); await onChanged?.();
+    setMessage(`${doc.number} 已${direction}。`); await completed();
   });
   const cancel = (doc, reason) => action.run(async () => {
     await action.send(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason }, { warehouseId: data.warehouse_id });
-    setMessage(`${doc.number} 已取消，库存未变动。`); list.retry(); await onChanged?.();
+    setMessage(`${doc.number} 已取消，库存未变动。`); await completed();
   });
   const title = type === 'out' ? '生产领料出库单' : '生产退料入库单';
   return <section className="panel material-queue" aria-label={title}>
-    <div className="material-document-heading"><h2>{title}</h2><Button disabled={action.busy || list.loading} onClick={() => { action.setError(''); list.retry(); }}>刷新生产单据</Button></div>
+    <div className="material-document-heading"><h2>{title}</h2><Button disabled={action.busy || list.loading} onClick={() => { action.setError(''); list.retry(); onRefresh?.(); }}>刷新生产单据</Button></div>
     <p className="material-muted">{type === 'out' ? '核对领料或补料申请，批准并确认出库后扣除库存。' : '核对未用材料，批准并确认入库后退回库存。'}生产材料流转不计入采购销售额。</p>
     <div className="material-filters"><Input type="search" aria-label="搜索生产材料单" placeholder="搜索单号、生产单或成品" maxLength={100} value={q} disabled={action.busy} onChange={event => { setQ(event.target.value); setOffset(0); }} />
       <Select aria-label="生产材料单状态" value={status} disabled={action.busy} onChange={value => { setStatus(value); setOffset(0); }}><option value="all">全部状态</option>{Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></div>
     {message && <p className="material-success" role="status">{message}</p>}
-    {action.error && <p className="form-error" role="alert">{action.error} 可刷新后核对当前状态。</p>}
+    {action.error && !selected && <p className="form-error" role="alert">{action.error} 可刷新后核对当前状态。</p>}
     <QueryStatus query={list} />
-    <MaterialDocumentList documents={list.result?.documents || []} busy={action.busy} onConfirm={confirm} onCancel={cancel} />
+    <ProductionApprovalList documents={documents} busy={action.busy || list.loading} onView={id => { action.setError(''); setSelection({ id, scope }); }} statusLabels={statusLabels} />
     {list.result && !list.result.documents.length && <p className="material-muted">暂无符合条件的生产材料单。</p>}
-    {list.result && (offset > 0 || list.result.has_more) && <div className="material-actions"><Button disabled={action.busy || !offset} onClick={() => setOffset(value => value - 20)}>上一页生产材料单</Button><span>共 {list.result.total} 张</span><Button disabled={action.busy || !list.result.has_more} onClick={() => setOffset(value => value + 20)}>下一页生产材料单</Button></div>}
+    {list.result && (offset > 0 || list.result.has_more) && <div className="material-actions"><Button disabled={action.busy || list.loading || !offset} onClick={() => setOffset(value => Math.max(0, value - 10))}>上一页生产材料单</Button><span>共 {list.result.total} 张 · 第 {offset / 10 + 1} 页</span><Button disabled={action.busy || list.loading || !list.result.has_more} onClick={() => setOffset(value => value + 10)}>下一页生产材料单</Button></div>}
+    {selected && <ProductionApprovalDialog title={titleFor(selected)} subtitle={selected.number} busy={action.busy} onClose={() => setSelection(null)}>
+      <div className="form-body">
+        {action.error && <p className="form-error" role="alert">{action.error} 可关闭详情并刷新后核对当前状态。</p>}
+        <MaterialDocumentList key={selected.id} documents={[selected]} busy={action.busy} defaultExpanded onConfirm={confirm} onCancel={cancel} />
+      </div>
+    </ProductionApprovalDialog>}
   </section>;
 }

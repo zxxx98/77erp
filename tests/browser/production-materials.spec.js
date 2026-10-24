@@ -50,10 +50,10 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     await page.getByRole('button', { name: '前往出库', exact: true }).click();
     const queue = page.getByRole('region', { name: '生产领料出库单', exact: true });
     await expect(queue.getByText(f.order.number, { exact: false })).toBeVisible();
-    await queue.getByRole('button', { name: '查看材料明细', exact: true }).click();
-    await expect(queue.getByText('10 千克', { exact: true })).toBeVisible();
+    await queue.getByRole('button', { name: /查看并审批/ }).click();
+    await expect(page.getByRole('dialog').getByText('10 千克', { exact: true })).toBeVisible();
     page.once('dialog', dialog => dialog.accept());
-    await queue.getByRole('button', { name: '批准并确认出库', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '批准并确认出库', exact: true }).click();
     await expect(queue.getByRole('status').filter({ hasText: '已出库' })).toBeVisible();
     expect(f.stock()).toBe(90);
     await page.goto(`${f.base}/#production`);
@@ -76,17 +76,20 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     await page.getByRole('button', { name: '提交退料申请', exact: true }).click();
     await expect(page.getByRole('status').first()).toContainText('退料申请已提交');
     expect(f.stock()).toBe(90);
-    await page.getByRole('button', { name: '前往入库', exact: true }).first().click();
+    await page.getByRole('button', { name: '前往入库审批', exact: true }).click();
     const receipts = page.getByRole('region', { name: '生产成品入库单', exact: true });
     await expect(receipts.getByText(f.order.number, { exact: false })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('production-receipt-pending.png'), fullPage: true });
+    await receipts.getByRole('button', { name: /查看并审批/ }).click();
     page.once('dialog', dialog => dialog.accept());
-    await receipts.getByRole('button', { name: '批准并确认入库', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '批准并确认入库', exact: true }).click();
     await expect(receipts.getByRole('status').filter({ hasText: '已入库' })).toBeVisible();
     expect(f.db.prepare('SELECT stock,inventory_value_cents FROM products WHERE id=?').get(f.product.id)).toEqual({ stock: 4, inventory_value_cents: 1600 });
+    await page.getByRole('tab', { name: /退料待入库/ }).click();
     const returns = page.getByRole('region', { name: '生产退料入库单', exact: true });
+    await returns.getByRole('button', { name: /查看并审批/ }).click();
     page.once('dialog', dialog => dialog.accept());
-    await returns.getByRole('button', { name: '批准并确认入库', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '批准并确认入库', exact: true }).click();
     await expect(returns.getByRole('status').filter({ hasText: '已入库' })).toBeVisible();
     expect(f.stock()).toBe(92);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -127,15 +130,16 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} multi
     await page.goto(`${f.base}/#purchases`);
     // API login changes the cookie; reload to initialize the new user's UI permissions.
     await page.reload();
+    await page.getByRole('tab', { name: /成品待入库/ }).click();
     const receipts = page.getByRole('region', { name: '生产成品入库单', exact: true });
-    await expect(receipts.getByRole('button', { name: '批准并确认入库', exact: true })).toHaveCount(2);
-    await receipts.getByRole('button', { name: '查看入库明细', exact: true }).first().click();
-    await expect(receipts.getByText(/成本/)).toHaveCount(0);
+    await expect(receipts.getByRole('button', { name: /查看并审批/ })).toHaveCount(2);
     for (const stock of [2, 4]) {
+      await receipts.getByRole('button', { name: /查看并审批/ }).first().click();
+      await expect(page.getByRole('dialog').getByText(/成本/)).toHaveCount(0);
       page.once('dialog', dialog => dialog.accept());
-      await receipts.getByRole('button', { name: '批准并确认入库', exact: true }).first().click();
+      await page.getByRole('dialog').getByRole('button', { name: '批准并确认入库', exact: true }).click();
       await expect.poll(() => f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.product.id).stock).toBe(stock);
-      await expect(receipts.getByRole('button', { name: '批准并确认入库', exact: true })).toHaveCount(stock === 2 ? 1 : 0);
+      await expect(receipts.getByRole('button', { name: /查看并审批/ })).toHaveCount(stock === 2 ? 1 : 0);
     }
     expect(f.stock()).toBe(90);
     expect((await page.request.get(`${f.base}/api/production-orders/${f.order.id}`)).status()).toBe(403);
@@ -157,11 +161,12 @@ test('warehouse staff can approve issues without production or finance permissio
     await f.post('/auth/logout', {});
     await f.post('/auth/login', { username: 'warehouseonly', password: 'Warehouse-test-123' });
     await page.goto(`${f.base}/#sales`);
+    await page.getByRole('tab', { name: /领料.*补料待出库/ }).click();
     const queue = page.getByRole('region', { name: '生产领料出库单', exact: true });
-    await queue.getByRole('button', { name: '查看材料明细', exact: true }).click();
-    await expect(queue.getByText(/材料成本/)).toHaveCount(0);
+    await queue.getByRole('button', { name: /查看并审批/ }).click();
+    await expect(page.getByRole('dialog').getByText(/材料成本/)).toHaveCount(0);
     page.once('dialog', dialog => dialog.accept());
-    await queue.getByRole('button', { name: '批准并确认出库', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '批准并确认出库', exact: true }).click();
     await expect(queue.getByRole('status').filter({ hasText: '已出库' })).toBeVisible();
     expect(f.stock()).toBe(90);
     expect((await page.request.get(`${f.base}/api/production-orders/${f.order.id}`)).status()).toBe(403);

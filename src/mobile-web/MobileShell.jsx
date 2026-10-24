@@ -23,8 +23,7 @@ import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, Product
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
 import { ProductBatchDialog } from '../pages/Products.jsx';
-import { ProductionMaterialDocuments } from '../features/ProductionMaterialDocuments.jsx';
-import { ProductionReceipts } from '../features/ProductionReceipts.jsx';
+import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
 export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProduction, announcementCount, updateNotice }) {
   const { can } = usePermissions();
@@ -262,6 +261,16 @@ function OrderSummary({ order, onOpen }) {
 }
 
 function Orders({ data, initial, openOrder, showOrder, onChanged }) {
+  return <div className="mw-stack">
+    <h1>{initial === 'in' ? '入库' : initial === 'out' ? '出库' : '操作记录'}</h1>
+    <div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>新建入库</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>新建出库</Button></div>
+    <OrderApprovalWorkspace data={data} type={initial} onChanged={onChanged}>
+      <OrderRecords data={data} initial={initial} showOrder={showOrder} />
+    </OrderApprovalWorkspace>
+  </div>;
+}
+
+function OrderRecords({ data, initial, showOrder }) {
   const { can } = usePermissions();
   const { online } = usePwa();
   const [query, setQuery] = useState('');
@@ -286,13 +295,9 @@ function Orders({ data, initial, openOrder, showOrder, onChanged }) {
     finally { setExporting(false); }
   };
   return <div className="mw-stack">
-    <h1>{initial === 'in' ? '入库' : initial === 'out' ? '出库' : '操作记录'}</h1><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>新建入库</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>新建出库</Button></div>
     <SearchField value={query} onChange={setQuery} label="搜索单据号、往来单位或物料" />
     <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '入库'], ['out', '出库'], ['transfer', '仓库调拨'], ['internal', '内部流转']] } />
     <Chips label="单据时间" value={period} onChange={setPeriod} options={ [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天']] } />
-    {['all', 'out'].includes(type) && <ProductionMaterialDocuments data={data} type="out" onChanged={onChanged} />}
-    {['all', 'in'].includes(type) && <ProductionMaterialDocuments data={data} type="in" onChanged={onChanged} />}
-    {['all', 'in'].includes(type) && <ProductionReceipts data={data} onChanged={onChanged} />}
     <p className="mw-muted">共 {result ? result.total : '—'} 张单据 · 已加载 {orders.length} 张</p>
     <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>重新加载</Button>}{loading && <LoadingStatus>正在读取单据…</LoadingStatus>}
     {orders.map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}

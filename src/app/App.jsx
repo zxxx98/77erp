@@ -237,9 +237,14 @@ function App({ admin, onLogout }) {
     if (id !== 'bom') setBomProduct(null);
     if (id !== 'production') setProductionBom(null);
     acceptedHash.current = navigationHash(id, nextMode);
+    if (['purchases', 'sales'].includes(id) && filter?.approval) {
+      const params = new URLSearchParams({ approval: filter.approval });
+      if (filter.q) params.set('q', filter.q);
+      acceptedHash.current += `?${params}`;
+    }
     location.hash = acceptedHash.current;
     setNotification(false);
-    if (filter) setInventoryFilter(filter);
+    if (filter && !filter.approval) setInventoryFilter(filter);
     window.scrollTo({ top: 0 });
   };
   const switchMode = nextMode => {
