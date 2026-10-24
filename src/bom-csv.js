@@ -21,7 +21,7 @@ export function bomCSV(snapshot) {
     ] : []),
     [text('说明'), text(snapshot.multi_level
       ? '按毛需求展开，中间半成品库存未抵扣；各层使用自己的基准产量和损耗算法。最终领料先合并精确值再向上保留6位，来源见结构明细。库存未预留或扣减。'
-      : `按单层BOM测算；${bomLossMethodLabels[lossMethod]}标准投入＝${bomLossMethodFormulas[lossMethod]}，再按生产数量÷基准产量折算，需求最终向上保留 6 位小数。按投入比例的废料基于含损耗投入计算，不再加到材料需求上。库存为读取时的账面数量，未预留或扣减。`)],
+      : `按单层BOM测算；${bomLossMethodLabels[lossMethod]}标准投入＝${bomLossMethodFormulas[lossMethod]}，再按生产数量÷基准产量折算，需求最终向上保留 4 位小数。按投入比例的废料基于含损耗投入计算，不再加到材料需求上。库存为读取时的账面数量，未预留或扣减。`)],
   ];
   return '\ufeff' + rows.map(row => row.join(',')).join('\r\n') + '\r\n';
 }

@@ -1,9 +1,9 @@
 import { Input as AntInput } from '../ui/controls.jsx';
 
-const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 const rate = value => value !== 0 && Math.abs(value) < 0.000001
   ? `${value < 0 ? '-' : '+'}<0.000001%`
-  : `${value > 0 ? '+' : ''}${count(value)}%`;
+  : `${value > 0 ? '+' : ''}${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 })}%`;
 
 export function MaterialVariance({ row, analysis, complete, disabled, onReason }) {
   const available = analysis.standard_quantity != null;

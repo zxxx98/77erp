@@ -15,8 +15,8 @@ test('three levels combine each recipe loss method and fraction without rounding
   ]);
   const nodes = buildBomNodes(recipes.get(1), id => recipes.get(id));
   const result = calculateBomNodes(nodes, 9);
-  assert.deepEqual(result.nodes.map(row => row.required), [10, 33, 3.666667]);
-  assert.equal(result.rows[0].required, 3.666667);
+  assert.deepEqual(result.nodes.map(row => row.required), [10, 33, 3.6667]);
+  assert.equal(result.rows[0].required, 3.6667);
   const exact = new Map([[1, bom(1, [item(2, { ...parseBomQuantity('1/3'), usage_mode: 'explode', child_bom_id: 2 })])], [2, bom(2, [item(3, { quantity: 3 })])]]);
   assert.equal(calculateBomNodes(buildBomNodes(exact.get(1), id => exact.get(id)), 1).rows[0].required, 1);
 });

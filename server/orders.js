@@ -1,4 +1,4 @@
-import { validQuantity, addQuantity } from "../shared/quantity.js";
+import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from "../shared/quantity.js";
 import { validUnitPrice } from "../shared/money.js";
 import { resolveContact, moveInventory } from "./commerce.js";
 import { notifyOrder } from './notifications.js';
@@ -28,7 +28,7 @@ export function createOrder(db, req, body) {
       !validQuantity(item.quantity, true) ||
       !validUnitPrice(item.price)
     )
-      throw new Error("物料数量必须为正数且最多 6 位小数，单价最多四位小数且不能为负数。");
+      throw new Error("物料数量必须为正数且最多 4 位小数，单价最多四位小数且不能为负数。");
     if (seen.has(item.product_id))
       throw new Error("同一物料不能重复添加，请合并数量。");
     seen.add(item.product_id);
@@ -38,9 +38,10 @@ export function createOrder(db, req, body) {
     if (!p) throw new Error("物料不存在。");
     if (p.warehouse_id !== req.warehouse.id)
       throw new Error("物料不属于当前仓库。");
+    item = { ...item, quantity: materialQuantity(item.quantity, p) };
     if (type === "out" && p.stock < item.quantity)
       throw new Error(`${p.name} 库存不足（当前 ${p.stock} ${p.unit}）。`);
-    if (type === "in" && !validQuantity(addQuantity(p.stock, item.quantity)))
+    if (type === "in" && !validStoredQuantity(addQuantity(p.stock, item.quantity)))
       throw new Error(`${p.name} 入库后库存超出上限。`);
     const lineTotal = Math.round(item.quantity * item.price * 100);
     if (!Number.isSafeInteger(lineTotal))

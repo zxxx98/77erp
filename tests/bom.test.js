@@ -72,11 +72,11 @@ test('BOM maintenance is idempotent, warehouse-scoped, searchable and does not c
 
 test('standard loss uses gross-input percentages and combines exact fractions before a single upward rounding', () => {
   assert.equal(bomRequiredQuantity(90, 1, 1, '', 10), 100);
-  assert.equal(bomRequiredQuantity(100, 1, 1, '', 5), 105.263158);
-  assert.equal(bomRequiredQuantity(0.333334, 3, 1, '1/3', 20), 1.25);
-  assert.equal(bomRequiredQuantity(0.333334, 3, 2, '1/3', 20), 0.625);
+  assert.equal(bomRequiredQuantity(100, 1, 1, '', 5), 105.2632);
+  assert.equal(bomRequiredQuantity(0.3334, 3, 1, '1/3', 20), 1.25);
+  assert.equal(bomRequiredQuantity(0.3334, 3, 2, '1/3', 20), 0.625);
   assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 99.999999), 100);
-  assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 0.000001), 0.000002);
+  assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 0.000001), 0.0001);
   assert.throws(() => bomRequiredQuantity(1, 1, 1, '', 99.999999), /上限/);
   for (const rate of [-1, 100, 101, 0.0000001, '10', null, NaN, Infinity]) {
     assert.throws(() => validateBomLossRate(rate), /标准损耗率/);
@@ -110,9 +110,9 @@ test('loss rates belong to individual BOM materials, preserve older-client edits
 test('external loss keeps exact fractions, rounds only final demand and rejects invalid methods', () => {
   assert.equal(bomRequiredQuantity(90, 1, 1, '', 10, 'external'), 99);
   assert.equal(bomRequiredQuantity(100, 1, 1, '', 5, 'external'), 105);
-  assert.equal(bomRequiredQuantity(0.333334, 3, 1, '1/3', 20, 'external'), 1.2);
-  assert.equal(bomRequiredQuantity(0.333334, 3, 2, '1/3', 20, 'external'), 0.6);
-  assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 0.000001, 'external'), 0.000002);
+  assert.equal(bomRequiredQuantity(0.3334, 3, 1, '1/3', 20, 'external'), 1.2);
+  assert.equal(bomRequiredQuantity(0.3334, 3, 2, '1/3', 20, 'external'), 0.6);
+  assert.equal(bomRequiredQuantity(0.000001, 1, 1, '', 0.000001, 'external'), 0.0001);
   assert.equal(bomRequiredQuantity(90, 1, 1, '', 0, 'external'), 90);
   assert.throws(() => bomRequiredQuantity(99999999, 1, 1, '', 1, 'external'), /上限/);
   for (const method of ['', null, 0, 'other', 'constructor'])
@@ -140,7 +140,7 @@ test('BOM loss method controls demand and scrap, survives older clients and inva
   assert.notEqual(switched.data.version, edited.data.version);
   assert.equal((await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1, version: edited.data.version })).status, 409);
   const recalculated = (await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1 })).data;
-  assert.equal(recalculated.rows[0].required, 1.388889);
+  assert.equal(recalculated.rows[0].required, 1.3889);
 });
 
 test('BOM rejects malformed, duplicate, self, inactive, unit-mismatched and cross-warehouse materials atomically', async t => {
@@ -197,8 +197,8 @@ test('single-level calculation scales batches exactly, rounds demand upward and 
   const before = f.db.prepare('SELECT * FROM products ORDER BY id').all();
   const result = await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 1, version: bom.version });
   assert.equal(result.status, 200);
-  assert.deepEqual(result.data.rows.map(row => row.required), [0.333334, 0.1]);
-  assert.deepEqual(result.data.rows.map(row => row.shortage), [0.033334, 0]);
+  assert.deepEqual(result.data.rows.map(row => row.required), [0.3334, 0.1]);
+  assert.deepEqual(result.data.rows.map(row => row.shortage), [0.0334, 0]);
   assert.equal(result.data.warehouse.name, '主仓库');
   assert.ok(Number.isFinite(Date.parse(result.data.captured_at)));
   assert.equal(JSON.stringify(result.data).includes('cost'), false);
@@ -209,7 +209,7 @@ test('single-level calculation scales batches exactly, rounds demand upward and 
   for (const production_quantity of [0, -1, '1', 0.0000001, 100000000, null])
     assert.equal((await f.request(`/boms/${bom.id}/calculate`, { production_quantity })).status, 400);
   assert.equal(bomRequiredQuantity(0.1, 0.3, 0.1), 0.3);
-  assert.equal(bomRequiredQuantity(0.000001, 0.000001, 99999999), 0.000001);
+  assert.equal(bomRequiredQuantity(0.000001, 0.000001, 99999999), 0.0001);
   assert.equal(bomRequiredQuantity(99999999, 99999999, 99999999), 99999999);
   assert.throws(() => bomRequiredQuantity(99999999, 2, 1), /上限/);
 });
@@ -246,7 +246,7 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
   assert.deepEqual(parseBomQuantity('0.025'), { quantity: 0.025, quantity_fraction: '' });
   const third = parseBomQuantity('1/3');
   assert.equal(bomRequiredQuantity(third.quantity, 3, 1, third.quantity_fraction), 1);
-  assert.equal(bomRequiredQuantity(third.quantity, 1, 1, third.quantity_fraction), 0.333334);
+  assert.equal(bomRequiredQuantity(third.quantity, 1, 1, third.quantity_fraction), 0.3334);
   assert.equal(bomRequiredQuantity(third.quantity, 3, 2, third.quantity_fraction), 0.5);
   assert.equal(bomRequiredQuantity(0.000001, 99999999, 1, '1/99999999'), 1);
   const f = await fixture(t);
@@ -268,7 +268,7 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 32);
+  assert.equal(backup.version, 33);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },
@@ -390,17 +390,17 @@ test('BOM CSV exports the exact snapshot, retains fractional quantities and prot
   assert.equal(csv[0], '\ufeff');
   assert.equal(rows[0][1], "'=配方");
   assert.deepEqual(rows[5], ["'+螺丝", 'A,"001"', "'@规格", '颗', '0.3', '3', '2.123456', '0.876544', "'-备注", '0']);
-  snapshot.rows[0].quantity = 0.333334; snapshot.rows[0].quantity_fraction = '1/3';
-  assert.equal(parseCSV(bomCSV(snapshot))[5][4], '1/3（约 0.333334）');
+  snapshot.rows[0].quantity = 0.3334; snapshot.rows[0].quantity_fraction = '1/3';
+  assert.equal(parseCSV(bomCSV(snapshot))[5][4], '1/3（约 0.3334）');
   assert.ok(rows.at(-1)[1].includes('未预留或扣减'));
   snapshot.rows[0].product_id = 20;
   snapshot.scraps = [
-    { name: '=废料', barcode: 'S-1', specification: '', unit: 'kg', method: 'output', source_product_id: null, quantity: 0.333334, quantity_fraction: '1/3', planned_quantity: 3.333334, note: '@说明' },
+    { name: '=废料', barcode: 'S-1', specification: '', unit: 'kg', method: 'output', source_product_id: null, quantity: 0.3334, quantity_fraction: '1/3', planned_quantity: 3.333334, note: '@说明' },
     { name: '废料乙', barcode: 'S-2', specification: '', unit: '颗', method: 'input_ratio', source_product_id: 20, quantity: 5, quantity_fraction: '', planned_quantity: 0.15, note: '' },
   ];
   const exported = parseCSV(bomCSV(snapshot));
   assert.equal(exported[6][0], '预计废料名称');
-  assert.equal(exported[7][0], "'=废料"); assert.equal(exported[7][5], '1/3（约 0.333334）'); assert.equal(exported[7][8], "'@说明");
+  assert.equal(exported[7][0], "'=废料"); assert.equal(exported[7][5], '1/3（约 0.3334）'); assert.equal(exported[7][8], "'@说明");
   assert.equal(exported[8][5], '5%'); assert.equal(exported[8][6], 'A,"001"'); assert.equal(exported[8][7], '0.15');
 
 });
@@ -437,7 +437,7 @@ test('multilevel demand retains exact fractions, aggregates shared leaves once a
   f.db.prepare('UPDATE products SET stock=0.3 WHERE id=?').run(raw);
   const result = await f.request(`/boms/${root.id}/calculate`, { production_quantity: 1, schema_version: 2 });
   assert.equal(result.status, 200, JSON.stringify(result.data));
-  assert.equal(result.data.rows.length, 1); assert.equal(result.data.rows[0].required, 0.666667); assert.equal(result.data.rows[0].shortage, 0.366667);
+  assert.equal(result.data.rows.length, 1); assert.equal(result.data.rows[0].required, 0.6667); assert.equal(result.data.rows[0].shortage, 0.3667);
   assert.deepEqual(result.data.rows[0].sources, ['1.1', '2.1']);
   const changed = await f.command(`/boms/${child.id}`, { ...child, version: child.version, loss_method: 'external', items: [{ ...child.items[0], loss_rate: 10 }] });
   assert.equal(changed.status, 200);

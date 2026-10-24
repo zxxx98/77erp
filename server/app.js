@@ -344,7 +344,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     const fixedOnly = req.query.fixed === "1" || req.query.fixed === "true";
     const products = db
       .prepare(
-        `SELECT name,barcode,category,unit,cost,price,stock,threshold,specification,note,active,is_fixed_asset FROM products WHERE warehouse_id=? AND active!=0${fixedOnly ? " AND is_fixed_asset=1" : ""} ORDER BY category,name,id`,
+        `SELECT name,barcode,category,unit,cost,price,stock,threshold,specification,note,active,is_fixed_asset,unit_round_up FROM products WHERE warehouse_id=? AND active!=0${fixedOnly ? " AND is_fixed_asset=1" : ""} ORDER BY category,name,id`,
       )
       .all(req.warehouse.id)
       .map((p) => {
@@ -390,7 +390,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       })),
     });
   });
-  function productValues(body) {
+  function productValues(body, stored = false) {
     const { name, barcode, unit, cost, price, threshold } = body;
     const category = body.category ?? (Number.isSafeInteger(body.category_id) ? db.prepare("SELECT name FROM categories WHERE id=?").get(body.category_id)?.name : undefined);
     const normalizedBarcode = typeof barcode === "string" ? barcode.trim() : "";
@@ -403,10 +403,10 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       (normalizedBarcode && !/^[\w.-]{3,64}$/.test(normalizedBarcode)) ||
       !validUnitPrice(cost) ||
       !validUnitPrice(price) ||
-      !validQuantity(threshold)
+      !validQuantity(threshold, false, stored ? 6 : 4)
     )
       throw new Error(
-        "请填写有效的物料信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，单价最多四位小数且不能为负数，预警值需为非负数且最多 6 位小数。",
+        "请填写有效的物料信息，条码可留空；手动条码需为 3–64 位字母、数字或 ._-，单价最多四位小数且不能为负数，预警值需为非负数且最多 4 位小数。",
       );
     return [
       name.trim(),
@@ -436,11 +436,12 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       db.exec("BEGIN IMMEDIATE");
       inTransaction = true;
       const catalog = catalogValues(req.body, undefined, req.warehouse.id);
+      if (catalog.values[5]) v[6] = Math.ceil(v[6]);
       v[2] = catalog.path;
       if (!v[1]) v[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,unit_round_up,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids, req.user);
@@ -484,10 +485,11 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
         });
       }
       const catalog = catalogValues(req.body, existing);
+      if (catalog.values[5]) v[6] = Math.ceil(v[6]);
       v[2] = catalog.path;
       if (!v[1]) v[1] = existing.barcode;
       db.prepare(
-        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=? WHERE id=? AND version=?",
+        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,unit_round_up=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=? WHERE id=? AND version=?",
       ).run(...v, ...catalog.values, req.params.id, existing.version);
       recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
       syncProduct(db, existing.id, req.body.sync_warehouse_ids, req.user);

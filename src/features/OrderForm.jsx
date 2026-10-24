@@ -10,7 +10,7 @@ import { Templates, CameraScanner } from '../LazyComponents.jsx';
 import { ContactPicker } from '../Dropdown.jsx';
 import { useProductSelection, lookupProductCode } from '../product-query.js';
 import { useQuery } from '../queries.js';
-import { addQuantity } from '../../shared/quantity.js';
+import { addQuantity, materialQuantity, parseQuantity, validQuantity } from '../../shared/quantity.js';
 import { Modal, QueryStatus, Button, ProductArt } from '../components/common.jsx';
 import { FilePenLine, Camera, ScanLine, Plus, Search, X, CircleCheck, Trash2, TriangleAlert, Check } from 'lucide-react';
 import { moneyBase, baseCurrencySymbol, count } from '../app/format.js';
@@ -89,13 +89,14 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     setItems((prev) =>
       prev.map((i) => (i.product_id === id ? { ...i, [key]: value } : i)),
     );
+  const quantityOf = i => { const value = Number(i.quantity); return data.products.find(p => p.id === i.product_id)?.unit_round_up ? Math.ceil(value) : value; };
   const total =
     items.reduce(
-      (s, i) => s + Math.round(Number(i.quantity) * Number(i.price) * 100),
+      (s, i) => s + Math.round(quantityOf(i) * Number(i.price) * 100),
       0,
     ) / 100;
   const totalQuantity = items.reduce(
-    (sum, item) => sum + (Number(item.quantity) || 0),
+    (sum, item) => sum + (quantityOf(item) || 0),
     0,
   );
   const submit = async () => {
@@ -113,7 +114,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
         type,
         ...(partnerId ? { partner_id: partnerId } : {}),
         partner, note,
-        items: items.map(i => ({ ...i, quantity: Number(i.quantity), price: Number(i.price) })),
+        items: items.map(i => ({ ...i, quantity: materialQuantity(parseQuantity(i.quantity, true), data.products.find(p => p.id === i.product_id)), price: Number(i.price) })),
       });
       await onSaved(`${type === "in" ? "入库" : "出库"}成功 · ${r.number}`);
     } catch (e) {
@@ -282,13 +283,14 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         </div>
                       </td>
                       <td>
-                        <FormField value={i.quantity} required type="number" min="0.000001" max="99999999" label={`${p.name} 数量`}><AntInput
+                        <FormField value={i.quantity} required type="number" min="0.0001" max="99999999" label={`${p.name} 数量`}><AntInput
                           aria-label={`${p.name} 数量`}
                           type="number"
-                          min="0.000001"
+                          min="0.0001"
                           max="99999999"
-                          step="0.000001"
+                          step="0.0001"
                           value={i.quantity}
+                          onBlur={() => { if (p.unit_round_up && validQuantity(Number(i.quantity), true)) update(i.product_id, "quantity", Math.ceil(Number(i.quantity))); }}
                           onChange={(e) =>
                             update(i.product_id, "quantity", e.target.value)
                           }
@@ -308,7 +310,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         /></FormField>
                       </td>
                       <td className="number-cell">
-                        {baseCurrencySymbol()} {moneyBase(Number(i.quantity) * Number(i.price))}
+                        {baseCurrencySymbol()} {moneyBase(quantityOf(i) * Number(i.price))}
                       </td>
                       <td>
                         <AntButton type="text"

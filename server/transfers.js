@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { validQuantity } from '../shared/quantity.js';
+import { validQuantity, materialQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { moveInventory } from './commerce.js';
 import { notifyStockChanges, queueNotification } from './notifications.js';
@@ -115,14 +115,16 @@ export function installTransfers(app, db, { route, mutation }) {
     // archive fails the whole request instead of a half-applied transfer.
     const normalized = body.items.map((item) => {
       if (!integer(item?.product_id) || !validQuantity(item?.quantity, true))
-        fail('调拨数量需为正数且最多 6 位小数。');
+        fail('调拨数量需为正数且最多 4 位小数。');
       if (seen.has(item.product_id)) fail('同一物料不能重复添加，请合并数量。');
       seen.add(item.product_id);
       const source = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, req.warehouse.id);
       if (!source) fail('物料不属于当前仓库。');
+      const destination = destinationOf(source, target.id);
+      item = { ...item, quantity: materialQuantity(item.quantity, { unit_round_up: source.unit_round_up || destination.product.unit_round_up }) };
       if (source.stock < item.quantity)
         fail(`${source.name} 库存不足（当前 ${source.stock} ${source.unit}）。`);
-      return { source, destination: destinationOf(source, target.id), quantity: item.quantity };
+      return { source, destination, quantity: item.quantity };
     });
     const at = new Date().toISOString(), transferId = randomUUID();
     const user = { id: req.user.id, name: (req.user.name || req.user.username) };

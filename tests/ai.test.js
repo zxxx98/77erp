@@ -68,7 +68,7 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} BOM tools
   assert.equal(calculation.status, 200); assert.deepEqual(calculation.data.actions, []);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].planned_quantity, 0.4);
-  assert.equal(result.loss_method, lossMethod); assert.equal(result.rows[0].required, lossMethod === 'internal' ? 0.00625 : 0.006); assert.equal(result.rows[0].quantity_fraction, '1/40'); assert.equal(result.rows[0].stock, material.stock);
+  assert.equal(result.loss_method, lossMethod); assert.equal(result.rows[0].required, lossMethod === 'internal' ? 0.0063 : 0.006); assert.equal(result.rows[0].quantity_fraction, '1/40'); assert.equal(result.rows[0].stock, material.stock);
   assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /展示用量时优先使用原分数/);
   assert.ok(!JSON.stringify(result).includes('cost'));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);
@@ -972,4 +972,24 @@ test('AI queries explicit alternate and multilevel recipes, exposes snapshot sou
   const system = f.calls.at(-1).body.messages.find(message => message.role === 'system').content;
   assert.match(system, /多份匹配时须让用户明确选择/); assert.match(system, /不抵扣中间半成品库存/);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
+});
+
+test('AI unit rounding import and order previews show the exact quantities that confirmation posts', async t => {
+  const f = await fixture(t);
+  const table = [['名称', '单位', '单位是否取整', '期初数量'], ['纸箱整件', '个', '是', '4.1']];
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1, unit_round_up: 2, stock: 3 } });
+  const imported = await f.chat(f.admin, { table });
+  const action = imported.data.actions[0];
+  assert.equal(action.preview.rows[0].unit_round_up, 1);
+  assert.equal(action.preview.rows[0].stock, 5);
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: action.id })).status, 200);
+  const product = f.db.prepare("SELECT * FROM products WHERE name='纸箱整件'").get();
+  assert.equal(product.stock, 5);
+  f.use('preview_orders', { orders: [f.order('out', 1.1, product.id)] });
+  const ordered = await f.chat(f.admin);
+  const orderAction = ordered.data.actions[0];
+  assert.equal(orderAction.preview.orders[0].items[0].quantity, 2);
+  assert.equal(orderAction.preview.orders[0].items[0].after_stock, 3);
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: orderAction.id })).status, 200);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(product.id).stock, 3);
 });

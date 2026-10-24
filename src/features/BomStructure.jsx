@@ -2,7 +2,7 @@ import { calculateBomNodes, bomUsageLabels } from '../../shared/bom-expansion.js
 import { bomLossMethodLabels } from '../../shared/bom.js';
 import { ChevronDown } from 'lucide-react';
 
-const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 
 export function BomStructure({ nodes = [], quantity }) {
   if (!nodes.length) return null;

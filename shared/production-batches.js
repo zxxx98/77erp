@@ -1,4 +1,4 @@
-import { validQuantity, quantityUnits, QUANTITY_SCALE } from './quantity.js';
+import { validStoredQuantity as validQuantity, quantityUnits, QUANTITY_SCALE } from './quantity.js';
 
 export function sumProductionQuantities(values) {
   const units = values.reduce((sum, value) => {

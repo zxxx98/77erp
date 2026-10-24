@@ -1,3 +1,4 @@
+import { parseQuantity, validQuantity, materialQuantity } from '../shared/quantity.js';
 import { ConfigProvider as AntConfigProvider, Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from './ui/controls.jsx';
 
@@ -270,6 +271,7 @@ export function StockQrManager({
         i.product_id === id ? { ...i, [key]: value } : i,
       ),
     });
+  const quantityOf = i => data.products.find(p => p.id === i.product_id)?.unit_round_up ? Math.ceil(Number(i.quantity)) : Number(i.quantity);
   const save = () =>
     run(async () => {
       if (
@@ -290,7 +292,7 @@ export function StockQrManager({
         note: form.note,
         items: form.items.map((i) => ({
           product_id: i.product_id,
-          quantity: Number(i.quantity),
+          quantity: materialQuantity(parseQuantity(i.quantity, true), data.products.find(p => p.id === i.product_id)),
           price_e4: Math.round(Number(i.price) * 10000),
         })),
         ...(selected ? { version: selected.version } : {}),
@@ -502,12 +504,13 @@ export function StockQrManager({
                   </strong>
                   <label>
                     {i.name} 单次数量（{i.unit}）
-                    <FormField label="单次数量（ ）" value={i.quantity} required type="number" min={0.000001} max={99999999}><AntInput
+                    <FormField label="单次数量（ ）" value={i.quantity} required type="number" min={0.0001} max={99999999}><AntInput
                       type="number"
-                      min={0.000001}
+                      min={0.0001}
                       max={99999999}
-                      step={0.000001}
+                      step={0.0001}
                       value={i.quantity}
+                      onBlur={() => { if (validQuantity(Number(i.quantity), true)) updateLine(i.product_id, "quantity", quantityOf(i)); }}
                       onChange={(e) =>
                         updateLine(i.product_id, "quantity", e.target.value)
                       }
@@ -529,7 +532,7 @@ export function StockQrManager({
                   <span>
                     金额{" "}
                     {money(
-                      Math.round(Number(i.quantity) * Number(i.price) * 100),
+                      Math.round(quantityOf(i) * Number(i.price) * 100),
                     )}
                   </span>
                   {form.type === "out" && Number(i.quantity) > i.stock && (
@@ -576,7 +579,7 @@ export function StockQrManager({
                   form.items.reduce(
                     (s, i) =>
                       s +
-                      Math.round(Number(i.quantity) * Number(i.price) * 100),
+                      Math.round(quantityOf(i) * Number(i.price) * 100),
                     0,
                   ),
                 )}

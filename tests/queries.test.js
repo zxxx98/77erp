@@ -325,7 +325,7 @@ test('order aggregates cover the entire filter, not only the returned page', asy
 test('zero safety stock disables dashboard alerts and inventory warning filters, and edits take effect immediately', async t => {
   const f = await fixture(t);
   const unmonitored = await f.product({ name: '不预警物料', barcode: 'NO-ALERT', threshold: 0 });
-  const monitored = await f.product({ name: '预警物料', barcode: 'YES-ALERT', threshold: 0.000001 });
+  const monitored = await f.product({ name: '预警物料', barcode: 'YES-ALERT', threshold: 0.0001 });
   const assertAlerts = async expected => {
     const { products } = (await f.request(f.admin, '/dashboard')).data;
     assert.equal(products.low_stock, 0);

@@ -52,7 +52,7 @@ export function AiSettings({ onBusy = () => {} }) {
   </section>;
 }
 
-const fields = { name: '物料名称', barcode: '条码', category: '分类', unit: '单位', cost: '参考采购价', price: '参考销售价', threshold: '安全库存', stock: '期初库存', specification: '规格型号', note: '备注', is_fixed_asset: '固定资产' };
+const fields = { name: '物料名称', barcode: '条码', category: '分类', unit: '单位', cost: '参考采购价', price: '参考销售价', threshold: '安全库存', stock: '期初库存', specification: '规格型号', note: '备注', is_fixed_asset: '固定资产', unit_round_up: '单位是否取整' };
 function ActionResult({ action }) {
   const p = action.preview, result = action.result;
   return <p role="status">已完成{result.orders ? `：${result.orders.map(o => o.number).join('、')}` : action.kind === 'quality_chart' ? `，已保存图表“${result.name}”，可在品质管理的图表中查看` : action.kind === 'transfer' ? `：${result.number} / ${result.in_number}` : action.kind === 'stocktake' ? `，已盘点 ${p.stocktake.items.length} 种物料` : action.kind === 'inspection' ? `，已更新 ${result.count} 种物料的校验提醒` : action.kind === 'mark_inspected' ? `，已标记 ${result.count} 种物料为已校验` : `，新增 ${result.count} 个物料`}。</p>;
@@ -111,8 +111,8 @@ function ActionPreview({ action, busy, confirm }) {
       <p>列对应：{Object.entries(p.mapping).map(([k, v]) => `${fields[k]} ← ${v}`).join('；')}</p>
       {p.default_category && <p>未映射分类的行统一归入已有分类：{p.default_category.path}。</p>}
       {!!p.created_categories?.length && <p>以下分类当前不存在，将新建为一级分类：{p.created_categories.join('、')}。请确认名称无误。</p>}
-      {!!p.defaults.length && <p>未提供：{p.defaults.map(k => `${fields[k]}=${['cost', 'price', 'stock', 'threshold'].includes(k) ? '0' : k === 'barcode' ? '自动生成' : k === 'is_fixed_asset' ? '否' : '空'}`).join('；')}。请核对这些默认值。</p>}
-      <div className="ai-table"><table><thead><tr>{Object.values(fields).map(v => <th key={v}>{v}</th>)}</tr></thead><tbody>{p.rows.map((row, index) => <tr key={index}>{Object.keys(fields).map(k => <td key={k}>{k === 'is_fixed_asset' ? (row[k] ? '是' : '否') : row[k]}</td>)}</tr>)}</tbody></table></div>
+      {!!p.defaults.length && <p>未提供：{p.defaults.map(k => `${fields[k]}=${['cost', 'price', 'stock', 'threshold'].includes(k) ? '0' : k === 'barcode' ? '自动生成' : ['is_fixed_asset', 'unit_round_up'].includes(k) ? '否' : '空'}`).join('；')}。请核对这些默认值。</p>}
+      <div className="ai-table"><table><thead><tr>{Object.values(fields).map(v => <th key={v}>{v}</th>)}</tr></thead><tbody>{p.rows.map((row, index) => <tr key={index}>{Object.keys(fields).map(k => <td key={k}>{['is_fixed_asset', 'unit_round_up'].includes(k) ? (row[k] ? '是' : '否') : row[k]}</td>)}</tr>)}</tbody></table></div>
     </>}
     {p.warehouse_name && p.items && p.items.some(i => 'after_date' in i) && <>
       <p><strong>{p.warehouse_name}</strong> · {action.kind === 'inspection' ? `设置校验提醒 · ${p.items.length} 种物料` : `标记已校验 · 校验日 ${p.last_inspected_on}`}</p>

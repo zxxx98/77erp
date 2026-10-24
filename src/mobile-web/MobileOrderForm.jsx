@@ -13,7 +13,7 @@ import { usePermissions } from '../permissions.jsx';
 import { ContactPicker } from '../Dropdown.jsx';
 import { Templates } from '../LazyComponents.jsx';
 import { useBusiness } from '../business-api.js';
-import { addQuantity, parseQuantity } from '../../shared/quantity.js';
+import { addQuantity, parseQuantity, materialQuantity, validQuantity } from '../../shared/quantity.js';
 import { draftScope, localId, removeDraft, saveDraft } from '../pwa/drafts.js';
 import { usePwa } from '../pwa/Pwa.jsx';
 import { MobileButton as Button, MobileIcon, Notice, SearchField, ProductRow, moneyBase, count } from './ui.jsx';
@@ -53,8 +53,8 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const lock = useRef(false), finished = useRef(false), hasSaved = useRef(!!initialDraft), latest = useRef(null), latestDirty = useRef(false), bodyRef = useRef(null), barcodeInput = useRef(null);
   const templateAction = useBusiness();
   const reportError = message => setError(value => ({ message, revision: value.revision + 1 }));
-  const total = items.reduce((sum, line) => sum + Math.round(Number(line.quantity) * Number(line.price) * 100), 0) / 100;
-  const totalQuantity = items.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
+  const total = items.reduce((sum, line) => sum + Math.round((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) * Number(line.price) * 100), 0) / 100;
+  const totalQuantity = items.reduce((sum, line) => sum + ((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) || 0), 0);
   const dirty = !!(items.length || note || (partner && partner !== (type === 'out' ? '零售客户' : '')) || pending);
   const disabled = busy || templateAction.busy || !!pending;
   const draft = { id, type, partner, partnerId, note, items, template: template ? { id: template.id, version: template.version, name: template.name } : null, templateName, pending };
@@ -122,7 +122,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
       if (!p) throw new Error(`「${line.name || '物料'}」已不存在，请移除后重新选择。`);
       if (seen.has(p.id)) throw new Error('同一物料不能重复添加。');
       seen.add(p.id);
-      const quantity = parseQuantity(line.quantity, true), price = Number(line.price);
+      const quantity = materialQuantity(parseQuantity(line.quantity, true), p), price = Number(line.price);
       if (!/^\d+(\.\d{1,4})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(`${p.name} 单价需为非负金额，最多四位小数。`);
       if (type === 'out' && quantity > p.stock) throw new Error(`${p.name} 库存不足（当前 ${count(p.stock)} ${p.unit}）。`);
       return { product_id: p.id, quantity, price };
@@ -224,7 +224,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             {items.map(line => {
               const p = data.products.find(p => p.id === line.product_id);
               const name = p?.name || line.name || '物料已不存在';
-              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已停用）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '物料已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<FormField value={line.quantity} required type="number" min="0.000001" max="99999999" label={`${name} 数量`}><AntInput type="number" inputMode="decimal" min="0.000001" max="99999999" step="0.000001"  aria-label={`${name} 数量`} value={line.quantity} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></FormField></label><label className="mw-field">单价<FormField value={line.price} required type="number" min="0" max="99999999" label={`${name} 单价`}><AntInput type="number" inputMode="decimal" min="0" max="99999999" step="0.0001"  aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></FormField></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.000001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round(Number(line.quantity) * Number(line.price) * 100) / 100)}</strong></div></section>;
+              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已停用）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '物料已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<FormField value={line.quantity} required type="number" min="0.0001" max="99999999" label={`${name} 数量`}><AntInput type="number" inputMode="decimal" min="0.0001" max="99999999" step="0.0001"  aria-label={`${name} 数量`} value={line.quantity} onBlur={() => { if (p?.unit_round_up && validQuantity(Number(line.quantity), true)) update(line.product_id, "quantity", Math.ceil(Number(line.quantity))); }} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></FormField></label><label className="mw-field">单价<FormField value={line.price} required type="number" min="0" max="99999999" label={`${name} 单价`}><AntInput type="number" inputMode="decimal" min="0" max="99999999" step="0.0001"  aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></FormField></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.0001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) * Number(line.price) * 100) / 100)}</strong></div></section>;
             })}
             <label className="mw-field">备注（选填）<AntInput.TextArea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
           </fieldset></AntConfigProvider>

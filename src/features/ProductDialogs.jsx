@@ -21,7 +21,7 @@ import { ProductImage } from '../ProductImage.jsx';
 import { ProductSync } from '../Warehouses.jsx';
 import { ProductConflict } from '../ProductConflict.jsx';
 import { useBusiness } from '../business-api.js';
-import { parseQuantity } from '../../shared/quantity.js';
+import { parseQuantity, materialQuantity } from '../../shared/quantity.js';
 import { mobileDevice } from '../device.js';
 import { inspectionCycleLabel, inspectionUnits } from '../../shared/inspection.js';
 import { CustomerPartNumbersEditor, CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
@@ -31,9 +31,9 @@ function ProductFormSection({ title, children }) {
 }
 
 const productSnapshot = (form, targets) => JSON.stringify([
-  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'is_fixed_asset', 'inspection_date', 'inspection_interval', 'inspection_unit']
+  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'is_fixed_asset', 'unit_round_up', 'inspection_date', 'inspection_interval', 'inspection_unit']
     .map(key => ['category_id', 'cost', 'price', 'threshold', 'inspection_interval'].includes(key) && form[key] !== '' && form[key] != null
-      ? Number(form[key]) : key === 'is_fixed_asset' ? (form[key] ? 1 : 0) : String(form[key] ?? '')),
+      ? Number(form[key]) : ['is_fixed_asset', 'unit_round_up'].includes(key) ? (form[key] ? 1 : 0) : String(form[key] ?? '')),
   [...targets].sort((a, b) => a - b),
   (form.customer_part_numbers || []).map(row => [row.customer_id, row.part_number, !!row._editing]),
 ]);
@@ -131,6 +131,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
     ["安全库存", `${count(product.threshold)} ${product.unit}`],
     ["库存状态", stockStatus(product)],
     ["使用状态", product.active === 0 ? "已停用" : "已启用"],
+    ["单位是否取整", product.unit_round_up ? "是" : "否"],
     ["固定资产", product.is_fixed_asset ? "是" : "否"],
     ["下次校验日期", product.inspection_date || '未配置'],
     ["校验周期", inspectionCycleLabel(product)],
@@ -197,6 +198,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       price: "",
       threshold: 20,
       is_fixed_asset: 0,
+      unit_round_up: 0,
       inspection_date: '', inspection_interval: 0, inspection_unit: 'month',
     },
   );
@@ -234,6 +236,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             price: Number(form.price),
             threshold: Number(form.threshold),
             is_fixed_asset: form.is_fixed_asset ? 1 : 0,
+            unit_round_up: form.unit_round_up ? 1 : 0,
             inspection_interval: Number(form.inspection_interval || 0),
             sync_warehouse_ids: syncTargets,
           },
@@ -357,6 +360,10 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               </label>
               {mobileDevice && priceFields}
             </div>
+            <AntCheckbox className="product-fixed-asset" checked={!!form.unit_round_up} onChange={e => change('unit_round_up', e.target.checked ? 1 : 0)}>
+              单位是否取整
+              <small>勾选后数量向上取整，例如 4.1 个按 5 个计算；BOM 配方单耗仍可填写小数或分数。</small>
+            </AntCheckbox>
             <AntCheckbox className="product-fixed-asset" checked={!!form.is_fixed_asset} onChange={(e) => change("is_fixed_asset", e.target.checked ? 1 : 0)}>
 
               固定资产
@@ -404,7 +411,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 type="number"
                 min="0"
                 max="99999999"
-                step="0.000001"
+                step="0.0001"
                 value={form.threshold}
                 onChange={(e) => change("threshold", e.target.value)}
               /></FormField>
@@ -534,7 +541,7 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
   const submit = () => {
 
     run(async () => {
-      const amount = parseQuantity(quantity, true);
+      const amount = materialQuantity(parseQuantity(quantity, true), product);
       if (!reason.trim()) throw new Error(`请填写${action}原因。`);
       if (!increase && amount > product.stock)
         throw new Error(`减少数量不能超过现有库存 ${product.stock} ${product.unit}。`);
@@ -569,12 +576,12 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
           </div>
           <label>
             {action}数量（{product.unit}） <span>*</span>
-            <FormField label="数量（ ）" value={quantity} required type="number" min="0.000001"><AntInput
+            <FormField label="数量（ ）" value={quantity} required type="number" min="0.0001"><AntInput
 
               data-autofocus
               type="number"
-              min="0.000001"
-              step="0.000001"
+              min="0.0001"
+              step="0.0001"
               placeholder="0"
               value={quantity}
               disabled={busy}

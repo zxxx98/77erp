@@ -1,11 +1,11 @@
 import { validateBom, validateBomQuantity, validateBomLossRate, validateBomLossMethod } from './bom.js';
-import { MAX_QUANTITY, QUANTITY_SCALE, quantityUnits, validQuantity } from './quantity.js';
+import { MAX_QUANTITY, QUANTITY_SCALE, quantityUnits, validStoredQuantity } from './quantity.js';
 
 export const BOM_MAX_DEPTH = 10;
 export const BOM_MAX_NODES = 2000;
 export const BOM_MAX_MATERIALS = 500;
 export const bomUsageLabels = { stock: '领用本物料', explode: '展开下级 BOM' };
-export const BOM_NODE_COLUMNS = ['path','parent_path','bom_id','bom_version','bom_name','bom_product_id','bom_product_name','bom_base_quantity','bom_base_unit','loss_method','product_id','name','barcode','specification','unit','quantity','quantity_fraction','loss_rate','usage_mode','child_bom_id','note','position'];
+export const BOM_NODE_COLUMNS = ['path','parent_path','bom_id','bom_version','bom_name','bom_product_id','bom_product_name','bom_base_quantity','bom_base_unit','loss_method','product_id','name','barcode','specification','unit','quantity','quantity_fraction','loss_rate','usage_mode','child_bom_id','note','position','unit_round_up'];
 const fail = message => { throw new Error(message); };
 const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
 const ratio = (n, d = 1n) => {
@@ -15,10 +15,11 @@ const ratio = (n, d = 1n) => {
 const multiply = (a, b) => ratio(a[0] * b[0], a[1] * b[1]);
 const add = (a, b) => ratio(a[0] * b[1] + b[0] * a[1], a[1] * b[1]);
 const decimal = value => ratio(BigInt(quantityUnits(value)), BigInt(QUANTITY_SCALE));
-const rounded = value => {
-  const scaled = (value[0] * BigInt(QUANTITY_SCALE) + value[1] - 1n) / value[1];
-  if (scaled > BigInt(MAX_QUANTITY * QUANTITY_SCALE)) fail('材料需求超出数量上限，请减少生产数量。');
-  return Number(scaled) / QUANTITY_SCALE;
+const rounded = (value, integer = false, decimals = 4) => {
+  const outputScale = integer ? 1 : 10 ** decimals;
+  const scaled = (value[0] * BigInt(outputScale) + value[1] - 1n) / value[1];
+  if (scaled > BigInt(MAX_QUANTITY * outputScale)) fail('材料需求超出数量上限，请减少生产数量。');
+  return Number(scaled) / outputScale;
 };
 
 function itemRatio(node) {
@@ -29,27 +30,29 @@ function itemRatio(node) {
 
 // Both live calculations and immutable production snapshots use these exact
 // rational paths. Rounded node quantities are for display only.
-export function calculateBomNodes(nodes, productionQuantity) {
-  if (!validQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 6 位小数。');
+export function calculateBomNodes(nodes, productionQuantity, decimals = 4) {
+  if (!validStoredQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 4 位小数。');
   const values = new Map(), totals = new Map(), leaves = new Map();
   const multi = nodes.some(node => node.usage_mode === 'explode');
   const calculated = nodes.map(node => {
     const parent = node.parent_path ? values.get(node.parent_path) : decimal(productionQuantity);
     if (!parent) fail('BOM节点父子关联或排序无效。');
-    const amount = multiply(parent, itemRatio(node));
+    let amount = multiply(parent, itemRatio(node));
+    // Whole intermediate products need a whole production quantity before expansion.
+    if (node.usage_mode === 'explode' && node.unit_round_up) amount = [BigInt(rounded(amount, true, decimals)), 1n];
     values.set(node.path, amount);
     if (node.usage_mode === 'stock') {
       totals.set(node.product_id, add(totals.get(node.product_id) || [0n, 1n], amount));
       leaves.set(node.product_id, [...(leaves.get(node.product_id) || []), node]);
     }
-    return { ...node, required: rounded(amount) };
+    return { ...node, required: rounded(amount, !!node.unit_round_up, decimals) };
   });
   const rows = [...totals].map(([product_id, amount]) => {
     const sources = leaves.get(product_id), first = sources[0];
     return { product_id, name: first.name, barcode: first.barcode, specification: first.specification, unit: first.unit,
       quantity: multi ? null : first.quantity, quantity_fraction: multi ? null : first.quantity_fraction,
       loss_rate: multi ? null : first.loss_rate, note: multi ? '' : first.note,
-      required: rounded(amount), sources: sources.map(node => node.path) };
+      unit_round_up: first.unit_round_up ?? 0, required: rounded(amount, !!first.unit_round_up, decimals), sources: sources.map(node => node.path) };
   });
   if (rows.length > BOM_MAX_MATERIALS) fail(`最终领料物料不能超过 ${BOM_MAX_MATERIALS} 种。`);
   return { nodes: calculated, rows, multi_level: multi };
@@ -82,7 +85,7 @@ export function buildBomNodes(root, loadBom, { availability = true, scrapRules =
         name: item.product?.name || item.name, barcode: item.product?.barcode || item.barcode,
         specification: item.product?.specification ?? item.specification ?? '', unit: item.unit, quantity: item.quantity,
         quantity_fraction: item.quantity_fraction ?? '', loss_rate: item.loss_rate ?? 0, usage_mode: mode,
-        child_bom_id: item.child_bom_id ?? null, note: item.note, position: nodes.length };
+        unit_round_up: item.product?.unit_round_up ?? item.unit_round_up ?? 0, child_bom_id: item.child_bom_id ?? null, note: item.note, position: nodes.length };
       nodes.push(node);
       if (mode === 'explode') {
         const child = loadBom(item.child_bom_id);
@@ -120,11 +123,12 @@ export function validateSnapshotNodes(order, nodes) {
     if (!text(node.path, 80, true) || !/^[1-9]\d*(\.[1-9]\d*)*$/.test(node.path) || paths.has(node.path) ||
         node.parent_path !== node.path.split('.').slice(0, -1).join('.') || !Number.isSafeInteger(node.bom_id) || node.bom_id < 1 ||
         !Number.isSafeInteger(node.bom_version) || node.bom_version < 1 || !Number.isSafeInteger(node.bom_product_id) || node.bom_product_id < 1 ||
-        !text(node.bom_name, 100, true) || !text(node.bom_product_name, 100, true) || !validQuantity(node.bom_base_quantity, true) || !text(node.bom_base_unit, 100, true) ||
+        !text(node.bom_name, 100, true) || !text(node.bom_product_name, 100, true) || !validStoredQuantity(node.bom_base_quantity, true) || !text(node.bom_base_unit, 100, true) ||
         !text(node.name, 100, true) || !text(node.barcode, 100, true) || !text(node.specification, 500) || !text(node.unit, 100, true) || !text(node.note, 200) ||
         node.position !== paths.size) fail('生产配方节点字段或路径无效。');
     validateBomQuantity(node.quantity, node.quantity_fraction); validateBomLossRate(node.loss_rate); validateBomLossMethod(node.loss_method);
-    const productSignature = JSON.stringify([node.name, node.barcode, node.specification, node.unit]);
+    if (![0, 1].includes(node.unit_round_up ?? 0)) fail('生产物料取整属性无效。');
+    const productSignature = JSON.stringify([node.name, node.barcode, node.specification, node.unit, node.unit_round_up ?? 0]);
     if (products.has(node.product_id) && products.get(node.product_id) !== productSignature) fail('同一生产物料的节点快照不一致。');
     products.set(node.product_id, productSignature);
     paths.set(node.path, node);
@@ -138,7 +142,7 @@ export function validateSnapshotNodes(order, nodes) {
     const bom = { id: first.bom_id, version: first.bom_version, name: first.bom_name, product_id: first.bom_product_id,
       product: { name: first.bom_product_name }, base_quantity: first.bom_base_quantity, base_unit: first.bom_base_unit,
       loss_method: first.loss_method, note: '', enabled: 1, warehouse_id: order.warehouse_id,
-      items: group.map(row => ({ ...row, product: { name: row.name, barcode: row.barcode, specification: row.specification } })), scraps: [] };
+      items: group.map(row => ({ ...row, product: { name: row.name, barcode: row.barcode, specification: row.specification, unit_round_up: row.unit_round_up ?? 0 } })), scraps: [] };
     validateBom(bom);
     const signature = JSON.stringify([header(first), bom.items.map(row => [row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.usage_mode, row.child_bom_id, row.note])]);
     if (definitions.has(bom.id) && definitions.get(bom.id).signature !== signature) fail('同一生产配方的重复引用内容不一致。');
@@ -148,5 +152,5 @@ export function validateSnapshotNodes(order, nodes) {
   if (!root || root.version !== order.bom_version || root.name !== order.bom_name || root.product_id !== order.product_id || root.product.name !== order.product_name || root.base_quantity !== order.base_quantity || root.base_unit !== order.unit || root.loss_method !== order.loss_method) fail('生产根配方快照不一致。');
   const rebuilt = buildBomNodes(root, id => definitions.get(id)?.bom, { availability: false, scrapRules: false });
   if (JSON.stringify(rebuilt.map(node => BOM_NODE_COLUMNS.map(key => node[key]))) !== JSON.stringify(nodes.map(node => BOM_NODE_COLUMNS.map(key => node[key])))) fail('生产配方节点结构或内容不一致。');
-  return calculateBomNodes(nodes, order.planned_quantity);
+  return calculateBomNodes(nodes, order.planned_quantity, order.quantity_decimals ?? 6);
 }

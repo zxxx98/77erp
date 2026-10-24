@@ -7,9 +7,9 @@ import { moveInventory } from './commerce.js';
 import { notifyStockChanges } from './notifications.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
-import { validQuantity } from '../shared/quantity.js';
+import { validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { validateBomLossRate, validateBomLossMethod } from '../shared/bom.js';
-import { validateProductionPlan, validateProductionCompletion, productionPlannedQuantity, productionItemQuantity, productionMaterialAnalysis } from '../shared/production.js';
+import { validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionMaterialAnalysis } from '../shared/production.js';
 import { productionBatchSummary } from '../shared/production-batches.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
@@ -94,11 +94,18 @@ export function migrateProduction(db) {
     db.exec('ALTER TABLE production_orders ADD COLUMN snapshot_format INTEGER NOT NULL DEFAULT 1 CHECK(snapshot_format IN (1,2))');
   if (db.prepare('PRAGMA table_info(production_items)').all().find(column => column.name === 'base_quantity').notnull)
     rebuildTable(db, 'production_items', sql => sql.replace(/\b(base_quantity|base_quantity_fraction|loss_rate) (REAL|TEXT) NOT NULL/g, '$1 $2'));
-  const numeric = new Set(['bom_id','bom_version','bom_product_id','bom_base_quantity','product_id','quantity','loss_rate','child_bom_id','position']);
+  const numeric = new Set(['bom_id','bom_version','bom_product_id','bom_base_quantity','product_id','quantity','loss_rate','child_bom_id','position','unit_round_up']);
   const columns = BOM_NODE_COLUMNS.map(key => `${key} ${numeric.has(key) ? (['quantity','loss_rate','bom_base_quantity'].includes(key) ? 'REAL' : 'INTEGER') : 'TEXT'}${key === 'child_bom_id' ? '' : ' NOT NULL'}${['bom_id','child_bom_id'].includes(key) ? ' REFERENCES boms(id)' : ['product_id','bom_product_id'].includes(key) ? ' REFERENCES products(id)' : ''}`);
   db.exec(`CREATE TABLE IF NOT EXISTS production_bom_nodes (id INTEGER PRIMARY KEY, production_id INTEGER NOT NULL REFERENCES production_orders(id), ${columns.join(',')}, UNIQUE(production_id,path));
     CREATE INDEX IF NOT EXISTS production_bom_node_product ON production_bom_nodes(product_id);
     CREATE INDEX IF NOT EXISTS production_bom_node_parent_product ON production_bom_nodes(bom_product_id);`);
+  if (!db.prepare('PRAGMA table_info(production_bom_nodes)').all().some(c => c.name === 'unit_round_up'))
+    db.exec('ALTER TABLE production_bom_nodes ADD COLUMN unit_round_up INTEGER NOT NULL DEFAULT 0 CHECK(unit_round_up IN (0,1))');
+  for (const table of ['production_items', 'production_orders', 'production_scraps'])
+    if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === 'unit_round_up'))
+      db.exec(`ALTER TABLE ${table} ADD COLUMN unit_round_up INTEGER NOT NULL DEFAULT 0 CHECK(unit_round_up IN (0,1))`);
+  if (!db.prepare('PRAGMA table_info(production_orders)').all().some(c => c.name === 'quantity_decimals'))
+    db.exec('ALTER TABLE production_orders ADD COLUMN quantity_decimals INTEGER NOT NULL DEFAULT 6 CHECK(quantity_decimals IN (4,6))');
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='production_version';
     UPDATE production_orders SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='production_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
@@ -166,7 +173,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
     const standardsFor = quantity => {
       if (order.snapshot_format !== 2) return undefined;
       if (!standardCache.has(quantity)) {
-        try { standardCache.set(quantity, new Map(calculateBomNodes(order.nodes, quantity).rows.map(row => [row.product_id, row.required]))); }
+        try { standardCache.set(quantity, new Map(calculateBomNodes(order.nodes, quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required]))); }
         catch { standardCache.set(quantity, new Map()); }
       }
       return standardCache.get(quantity);
@@ -182,13 +189,13 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
     }
     order.batches = order.batches.map(batch => ({ ...batch,
       items: batch.items.map(row => { const item = order.items.find(item => item.product_id === row.product_id); return { ...item, ...row,
-        ...productionMaterialAnalysis(item, batch.completed_quantity, order.base_quantity, row.actual_quantity, order.loss_method, standardsFor(batch.completed_quantity)), variance_reasons: undefined }; }),
+        ...productionMaterialAnalysis(item, batch.completed_quantity, order.base_quantity, row.actual_quantity, order.loss_method, standardsFor(batch.completed_quantity), order.quantity_decimals), variance_reasons: undefined }; }),
       scraps: batch.scraps.map(row => ({ ...order.scraps.find(item => item.product_id === row.product_id), ...row, stock_quantity: undefined, discard_quantity: undefined })),
     }));
     order.status = publicStatus(order);
     order.batch_count = order.batches.filter(batch => batch.status === 'active').length;
     order.items = order.items.map(item => ({ ...item, ...(order.completed_at
-      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method, standardsFor(order.completed_quantity))
+      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method, standardsFor(order.completed_quantity), order.quantity_decimals)
       : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
     order.captured_at = new Date().toISOString();
     return costs ? order : productionWithoutCosts(order);
@@ -197,6 +204,8 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
 
 function prepareProduction(db, req) {
   if (!isId(req.body.bom_id) || !isId(req.body.bom_version)) fail('请选择BOM并核对版本。');
+  const product = db.prepare('SELECT p.unit_round_up FROM boms b JOIN products p ON p.id=b.product_id WHERE b.id=? AND b.warehouse_id=?').get(req.body.bom_id, req.warehouse.id);
+  if (validQuantity(req.body.planned_quantity, true)) req.body.planned_quantity = materialQuantity(req.body.planned_quantity, product);
   return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version, req.body.schema_version));
 }
 
@@ -243,26 +252,29 @@ export function installProduction(app, db) {
       created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
       .run(number, req.warehouse.id, bom.id, bom.version, bom.name, bom.product_id, bom.product.name, bom.product.barcode,
         bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, bom.loss_method, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
-    db.prepare('UPDATE production_orders SET snapshot_format=? WHERE id=?').run(plan.multi_level ? 2 : 1, id);
+    db.prepare('UPDATE production_orders SET quantity_decimals=4,snapshot_format=?,unit_round_up=? WHERE id=?').run(plan.multi_level ? 2 : 1, bom.product.unit_round_up, id);
     if (plan.multi_level) {
       const insertNode = db.prepare(`INSERT INTO production_bom_nodes(production_id,${BOM_NODE_COLUMNS.join(',')}) VALUES (${Array(BOM_NODE_COLUMNS.length + 1).fill('?').join(',')})`);
       for (const node of plan.nodes) insertNode.run(id, ...BOM_NODE_COLUMNS.map(key => node[key]));
     }
     const insert = db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,base_quantity_fraction,loss_rate,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
     plan.rows.forEach((row, index) => insert.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.required, row.note, index));
+    for (const row of plan.rows) db.prepare('UPDATE production_items SET unit_round_up=? WHERE production_id=? AND product_id=?').run(row.unit_round_up, id, row.product_id);
     const insertScrap = db.prepare(`INSERT INTO production_scraps(production_id,product_id,name,barcode,specification,unit,method,source_product_id,quantity,quantity_fraction,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     plan.scraps.forEach((row, index) => insertScrap.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.method, row.source_product_id, row.quantity, row.quantity_fraction, row.planned_quantity, row.note, index));
+    for (const row of plan.scraps) db.prepare('UPDATE production_scraps SET unit_round_up=? WHERE production_id=? AND product_id=?').run(row.product.unit_round_up, id, row.product_id);
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id', route(req => {
     const order = current(req); draft(req, order); validateProductionPlan(req.body);
-    const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, req.body.planned_quantity).rows.map(row => [row.product_id, row.required])) : null;
+    req.body.planned_quantity = materialQuantity(req.body.planned_quantity, order);
+    const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, req.body.planned_quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
     for (const item of order.items) db.prepare('UPDATE production_items SET planned_quantity=? WHERE id=?')
       .run(productionItemQuantity(item, req.body.planned_quantity, order, standards), item.id);
     const plannedMaterials = order.items.map(item => ({ product_id: item.product_id,
       quantity: productionItemQuantity(item, req.body.planned_quantity, order, standards) }));
     for (const row of order.scraps) db.prepare('UPDATE production_scraps SET planned_quantity=? WHERE id=?')
-      .run(scrapExpectedQuantity(row, req.body.planned_quantity, order.base_quantity, plannedMaterials), row.id);
+      .run(scrapExpectedQuantity(row, req.body.planned_quantity, order.base_quantity, plannedMaterials, order.quantity_decimals), row.id);
     db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
       .run(req.body.planned_quantity, req.body.note.trim(), actor(req), new Date().toISOString(), order.id);
     return current(req);
@@ -290,7 +302,10 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/complete', route(req => {
     const order = current(req); checkOpen(req, order); units(order);
     validateProductionCompletion(req.body, order.items);
+    req.body.completed_quantity = materialQuantity(req.body.completed_quantity, order);
+    for (const item of req.body.items) item.quantity = materialQuantity(item.quantity, order.items.find(row => row.product_id === item.product_id));
     validateScrapActuals(req.body.scraps ?? [], order.scraps);
+    for (const row of req.body.scraps ?? []) row.quantity = materialQuantity(row.quantity, order.scraps.find(item => item.product_id === row.product_id));
     if ((order.batches.at(-1)?.batch_number ?? 0) >= 1000) fail('每张生产单最多登记 1000 个批次，请拆分生产单。');
     const before = stockBefore(order), at = new Date().toISOString(), owner = actor(req);
     const batchNumber = (order.batches.at(-1)?.batch_number ?? 0) + 1;
@@ -311,7 +326,7 @@ export function installProduction(app, db) {
     const actualScraps = new Map((req.body.scraps || []).map(row => [row.product_id, row]));
     for (const row of order.scraps) {
       const actual = actualScraps.get(row.product_id);
-      const expected = scrapExpectedQuantity(row, req.body.completed_quantity, order.base_quantity, req.body.items);
+      const expected = scrapExpectedQuantity(row, req.body.completed_quantity, order.base_quantity, req.body.items, order.quantity_decimals);
       if (actual.quantity && actual.disposition === 'stock') {
         try { moveInventory(db, row.product_id, actual.quantity, 0); }
         catch (error) { fail(`废料 ${row.name}无法入库：${error.message}`); }
@@ -380,6 +395,7 @@ export function installProduction(app, db) {
 }
 
 export function validateProductionBackup(data) {
+  const validQuantity = validStoredQuantity;
   const products = new Map(data.products.map(p => [p.id, p])), boms = new Map(data.boms.map(b => [b.id, b]));
   const orders = new Map(data.production_orders.map(o => [o.id, o])), grouped = new Map(), numbers = new Set();
   const text = (v, max, required = false) => typeof v === 'string' && v.length <= max && (!required || !!v.trim());
@@ -411,14 +427,14 @@ export function validateProductionBackup(data) {
     if (![1, 2].includes(order.snapshot_format) || (order.snapshot_format === 1 && nodes.length)) fail('备份生产配方快照格式无效。');
     const expanded = order.snapshot_format === 2 ? validateSnapshotNodes(order, nodes) : null;
     if (expanded && (!expanded.multi_level || expanded.rows.length !== rows.length)) fail('备份多层生产材料汇总无效。');
-    validateProductionPlan(order);
+    validateProductionPlan(order, true);
     validateBomLossMethod(order.loss_method);
     if (![0, 1].includes(order.batch_tracking) || (batches.length && order.batch_tracking !== 1) || (order.batch_tracking === 1 && completed && !batches.length) ||
         !['draft', 'completed', 'void'].includes(order.status) || !isId(order.version) || !isId(order.bom_version) ||
         !text(order.number, 100, true) || !/^SC\d{8}-[a-f0-9]{12}$/.test(order.number) || numbers.has(order.number) || !text(order.bom_name, 100, true) ||
         boms.get(order.bom_id)?.warehouse_id !== order.warehouse_id || products.get(order.product_id)?.warehouse_id !== order.warehouse_id ||
         !text(order.product_name, 100, true) || !text(order.barcode, 100, true) || !text(order.specification, 500) || !text(order.unit, 100, true) ||
-        !validQuantity(order.base_quantity, true) || !rows.length || rows.length > (expanded ? 500 : 100) ||
+        ![4,6].includes(order.quantity_decimals) || ![0,1].includes(order.unit_round_up) || !validQuantity(order.base_quantity, true) || !rows.length || rows.length > (expanded ? 500 : 100) ||
         new Set(rows.map(row => row.product_id)).size !== rows.length || new Set(rows.map(row => row.position)).size !== rows.length ||
         !text(order.created_by_name, 60, true) || !text(order.updated_by_name, 60, true) || !date(order.created_at) || !date(order.updated_at) ||
         !text(order.completed_by_name, 60) || !text(order.voided_by_name, 60) || !text(order.void_reason, 500) ||
@@ -433,26 +449,27 @@ export function validateProductionBackup(data) {
     if (expanded) validateExpansionScraps(scraps, nodes);
     if (new Set(scraps.map(row => row.position)).size !== scraps.length) fail('备份生产废料排序重复。');
     for (const row of scraps) {
-      if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || typeof row.quantity_fraction !== 'string' ||
+      if (![0,1].includes(row.unit_round_up) || products.get(row.product_id)?.warehouse_id !== order.warehouse_id || typeof row.quantity_fraction !== 'string' ||
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) ||
           !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 ||
-          row.planned_quantity !== scrapExpectedQuantity(row, order.planned_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity }))) ||
+          row.planned_quantity !== scrapExpectedQuantity(row, order.planned_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity })), order.quantity_decimals) ||
           (completed ? !validQuantity(row.actual_quantity) || !(batches.length ? ['stock', 'discard', 'mixed'] : ['stock', 'discard']).includes(row.disposition) ||
-            (!batches.length && row.expected_quantity !== scrapExpectedQuantity(row, order.completed_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.actual_quantity }))))
+            (!batches.length && row.expected_quantity !== scrapExpectedQuantity(row, order.completed_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.actual_quantity })), order.quantity_decimals))
             : row.actual_quantity !== null || row.expected_quantity !== null || row.disposition !== null))
         fail('备份生产废料数量、处理方式或快照无效。');
     }
     for (const row of rows) {
+      if (![0,1].includes(row.unit_round_up)) fail('备份材料取整属性无效。');
       if (!expanded) validateBomLossRate(row.loss_rate);
       else {
         if (row.base_quantity !== null || row.base_quantity_fraction !== null || row.loss_rate !== null) fail('多层生产材料不能伪造单层基准用量。');
         const expected = expanded.rows[row.position];
-        if (!expected || ['product_id','name','barcode','specification','unit','note'].some(key => row[key] !== expected[key])) fail('备份生产材料与节点来源快照不一致。');
+        if (!expected || ['product_id','name','barcode','specification','unit','note','unit_round_up'].some(key => row[key] !== expected[key])) fail('备份生产材料与节点来源快照不一致。');
       }
       if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || row.product_id === order.product_id ||
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) || !text(row.variance_reason, 500) || (!completed && row.variance_reason !== '') ||
           !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= (expanded ? 500 : 100) || (!expanded && !validQuantity(row.base_quantity, true)) ||
-          row.planned_quantity !== (expanded ? expanded.rows.find(item => item.product_id === row.product_id)?.required : productionPlannedQuantity(row.base_quantity, order.planned_quantity, order.base_quantity, row.base_quantity_fraction, row.loss_rate, order.loss_method)) ||
+          row.planned_quantity !== (expanded ? expanded.rows.find(item => item.product_id === row.product_id)?.required : productionItemQuantity(row, order.planned_quantity, order)) ||
           (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))
         fail('备份生产材料数量、成本或快照无效。');
     }
@@ -494,14 +511,14 @@ function validateBatchBackup(data, orders, itemGroups, scrapGroups) {
         (batch.status === 'void' ? !date(batch.voided_at) || !batch.void_reason.trim() || !batch.voided_by_name.trim() : batch.voided_at !== null || batch.void_reason !== '' || batch.voided_by_name !== '' || batch.voided_with_order !== 0) ||
         (batch.voided_with_order === 1 && (order.status !== 'void' || batch.voided_at !== order.voided_at || batch.void_reason !== order.void_reason || batch.voided_by_name !== order.voided_by_name)))
       fail('备份完工批次字段或状态无效。');
-    validateProductionCompletion({ completed_quantity: batch.completed_quantity, items: rows.map(row => ({ ...row, quantity: row.actual_quantity })) }, materials);
+    validateProductionCompletion({ completed_quantity: batch.completed_quantity, items: rows.map(row => ({ ...row, quantity: row.actual_quantity })) }, materials, true);
     if (rows.some(row => !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 || !text(row.variance_reason, 500)) ||
         rows.reduce((sum, row) => sum + row.cost_cents, 0) !== batch.total_cost_cents)
       fail('备份完工批次材料成本或差异原因无效。');
-    validateScrapActuals(outputs.map(row => ({ ...row, quantity: row.actual_quantity })), rules);
+    validateScrapActuals(outputs.map(row => ({ ...row, quantity: row.actual_quantity })), rules, true);
     for (const row of outputs) {
       const rule = rules.find(rule => rule.product_id === row.product_id);
-      if (row.expected_quantity !== scrapExpectedQuantity(rule, batch.completed_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.actual_quantity }))))
+      if (row.expected_quantity !== scrapExpectedQuantity(rule, batch.completed_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.actual_quantity })), order.quantity_decimals))
         fail('备份完工批次预计废料与规则不一致。');
     }
     const list = grouped.get(order.id) || [];

@@ -1,4 +1,4 @@
-import { validQuantity } from './quantity.js';
+import { validQuantity, validStoredQuantity } from './quantity.js';
 import { bomRequiredQuantity, validateBomQuantity } from './bom.js';
 
 export const SCRAP_MAX_ITEMS = 100;
@@ -31,19 +31,20 @@ export function validateScrapRules(scraps, productId, materials) {
   }
 }
 
-export function scrapExpectedQuantity(rule, outputQuantity, baseQuantity, materials) {
+export function scrapExpectedQuantity(rule, outputQuantity, baseQuantity, materials, decimals = 4) {
   const source = rule.method === 'input_ratio' ? materials.find(item => item.product_id === rule.source_product_id)?.quantity : outputQuantity;
-  if (!validQuantity(source)) throw new Error('请先填写有效的产量和实际耗料，再核对预计废料。');
+  if (!validStoredQuantity(source)) throw new Error('请先填写有效的产量和实际耗料，再核对预计废料。');
   if (source === 0) return 0;
-  return bomRequiredQuantity(rule.quantity, source, rule.method === 'input_ratio' ? 100 : baseQuantity, rule.quantity_fraction ?? '');
+  const quantity = bomRequiredQuantity(rule.quantity, source, rule.method === 'input_ratio' ? 100 : baseQuantity, rule.quantity_fraction ?? '', 0, 'internal', decimals);
+  return rule.unit_round_up ? Math.ceil(quantity) : quantity;
 }
 
-export function validateScrapActuals(actuals, rules) {
+export function validateScrapActuals(actuals, rules, stored = false) {
   if (!Array.isArray(actuals) || actuals.length !== rules.length) throw new Error('请核对全部废料的实际产出与处理方式。');
   const expected = new Set(rules.map(row => row.product_id)), seen = new Set();
   for (const row of actuals) {
-    if (!row || !expected.has(row.product_id) || seen.has(row.product_id) || !validQuantity(row.quantity) || !['stock', 'discard'].includes(row.disposition))
-      throw new Error('废料实际产出需为非负数且最多 6 位小数，处理方式为入库或直接处置，物料不能增删或重复。');
+    if (!row || !expected.has(row.product_id) || seen.has(row.product_id) || !validQuantity(row.quantity, false, stored ? 6 : 4) || !['stock', 'discard'].includes(row.disposition))
+      throw new Error('废料实际产出需为非负数且最多 4 位小数，处理方式为入库或直接处置，物料不能增删或重复。');
     seen.add(row.product_id);
   }
 }

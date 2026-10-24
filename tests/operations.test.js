@@ -87,13 +87,13 @@ test("decimal stock moves, partial returns, voids and stocktakes retain quantiti
   const snapshot = (await f.request("/data")).data.orders.find(o => o.id === sale.id);
   assert.equal(snapshot.items[0].returned_quantity, 0.3);
   assert.equal(f.db.prepare("SELECT inventory_value_cents FROM products WHERE id=?").get(id).inventory_value_cents, 300);
-  assert.equal((await f.command(`/orders/${sale.id}/returns`, { reason: "超量", items: [{ product_id: id, quantity: 0.000001 }] })).status, 400);
+  assert.equal((await f.command(`/orders/${sale.id}/returns`, { reason: "超量", items: [{ product_id: id, quantity: 0.0001 }] })).status, 400);
   for (const returnId of returned)
     assert.equal((await f.command(`/orders/${returnId}/void`, { reason: "撤销退货" })).status, 200);
   assert.equal(f.stock(id), 0);
   assert.equal((await f.command(`/orders/${sale.id}/void`, { reason: "撤销销售" })).status, 200);
   assert.equal(f.stock(id), 0.3);
-  for (const counted of [0.123456, 0]) {
+  for (const counted of [0.1234, 0]) {
     const result = await f.command("/stocktakes", { reason: "盘点", items: [{ product_id: id, expected_stock: f.stock(id), counted }] });
     assert.equal(result.status, 200, JSON.stringify(result.data));
     assert.equal(f.stock(id), counted);
@@ -125,14 +125,14 @@ test("reducing stock records an adjustment, caps at available stock and rolls ba
 
 test("decimal import, templates and backup restoration preserve quantities and reject excess precision", async (t) => {
   const f = await fixture(t);
-  const rows = rowsToProducts(parseCSV(importTemplate.replace(",5,20", ",0.123456,0.3")));
+  const rows = rowsToProducts(parseCSV(importTemplate.replace(",5,20", ",0.1234,0.3")));
   const preview = await f.request("/products/import/preview", { rows });
   assert.deepEqual(preview.data.errors, []);
   assert.equal((await f.command("/products/import", { rows, token: preview.data.token })).status, 200);
   const p = f.db.prepare("SELECT * FROM products WHERE barcode='TEST-001'").get();
   assert.equal(p.stock, 0.3);
-  assert.equal(p.threshold, 0.123456);
-  const template = await f.command("/templates", { name: "小数模板", type: "out", partner: "客户", note: "", items: [{ product_id: p.id, quantity: "0.123456", price: "15" }] });
+  assert.equal(p.threshold, 0.1234);
+  const template = await f.command("/templates", { name: "小数模板", type: "out", partner: "客户", note: "", items: [{ product_id: p.id, quantity: "0.1234", price: "15" }] });
   assert.equal(template.status, 200, JSON.stringify(template.data));
   await f.makeOrder(p.id, "out", 0.1);
   for (const quantity of [0, -0.1, 0.0000001, 1e-15, 1e-30, 99999999.1, "0.1", null]) {
@@ -146,7 +146,7 @@ test("decimal import, templates and backup restoration preserve quantities and r
   assert.equal(restorePreview.status, 200, JSON.stringify(restorePreview.data));
   assert.equal((await f.command("/backup/restore", { backup, ...restorePreview.data, confirmation: "RESTORE_BUSINESS_DATA" })).status, 200);
   assert.equal(f.stock(p.id), 0.2);
-  assert.equal(JSON.parse(f.db.prepare("SELECT items FROM templates WHERE id=?").get(template.data.id).items)[0].quantity, 0.123456);
+  assert.equal(JSON.parse(f.db.prepare("SELECT items FROM templates WHERE id=?").get(template.data.id).items)[0].quantity, 0.1234);
   const invalid = structuredClone(backup);
   invalid.data.products.find(product => product.id === p.id).stock = 0.0000001;
   assert.equal((await f.request("/backup/preview", { backup: invalid })).status, 400);
@@ -487,10 +487,10 @@ test("existing order schema upgrades without changing stock and marks only seede
 
 test('material returns increase inventory once, preserve average cost, reject stale and invalid quantities, and survive backup restore', async t => {
   const f = await fixture(t), id = await f.makeProduct();
-  const payload = { product_id: id, quantity: 0.123456, expected_stock: 0, reason: '生产余料退回', request_id: randomUUID() };
+  const payload = { product_id: id, quantity: 0.1234, expected_stock: 0, reason: '生产余料退回', request_id: randomUUID() };
   assert.equal((await f.request('/stock/increase', payload)).status, 200);
   assert.equal((await f.request('/stock/increase', payload)).status, 200);
-  assert.equal(f.stock(id), 0.123456);
+  assert.equal(f.stock(id), 0.1234);
   assert.equal(f.db.prepare('SELECT inventory_value_cents FROM products WHERE id=?').get(id).inventory_value_cents, 123);
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM stock_adjustments WHERE product_id=? AND kind='increase'").get(id).n, 1);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM orders WHERE note=?').get(payload.reason).n, 0);

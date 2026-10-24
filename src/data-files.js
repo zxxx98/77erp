@@ -1,4 +1,4 @@
-import { parseQuantity } from "../shared/quantity.js";
+import { parseQuantity, materialQuantity } from "../shared/quantity.js";
 
 export const importHeaders = [
   "物料名称",
@@ -9,11 +9,12 @@ export const importHeaders = [
   "参考销售价",
   "安全库存",
   "期初库存",
+  "单位是否取整",
 ];
 export const importTemplate =
   "\ufeff" +
   importHeaders.join(",") +
-  "\r\n示例电线,TEST-001,电线,米,10.00,15.00,5,20\r\n";
+  "\r\n示例电线,TEST-001,电线,米,10.00,15.00,5,20,否\r\n";
 export function parseCSV(input) {
   const rows = [];
   let row = [],
@@ -64,7 +65,7 @@ export function rowsToProducts(table) {
   const header = rows.shift();
   if (
     !header ||
-    header.length !== importHeaders.length ||
+    ![8, importHeaders.length].includes(header.length) ||
     header.some((c, i) => String(c).trim() !== importHeaders[i])
   )
     throw new Error("表头不匹配，请使用导入模板，保持列顺序。");
@@ -78,24 +79,28 @@ export function rowsToProducts(table) {
     }
     if (!/^\d+(\.\d{1,4})?$/.test(s))
       throw new Error(
-        `第 ${row} 行：数量最多 6 位小数，单价最多四位小数，不能留空。`,
+        `第 ${row} 行：数量最多 4 位小数，单价最多四位小数，不能留空。`,
       );
     return Number(s);
   };
   return rows.map((cells, i) => {
-    if (cells.length > 8 || !cells[0])
+    if (cells.length > header.length || !cells[0])
       throw new Error(`第 ${i + 2} 行：物料名称为空或列数错误。`);
-    const [name, barcode, category, unit, cost, price, threshold, stock] =
+    const [name, barcode, category, unit, cost, price, threshold, stock, roundUp] =
       cells;
+    const flag = String(roundUp ?? '').trim().toLowerCase();
+    if (!['', '是', '否', 'true', 'false', '1', '0', 'yes', 'no'].includes(flag))
+      throw new Error(`第 ${i + 2} 行：单位是否取整需填写是/否、true/false 或 1/0。`);
     return {
+      unit_round_up: ['是', 'true', '1', 'yes'].includes(flag) ? 1 : 0,
       name: String(name).trim(),
       barcode: barcode == null ? "" : String(barcode).trim(),
       category: category == null ? "" : String(category).trim(),
       unit: unit == null ? "" : String(unit).trim(),
       cost: numeric(cost, false, i + 2),
       price: numeric(price, false, i + 2),
-      threshold: numeric(threshold, true, i + 2),
-      stock: numeric(stock, true, i + 2),
+      threshold: materialQuantity(numeric(threshold, true, i + 2), { unit_round_up: ['是', 'true', '1', 'yes'].includes(flag) }),
+      stock: materialQuantity(numeric(stock, true, i + 2), { unit_round_up: ['是', 'true', '1', 'yes'].includes(flag) }),
     };
   });
 }

@@ -65,7 +65,7 @@ test('warehouseSheet builds import-compatible rows in the fixed column order', (
   }]);
   assert.equal(sheet.stickyRowsCount, 1);
   assert.deepEqual(sheet.data[0], productExportHeaders);
-  assert.deepEqual(sheet.data[1], ['螺丝', 'EXP-001', '五金 / 紧固件', '件', 10, 20, 5, 3, 'M3', '常用', '是', '启用']);
+  assert.deepEqual(sheet.data[1], ['螺丝', 'EXP-001', '五金 / 紧固件', '件', 10, 20, 5, 3, 'M3', '常用', '是', '启用', '否']);
   assert.equal(sheet.data.length, 2);
 });
 

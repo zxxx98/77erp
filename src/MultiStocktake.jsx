@@ -8,7 +8,7 @@ import { download } from './data-files.js';
 import { multiStocktakeCSV } from './multi-stocktake-csv.js';
 import './multi-stocktake.css';
 
-const format = quantity => quantity.toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+const format = quantity => quantity.toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 const PAGE_SIZE = 30;
 
 export function MultiStocktake({ warehouses = [], warehouseId, active = true }) {

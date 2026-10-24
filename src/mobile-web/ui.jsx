@@ -10,7 +10,7 @@ import { ProductImage } from '../ProductImage.jsx';
 export const money = value => `${currencySymbol()}${formatMoney(value)}`;
 export const moneyBase = value => `${baseCurrencySymbol()}${formatMoneyBase(value)}`;
 export const price = value => `${currencySymbol()}${formatPrice(value)}`;
-export const count = value => Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+export const count = value => Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 export const dateTime = value => new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 export const stockLabel = stockStatus;
 export const matchesProduct = (product, query) => [product.name, product.barcode, product.category, product.specification || '', product.note || ''].some(value => value.toLowerCase().includes(query.trim().toLowerCase()));

@@ -115,7 +115,7 @@ test('internal units receive and issue stock without entering trading totals, fi
     assert.equal(template.status, 200, JSON.stringify(template.data));
   }
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 32);
+  assert.equal(backup.version, 33);
   const corrupt = structuredClone(backup);
   corrupt.data.orders.find(row => row.id === out.data.id).kind = 'normal';
   assert.equal((await f.request('/backup/preview', { backup: corrupt })).status, 400);
@@ -454,7 +454,7 @@ test("unknown historical costs and settlement are explicit, and v11 backup round
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 32);
+  assert.equal(backup.version, 33);
   assert.equal(backup.data.payments.length, 1);
   assert.equal(backup.data.templates.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
@@ -544,7 +544,7 @@ test('purchase return tails and legacy v10 refunds retain their financial histor
   assert.equal(f.db.prepare("SELECT SUM(total) n FROM orders WHERE kind='return'").get().n, 0.02);
   // A new backup of historical data must remain restorable.
   const upgraded = (await f.request('/backup')).data;
-  assert.equal(upgraded.version, 32);
+  assert.equal(upgraded.version, 33);
   assert.equal((await f.request('/backup/preview', { backup: upgraded })).status, 200);
 });
 
@@ -553,7 +553,7 @@ test('return allocation also carries sub-cent remainders forward until the final
   await f.order(id, 'in', 1, 0.01);
   const sale = (await f.order(id, 'out', 1, 0.01)).data;
   const amounts = [];
-  for (const quantity of [0.333333, 0.333333, 0.333334]) {
+  for (const quantity of [0.3333, 0.3333, 0.3334]) {
     const returned = await f.command(`/orders/${sale.id}/returns`, { reason: '三次退完', items: [{ product_id: id, quantity }] });
     assert.equal(returned.status, 200, JSON.stringify(returned.data));
     amounts.push(f.db.prepare('SELECT amount_cents FROM order_items WHERE order_id=?').get(returned.data.id).amount_cents);

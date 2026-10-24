@@ -7,7 +7,7 @@ import { orderLabel } from './order-utils.js';
 export { orderLabel, businessType, reportOrders } from './order-utils.js';
 import { useQuery, usePagedQuery, queryPath } from './queries.js';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
-import { parseQuantity, addQuantity } from "../shared/quantity.js";
+import { parseQuantity, addQuantity, materialQuantity, validQuantity } from "../shared/quantity.js";
 import { usePermissions } from "./permissions.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, FileJson, FileSpreadsheet, Package, Trash2, Truck, Upload } from "lucide-react";
@@ -130,7 +130,7 @@ export function OrderActions({ order, onSaved }) {
                 aria-label={`${i.name} 退货数量`}
                 type="number"
                 min="0"
-                step="0.000001"
+                step="0.0001"
                 max={addQuantity(i.quantity, -(i.returned_quantity || 0))}
                 value={quantities[i.product_id] ?? ""}
                 disabled={busy}
@@ -215,6 +215,7 @@ export function Stocktake({ data, onSaved }) {
                         product_id: p.id,
                         name: p.name,
                         expected_stock: p.stock,
+                        unit_round_up: p.unit_round_up,
                         counted: String(p.stock),
                       };
                     else delete next[p.id];
@@ -230,8 +231,9 @@ export function Stocktake({ data, onSaved }) {
                     aria-label={`${p.name} 实盘数量`}
                     type="number"
                     min="0"
-                    step="0.000001"
+                    step="0.0001"
                     value={selected[p.id].counted}
+                    onBlur={() => { if (p.unit_round_up && validQuantity(Number(selected[p.id].counted))) setSelected(current => ({ ...current, [p.id]: { ...current[p.id], counted: String(materialQuantity(Number(current[p.id].counted), p)) } })); }}
                     disabled={busy}
                     onChange={(e) =>
                       setSelected({
@@ -283,10 +285,10 @@ export function Stocktake({ data, onSaved }) {
               return;
             await send("/stocktakes", {
               reason,
-              items: items.map(({ product_id, expected_stock, counted }) => ({
+              items: items.map(({ product_id, expected_stock, counted, unit_round_up }) => ({
                 product_id,
                 expected_stock,
-                counted: Number(counted),
+                counted: materialQuantity(Number(counted), { unit_round_up }),
               })),
             });
             await onSaved("盘点已完成，库存已调整");
@@ -418,6 +420,7 @@ export function ProductImport({ onSaved }) {
                 <th>参考销售价</th>
                 <th>安全库存</th>
                 <th>期初库存</th>
+                <th>单位是否取整</th>
               </tr>
             </thead>
             <tbody>
@@ -431,6 +434,7 @@ export function ProductImport({ onSaved }) {
                   <td>{r.price}</td>
                   <td>{r.threshold}</td>
                   <td>{r.stock}</td>
+                  <td>{r.unit_round_up ? '是' : '否'}</td>
                 </tr>
               ))}
             </tbody>
@@ -697,15 +701,15 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
     setMessage("");
     setRows((prev) => prev.some((r) => r.product_id === product.id)
       ? prev
-      : [...prev, { product_id: product.id, name: product.name, unit: product.unit, stock: product.stock, quantity: "1" }]);
+      : [...prev, { product_id: product.id, name: product.name, unit: product.unit, unit_round_up: product.unit_round_up, stock: product.stock, quantity: "1" }]);
     setQuery("");
   };
   const update = (id, value) => setRows((prev) => prev.map((r) => (r.product_id === id ? { ...r, quantity: value } : r)));
   const submit = () => run(async () => {
     if (!target) throw new Error("请选择调入仓库。");
     if (!rows.length) throw new Error("请至少添加一件物料。");
-    const items = rows.map((r) => ({ product_id: r.product_id, quantity: parseQuantity(r.quantity, true) }));
-    const over = rows.find((r) => Number(r.quantity) > r.stock);
+    const items = rows.map((r) => ({ product_id: r.product_id, quantity: materialQuantity(parseQuantity(r.quantity, true), r) }));
+    const over = rows.find((r) => materialQuantity(parseQuantity(r.quantity, true), r) > r.stock);
     if (over) throw new Error(`${over.name} 的调拨数量超过当前库存 ${over.stock} ${over.unit}。`);
     const destination = others.find((w) => String(w.id) === target);
     if (!window.confirm(`确认将 ${items.length} 种物料从当前仓库调拨到「${destination.name}」？调拨按移动加权平均成本结转，可在调拨记录中撤销。`)) return;
@@ -767,7 +771,7 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
                   <td className="number-cell">
                     <FormField value={r.quantity} type="number" min="0" max={r.stock} label={`${r.name} 调拨数量`}><AntInput
                       aria-label={`${r.name} 调拨数量`}
-                      type="number" min="0" step="0.000001" max={r.stock}
+                      type="number" min="0" step="0.0001" max={r.stock}
                       value={r.quantity} disabled={busy}
                       onChange={(e) => update(r.product_id, e.target.value)}
                     /></FormField>

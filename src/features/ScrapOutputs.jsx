@@ -5,7 +5,7 @@ import { Button } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { quantityUnits, QUANTITY_SCALE, validQuantity } from '../../shared/quantity.js';
 
-const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 
 export function ScrapOutputs({ rows, materials = [], complete = false, completed = false, showPlan = true, disabled = false, onChange }) {
   if (!rows.length) return null;

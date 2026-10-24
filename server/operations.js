@@ -1,6 +1,6 @@
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
-import { validQuantity, addQuantity } from '../shared/quantity.js';
+import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from '../shared/quantity.js';
 import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.js';
 import { installCommerce, moveInventory, allocate } from "./commerce.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -166,12 +166,13 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             !item.quantity ||
             seen.has(item.product_id)
           )
-            fail("退货数量需为正数且最多 6 位小数，物料不能重复。");
+            fail("退货数量需为正数且最多 4 位小数，物料不能重复。");
           seen.add(item.product_id);
           const original = originals.find(
             (i) => i.product_id === item.product_id,
           );
           if (!original) fail("退货物料不在原单中。");
+          item.quantity = materialQuantity(item.quantity, product(item.product_id));
           const returned = db
             .prepare(
               `SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id
@@ -274,15 +275,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (
         !integer(item.product_id) ||
         !validQuantity(item.counted) ||
-        !validQuantity(item.expected_stock) ||
+        !validStoredQuantity(item.expected_stock) ||
         seen.has(item.product_id)
       )
-        fail("实盘数量需为非负数且最多 6 位小数，物料不能重复。");
+        fail("实盘数量需为非负数且最多 4 位小数，物料不能重复。");
       seen.add(item.product_id);
       const p = product(item.product_id);
       if (p.warehouse_id !== req.warehouse.id) fail("物料不属于当前仓库。");
       if (p.stock !== item.expected_stock)
         fail(`${p.name} 库存已变化，请刷新后重新盘点。`);
+      item.counted = materialQuantity(item.counted, p);
       adjustment(batch, p, item.counted, reason, "stocktake");
       changeStock(p.id, addQuantity(item.counted, -p.stock));
     }
@@ -295,10 +297,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     route((req) =>
       mutation(req, () => {
         const reason = reasonOf(req.body),
-          { product_id, quantity, expected_stock } = req.body;
+          { product_id, quantity: requestedQuantity, expected_stock } = req.body;
+        let quantity = requestedQuantity;
         if (!integer(product_id) || !validQuantity(quantity, true))
-          fail("请填写有效的物料和减少数量（正数，最多 6 位小数）。");
+          fail("请填写有效的物料和减少数量（正数，最多 4 位小数）。");
         const p = product(product_id);
+        quantity = materialQuantity(quantity, p);
         if (p.warehouse_id !== req.warehouse.id)
           fail("物料不属于当前仓库。");
         if (expected_stock !== undefined && p.stock !== expected_stock)
@@ -318,14 +322,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     "/api/stock/increase",
     route(req => mutation(req, () => {
       const reason = reasonOf(req.body);
-      const { product_id, quantity, expected_stock } = req.body;
-      if (!integer(product_id) || !validQuantity(quantity, true) || !validQuantity(expected_stock))
-        fail("请填写有效的物料、增加数量（正数，最多 6 位小数）及当前库存。");
+      const { product_id, quantity: requestedQuantity, expected_stock } = req.body;
+      let quantity = requestedQuantity;
+      if (!integer(product_id) || !validQuantity(quantity, true) || !validStoredQuantity(expected_stock))
+        fail("请填写有效的物料、增加数量（正数，最多 4 位小数）及当前库存。");
       const p = product(product_id);
+      quantity = materialQuantity(quantity, p);
       if (p.warehouse_id !== req.warehouse.id) fail("物料不属于当前仓库。");
       if (p.stock !== expected_stock) fail(`${p.name} 库存已变化，请刷新后重试。`);
       const next = addQuantity(p.stock, quantity);
-      if (!validQuantity(next)) fail("增加后库存超出上限。");
+      if (!validStoredQuantity(next)) fail("增加后库存超出上限。");
       adjustment(randomUUID(), p, next, reason, "increase");
       changeStock(p.id, quantity);
       return { ok: true, stock: next };
@@ -341,7 +347,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     rows.forEach((row, index) => {
       try {
         const values = productValues(row);
-        if (!validQuantity(row.stock)) fail("期初库存需为非负数且最多 6 位小数。");
+        if (!validQuantity(row.stock)) fail("期初库存需为非负数且最多 4 位小数。");
         if (
           values[1] &&
           (seen.has(values[1]) ||
@@ -349,10 +355,11 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         )
           fail("条码重复或已存在，不会覆盖已有物料。");
         if (values[1]) seen.add(values[1]);
-        productDetails(row);
+        const details = productDetails(row);
+        values[6] = materialQuantity(values[6], details);
         customerPartNumbersValue(db, row);
         if (row.category_id != null && row.category_id !== '' && (!Number.isSafeInteger(row.category_id) || !db.prepare("SELECT 1 FROM categories WHERE id=? AND warehouse_id=?").get(row.category_id, warehouseId))) fail("分类不存在或不属于当前仓库。");
-        normalized.push({ values, stock: row.stock, index });
+        normalized.push({ values, stock: materialQuantity(row.stock, details), index });
       } catch (error) {
         errors.push({ row: index + 2, error: error.message });
       }
@@ -377,7 +384,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (!values[1]) values[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products(name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,unit_round_up,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...values, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       const p = product(Number(result.lastInsertRowid));
@@ -424,19 +431,23 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 32,
+    version: 33,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
   });
   function validateBackup(value) {
+    const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 33) for (const row of data.production_orders || []) row.quantity_decimals = 6;
+    if (value.version < 33) for (const table of ['products', 'production_items', 'production_orders', 'production_bom_nodes', 'production_scraps'])
+      for (const row of data[table] || []) row.unit_round_up = 0;
     if (value.version < 32) {
       data.production_bom_nodes = [];
       for (const row of data.bom_items || []) { row.usage_mode = 'stock'; row.child_bom_id = null; }
@@ -585,7 +596,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       orders = new Map(data.orders.map((o) => [o.id, o]));
     const barcodes = new Set();
     for (const p of data.products) {
-      productValues(p);
+      productValues(p, true);
       productDetails(p);
       if (typeof p.customer_part_numbers !== 'string') fail('备份客户料号格式无效。');
       const parts = JSON.parse(p.customer_part_numbers);
@@ -593,6 +604,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (JSON.stringify(parts) !== JSON.stringify(normalizedParts)) fail('备份客户料号格式无效。');
       if (p.last_inspected_on !== '' && !validInspectionDate(p.last_inspected_on)) fail('备份上次校验日期无效。');
       if (!Number.isSafeInteger(p.version) || p.version < 1) fail('备份物料版本无效。');
+      if (![0,1].includes(p.unit_round_up)) fail('备份物料取整属性无效。');
       if (![0,1].includes(p.active)) fail("备份物料使用状态无效。");
       if (!categoryMap.has(p.category_id) || categoryMap.get(p.category_id) !== p.category || categoryOwners.get(p.category_id) !== p.warehouse_id) fail("备份物料分类关联无效。");
       if (

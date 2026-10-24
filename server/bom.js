@@ -1,3 +1,4 @@
+import { validQuantity } from '../shared/quantity.js';
 import { createHash } from 'node:crypto';
 import { rebuildTable } from './table-migration.js';
 import { buildBomNodes, calculateBomNodes } from '../shared/bom-expansion.js';
@@ -8,7 +9,7 @@ import { operationRequest, saveOperationRequest } from './operations.js';
 export const bomTables = ['boms', 'bom_items', 'bom_scraps'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
-const publicProduct = product => Object.fromEntries(['id', 'name', 'barcode', 'specification', 'unit', 'active', 'stock'].map(key => [key, product[key]]));
+const publicProduct = product => Object.fromEntries(['id', 'name', 'barcode', 'specification', 'unit', 'active', 'stock', 'unit_round_up'].map(key => [key, product[key]]));
 
 function readSnapshot(db, fn) {
   if (db.isTransaction) return fn();
@@ -107,8 +108,10 @@ export function getBom(db, warehouseId, id) {
 }
 
 export function calculateBom(db, warehouse, id, productionQuantity, version, schemaVersion) {
+  if (!validQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 4 位小数。');
   return readSnapshot(db, () => {
     const bom = getBom(db, warehouse.id, id);
+    productionQuantity = bom.product.unit_round_up ? Math.ceil(productionQuantity) : productionQuantity;
     if (version !== undefined && version !== bom.version) fail('BOM已变化，请重新打开后测算。', 409);
     const cache = new Map([[bom.id, bom]]);
     const load = childId => {
@@ -123,15 +126,15 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
     });
     const instance = db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
     const fingerprints = [...cache.values()].sort((a, b) => a.id - b.id).map(b => [b.id, b.version, b.name, b.enabled, b.base_quantity, b.base_unit, b.loss_method,
-      b.product.id, b.product.name, b.product.barcode, b.product.specification, b.product.active, b.product.unit,
+      b.product.id, b.product.name, b.product.barcode, b.product.specification, b.product.active, b.product.unit, b.product.unit_round_up,
       [...b.items, ...b.scraps].map(row => [row.product_id, row.quantity, row.quantity_fraction, row.loss_rate, row.usage_mode, row.child_bom_id, row.note, row.method, row.source_product_id,
-        row.product.name, row.product.barcode, row.product.specification, row.product.active, row.product.unit])]);
+        row.product.name, row.product.barcode, row.product.specification, row.product.active, row.product.unit, row.product.unit_round_up])]);
     return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity, loss_method: bom.loss_method,
       schema_version: 2, multi_level: result.multi_level, nodes: result.nodes,
       structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints])).digest('hex'),
       scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
-        planned_quantity: scrapExpectedQuantity(row, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
-      production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
+        planned_quantity: scrapExpectedQuantity({ ...row, unit_round_up: row.product.unit_round_up }, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
+      quantity_decimals: 4, production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
   });
 }
 
@@ -214,6 +217,8 @@ export function installBom(app, db) {
       usage_mode: item.usage_mode === undefined ? (existing?.items.find(row => row.product_id === item.product_id)?.usage_mode ?? 'stock') : item.usage_mode,
       child_bom_id: item.usage_mode === 'stock' ? null : item.child_bom_id === undefined ? (existing?.items.find(row => row.product_id === item.product_id)?.child_bom_id ?? null) : item.child_bom_id,
       loss_rate: item.loss_rate === undefined ? (existing?.items.find(row => row.product_id === item.product_id)?.loss_rate ?? 0) : item.loss_rate })) : req.body.items });
+    if (!validQuantity(body.base_quantity, true) || body.items.some(row => !row.quantity_fraction && !validQuantity(row.quantity, true)))
+      fail('基准产量及材料用量最多 4 位小数。');
     // An older client editing a BOM must not silently delete its output rules.
     const scraps = body.scraps === undefined ? (existing?.scraps || []) : body.scraps;
     validateScrapRules(scraps, body.product_id, body.items);

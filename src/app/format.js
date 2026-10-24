@@ -19,7 +19,7 @@ const moneyBase = (v) => moneyFormat.format(Number(v) || 0);
 const price = (v) => priceFormat.format(displayAmount(v));
 const priceBase = (v) => priceFormat.format(Number(v) || 0);
 
-const count = (v) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(v);
+const count = (v) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 4 }).format(v);
 
 const shortDate = (v) =>
   new Date(v).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });

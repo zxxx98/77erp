@@ -1,4 +1,4 @@
-import { validQuantity, addQuantity } from "../shared/quantity.js";
+import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from "../shared/quantity.js";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { contactMatchesDirection } from '../shared/contacts.js';
 import { resolveContact } from "./commerce.js";
@@ -151,7 +151,7 @@ function checkConfig(body, used = 0, editing = false) {
   )
     fail(
       "INVALID_ITEMS",
-      "请选择 1–100 种不同物料，数量必须为正数且最多 6 位小数，单价不能为负数。",
+      "请选择 1–100 种不同物料，数量必须为正数且最多 4 位小数，单价不能为负数。",
       400,
     );
   let total = 0;
@@ -204,12 +204,14 @@ export function installStockQr(app, db) {
         .get(i.product_id);
       return {
         ...i,
+        quantity: materialQuantity(i.quantity, p),
+        unit_round_up: p.unit_round_up,
         name: p.name,
         barcode: p.barcode,
         unit: p.unit,
         stock: p.stock,
         active: p.active,
-        amount_cents: Math.round(i.quantity * (i.price_e4 / 10000) * 100),
+        amount_cents: Math.round(materialQuantity(i.quantity, p) * (i.price_e4 / 10000) * 100),
         product_changed:
           p.barcode !== i.product_barcode || p.unit !== i.product_unit,
       };
@@ -281,7 +283,7 @@ export function installStockQr(app, db) {
           name: i.name,
           error: `库存不足（当前 ${i.stock} ${i.unit}，需要 ${i.quantity} ${i.unit}）。`,
         });
-      else if (q.type === "in" && !validQuantity(addQuantity(i.stock, i.quantity)))
+      else if (q.type === "in" && !validStoredQuantity(addQuantity(i.stock, i.quantity)))
         errors.push({
           product_id: i.product_id,
           name: i.name,
@@ -430,7 +432,7 @@ export function installStockQr(app, db) {
         .get(i.product_id);
       if (!p || p.warehouse_id !== warehouse)
         fail("WAREHOUSE_MISMATCH", "物料不存在或不属于当前仓库。", 400);
-      insert.run(id, p.id, p.barcode, p.unit, i.quantity, i.price_e4, n);
+      insert.run(id, p.id, p.barcode, p.unit, materialQuantity(i.quantity, p), i.price_e4, n);
     });
   }
   app.get(
@@ -721,7 +723,7 @@ export function validateStockQrBackup(data) {
       positions.has(pos) ||
       !text(i.product_barcode, 64) ||
       !text(i.product_unit, 100) ||
-      !validQuantity(i.quantity, true) ||
+      !validStoredQuantity(i.quantity, true) ||
       !integer(i.price_e4, 0, 999999990000) ||
       !integer(i.sort_order, 0, 99)
     )
@@ -758,7 +760,7 @@ export function validateStockQrBackup(data) {
         (i) =>
           !i ||
           !integer(i.product_id, 1) ||
-          !validQuantity(i.quantity, true) ||
+          !validStoredQuantity(i.quantity, true) ||
           !integer(i.price_e4, 0, 999999990000) ||
           !text(i.name, 100) ||
           !text(i.product_barcode, 64) ||

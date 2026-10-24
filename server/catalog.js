@@ -12,7 +12,7 @@ export function productDetails(body, existing = {}) {
   }
   const image = body.image === undefined ? (existing.image ?? '') : body.image;
   validateImageUrl(image);
-  return { ...values, image, is_fixed_asset: fixedAssetValue(body, existing), ...inspectionConfig(body, existing) };
+  return { ...values, image, is_fixed_asset: fixedAssetValue(body, existing), unit_round_up: roundUpValue(body, existing), ...inspectionConfig(body, existing) };
 }
 
 // Accept booleans, 0/1 and their string forms; undefined keeps the stored value.
@@ -21,6 +21,13 @@ export function fixedAssetValue(body, existing = {}) {
   if (value === true || value === 1 || value === '1') return 1;
   if (value === false || value === 0 || value === '0') return 0;
   throw new Error('固定资产标记无效。');
+}
+
+export function roundUpValue(body, existing = {}) {
+  const value = body.unit_round_up === undefined ? (existing.unit_round_up ?? 0) : body.unit_round_up;
+  if (value === true || value === 1 || value === '1') return 1;
+  if (value === false || value === 0 || value === '0') return 0;
+  throw new Error('单位是否取整标记无效。');
 }
 
 export function categoryPaths(categories) {
@@ -54,7 +61,7 @@ export function migrateCatalog(db) {
     id INTEGER PRIMARY KEY, name TEXT NOT NULL, parent_id INTEGER REFERENCES categories(id));
     CREATE UNIQUE INDEX IF NOT EXISTS categories_sibling_name ON categories(COALESCE(parent_id,0),name);`);
   const columns = new Set(db.prepare('PRAGMA table_info(products)').all().map(c => c.name));
-  for (const [key, definition] of Object.entries({active: 'INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1))', category_id: 'INTEGER REFERENCES categories(id)', image: "TEXT NOT NULL DEFAULT ''", specification: "TEXT NOT NULL DEFAULT ''", note: "TEXT NOT NULL DEFAULT ''", is_fixed_asset: 'INTEGER NOT NULL DEFAULT 0 CHECK(is_fixed_asset IN (0,1))', inspection_date: "TEXT NOT NULL DEFAULT ''", inspection_interval: 'INTEGER NOT NULL DEFAULT 0', inspection_unit: "TEXT NOT NULL DEFAULT 'month'", last_inspected_on: "TEXT NOT NULL DEFAULT ''"}))
+  for (const [key, definition] of Object.entries({unit_round_up: 'INTEGER NOT NULL DEFAULT 0 CHECK(unit_round_up IN (0,1))', active: 'INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1))', category_id: 'INTEGER REFERENCES categories(id)', image: "TEXT NOT NULL DEFAULT ''", specification: "TEXT NOT NULL DEFAULT ''", note: "TEXT NOT NULL DEFAULT ''", is_fixed_asset: 'INTEGER NOT NULL DEFAULT 0 CHECK(is_fixed_asset IN (0,1))', inspection_date: "TEXT NOT NULL DEFAULT ''", inspection_interval: 'INTEGER NOT NULL DEFAULT 0', inspection_unit: "TEXT NOT NULL DEFAULT 'month'", last_inspected_on: "TEXT NOT NULL DEFAULT ''"}))
     if (!columns.has(key)) db.exec(`ALTER TABLE products ADD COLUMN ${key} ${definition}`);
   const scoped = db.prepare('PRAGMA table_info(categories)').all().some(c => c.name === 'warehouse_id');
   if (!columns.has('customer_part_numbers')) db.exec("ALTER TABLE products ADD COLUMN customer_part_numbers TEXT NOT NULL DEFAULT '[]'");
@@ -160,10 +167,10 @@ export function installCatalog(app, db) {
     return c.id;
   }
   function catalogValues(body, existing, warehouseId = existing?.warehouse_id ?? 1) {
-    const { image, specification, note, is_fixed_asset, inspection_date, inspection_interval, inspection_unit } = productDetails(body, existing);
+    const { image, specification, note, is_fixed_asset, unit_round_up, inspection_date, inspection_interval, inspection_unit } = productDetails(body, existing);
     validateProductImage(db, image, existing?.image);
     const id = resolveCategory(body, warehouseId);
-    return { path: paths(warehouseId).get(id), values: [id, image, specification, note, is_fixed_asset, inspection_date, inspection_interval, inspection_unit, customerPartNumbersValue(db, body, existing)] };
+    return { path: paths(warehouseId).get(id), values: [id, image, specification, note, is_fixed_asset, unit_round_up, inspection_date, inspection_interval, inspection_unit, customerPartNumbersValue(db, body, existing)] };
   }
   const mutate = fn => (req, res) => {
     try {

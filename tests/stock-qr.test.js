@@ -202,9 +202,9 @@ test("legacy QR quantity constraint migrates idempotently and preserves existing
   assert.deepEqual(f.db.prepare("SELECT * FROM stock_qr_items ORDER BY id").all(), rows);
   assert.equal((await f.preview(original)).status, 200);
   assert.deepEqual(f.db.prepare("PRAGMA foreign_key_check").all(), []);
-  const fractional = await f.create({ items: [{ product_id: f.products[0].id, quantity: 0.000001, price_e4: 100000 }] });
+  const fractional = await f.create({ items: [{ product_id: f.products[0].id, quantity: 0.0001, price_e4: 100000 }] });
   assert.equal((await f.execute(fractional, (await f.preview(fractional)).data)).status, 201);
-  assert.equal(f.stocks()[0].stock, 0.000001);
+  assert.equal(f.stocks()[0].stock, 0.0001);
 });
 
 test("multi-product receipt uses one order, one quota and current immutable prices; defaults require confirmation", async (t) => {
@@ -498,7 +498,7 @@ test("backup v7 preserves multi-item history, restore rotates labels and disable
     q = await f.create();
   await f.execute(q, (await f.preview(q)).data);
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 32);
+  assert.equal(backup.version, 33);
   const restore = async (value) => {
     const p = await f.request("/backup/preview", "POST", { backup: value });
     assert.equal(p.status, 200, JSON.stringify(p.data));

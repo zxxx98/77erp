@@ -16,12 +16,18 @@ import { Select } from '../Dropdown.jsx';
 import { downloadFile } from '../app/download.js';
 import { bomStructureCSV, bomCSV } from '../bom-csv.js';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
-import { BOM_MAX_ITEMS, parseBomQuantity, validateBom, bomRequiredQuantity, bomLossMethodLabels, bomLossMethodFormulas } from '../../shared/bom.js';
+import { BOM_MAX_ITEMS, parseBomQuantity, validateBom, bomRequiredQuantity, bomLossMethodLabels, bomLossMethodFormulas, validateBomLossRate } from '../../shared/bom.js';
 import { validateScrapRules } from '../../shared/scrap.js';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import './bom.css';
 
-const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+const parseLossRate = value => {
+  const rate = Number(value);
+  if (!/^\d+(\.\d{1,6})?$/.test(String(value).trim())) throw new Error('标准损耗率最多 6 位小数。');
+  validateBomLossRate(rate);
+  return rate;
+};
+const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 const editable = bom => ({ ...bom, items: bom.items.map(item => ({ ...item, quantity: item.quantity_fraction || item.quantity })),
   scraps: (bom.scraps || []).map(row => ({ ...row, quantity: row.quantity_fraction || row.quantity })) });
 const newBom = product => ({ name: product ? `${product.name}BOM`.slice(0, 100) : '', product: product || null,
@@ -39,7 +45,7 @@ function incrementUsage(value) {
 function UsagePreview({ value, unit, lossRate, lossMethod }) {
   try {
     const parsed = parseBomQuantity(value);
-    const rate = parseQuantity(lossRate), gross = bomRequiredQuantity(parsed.quantity, 1, 1, parsed.quantity_fraction, rate, lossMethod);
+    const rate = parseLossRate(lossRate), gross = bomRequiredQuantity(parsed.quantity, 1, 1, parsed.quantity_fraction, rate, lossMethod);
     return <small className="bom-hint bom-usage-preview">{parsed.quantity_fraction && <>折合约 {count(parsed.quantity)} {unit}，按原分数测算。 </>}含损耗标准投入 {count(gross)} {unit}（对应基准产量）。</small>;
   } catch { return null; }
 }
@@ -112,7 +118,7 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
           snapshotData.current = data; setStale(false); setSnapshot(result);
         })}>{snapshot ? '重新测算' : '开始测算'}</Button>
       </div>
-      <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。标准损耗采用{bomLossMethodLabels[bom.loss_method]}：{bomLossMethodFormulas[bom.loss_method]}，再按生产数量 ÷ 基准产量折算，最终向上保留 6 位小数。</p>
+      <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。标准损耗采用{bomLossMethodLabels[bom.loss_method]}：{bomLossMethodFormulas[bom.loss_method]}，再按生产数量 ÷ 基准产量折算，最终向上保留 4 位小数。</p>
       {action.error && <p className="form-error" role="alert">{action.error}</p>}
     </section>
     {snapshot && <section className="panel bom-section bom-calculation-result">
@@ -171,7 +177,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
     action.run(async () => {
       const body = { name: editor.name, product_id: editor.product_id, base_quantity: parseQuantity(editor.base_quantity, true),
         base_unit: editor.product?.unit || '', loss_method: editor.loss_method, note: editor.note, enabled: editor.enabled,
-        items: editor.items.map(item => ({ product_id: item.product_id, ...parseBomQuantity(item.quantity), loss_rate: parseQuantity(item.loss_rate), unit: item.product.unit, note: item.note, usage_mode: item.usage_mode ?? 'stock', child_bom_id: item.usage_mode === 'explode' ? item.child_bom_id : null })),
+        items: editor.items.map(item => ({ product_id: item.product_id, ...parseBomQuantity(item.quantity), loss_rate: parseLossRate(item.loss_rate), unit: item.product.unit, note: item.note, usage_mode: item.usage_mode ?? 'stock', child_bom_id: item.usage_mode === 'explode' ? item.child_bom_id : null })),
         scraps: editor.scraps.map(row => ({ product_id: row.product_id, method: row.method, source_product_id: row.source_product_id,
           ...parseBomQuantity(row.quantity), unit: row.product.unit, note: row.note })),
         ...(editor.id ? { version: editor.version } : {}) };

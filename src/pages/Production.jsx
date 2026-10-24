@@ -12,7 +12,7 @@ import { useQuery, queryPath } from '../queries.js';
 import { usePermissions } from '../permissions.jsx';
 import { PageHeading, Button, Badge, QueryStatus } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
-import { parseQuantity, quantityUnits, QUANTITY_SCALE } from '../../shared/quantity.js';
+import { parseQuantity, quantityUnits, QUANTITY_SCALE, materialQuantity, validQuantity } from '../../shared/quantity.js';
 import { bomShortage, bomLossMethodLabels, bomLossMethodFormulas } from '../../shared/bom.js';
 import { productionStatusLabels, productionItemQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
@@ -22,7 +22,7 @@ import './bom.css';
 import './production.css';
 import { money as formatMoney, currencySymbol } from '../app/format.js';
 
-const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
+const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 const money = value => `${currencySymbol()}${formatMoney(value / 100)}`;
 const time = value => new Date(value).toLocaleString('zh-CN', { hour12: false });
 const statusBadge = status => <Badge tone={status === 'completed' ? 'green' : status === 'draft' ? 'blue' : 'orange'}>{productionStatusLabels[status]}</Badge>;
@@ -69,6 +69,7 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
         {row.product && !row.product.active && <p className="bom-warning">材料已停用</p>}</div>
       <div><small>计划用量</small><span>{count(row.planned_quantity)} {row.unit}</span></div>
       {complete ? <label>实际耗料（{row.unit}）<FormField value={row.quantity} required label={`${row.name}实际耗料`}><AntInput aria-label={`${row.name}实际耗料`} inputMode="decimal"  disabled={disabled} value={row.quantity}
+        onBlur={() => { if (row.unit_round_up && validQuantity(Number(row.quantity))) onQuantity(row.product_id, materialQuantity(Number(row.quantity), row)); }}
         onChange={e => onQuantity(row.product_id, e.target.value)} /></FormField></label> : showActual && <div><small>实际耗料</small><span>{count(row.actual_quantity)} {row.unit}</span></div>}
       {!showActual && row.product && <div><small>账面库存</small><span>{count(row.product.stock)} {row.unit}</span>
         {shortage > 0 && <strong className="bom-shortage">缺料 {count(shortage)} {row.unit}</strong>}</div>}
@@ -153,7 +154,7 @@ export function Production({ data, initialBom, onChanged }) {
     });
   };
   const batchDefaults = quantity => {
-    const standards = detail.snapshot_format === 2 ? new Map(calculateBomNodes(detail.nodes, quantity).rows.map(row => [row.product_id, row.required])) : null;
+    const standards = detail.snapshot_format === 2 ? new Map(calculateBomNodes(detail.nodes, quantity, detail.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
     const items = detail.items.map(item => ({ product_id: item.product_id,
       quantity: String(productionItemQuantity(item, quantity, detail, standards)), variance_reason: '' }));
     const scraps = (detail.scraps || []).map(row => ({ product_id: row.product_id,
@@ -183,9 +184,9 @@ export function Production({ data, initialBom, onChanged }) {
         else body.version = detail.version;
         await saved(await send(path, body, options), '生产草稿已保存，库存未变动。');
       } else if (editor.kind === 'complete') {
-        const body = { version: detail.version, completed_quantity: parseQuantity(editor.completed_quantity, true), finish_order: finishOrder, note: editor.note,
-          items: editor.items.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity), variance_reason: row.variance_reason })),
-          scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity), disposition: row.disposition })) };
+        const body = { version: detail.version, completed_quantity: materialQuantity(parseQuantity(editor.completed_quantity, true), detail), finish_order: finishOrder, note: editor.note,
+          items: editor.items.map(row => ({ product_id: row.product_id, quantity: materialQuantity(parseQuantity(row.quantity), row), variance_reason: row.variance_reason })),
+          scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: materialQuantity(parseQuantity(row.quantity), row), disposition: row.disposition })) };
         validateProductionCompletion(body, detail.items);
         validateScrapActuals(body.scraps, detail.scraps || []);
         if (!window.confirm(`确认本批入库 ${count(body.completed_quantity)} ${detail.unit}${detail.product_name}，按本批实际耗料扣库并登记废料，随后${finishOrder ? '结束生产单' : '继续生产'}？`)) return;
@@ -217,7 +218,7 @@ export function Production({ data, initialBom, onChanged }) {
     if (planning && source) {
       try {
         const quantity = parseQuantity(editor.planned_quantity, true);
-        const standards = source.snapshot_format === 2 || source.multi_level ? new Map(calculateBomNodes(source.nodes, quantity).rows.map(row => [row.product_id, row.required])) : null;
+        const standards = source.snapshot_format === 2 || source.multi_level ? new Map(calculateBomNodes(source.nodes, quantity, source.quantity_decimals ?? 4).rows.map(row => [row.product_id, row.required])) : null;
         rows = rows.map(row => ({ ...row, planned_quantity: productionItemQuantity(row, quantity, source, standards) }));
       } catch (error) { quantityError = error.message; }
     }
@@ -247,7 +248,7 @@ export function Production({ data, initialBom, onChanged }) {
             <p className="bom-hint">净用量、标准损耗率与计算方式随生产单保存，计划用量已含标准损耗。草稿不预留、不扣减库存，完工时再核对实际耗料。</p>
           </> : editor.kind === 'complete' ? <>
             <p className="bom-hint">计划产量 {count(detail.planned_quantity)} {unit}，累计合格 {count(detail.completed_quantity ?? 0)} {unit}。仅填写本批数量，实际耗料默认按剩余计划产量带出，请核对。</p>
-            <label className="production-output">合格成品数量（{unit}）<FormField value={editor.completed_quantity} required label="合格成品数量"><AntInput aria-label="合格成品数量" inputMode="decimal"  disabled={action.busy} value={editor.completed_quantity} onChange={e => update({ completed_quantity: e.target.value })} /></FormField></label>
+            <label className="production-output">合格成品数量（{unit}）<FormField value={editor.completed_quantity} required label="合格成品数量"><AntInput aria-label="合格成品数量" inputMode="decimal"  disabled={action.busy} value={editor.completed_quantity} onBlur={() => { if (validQuantity(Number(editor.completed_quantity), true)) update({ completed_quantity: String(materialQuantity(Number(editor.completed_quantity), detail)) }); }} onChange={e => update({ completed_quantity: e.target.value })} /></FormField></label>
             <p className="bom-hint">只入库本次合格成品；实际耗料包含生产损耗。未使用的材料填 0，至少一种材料需大于 0。</p>
             <Button type="button" disabled={action.busy} onClick={() => action.run(async () => {
               const defaults = batchDefaults(parseQuantity(editor.completed_quantity, true));

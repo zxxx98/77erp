@@ -68,7 +68,7 @@ test('mobile purchase and sale preserve quantity precision and the confirmation 
   await page.getByRole('button', { name: '采购入库', exact: true }).click();
   await chooseContact(page, 'PWA采购供应商');
   await addItem(page, product);
-  await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('10.123456');
+  await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('10.1234');
   await page.getByRole('button', { name: '确认入库', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '确认采购入库？' })).toBeVisible();
   const confirmation = await page.getByRole('dialog', { name: '确认采购入库？' }).boundingBox();
@@ -80,7 +80,7 @@ test('mobile purchase and sale preserve quantity precision and the confirmation 
     return Math.abs(bounds.y + bounds.height - viewport.height);
   }).toBeLessThan(2);
   await page.getByRole('button', { name: '继续编辑', exact: true }).click();
-  await expect(page.getByRole('spinbutton', { name: `${product.name} 数量` })).toHaveValue('10.123456');
+  await expect(page.getByRole('spinbutton', { name: `${product.name} 数量` })).toHaveValue('10.1234');
   await page.getByRole('button', { name: '确认入库', exact: true }).click();
   await page.getByRole('button', { name: '确认提交', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -89,12 +89,12 @@ test('mobile purchase and sale preserve quantity precision and the confirmation 
   await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('99');
   await page.getByRole('button', { name: '确认出库', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('库存不足');
-  await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('0.000001');
+  await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('0.0001');
   await page.getByRole('button', { name: '确认出库', exact: true }).click();
   await page.getByRole('button', { name: '确认提交', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const data = await (await context.request.get('/api/data')).json();
-  expect(data.products.find(p => p.id === product.id).stock).toBe(10.123455);
+  expect(data.products.find(p => p.id === product.id).stock).toBe(10.1233);
   expect(await savedDrafts(page)).toHaveLength(0);
   await context.close();
 });

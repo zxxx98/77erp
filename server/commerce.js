@@ -1,5 +1,5 @@
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
-import { validQuantity, quantityUnits, addQuantity } from "../shared/quantity.js";
+import { validQuantity, quantityUnits, addQuantity, validStoredQuantity, materialQuantity } from "../shared/quantity.js";
 import { contactMatchesDirection, contactRoleLabels } from '../shared/contacts.js';
 
 const fail = (message) => {
@@ -102,8 +102,8 @@ export function allocate(value, quantity, stock) {
   if (
     !Number.isSafeInteger(value) ||
     value < 0 ||
-    !validQuantity(quantity) ||
-    !validQuantity(stock) ||
+    !validStoredQuantity(quantity) ||
+    !validStoredQuantity(stock) ||
     !stock
   )
     fail("库存成本数据无效。");
@@ -116,7 +116,7 @@ export function allocate(value, quantity, stock) {
 export function moveInventory(db, id, delta, explicit) {
   const p = db.prepare("SELECT * FROM products WHERE id=?").get(id);
   const stock = p ? addQuantity(p.stock, delta) : NaN;
-  if (!p || !validQuantity(stock))
+  if (!p || !validStoredQuantity(stock))
     fail("库存不足或超出上限。");
   const amount =
     explicit == null
@@ -188,11 +188,12 @@ export function validateTemplate(db, body) {
       !db.prepare("SELECT 1 FROM products WHERE id=?").get(i.product_id) ||
       !["string", "number"].includes(typeof i.quantity) ||
       !["string", "number"].includes(typeof i.price) ||
-      !/^\d+(\.\d{1,6})?$/.test(String(i.quantity)) ||
+      !/^\d+(\.\d{1,4})?$/.test(String(i.quantity)) ||
       !validQuantity(Number(i.quantity), true) ||
       !validUnitPrice(Number(i.price))
     )
-      fail("模板物料无效，请填写正数数量（最多 6 位小数）和最多四位小数的非负单价。");
+      fail("模板物料无效，请填写正数数量（最多 4 位小数）和最多四位小数的非负单价。");
+    i.quantity = materialQuantity(Number(i.quantity), db.prepare('SELECT unit_round_up FROM products WHERE id=?').get(i.product_id));
     seen.add(i.product_id);
   }
 }
