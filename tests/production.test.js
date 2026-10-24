@@ -20,12 +20,22 @@ async function fixture(t) {
         ...(options.cookie === null ? {} : { Cookie: options.cookie || cookie }) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const data = await response.json();
+    let data = await response.json();
     // These regressions deliberately retain historical direct-stock production semantics.
     // Only test fixtures tag persisted rows; API requests cannot opt out of the new workflow.
     if (path === '/production-orders' && body !== undefined && response.status === 200) {
       db.prepare('UPDATE production_orders SET material_workflow=0 WHERE id=?').run(data.id);
       data.material_workflow = 0;
+    }
+    // Existing accounting regressions exercise posted output by explicitly approving
+    // the new receipt through the warehouse API. Future batches never bypass approval.
+    if (response.status === 200 && /\/production-orders\/\d+\/complete$/.test(path) && !options.pendingReceipt) {
+      const current = (await request(`/production-orders/${data.id}`, undefined, options)).data;
+      for (const doc of current.receipt_documents || []) if (doc.status === 'pending') {
+        const approved = await request(`/production-receipts/${doc.id}/confirm`, {version:doc.version,request_id:randomUUID()});
+        assert.equal(approved.status,200,JSON.stringify(approved.data));
+      }
+      data = {...(await request(`/production-orders/${data.id}`, undefined, options)).data, captured_at: data.captured_at};
     }
     return { status: response.status, data, cookie: response.headers.get('set-cookie')?.split(';')[0] };
   };
@@ -148,7 +158,7 @@ test('loss snapshots drive plans and actual-output variance without double-count
     scraps: [{ product_id: scrap, quantity: 2, disposition: 'stock' }, { product_id: outputScrap, quantity: 1.5, disposition: 'discard' }] }));
   assert.equal(done.items[0].standard_quantity, 30); assert.equal(done.items[0].variance_quantity, 3); assert.equal(done.items[0].variance_rate, 10);
   assert.deepEqual(done.scraps.map(row => row.expected_quantity), [1.98, 1.5], 'completion uses actual input, not a second loss multiplier');
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 34);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 35);
   for (const change of [
     data => { data.bom_items[0].loss_rate = 100; },
     data => { data.production_items.at(-1).loss_rate = 25; },
@@ -320,11 +330,8 @@ test('completion and reversal failures roll back all inventory, costs, versions,
     assert.equal(f.db.prepare('SELECT COUNT(*) n FROM operation_requests').get().n, receiptCount);
     assert.equal(f.db.isTransaction, false);
   }
-  f.db.prepare('UPDATE products SET stock=99999999,inventory_value_cents=0 WHERE id=?').run(f.parent);
-  const overflow = f.inventory();
-  assert.equal((await f.command(`/production-orders/${order.id}/complete`, f.completion(order))).status, 400);
-  assert.deepEqual(f.inventory(), overflow, 'output overflow rolls back all previously consumed materials');
-  f.db.prepare('UPDATE products SET stock=0 WHERE id=?').run(f.parent);
+  // Output stock/value caps are now checked atomically at receipt approval;
+  // the dedicated production-receipts suite covers those independent transactions.
   const done = await f.complete(order);
   moveInventory(f.db, f.parent, -1);
   const shipped = f.inventory();
@@ -401,7 +408,7 @@ test('production permission is independent of BOM, writes and financial reads ar
   for (const value of [done, f.ok(await f.request('/production-orders', undefined, asStaff)), f.ok(await f.request(`/production-orders/${order.id}`, undefined, asStaff))])
     assert.equal(/cost|inventory_value|price/.test(JSON.stringify(value)), false);
   assert.equal((await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '无权限' }, asStaff)).status, 403);
-  await permissions(['production', 'corrections']);
+  await permissions(['production', 'corrections', 'purchase']);
   const voided = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: done.version, reason: '权限内作废' }, asStaff));
   assert.equal(voided.status, 'void');
   await permissions(['production']);
@@ -486,7 +493,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 34); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 35); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -578,7 +585,7 @@ test('production scraps snapshot rules, rescale fractions, calculate from actual
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(dust).stock, 0);
   const after = f.inventory(); assert.deepEqual(f.ok(await f.request(path, body)), done); assert.deepEqual(f.inventory(), after);
   const history = f.ok(await f.request(`/products/${scrap}/history`)).records;
-  assert.equal(history[0].event, 'production_scrap_in'); assert.equal(history[0].delta, 0.5); assert.equal(history[0].number, done.number);
+  assert.equal(history[0].event, 'production_scrap_in'); assert.equal(history[0].delta, 0.5); assert.equal(history[0].number, done.receipt_documents[0].number);
   assert.equal(f.ok(await f.request(`/products/${dust}/history`)).records.length, 0);
   const voidBody = { version: done.version, reason: '废料同步回退', request_id: randomUUID() }, voidPath = `/production-orders/${done.id}/void`;
   const voided = f.ok(await f.request(voidPath, voidBody));
@@ -593,7 +600,7 @@ test('production scraps snapshot rules, rescale fractions, calculate from actual
   assert.deepEqual(f.ok(await f.request(`/products/${scrap}/history`)).records, []);
 });
 
-test('invalid scrap completions, overflow, changed units, and insufficient scrap on void roll back the entire production transaction', async t => {
+test('invalid scrap completions, changed units, and insufficient scrap on void roll back the entire production transaction', async t => {
   const f = await fixture(t), scrap = await f.product('SCRAP');
   const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [
     { product_id: scrap, method: 'input_ratio', source_product_id: f.material, quantity: 5, unit: '件', note: '' },
@@ -612,11 +619,8 @@ test('invalid scrap completions, overflow, changed units, and insufficient scrap
     assert.equal((await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [actual] }))).status, status);
     f.db.prepare('UPDATE products SET active=1,unit=? WHERE id=?').run('件', scrap);
   }
-  f.db.prepare('UPDATE products SET stock=99999999 WHERE id=?').run(scrap);
-  const overflow = f.inventory();
-  assert.equal((await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [actual] }))).status, 400);
-  assert.deepEqual(f.inventory(), overflow);
-  f.db.prepare('UPDATE products SET stock=0 WHERE id=?').run(scrap);
+  // Scrap stock caps apply at warehouse receipt approval, covered with atomic
+  // finished-stock rollback in production-receipts.test.js.
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [actual] })));
   moveInventory(f.db, scrap, -0.5, 0);
   const consumed = f.inventory();
@@ -636,7 +640,7 @@ test('scrap backup validates rule relations and completion state, restores quant
   const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
   const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
-  assert.equal(backup.version, 34);
+  assert.equal(backup.version, 35);
   for (const tamper of [
     data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
     data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
@@ -753,7 +757,7 @@ test('variance reasons survive backup and void, reject malformed drafts, and for
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
     { product_id: f.material, quantity: 16, variance_reason: '调机\n材料偏差' }, { product_id: f.second, quantity: 1.5, variance_reason: '字'.repeat(500) },
   ] })));
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 34);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 35);
   assert.ok(backup.data.production_items.every(item => !('standard_quantity' in item)));
   for (const change of [
     data => { data.production_items[0].variance_reason = '草稿不得提前记完工原因'; },
@@ -785,7 +789,7 @@ test('variance reasons survive backup and void, reject malformed drafts, and for
   assert.ok(f.db.prepare('SELECT variance_reason FROM production_items').all().every(item => item.variance_reason === ''));
 });
 
-test('partial completions post immediately, retain snapshots and compare cumulative output without replacing earlier batches', async t => {
+test('partial completions post after warehouse approval, retain snapshots and compare cumulative output without replacing earlier batches', async t => {
   const f = await fixture(t), order = await f.create();
   const first = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, {
     finish_order: false, completed_quantity: 4, note: '首批', items: [
@@ -946,7 +950,7 @@ test('batch corrections require correction permission and nested costs stay hidd
   const remote = (await f.request('/warehouses', { name: '批次隔离仓' })).data.id;
   assert.equal((await f.command(batchPath, { version: posted.version, reason: '跨仓' }, { warehouseId: remote })).status, 404);
   const finished = f.ok(await f.command(`/production-orders/${order.id}/finish`, { version: posted.version }, { cookie }));
-  await permissions(['production', 'corrections']);
+  await permissions(['production', 'corrections', 'purchase']);
   const reversed = f.ok(await f.command(batchPath, { version: finished.version, reason: '有权限纠正' }, { cookie }));
   assert.equal(reversed.status, 'draft'); assert.equal(reversed.completed_quantity, null);
 });

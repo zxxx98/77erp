@@ -242,6 +242,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
         (!/\/(?:void|delete)$/.test(path) || hasPermission(req.user, 'corrections'))) return next();
     if (/^\/production-material-documents(?:\/|$)/.test(path) &&
         (hasPermission(req.user, 'purchase') || hasPermission(req.user, 'sale') || post && /\/cancel$/.test(path) && hasPermission(req.user, 'production'))) return next();
+    if (/^\/production-receipts(?:\/|$)/.test(path) && hasPermission(req.user, 'purchase')) return next();
     if (read && path === '/updates') return next();
     if ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
         (post && /^\/announcements\/\d+\/read$/.test(path))) return next();

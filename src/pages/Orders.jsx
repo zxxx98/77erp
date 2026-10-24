@@ -12,6 +12,7 @@ import { QueryStatus, PageHeading, Button, Badge, Empty, Pagination } from '../c
 import { Download, Plus, PackageCheck, Search, ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Select } from '../Dropdown.jsx';
 import { ProductionMaterialDocuments } from '../features/ProductionMaterialDocuments.jsx';
+import { ProductionReceipts } from '../features/ProductionReceipts.jsx';
 
 async function exportOrders(orders, notify) {
   try {
@@ -120,6 +121,7 @@ function Orders({ page, data, openOrder, showDetail, notify, onChanged }) {
         )}
       </PageHeading>
       {type && <ProductionMaterialDocuments key={type} data={data} type={type} onChanged={onChanged} />}
+      {type === 'in' && <ProductionReceipts data={data} onChanged={onChanged} />}
       <div className="order-summary">
         <div>
           <span>

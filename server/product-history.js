@@ -67,7 +67,7 @@ export function installProductHistory(app, db) {
       SELECT 'production_in','batch:' || b.id,NULL,o.number,'in','production',b.status,
         b.created_at,'','第 ' || b.batch_number || ' 批 · ' || b.note,b.created_by_name,b.completed_quantity,b.completed_quantity,NULL,NULL,NULL,NULL,NULL,NULL,o.unit
       FROM production_batches b JOIN production_orders o ON o.id=b.production_id
-      WHERE o.product_id=? AND o.warehouse_id=? AND ?
+      WHERE o.product_id=? AND o.warehouse_id=? AND b.receipt_required=0 AND ?
       UNION ALL
       SELECT 'production_out','batch:' || i.id,NULL,o.number,'out','production',b.status,
         b.created_at,'','第 ' || b.batch_number || ' 批 · ' || b.note,b.created_by_name,i.actual_quantity,-i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
@@ -77,7 +77,7 @@ export function installProductHistory(app, db) {
       SELECT 'production_void_out','batch:' || b.id,NULL,o.number,'out','production',b.status,
         b.voided_at,'','第 ' || b.batch_number || ' 批 · ' || b.void_reason,b.voided_by_name,b.completed_quantity,-b.completed_quantity,NULL,NULL,NULL,NULL,NULL,NULL,o.unit
       FROM production_batches b JOIN production_orders o ON o.id=b.production_id
-      WHERE o.product_id=? AND o.warehouse_id=? AND b.status='void' AND ?
+      WHERE o.product_id=? AND o.warehouse_id=? AND b.status='void' AND b.receipt_required=0 AND ?
       UNION ALL
       SELECT 'production_void_in','batch:' || i.id,NULL,o.number,'in','production',b.status,
         b.voided_at,'','第 ' || b.batch_number || ' 批 · ' || b.void_reason,b.voided_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
@@ -87,12 +87,24 @@ export function installProductHistory(app, db) {
       SELECT 'production_scrap_in','batch:' || i.id,NULL,o.number,'in','production',b.status,
         b.created_at,'','第 ' || b.batch_number || ' 批 · ' || b.note,b.created_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
       FROM production_batches b JOIN production_orders o ON o.id=b.production_id JOIN production_batch_scraps i ON i.batch_id=b.id JOIN production_scraps r ON r.production_id=o.id AND r.product_id=i.product_id
-      WHERE i.product_id=? AND o.warehouse_id=? AND i.actual_quantity>0 AND i.disposition='stock' AND ?
+      WHERE i.product_id=? AND o.warehouse_id=? AND i.actual_quantity>0 AND i.disposition='stock' AND b.receipt_required=0 AND ?
       UNION ALL
       SELECT 'production_scrap_void_out','batch:' || i.id,NULL,o.number,'out','production',b.status,
         b.voided_at,'','第 ' || b.batch_number || ' 批 · ' || b.void_reason,b.voided_by_name,i.actual_quantity,-i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
       FROM production_batches b JOIN production_orders o ON o.id=b.production_id JOIN production_batch_scraps i ON i.batch_id=b.id JOIN production_scraps r ON r.production_id=o.id AND r.product_id=i.product_id
-      WHERE i.product_id=? AND o.warehouse_id=? AND b.status='void' AND i.actual_quantity>0 AND i.disposition='stock' AND ?
+      WHERE i.product_id=? AND o.warehouse_id=? AND b.status='void' AND i.actual_quantity>0 AND i.disposition='stock' AND b.receipt_required=0 AND ?
+      UNION ALL
+      SELECT CASE WHEN i.kind='product' THEN 'production_in' ELSE 'production_scrap_in' END,
+        'receipt:' || i.id,NULL,d.number,'in','production',d.status,d.confirmed_at,'',d.production_number || ' · 第 ' || d.batch_number || ' 批',d.confirmed_by_name,
+        i.quantity,i.quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
+      FROM production_receipt_items i JOIN production_receipts d ON d.id=i.document_id
+      WHERE i.product_id=? AND d.warehouse_id=? AND d.confirmed_at IS NOT NULL AND ?
+      UNION ALL
+      SELECT CASE WHEN i.kind='product' THEN 'production_void_out' ELSE 'production_scrap_void_out' END,
+        'receipt:' || i.id,NULL,d.number,'out','production',d.status,d.voided_at,'',d.void_reason,d.voided_by_name,
+        i.quantity,-i.quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
+      FROM production_receipt_items i JOIN production_receipts d ON d.id=i.document_id
+      WHERE i.product_id=? AND d.warehouse_id=? AND d.confirmed_at IS NOT NULL AND d.status='void' AND ?
       UNION ALL
       SELECT CASE WHEN d.type='out' THEN 'production_material_out' ELSE 'production_material_in' END,
         'material:' || i.id,NULL,d.number,d.type,'production',d.status,d.confirmed_at,'',d.production_number || ' · ' || d.note,d.confirmed_by_name,
@@ -104,6 +116,7 @@ export function installProductHistory(app, db) {
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'stocktake')),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'finance')),
         ...Array.from({ length: 12 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(),
+        ...Array.from({ length: 2 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production') || hasPermission(req.user, 'purchase'))]).flat(),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'production')), Number(hasPermission(req.user, 'sale')), Number(hasPermission(req.user, 'purchase')), limit + 1, offset);
     const records = rows.slice(0, limit).map(row => {
       if (row.event === 'price_change') return row;

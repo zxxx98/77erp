@@ -5,6 +5,7 @@ import { getBom, listBoms, calculateBom } from './bom.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 import { moveInventory, allocate } from './commerce.js';
 import { migrateProductionMaterials, productionMaterialTables, materialDocuments, materialBalances, installProductionMaterials, assertNoPendingMaterials } from './production-materials.js';
+import { migrateProductionReceipts, productionReceiptTables, receiptDocuments, receiptQuantities, createProductionReceipt, installProductionReceipts, assertReceiptReversalPermission, voidProductionReceipt } from './production-receipts.js';
 import { notifyStockChanges } from './notifications.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
@@ -14,7 +15,7 @@ import { validateProductionPlan, validateProductionCompletion, productionItemQua
 import { productionBatchSummary } from '../shared/production-batches.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
-export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables];
+export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
@@ -112,9 +113,10 @@ export function migrateProduction(db) {
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
     CREATE TRIGGER IF NOT EXISTS production_version_update AFTER UPDATE OF planned_quantity,note,status,updated_at ON production_orders BEGIN ${advance} END;`);
   migrateProductionMaterials(db);
+  migrateProductionReceipts(db);
 }
 
-export function clearProduction(db) { db.exec('DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 // Preserve the legacy SQLite status constraint. A posted, open order is exposed
 // as in_progress; draft without any currently posted output remains draft.
@@ -154,7 +156,7 @@ export function listProductionOrders(db, warehouseId, query = {}, costs = false)
     if (q.trim()) { clauses.push("(number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR bom_name LIKE ? ESCAPE '\\')"); params.push(...Array(4).fill(pattern(q.trim()))); }
     const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) AS n FROM production_orders WHERE ${where}`).get(...params).n;
     const orders = db.prepare(`SELECT * FROM production_orders WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset));
-    const result = { orders: orders.map(order => ({ ...order, status: publicStatus(order) })), total, has_more: Number(offset) + orders.length < total, next_offset: Number(offset) + orders.length };
+    const result = { orders: orders.map(order => ({ ...order, ...receiptQuantities(db, order), status: publicStatus(order) })), total, has_more: Number(offset) + orders.length < total, next_offset: Number(offset) + orders.length };
     return costs ? result : productionWithoutCosts(result);
   });
 }
@@ -182,6 +184,12 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
       return standardCache.get(quantity);
     };
     order.batches = readBatches(db, id);
+    order.receipt_documents = receiptDocuments(db, id, warehouseId);
+    Object.assign(order, receiptQuantities(db, order));
+    order.batches = order.batches.map(batch => {
+      const doc = order.receipt_documents.find(doc => doc.batch_id === batch.id);
+      return {...batch, receipt_status: doc?.status ?? (batch.status === 'void' ? 'void' : 'confirmed'), ...(doc ? {receipt_id: doc.id} : {})};
+    });
     order.material_documents = materialDocuments(db, id, warehouseId);
     if (order.material_workflow) order.items = materialBalances(order);
     const counted = summaryBatches(order);
@@ -245,6 +253,7 @@ export function installProduction(app, db) {
     }
   };
   installProductionMaterials(app, db, { route, current, version, units });
+  installProductionReceipts(app, db, {route});
   app.get('/api/production-orders', route(req => listProductionOrders(db, req.warehouse.id, req.query, true)));
   app.get('/api/production-orders/boms', route(req => listBoms(db, req.warehouse.id, { ...req.query, status: 'enabled' })));
   app.post('/api/production-orders/prepare', route(req => prepareProduction(db, req)));
@@ -295,15 +304,16 @@ export function installProduction(app, db) {
     if (typeof req.body.reason !== 'string' || !req.body.reason.trim() || req.body.reason.length > 500) fail('请填写作废原因（最多 500 字）。');
     return req.body.reason.trim();
   };
-  const reverseBatch = (order, batch) => {
+  const reverseBatch = (req, order, batch) => {
+    const posted = assertReceiptReversalPermission(db, req, batch);
     try {
-      for (const row of batch.scraps) if (row.actual_quantity && row.disposition === 'stock') {
+      for (const row of batch.scraps) if (posted && row.actual_quantity && row.disposition === 'stock') {
         const product = db.prepare('SELECT stock FROM products WHERE id=?').get(row.product_id);
         const material = order.scraps.find(item => item.product_id === row.product_id);
         if (row.actual_quantity > product.stock) fail(`废料 ${material.name}库存不足（当前 ${product.stock} ${material.unit}，需扣回 ${row.actual_quantity} ${material.unit}）。`);
         moveInventory(db, row.product_id, -row.actual_quantity, 0);
       }
-      moveInventory(db, order.product_id, -batch.completed_quantity, batch.total_cost_cents);
+      if (posted) moveInventory(db, order.product_id, -batch.completed_quantity, batch.total_cost_cents);
       if (!order.material_workflow) for (const item of batch.items) if (item.actual_quantity) moveInventory(db, item.product_id, item.actual_quantity, item.cost_cents);
     } catch (error) { fail(`无法回退库存和原成本：${error.message} 请先核对后续业务。`); }
   };
@@ -318,8 +328,8 @@ export function installProduction(app, db) {
     if ((order.batches.at(-1)?.batch_number ?? 0) >= 1000) fail('每张生产单最多登记 1000 个批次，请拆分生产单。');
     const before = stockBefore(order), at = new Date().toISOString(), owner = actor(req);
     const batchNumber = (order.batches.at(-1)?.batch_number ?? 0) + 1;
-    const batchId = Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at)
-      VALUES (?,?,?,0,?,?,?)`).run(order.id, batchNumber, req.body.completed_quantity, (req.body.note ?? '').trim(), owner, at).lastInsertRowid);
+    const batchId = Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required)
+      VALUES (?,?,?,0,?,?,?,1)`).run(order.id, batchNumber, req.body.completed_quantity, (req.body.note ?? '').trim(), owner, at).lastInsertRowid);
     const actuals = new Map(req.body.items.map(item => [item.product_id, item]));
     let total = 0;
     for (const item of order.items) {
@@ -332,19 +342,15 @@ export function installProduction(app, db) {
       db.prepare('INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?)')
         .run(batchId, item.product_id, quantity, cost, (actual.variance_reason ?? '').trim());
     }
-    moveInventory(db, order.product_id, req.body.completed_quantity, total);
     const actualScraps = new Map((req.body.scraps || []).map(row => [row.product_id, row]));
     for (const row of order.scraps) {
       const actual = actualScraps.get(row.product_id);
       const expected = scrapExpectedQuantity(row, req.body.completed_quantity, order.base_quantity, req.body.items, order.quantity_decimals);
-      if (actual.quantity && actual.disposition === 'stock') {
-        try { moveInventory(db, row.product_id, actual.quantity, 0); }
-        catch (error) { fail(`废料 ${row.name}无法入库：${error.message}`); }
-      }
       db.prepare('INSERT INTO production_batch_scraps(batch_id,product_id,expected_quantity,actual_quantity,disposition) VALUES (?,?,?,?,?)')
         .run(batchId, row.product_id, expected, actual.quantity, actual.disposition);
     }
     db.prepare('UPDATE production_batches SET total_cost_cents=? WHERE id=?').run(total, batchId);
+    createProductionReceipt(db, req, order, batchId);
     updateBatchTotals(db, order, req.body.finish_order === false ? 'draft' : 'completed', owner, at);
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number, batch_id: batchId });
     return current(req);
@@ -366,13 +372,17 @@ export function installProduction(app, db) {
     if (batch.status !== 'active') fail('此完工批次已经作废。', 409);
     const why = reason(req); units(order, false);
     const before = stockBefore(order), at = new Date().toISOString(), owner = actor(req);
-    reverseBatch(order, batch);
+    reverseBatch(req, order, batch);
+    voidProductionReceipt(db, batch.id, owner, at, why);
     db.prepare("UPDATE production_batches SET status='void',voided_by_name=?,voided_at=?,void_reason=? WHERE id=?").run(owner, at, why, batch.id);
     // Any correction reopens the order so a replacement batch can be recorded.
     updateBatchTotals(db, order, 'draft', owner, at);
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number, batch_id: batch.id });
     return current(req);
-  }, true));
+  }, true, req => {
+    const order = current(req), batch = order.batches.find(batch => batch.id === Number(req.params.batchId));
+    if (batch) assertReceiptReversalPermission(db, req, batch);
+  }));
   app.post('/api/production-orders/:id/void', route(req => {
     const order = current(req); version(req, order);
     if (order.status === 'void') fail('生产单已经作废。', 409);
@@ -386,20 +396,29 @@ export function installProduction(app, db) {
       units(order, false);
       if (order.batches.length) {
         for (const batch of [...order.batches].reverse().filter(batch => batch.status === 'active')) {
-          reverseBatch(order, batch);
+          reverseBatch(req, order, batch);
+          voidProductionReceipt(db, batch.id, owner, at, why);
           db.prepare("UPDATE production_batches SET status='void',voided_by_name=?,voided_at=?,void_reason=?,voided_with_order=1 WHERE id=?")
             .run(owner, at, why, batch.id);
         }
-      } else reverseBatch(order, order); // Historical one-shot orders retain their original ledger.
+      } else reverseBatch(req, order, order); // Historical one-shot orders retain their original ledger.
     }
     db.prepare("UPDATE production_orders SET status='void',void_reason=?,voided_by_name=?,voided_at=?,updated_by_name=?,updated_at=? WHERE id=?")
       .run(why, owner, at, owner, at, order.id);
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number });
     return current(req);
-  }, true));
+  }, true, req => {
+    const order = current(req);
+    if (!order.material_workflow && order.completed_at) {
+      if (!order.batches.length) assertReceiptReversalPermission(db, req, order);
+      else for (const batch of order.batches.filter(batch => batch.status === 'active' || batch.voided_with_order)) assertReceiptReversalPermission(db, req, batch);
+    }
+  }));
   app.post('/api/production-orders/:id/delete', route(req => {
     const order = current(req); version(req, order);
     if (order.status !== 'void') fail('仅已作废的生产单可以删除，请先作废。', 409);
+    db.prepare('DELETE FROM production_receipt_items WHERE document_id IN (SELECT id FROM production_receipts WHERE production_id=?)').run(order.id);
+    db.prepare('DELETE FROM production_receipts WHERE production_id=?').run(order.id);
     db.prepare('DELETE FROM production_material_document_items WHERE document_id IN (SELECT id FROM production_material_documents WHERE production_id=?)').run(order.id);
     db.prepare('DELETE FROM production_material_documents WHERE production_id=?').run(order.id);
     for (const table of ['production_batch_scraps', 'production_batch_items'])

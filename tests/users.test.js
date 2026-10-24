@@ -199,7 +199,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 34);
+  assert.equal(backup.version, 35);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -281,6 +281,7 @@ const routeRoles = new Map(Object.entries({
   'post /api/production-orders/:id/start': 'production', 'post /api/production-orders/:id/material-requests': 'production',
   'get /api/production-material-documents': 'purchase', 'post /api/production-material-documents/:id/confirm': 'sale',
   'post /api/production-material-documents/:id/cancel': 'sale',
+  'get /api/production-receipts': 'purchase', 'post /api/production-receipts/:id/confirm': 'purchase',
 }));
 
 test('every API route declares its role, and employee access matches that declaration', async t => {

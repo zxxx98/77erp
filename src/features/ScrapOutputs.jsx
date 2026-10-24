@@ -7,11 +7,12 @@ import { quantityUnits, QUANTITY_SCALE, validQuantity } from '../../shared/quant
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 
-export function ScrapOutputs({ rows, materials = [], complete = false, completed = false, showPlan = true, disabled = false, onChange }) {
+export function ScrapOutputs({ rows, materials = [], complete = false, completed = false, showPlan = true, disabled = false, receiptStatus, onChange }) {
   if (!rows.length) return null;
+  const stockLabel = receiptStatus === 'confirmed' ? '已入库' : receiptStatus === 'pending' ? '待入库' : receiptStatus === 'void' ? '入库已作废' : '入库登记';
   return <section className="scrap-outputs" aria-label="废料产出">
     <h2>{complete ? '核对废料产出' : completed ? '废料产出记录' : '预计废料产出'}</h2>
-    <p className="bom-hint">预计数量由本单规则计算，请按实际产出核对。入库增加当前仓库的废料库存，直接处置仅记录数量。废料按零成本入库，材料成本全部计入成品。</p>
+    <p className="bom-hint">预计数量由本单规则计算，请按实际产出核对。选择入库的废料随本批成品提交仓库批准，批准后才增加库存；直接处置仅记录数量。废料按零成本入库，材料成本全部计入成品。</p>
     {rows.map(row => {
       const name = row.name || row.product?.name;
       const source = materials.find(item => item.product_id === row.source_product_id);
@@ -31,11 +32,11 @@ export function ScrapOutputs({ rows, materials = [], complete = false, completed
           <label>实际产出（{row.unit}）<FormField value={row.actual} required label={`${name}实际废料`}><AntInput aria-label={`${name}实际废料`} inputMode="decimal"  disabled={disabled} value={row.actual}
             onChange={e => onChange(row.product_id, { quantity: e.target.value })} /></FormField></label>
           <label>处理方式<Select aria-label={`${name}处理方式`} disabled={disabled} value={row.disposition} onChange={e => onChange(row.product_id, { disposition: e })}>
-            <option value="stock">入库</option><option value="discard">直接处置</option>
+            <option value="stock">入库（待仓库批准）</option><option value="discard">直接处置</option>
           </Select></label>
           <Button type="button" disabled={disabled || expected == null} onClick={() => onChange(row.product_id, { quantity: String(expected) })} aria-label={`${name}采用预计数量`}>采用预计数量</Button>
-        </> : completed && <div><small>实际产出 · {row.disposition === 'mixed' ? '分批入库／处置' : row.disposition === 'stock' ? '入库' : '直接处置'}</small><span>{count(actual)} {row.unit}</span>
-          {row.stock_quantity != null && <small>入库 {count(row.stock_quantity)} · 直接处置 {count(row.discard_quantity)} {row.unit}</small>}</div>}
+        </> : completed && <div><small>实际产出 · {row.disposition === 'mixed' ? `${stockLabel}／处置` : row.disposition === 'stock' ? stockLabel : '直接处置'}</small><span>{count(actual)} {row.unit}</span>
+          {row.stock_quantity != null && <small>{stockLabel} {count(row.stock_quantity)} · 直接处置 {count(row.discard_quantity)} {row.unit}</small>}</div>}
         {(complete || completed) && difference != null && <small className={difference ? 'bom-warning' : ''}>较完工预计 {difference > 0 ? '+' : ''}{count(difference)} {row.unit}</small>}
       </article>;
     })}

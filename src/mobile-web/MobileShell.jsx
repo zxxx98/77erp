@@ -24,6 +24,7 @@ import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
 import { ProductBatchDialog } from '../pages/Products.jsx';
 import { ProductionMaterialDocuments } from '../features/ProductionMaterialDocuments.jsx';
+import { ProductionReceipts } from '../features/ProductionReceipts.jsx';
 
 export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProduction, announcementCount, updateNotice }) {
   const { can } = usePermissions();
@@ -291,6 +292,7 @@ function Orders({ data, initial, openOrder, showOrder, onChanged }) {
     <Chips label="单据时间" value={period} onChange={setPeriod} options={ [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天']] } />
     {['all', 'out'].includes(type) && <ProductionMaterialDocuments data={data} type="out" onChanged={onChanged} />}
     {['all', 'in'].includes(type) && <ProductionMaterialDocuments data={data} type="in" onChanged={onChanged} />}
+    {['all', 'in'].includes(type) && <ProductionReceipts data={data} onChanged={onChanged} />}
     <p className="mw-muted">共 {result ? result.total : '—'} 张单据 · 已加载 {orders.length} 张</p>
     <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>重新加载</Button>}{loading && <LoadingStatus>正在读取单据…</LoadingStatus>}
     {orders.map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}
@@ -307,7 +309,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     {(user.role === 'admin' || user.permissions?.includes('ai')) && <section className="mw-card"><Button icon={Settings} onClick={() => openModal({ kind: 'ai' })}>AI 助手</Button></section>}
     {mode === 'production' && can('quality') && <section className="mw-card"><Button icon={FilePenLine} onClick={() => navigate('quality')}>品质管理 · 在线验收</Button></section>}
     {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('bom')}>BOM · 备料测算</Button></section>}
-    {mode === 'production' && can('production') && <section className="mw-card"><Button onClick={() => navigate('production')}>生产单 · 完工入库</Button></section>}
+    {mode === 'production' && can('production') && <section className="mw-card"><Button onClick={() => navigate('production')}>生产单 · 批次登记</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>商户与仓库设置</Button>}</section>
     <Button onClick={() => openModal({ kind: 'account' })}>修改密码</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>业务管理</Button>
     {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>出入库二维码</Button>}

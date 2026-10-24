@@ -1,9 +1,9 @@
 export const permissionOptions = [
   { key: 'ai', label: 'AI 助手', description: '使用 AI 查询及生成操作预览，执行仍需对应业务权限' },
   { key: 'products', label: '物料管理', description: '物料档案、校验、启停、删除、分类、图片及跨仓库同步' },
-  { key: 'purchase', label: '入库', description: '入库开单、扫码入库及生产退料确认' },
+  { key: 'purchase', label: '入库', description: '入库开单、扫码入库、生产退料确认及成品入库审批' },
   { key: 'sale', label: '出库', description: '出库开单、扫码出库及生产领料确认' },
-  { key: 'corrections', label: '单据纠正', description: '采购退货、销售退货及单据作废；生产单作废还需生产单权限' },
+  { key: 'corrections', label: '单据纠正', description: '采购退货、销售退货及单据作废；生产作废需生产单权限，回退已入库批次还需入库权限' },
   { key: 'transfer', label: '仓库调拨', description: '仓库间库存调拨、撤销调拨及调拨记录' },
   { key: 'stocktake', label: '库存盘点', description: '盘点记录、提交盘点、库存调整、减少库存、增加库存（退料）及多仓库盘点 CSV 导出' },
   { key: 'business', label: '业务资料管理', description: '往来单位、自己的模板及出入库二维码配置' },

@@ -939,6 +939,16 @@ test('AI reads awaiting warehouse approval and issued material balances without 
   assert.equal(result.items[0].issued_quantity, 2); assert.equal(result.items[0].available_quantity, 2);
   assert.equal(/cost_cents|inventory_value|price/.test(JSON.stringify(result)), false);
   assert.ok(!call.tools.some(tool => /(?:confirm|start|complete|request).*production|production.*(?:confirm|start|complete|request)/.test(tool.function.name)));
+  order = await post(`/production-orders/${order.id}/complete`, {version:result.version,completed_quantity:1,finish_order:false,items:[{product_id:material.id,quantity:1}]});
+  f.use('get_production_order', {production_id:order.id}); await f.chat(f.staff);
+  let receiptRead=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
+  assert.equal(receiptRead.received_quantity,0); assert.equal(receiptRead.pending_receipt_quantity,1);
+  assert.equal(receiptRead.receipt_documents[0].status,'pending'); assert.equal(/cost_cents|inventory_value|price/.test(JSON.stringify(receiptRead)),false);
+  const receipt=order.receipt_documents[0]; await post(`/production-receipts/${receipt.id}/confirm`,{version:receipt.version});
+  f.use('get_production_order', {production_id:order.id}); await f.chat(f.staff);
+  receiptRead=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
+  assert.equal(receiptRead.received_quantity,1); assert.equal(receiptRead.pending_receipt_quantity,0);
+  assert.equal(receiptRead.batches[0].receipt_status,'confirmed'); assert.equal(/cost_cents|inventory_value|price/.test(JSON.stringify(receiptRead)),false);
 });
 
 test('AI distinguishes partial production, reports active batch facts and hides all nested batch costs', async t => {
@@ -961,6 +971,11 @@ test('AI distinguishes partial production, reports active batch facts and hides 
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.batches[0].items[0].standard_quantity, 2.5); assert.equal(result.batches[0].items[0].variance_quantity, 0.5);
   assert.equal(result.batches[0].note, '首批'); assert.equal(/cost|inventory_value|price/.test(JSON.stringify(result)), false);
+  assert.equal(result.received_quantity,0); assert.equal(result.pending_receipt_quantity,2);
+  assert.equal(result.receipt_documents[0].status,'pending'); assert.equal(result.batches[0].receipt_required,1);
+  assert.equal(result.batches[0].receipt_status,'pending');
+  assert.match(f.calls.at(-1).body.messages.find(message=>message.role==='system').content,/receipt_documents待批准成品入库单/);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool=>/production.*(?:confirm|receipt)|(?:confirm|receipt).*production/.test(tool.function.name)));
   assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /in_progress表示已有有效批次/);
   const reversed = await post(`/production-orders/${order.id}/batches/${partial.batches[0].id}/void`, { version: partial.version, reason: '更正首批' });
   assert.equal(reversed.status, 'draft');
