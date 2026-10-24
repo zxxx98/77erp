@@ -5,31 +5,22 @@
   display: grid;
   gap: 14px;
 }
-.stock-qr-manager label {
+:where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
   display: grid;
   gap: 7px;
   font-weight: 500;
 }
-.stock-qr-manager label > input,
-.stock-qr-manager label > select,
-.stock-qr-manager label > textarea,
-.stock-qr-actions > input,
-.stock-qr-actions > select {
+:where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > input), :where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > select), :where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > textarea), :where(.stock-qr-actions > input), :where(.stock-qr-actions > select) {
   min-height: 42px;
-  padding: 10px 12px;
-  border: 1px solid #e9ecf1;
-  border-radius: 8px;
   min-width: 0;
   max-width: 100%;
-  font: inherit;
-  font-size: 13px;
 }
 .stock-qr-manager .stock-qr-check {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.stock-qr-check > input {
+:where(.stock-qr-check > input) {
   width: auto;
 }
 .stock-qr-edit-line,
@@ -72,7 +63,7 @@
   font-size: 12px;
   margin-top: 4px;
 }
-.stock-qr-label {
+:where(.stock-qr-label) {
   display: block;
   max-width: 100%;
   height: auto;
@@ -84,7 +75,7 @@
 }
 .stock-qr-record { min-width: 0; overflow-wrap: anywhere; }
 .stock-qr-record .stock-qr-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 280px; }
-.stock-qr-record .stock-qr-actions > .btn { min-width: 0; margin: 0; padding-inline: 6px; white-space: nowrap; }
+:where(.stock-qr-record .stock-qr-actions > .btn) { min-width: 0; margin: 0; white-space: nowrap; }
 .stock-qr-manager h3 {
   margin: 8px 0;
 }
@@ -102,7 +93,7 @@
   .stock-qr-manager .stock-qr-actions > * {
     max-width: 100%;
   }
-  .stock-qr-label {
+  :where(.stock-qr-label) {
     width: 100%;
   }
 }

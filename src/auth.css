@@ -75,15 +75,7 @@
 .auth-form-heading h1 { font-size: 27px; font-weight: 600; letter-spacing: -.6px; }
 .auth-form-heading p { color: var(--muted); margin-top: 12px; line-height: 1.8; font-size: 12px; }
 .auth-form { margin-top: 33px; }
-.auth-form > label { display: block; font-size: 12px; font-weight: 500; margin: 21px 0 9px; }
-.auth-input { position: relative; display: flex; align-items: center; }
-.auth-input > svg { position: absolute; left: 14px; color: #9ba7b8; pointer-events: none; }
-.auth-input input { height: 46px; width: 100%; min-width: 0; border: 1px solid #e1e6ee; border-radius: 8px; padding: 0 42px; background: #fff; color: #17243c; transition: border-color .16s, box-shadow .16s; }
-.auth-input input::placeholder { color: #a6aebb; font-size: 12px; }
-.auth-input select { height: 46px; width: 100%; min-width: 0; border: 1px solid #e1e6ee; border-radius: 8px; padding: 0 42px; background: #fff; color: #17243c; appearance: none; transition: border-color .16s, box-shadow .16s; }
-.auth-input button { position: absolute; right: 6px; display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 5px; background: transparent; color: #8795a9; }
-.auth-input button:hover { background: #f3f6fa; }
-.auth-field-hint { margin-top: 7px; color: #96a0af; font-size: 10px; }
+:where(.auth-form > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: block; font-size: 12px; font-weight: 500; margin: 21px 0 9px; }
 .auth-error { margin-top: 20px; line-height: 1.6; }
 .auth-error > svg { margin-top: 2px; }
 .auth-form .auth-submit { width: 100%; height: 46px; justify-content: center; gap: 12px; margin-top: 27px; font-size: 13px; }
@@ -100,5 +92,4 @@
   .auth-form-panel { flex: 1; padding: 10px 26px 25px; }
   .auth-form-wrap { padding: 22px 0 50px; }
   .auth-form-heading h1 { font-size: 25px; }
-  .auth-input input, .auth-input select { font-size: 16px; }
 }

@@ -1,7 +1,9 @@
+import { Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+
 import { acceptanceSheetResults } from '../../shared/quality-bindings.js';
 import { parseQualityFile } from '../quality-local.js';
 import { needsQualityReview } from '../../shared/quality-checks.js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Check, Download, FileSpreadsheet, Plus, Upload, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { Button, Modal, PageHeading } from '../components/common.jsx';
@@ -22,7 +24,7 @@ function SourceSheet({workbook,sheetName,region,corrections,issues,busy,onCorrec
   const correction=correctionMap.get(editingAddress);
   const original=sheet.cells[editingAddress]?.text||'';
   const current=correction?.text??original;
-  useEffect(()=>{setValue(current);setCorrectionError('');},[sheet.name,editingAddress,current]);
+  useLayoutEffect(()=>{setValue(current);setCorrectionError('');},[sheet.name,editingAddress,current]);
   const submit=async restore=>{setCorrectionError('');try{await onCorrect(sheet.name,editingAddress,restore?original:value);}catch(e){setCorrectionError(e.message);}};
   const merged=useMemo(()=>{
     const map=new Map();
@@ -37,12 +39,12 @@ function SourceSheet({workbook,sheetName,region,corrections,issues,busy,onCorrec
     viewport.scrollLeft+=bounds.left-container.left-(viewport.clientWidth-bounds.width)/2;
   },[sheet,selected]);
   return <Modal title="上传文件单元格定位" subtitle={`${sheetName} · ${region||'A1'}`} wide onClose={onClose}><div className="form-body">
-    <label>工作表<Select disabled={busy} value={sheet.name} onChange={e=>{setName(e.target.value);setAddress('A1');}}>{workbook.sheets.map(s=><option key={s.name}>{s.name}</option>)}</Select></label>
+    <label>工作表<Select aria-label="工作表" disabled={busy} value={sheet.name} onChange={e=>{setName(e);setAddress('A1');}}>{workbook.sheets.map(s=><option key={s.name}>{s.name}</option>)}</Select></label>
     <section className="quality-source-correction" aria-label="手动修正单元格">
       <h3>{sheet.name}!{editingAddress}{correction&&<span className="quality-manual-marker">手动修正</span>}</h3>
       <p className="muted">点击下方单元格选择修正位置。修正后重新按模板解析，原始 Excel 保留不变；合并结构问题需修改原文件后重新上传。</p>
       <label>原始内容<pre>{original||'（空）'}</pre></label>
-      <label>修正内容<textarea aria-label="修正内容" value={value} maxLength={10000} rows={3} disabled={busy} onChange={e=>setValue(e.target.value)}/></label>
+      <label>修正内容<AntInput.TextArea aria-label="修正内容" value={value} maxLength={10000} rows={3} disabled={busy} onChange={e=>setValue(e.target.value)}/></label>
       {issues.filter(issue=>issue.sheetName===sheet.name).map((issue,i)=><p className="form-error" key={i}>{issue.region}：{issue.message}</p>)}
       {correctionError&&<p role="alert" className="form-error">{correctionError}</p>}
       <div className="quality-actions"><Button kind="primary" busy={busy} disabled={value===current} onClick={()=>submit(false)}>应用手动修正</Button>{correction&&<Button disabled={busy} onClick={()=>submit(true)}>恢复原始内容</Button>}</div>
@@ -193,7 +195,7 @@ export function QualityAcceptances({data,onTemplates,onAreaChange}) {
     {message&&<div className="quality-success quality-notice" role="status">{message}</div>}
     {!draft&&!detail&&<>
       {!templates.length&&<div className="info-box quality-storage">暂无已启用的模板，请先在模板配置中发布一个版本。<Button onClick={onTemplates}>前往模板配置</Button></div>}
-      <section className="panel"><div className="table-toolbar quality-list-toolbar"><h2>已保存验收单</h2><div className="quality-toolbar quality-list-filters"><input aria-label="搜索验收单" placeholder="搜索名称或单号" value={q} onChange={e=>{setQ(e.target.value);setOffset(0);}}/><span className="muted">共 {total} 张</span></div></div>
+      <section className="panel"><div className="table-toolbar quality-list-toolbar"><h2>已保存验收单</h2><div className="quality-toolbar quality-list-filters"><AntInput aria-label="搜索验收单" placeholder="搜索名称或单号" value={q} onChange={e=>{setQ(e.target.value);setOffset(0);}}/><span className="muted">共 {total} 张</span></div></div>
         <div className="quality-list-scroll"><table className="quality-list"><colgroup><col/><col/><col/><col/><col className="quality-list-action-column"/></colgroup><thead><tr><th>验收单 / 名称</th><th>模板版本</th><th>上传文件</th><th>提交人 / 时间</th><th>操作</th></tr></thead><tbody>{list.map(row=><tr key={row.id}><td><strong>{row.name}</strong><small>{row.number}</small></td><td>{row.template_name}<small>v{row.revision}</small></td><td>{row.filename}</td><td>{row.created_by_name}<small>{new Date(row.created_at).toLocaleString()}</small></td><td><div className="quality-actions"><Button disabled={busy} onClick={()=>run(async()=>{setDetail(await api(`/quality/acceptances/${row.id}`));setMessage('');})}>查看详情</Button><Button disabled={busy} onClick={()=>run(()=>downloadExcel(`/acceptances/${row.id}/download`))}>下载原文件</Button><Button icon={Trash2} disabled={busy} onClick={()=>remove(row)}>删除</Button></div></td></tr>)}</tbody></table></div>
         {!list.length&&<div className="quality-empty"><FileSpreadsheet size={30}/><p>暂无匹配的验收单</p></div>}
         {total>20&&<div className="quality-toolbar quality-pagination"><Button disabled={offset===0} onClick={()=>setOffset(v=>v-20)}>上一页</Button><span>{offset+1}–{Math.min(offset+20,total)} / {total}</span><Button disabled={offset+20>=total} onClick={()=>setOffset(v=>v+20)}>下一页</Button></div>}
@@ -203,14 +205,14 @@ export function QualityAcceptances({data,onTemplates,onAreaChange}) {
       <section className="panel quality-acceptance-form"><div className="quality-acceptance-steps"><span className={!parsed?'active':''}>{isOnline?'1 选择模板并填写':'1 选择模板并上传'}</span><span className={parsed?'active':''}>2 检查解析结果</span><span>3 确认保存</span></div>
         <div className="quality-meta"><label>验收模板<Select aria-label="验收模板" disabled={busy} value={draft.template?.id||''} onChange={e=>{
           if(online&&!window.confirm('切换模板会清除当前填写内容，确定切换？'))return;
-          const template=templates.find(t=>t.id===Number(e.target.value));setDraft(v=>({...v,template,file:null,workbook:null,sheetNames:[],name:`${template.name}验收`}));setParsed(null);setOnline(null);setBindings([]);setCorrections([]);setError('');request.current=null;
+          const template=templates.find(t=>t.id===Number(e));setDraft(v=>({...v,template,file:null,workbook:null,sheetNames:[],name:`${template.name}验收`}));setParsed(null);setOnline(null);setBindings([]);setCorrections([]);setError('');request.current=null;
         }}><option value="" disabled>请选择已启用模板</option>{templates.map(t=><option key={t.id} value={t.id}>{t.name} · v{t.revision}</option>)}</Select></label>
-          <label>验收单名称<input aria-label="验收单名称" maxLength={100} value={draft.name} disabled={busy} onChange={e=>setDraft(v=>({...v,name:e.target.value}))}/></label>
-          <label>备注<input aria-label="验收备注" maxLength={1000} value={draft.note} disabled={busy} onChange={e=>setDraft(v=>({...v,note:e.target.value}))}/></label>
+          <label>验收单名称<AntInput aria-label="验收单名称" maxLength={100} value={draft.name} disabled={busy} onChange={e=>setDraft(v=>({...v,name:e.target.value}))}/></label>
+          <label>备注<AntInput aria-label="验收备注" maxLength={1000} value={draft.note} disabled={busy} onChange={e=>setDraft(v=>({...v,note:e.target.value}))}/></label>
           <div className="quality-file"><span>使用模板：{draft.template?`${draft.template.name} v${draft.template.revision}`:'未选择'}</span><Button icon={Download} disabled={busy||!draft.template} onClick={()=>run(()=>downloadExcel(`/templates/${draft.template.id}/revisions/${draft.template.revision_id}/download`))}>下载此版本 Excel</Button></div>
         </div>
-        {isOnline?(!online&&<div className="quality-acceptance-upload"><FileSpreadsheet size={32}/><div><strong>使用已发布模板在线填写</strong><p className="muted">默认清空配置的填写区域，避免将样例数据当作本次检验结果。标题、排版和说明页会保留。</p><label className="quality-check"><input type="checkbox" disabled={busy} checked={keepValues} onChange={e=>setKeepValues(e.target.checked)}/>带入模板预填内容（请逐项核对）</label></div><Button kind="primary" busy={busy} disabled={!draft.template} onClick={loadOnline}>开始填写</Button></div>):<div className="quality-acceptance-upload"><FileSpreadsheet size={32}/><div><strong>{draft.file?.name||'上传填写后的 Excel'}</strong><p className="muted">支持 .xlsx，最大 10 MB。文件在浏览器内解析，确认保存时才上传。各数据工作表使用同一套模板规则，名称可以不同；请保留字段标题、属性和单元格位置。</p></div><Button icon={Upload} busy={busy} disabled={!draft.template} onClick={()=>input.current.click()}>{draft.file?'重新上传解析':'选择 Excel 并解析'}</Button></div>}
-        {!isOnline&&draft.workbook&&<div className="quality-data-sheets"><div><h2>选择需要解析的数据工作表</h2><p className="muted">每个勾选的工作表均按同一份模板的字段位置和类型解析；说明页或其他非数据页可以取消勾选。勾选变化会即时更新下方结果，无需重新解析。</p></div><div className="quality-inline">{draft.workbook.sheets.map(sheet=><label className="quality-check" key={sheet.name}><input type="checkbox" aria-label={`解析工作表 ${sheet.name}`} disabled={busy} checked={draft.sheetNames.includes(sheet.name)} onChange={e=>selectSheets(e.target.checked?draft.workbook.sheets.filter(s=>draft.sheetNames.includes(s.name)||s.name===sheet.name).map(s=>s.name):draft.sheetNames.filter(name=>name!==sheet.name))}/>{sheet.name}</label>)}</div></div>}
+        {isOnline?(!online&&<div className="quality-acceptance-upload"><FileSpreadsheet size={32}/><div><strong>使用已发布模板在线填写</strong><p className="muted">默认清空配置的填写区域，避免将样例数据当作本次检验结果。标题、排版和说明页会保留。</p><AntCheckbox className="quality-check" disabled={busy} checked={keepValues} onChange={e=>setKeepValues(e.target.checked)}>带入模板预填内容（请逐项核对）</AntCheckbox></div><Button kind="primary" busy={busy} disabled={!draft.template} onClick={loadOnline}>开始填写</Button></div>):<div className="quality-acceptance-upload"><FileSpreadsheet size={32}/><div><strong>{draft.file?.name||'上传填写后的 Excel'}</strong><p className="muted">支持 .xlsx，最大 10 MB。文件在浏览器内解析，确认保存时才上传。各数据工作表使用同一套模板规则，名称可以不同；请保留字段标题、属性和单元格位置。</p></div><Button icon={Upload} busy={busy} disabled={!draft.template} onClick={()=>input.current.click()}>{draft.file?'重新上传解析':'选择 Excel 并解析'}</Button></div>}
+        {!isOnline&&draft.workbook&&<div className="quality-data-sheets"><div><h2>选择需要解析的数据工作表</h2><p className="muted">每个勾选的工作表均按同一份模板的字段位置和类型解析；说明页或其他非数据页可以取消勾选。勾选变化会即时更新下方结果，无需重新解析。</p></div><div className="quality-inline">{draft.workbook.sheets.map(sheet=><AntCheckbox className="quality-check" key={sheet.name} aria-label={`解析工作表 ${sheet.name}`} disabled={busy} checked={draft.sheetNames.includes(sheet.name)} onChange={e=>selectSheets(e.target.checked?draft.workbook.sheets.filter(s=>draft.sheetNames.includes(s.name)||s.name===sheet.name).map(s=>s.name):draft.sheetNames.filter(name=>name!==sheet.name))}>{sheet.name}</AntCheckbox>)}</div></div>}
         <input ref={input} aria-label="上传验收单 Excel" type="file" accept=".xlsx" hidden disabled={busy||!draft.template} onChange={e=>{const file=e.target.files[0];e.target.value='';if(file)void parse(file);}}/>
       </section>
       {isOnline&&online&&<QualityOnlineEditor online={online} busy={busy} validated={!!parsed} onChange={changeOnline} onValidate={validateOnline}/>}
@@ -228,7 +230,7 @@ export function QualityAcceptances({data,onTemplates,onAreaChange}) {
       })}</section>}
       <WorkbookResults definition={definition} preview={{sheets:[selectedSheet]}} onLocate={isOnline?undefined:(sheetName,region)=>setSource({sheetName,region})}/>
     </div></Modal>}
-    {draft&&reviewNeeded&&<label className="quality-review-confirm"><input type="checkbox" aria-label="已核对系统提示" checked={checksAcknowledged} disabled={busy} onChange={e=>setChecksAcknowledged(e.target.checked)}/>我已核对系统发现的差异及待确认项，确认保留原报告结果并保存。</label>}
+    {draft&&reviewNeeded&&<AntCheckbox className="quality-review-confirm" aria-label="已核对系统提示" checked={checksAcknowledged} disabled={busy} onChange={e=>setChecksAcknowledged(e.target.checked)}>我已核对系统发现的差异及待确认项，确认保留原报告结果并保存。</AntCheckbox>}
     {detail?.checks_acknowledged===1&&<p className="quality-success quality-notice">{detail.created_by_name} 已确认系统核对提示，原报告判定与系统核对结果均已保留。</p>}
     {draft&&<div className="quality-acceptance-footer"><span className="muted">{isOnline?(parsed?'确认后保存检验数据、物料绑定和生成的 Excel 文件。':'填写后点击“校验并预览”，检查结果再保存。'):parsed?'确认后保存所选工作表的解析结果、物料绑定和上传原文件，后续模板修改不会影响此记录。':'上传后先检查解析结果，再确认保存。'}</span><Button kind="primary" icon={Check} busy={busy} disabled={!parsed||noSheets||!!preview?.issues.length||pendingBindings||reviewNeeded&&!checksAcknowledged||!draft.name.trim()} onClick={save}>确认保存验收单</Button></div>}
     {source&&parsed&&<SourceSheet workbook={parsed.workbook} sheetName={source.sheetName} region={source.region} corrections={corrections} issues={parsed.preview.issues} busy={busy} onCorrect={correct} onClose={()=>{if(!busy)setSource(null);}}/>}

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
-import { chooseOption } from './dropdown-helpers.js';
+import { chooseOption, selectedControl } from './dropdown-helpers.js';
 
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 async function fixture(page) {
@@ -64,7 +64,7 @@ async function productionFlow(page, pwa = false) {
     await page.getByRole('heading', { name: '确认生产完工', exact: true }).click();
     await page.evaluate(() => window.scrollTo({ top: 0 }));
     await page.screenshot({ path: test.info().outputPath('production-completion.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
@@ -132,9 +132,9 @@ async function standardLossFlow(page, pwa = false, lossMethod = 'internal') {
     await page.goto(f.base + '/#bom');
     if (pwa) { await page.evaluate(() => navigator.serviceWorker.ready); await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true); }
     await page.getByRole('button', { name: '编辑', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true })).toHaveValue('内扣法');
+    await expect(selectedControl(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true }))).toContainText('内扣法');
     await chooseOption(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true }), lossMethod);
-    await expect(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true })).toHaveValue(methodLabel);
+    await expect(selectedControl(page.getByRole('combobox', { name: '标准损耗计算方式', exact: true }))).toContainText(methodLabel);
     await expect(page.getByLabel('材料甲标准损耗率', { exact: true })).toHaveValue('0');
     await page.getByLabel('材料甲用量', { exact: true }).fill('9');
     await page.getByLabel('材料甲标准损耗率', { exact: true }).fill('100');
@@ -144,7 +144,7 @@ async function standardLossFlow(page, pwa = false, lossMethod = 'internal') {
     await page.getByLabel('材料甲标准损耗率', { exact: true }).fill('10');
     await expect(page.locator('.bom-material').first()).toContainText(external ? '含损耗标准投入 9.9 千克' : '含损耗标准投入 10 千克');
     await page.screenshot({ path: test.info().outputPath('standard-loss-editor.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: '保存BOM', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('BOM已保存');
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
@@ -183,7 +183,7 @@ async function standardLossFlow(page, pwa = false, lossMethod = 'internal') {
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[1].id).stock).toBe(78);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(scrap.id).stock).toBe(1.32);
     await page.screenshot({ path: test.info().outputPath('standard-loss-detail.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: '作废生产单', exact: true }).click();
     await page.getByLabel('作废原因', { exact: true }).fill('核对回退');
     page.once('dialog', dialog => dialog.accept());
@@ -279,13 +279,13 @@ async function scrapProductionFlow(page, pwa = false) {
     await page.getByRole('button', { name: '添加废料 废料甲', exact: true }).click();
     await page.getByRole('combobox', { name: '废料甲计算方式', exact: true }).click();
     await page.getByRole('option', { name: '按材料投入比例', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: '废料甲来源材料', exact: true })).toHaveValue('材料甲');
+    await expect(selectedControl(page.getByRole('combobox', { name: '废料甲来源材料', exact: true }))).toContainText('材料甲');
     await page.getByLabel('废料甲废料比例', { exact: true }).fill('5');
     await page.getByRole('searchbox', { name: '搜索废料', exact: true }).fill('SCRAP-B');
     await page.getByRole('button', { name: '按条码添加废料', exact: true }).click();
     await page.getByLabel('废料乙基准废料量', { exact: true }).fill('1/3');
     await page.screenshot({ path: test.info().outputPath('bom-scrap-rules.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: '保存BOM', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('BOM已保存');
     await page.getByRole('button', { name: '编辑', exact: true }).click();
@@ -317,7 +317,7 @@ async function scrapProductionFlow(page, pwa = false) {
     await page.getByRole('combobox', { name: '废料乙处理方式', exact: true }).click();
     await page.getByRole('option', { name: '直接处置', exact: true }).click();
     await page.screenshot({ path: test.info().outputPath('production-scrap-completion.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
     await expect(page.getByRole('heading', { name: '废料产出记录', exact: true })).toBeVisible();
@@ -387,7 +387,7 @@ async function varianceFlow(page, pwa = false) {
     await expect(first).toContainText('无差异0 千克'); await expect(first).toContainText('差异率0%');
     await page.getByLabel('材料甲实际耗料', { exact: true }).fill('1.2');
     await page.screenshot({ path: test.info().outputPath('production-variance-completion.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(f.inventory()).toEqual(before);
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
@@ -399,7 +399,7 @@ async function varianceFlow(page, pwa = false) {
     await page.getByRole('button', { name: '查看生产单', exact: false }).click();
     await expect(first).toContainText('+20%'); await expect(second).toContainText('本次未使用');
     await page.screenshot({ path: test.info().outputPath('production-variance-detail.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: '作废生产单', exact: true }).click();
     await page.getByLabel('作废原因', { exact: true }).fill('保留差异分析供核对');
     page.once('dialog', dialog => dialog.accept());
@@ -473,7 +473,7 @@ async function partialProductionFlow(page, pwa = false) {
     await expect(page.locator('.production-batch-detail')).toContainText('首批调机');
     await page.evaluate(() => window.scrollTo({ top: 0 }));
     await page.screenshot({ path: test.info().outputPath('production-batches-detail.png'), fullPage: true });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: '作废第 1 批', exact: true }).click();
     await page.getByLabel('作废原因', { exact: true }).fill('首批误报，单独回退');
     page.once('dialog', dialog => dialog.accept());

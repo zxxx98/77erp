@@ -1,3 +1,6 @@
+import { Form as AntForm, Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from 'antd';
+import { FormField } from './../ui/FormField.jsx';
+
 import { contactMatchesDirection } from '../../shared/contacts.js';
 import { usePermissions } from '../permissions.jsx';
 import { useState, useRef } from 'react';
@@ -94,8 +97,8 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     (sum, item) => sum + (Number(item.quantity) || 0),
     0,
   );
-  const submit = async (e) => {
-    e.preventDefault();
+  const submit = async () => {
+
     if (!items.length) {
       setError("请至少添加一件物料。");
       return;
@@ -140,10 +143,10 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
       onClose={busy || templateAction.busy ? () => {} : onClose}
       wide
     >
-      <form onSubmit={submit}>
+      <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
         {selection.error && <div role="alert">{selection.error}</div>}<QueryStatus query={contacts} />
         <div className="form-body order-form-body">
-          <label className="inactive-product-option"><input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />包含停用物料（用于清库存等操作）</label>
+          <AntCheckbox className="inactive-product-option" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}>包含停用物料（用于清库存等操作）</AntCheckbox>
 
           <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={busy || templateAction.busy} onUse={d => {
             if ((items.length || note) && !window.confirm("套用模板将替换当前编辑内容，是否继续？")) return false;
@@ -151,7 +154,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           }} />
           {template && <span className="order-template-status"><FilePenLine size={15} aria-hidden="true" />已套用「{template.name}」<small>本次修改不会自动更新模板</small></span>}
           {templates && <div className="template-save-panel">
-            <label>模板名称<input value={templateName} maxLength={100} placeholder="例如：每周日用品补货" disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
+            <label>模板名称<AntInput value={templateName} maxLength={100} placeholder="例如：每周日用品补货" disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
             <div className="order-template-actions">
               <Button type="button" icon={FilePenLine} busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(false)}>{template ? "另存为模板" : "保存为模板"}</Button>
               {template && <Button type="button" busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}
@@ -168,7 +171,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
             <label>
               入出库仓库
-              <input value={data.settings.warehouse_name} disabled />
+              <AntInput value={data.settings.warehouse_name} disabled />
             </label>
           </div>
           {internal && <p className="info-box">内部流转仅调整库存，不计入采购额、销售额、利润及应收应付。入库单价用于库存计价。</p>}
@@ -182,8 +185,8 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               {camera ? "关闭摄像头" : "手机扫码"}
             </Button>
             <div className="input-with-icon">
-              <ScanLine size={18} />
-              <input
+
+              <AntInput prefix={<ScanLine size={18} />}
                 aria-label="扫描物料条码"
                 placeholder="手动输入物料条码"
                 value={barcode}
@@ -208,28 +211,19 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} />}
           <div className="product-picker">
             <div className="table-search">
-              <Search size={16} />
-              <input
+              <AntInput prefix={<Search size={16} />} allowClear={{ clearIcon: <X size={14} aria-label="清除" /> }}
                 aria-label="查找并添加物料"
                 placeholder="或搜索物料名称，点击添加"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              {query && (
-                <button
-                  type="button"
-                  aria-label="清除"
-                  onClick={() => setQuery("")}
-                >
-                  <X size={14} />
-                </button>
-              )}
+
             </div>
             {query && (
               <div className="picker-results">
                 {matches.length ? (
                   matches.map((p) => (
-                    <button key={p.id} type="button" onClick={() => add(p)}>
+                    <AntButton type="default" key={p.id} htmlType="button" onClick={() => add(p)}>
                       <ProductArt product={p} size="small" preview={false} />
                       <span>
                         <strong>{p.name}{p.active === 0 ? "（已停用）" : ""}</strong>
@@ -238,7 +232,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         </small>
                       </span>
                       <Plus size={16} />
-                    </button>
+                    </AntButton>
                   ))
                 ) : (
                   <p>未找到物料，请先建立物料档案。</p>
@@ -272,7 +266,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               <tbody>
                 {items.map((i) => {
                   const p = data.products.find((p) => p.id === i.product_id);
-                  if (!p) return <tr key={i.product_id}><td colSpan={4}>正在核对物料 #{i.product_id}；若物料已删除，请移除后重新选择。</td><td><button type="button" aria-label={`移除物料 #${i.product_id}`} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></button></td></tr>;
+                  if (!p) return <tr key={i.product_id}><td colSpan={4}>正在核对物料 #{i.product_id}；若物料已删除，请移除后重新选择。</td><td><AntButton type="default" htmlType="button" aria-label={`移除物料 #${i.product_id}`} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></AntButton></td></tr>;
                   return (
                     <tr key={i.product_id}>
                       <td>
@@ -287,39 +281,37 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         </div>
                       </td>
                       <td>
-                        <input
+                        <FormField value={i.quantity} required type="number" min="0.000001" max="99999999" label={`${p.name} 数量`}><AntInput
                           aria-label={`${p.name} 数量`}
                           type="number"
                           min="0.000001"
                           max="99999999"
                           step="0.000001"
-                          required
                           value={i.quantity}
                           onChange={(e) =>
                             update(i.product_id, "quantity", e.target.value)
                           }
-                        />
+                        /></FormField>
                       </td>
                       <td>
-                        <input
+                        <FormField value={i.price} required type="number" min="0" max="99999999" label={`${p.name} 单价`}><AntInput
                           aria-label={`${p.name} 单价`}
                           type="number"
                           min="0"
                           max="99999999"
                           step="0.0001"
-                          required
                           value={i.price}
                           onChange={(e) =>
                             update(i.product_id, "price", e.target.value)
                           }
-                        />
+                        /></FormField>
                       </td>
                       <td className="number-cell">
                         {baseCurrencySymbol()} {moneyBase(Number(i.quantity) * Number(i.price))}
                       </td>
                       <td>
-                        <button
-                          type="button"
+                        <AntButton type="text"
+                          htmlType="button"
                           className="icon-button"
                           aria-label={`移除 ${p.name}`}
                           onClick={() =>
@@ -331,7 +323,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                           }
                         >
                           <X size={15} />
-                        </button>
+                        </AntButton>
                       </td>
                     </tr>
                   );
@@ -358,7 +350,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           </div>
           <label className="note-label">
             备注
-            <textarea
+            <AntInput.TextArea
               maxLength={500}
               rows={2}
               placeholder="选填，记录本次入出库的补充信息"
@@ -395,7 +387,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             </Button>
           </div>
         </div>
-      </form>
+      </AntForm>
     </Modal>
   );
 }

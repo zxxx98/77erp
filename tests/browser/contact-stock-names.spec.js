@@ -41,7 +41,7 @@ for (const mobile of [false, true]) {
         await page.goto('/?manage=data');
         await page.getByRole('button', { name: '往来单位', exact: true }).click();
         await page.getByRole('combobox', { name: '搜索往来单位', exact: true }).click();
-        await page.getByRole('listbox', { name: '往来单位', exact: true }).getByText(name, { exact: true }).click();
+        await page.getByRole('listbox').getByText(name, { exact: true }).click();
         page.once('dialog', dialog => dialog.accept());
         await page.getByRole('button', { name: '删除往来单位', exact: true }).click();
         await expect(page.getByLabel('单位名称', { exact: true })).toHaveValue('');

@@ -1,3 +1,5 @@
+import { Input as AntInput } from 'antd';
+
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useQuery, queryPath } from '../queries.js';
@@ -13,7 +15,7 @@ export function ChildBomPicker({ item, data, disabled, onChange }) {
     <details className="bom-disclosure bom-child-choices" open={!item.child_bom_id}>
       <summary><span>{item.child_bom_id ? '更换下级配方' : '选择下级配方（必填）'}</span><ChevronDown className="bom-disclosure-chevron" size={18} aria-hidden="true" /></summary>
       <div className="bom-child-options">
-        <input type="search" aria-label={`${item.product.name}搜索下级配方`} maxLength={100} placeholder="搜索配方名称" value={q} disabled={disabled}
+        <AntInput type="search" aria-label={`${item.product.name}搜索下级配方`} maxLength={100} placeholder="搜索配方名称" value={q} disabled={disabled}
           onChange={e => { setQ(e.target.value); setOffset(0); }} />
         <QueryStatus query={list} />
         {!!list.result?.boms.length && <div className="bom-child-results">{list.result.boms.map(bom => <div className="bom-search-product" key={bom.id}>

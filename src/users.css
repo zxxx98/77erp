@@ -1,5 +1,5 @@
 .account-fields { display: grid; gap: 12px; max-width: 420px; margin: 16px 0; }
-.account-fields label { display: grid; gap: 6px; }
+:where(.account-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: grid; gap: 6px; }
 .user-list { margin: 20px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; container-type: inline-size; }
 .user-table { width: 100%; border-collapse: collapse; }
 .user-table td { vertical-align: middle; }
@@ -8,7 +8,7 @@
 .user-table td:nth-child(3), .user-table td:last-child { width: 1%; }
 .user-table td:nth-child(3) .dropdown { width: 132px; }
 .user-actions { display: grid; grid-template-columns: 56px 88px 88px; align-items: center; gap: 8px; }
-.user-actions > .btn { margin: 0; padding-inline: 10px; white-space: nowrap; }
+:where(.user-actions > .btn) { margin: 0; white-space: nowrap; }
 .user-actions > .muted { text-align: center; }
 /* Adapt to the available settings panel width, including narrow desktop dialogs. */
 @container (max-width: 640px) {
@@ -27,8 +27,8 @@
 
 .permission-dialog { width: min(620px, 100%); max-height: 90dvh; overflow-y: auto; border-radius: 12px; padding: 24px; background: white; box-shadow: 0 20px 60px rgba(15, 23, 42, .2); }
 .permission-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
-.permission-options label { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
-.permission-options input { width: 16px; min-height: 16px; flex-shrink: 0; margin-top: 3px; accent-color: var(--primary, #2563eb); }
+:where(.permission-options label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+:where(.permission-options input) { width: 16px; min-height: 16px; flex-shrink: 0; margin-top: 3px; accent-color: var(--primary, #2563eb); }
 .permission-options span { display: grid; gap: 6px; }
 .permission-options small { color: var(--muted, #6982a5); line-height: 1.6; }
 .permission-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }

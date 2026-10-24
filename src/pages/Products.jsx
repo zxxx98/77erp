@@ -1,3 +1,5 @@
+import { Button as AntButton, Checkbox as AntCheckbox, Input as AntInput } from 'antd';
+
 import { usePermissions } from '../permissions.jsx';
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../api.js';
@@ -253,8 +255,8 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
     finally { actionLock.current = false; setBusy(false); }
   };
   const lifecycleActions = (p) => isAdmin && <>
-    <button className="text-button" disabled={busy} aria-label={`${p.active === 0 ? "启用" : "停用"} ${p.name}`} onClick={() => changeProduct(p)}>{p.active === 0 ? "启用" : "停用"}</button>
-    <button className="text-button product-delete" disabled={busy} aria-label={`删除 ${p.name}`} onClick={() => changeProduct(p, true)}>删除</button>
+    <AntButton type="text" htmlType="button" className="text-button" disabled={busy} aria-label={`${p.active === 0 ? "启用" : "停用"} ${p.name}`} onClick={() => changeProduct(p)}>{p.active === 0 ? "启用" : "停用"}</AntButton>
+    <AntButton type="text" htmlType="button" className="text-button product-delete" disabled={busy} aria-label={`删除 ${p.name}`} onClick={() => changeProduct(p, true)}>删除</AntButton>
   </>;
   const [category, setCategory] = useState(null),
     [view, setView] = useState("list"),
@@ -352,24 +354,17 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
             <div className="product-toolbar-left">
               <Button onClick={() => setManaging(true)}>管理分类</Button>
               {view === "grid" && visible.length > 0 && (
-                <label className="batch-select-all">
-                  <input
-                    ref={el => { if (el) el.indeterminate = somePageSelected; }}
-                    type="checkbox"
-                    aria-label="全选本页物料"
-                    checked={allPageSelected}
-                    onChange={togglePageAll}
-                    disabled={busy}
-                  />
+                <AntCheckbox className="batch-select-all" indeterminate={somePageSelected} aria-label="全选本页物料" checked={allPageSelected} onChange={togglePageAll} disabled={busy}>
+
                   <span>全选本页</span>
-                </label>
+                </AntCheckbox>
               )}
               {selectedList.length > 0 && (
                 <div className="batch-selection-bar" role="region" aria-label="批量操作">
                   <span className="batch-selection-count">已选 {selectedList.length} 项</span>
-                  <button type="button" className="text-button" disabled={busy} onClick={clearSelection}>
+                  <AntButton type="text" htmlType="button" className="text-button" disabled={busy} onClick={clearSelection}>
                     清除选择
-                  </button>
+                  </AntButton>
                 </div>
               )}
               <Button
@@ -390,38 +385,33 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
           <div className="toolbar-right product-toolbar-actions">
             <div className="filter-tabs product-status-filter" role="group" aria-label="物料使用状态">
               {[["all", "全部状态"], ["active", "已启用"], ["inactive", "已停用"]].map(([value, label]) => (
-                <button key={value} type="button" className={status === value ? "active" : ""} aria-pressed={status === value} onClick={() => setStatus(value)}>{label}</button>
+                <AntButton type="text" key={value} htmlType="button" className={status === value ? "active" : ""} aria-pressed={status === value} onClick={() => setStatus(value)}>{label}</AntButton>
               ))}
             </div>
             <div className="table-search">
-              <Search size={16} />
-              <input
+              <AntInput prefix={<Search size={16} />} allowClear={{ clearIcon: <X size={14} aria-label="清除搜索" /> }}
                 aria-label="筛选物料"
                 placeholder="搜索名称、条码、规格或客户料号"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              {search && (
-                <button aria-label="清除搜索" onClick={() => setSearch("")}>
-                  <X size={14} />
-                </button>
-              )}
+
             </div>
             <div className="view-toggle">
-              <button
+              <AntButton type="text" htmlType="button"
                 className={view === "list" ? "active" : ""}
                 aria-label="列表视图"
                 onClick={() => setView("list")}
               >
                 <List size={17} />
-              </button>
-              <button
+              </AntButton>
+              <AntButton type="text" htmlType="button"
                 className={view === "grid" ? "active" : ""}
                 aria-label="网格视图"
                 onClick={() => setView("grid")}
               >
                 <Grid2X2 size={16} />
-              </button>
+              </AntButton>
             </div>
           </div>
         </div>
@@ -434,9 +424,8 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                   <tr>
                     {isAdmin && (
                       <th className="checkbox-cell">
-                        <input
-                          ref={el => { if (el) el.indeterminate = somePageSelected; }}
-                          type="checkbox"
+                        <AntCheckbox
+                          indeterminate={somePageSelected}
                           aria-label="全选本页物料"
                           checked={allPageSelected}
                           onChange={togglePageAll}
@@ -457,8 +446,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                     <tr key={p.id} className={selectedMap.has(p.id) ? "row-selected" : ""}>
                       {isAdmin && (
                         <td className="checkbox-cell">
-                          <input
-                            type="checkbox"
+                          <AntCheckbox
                             aria-label={`选择 ${p.name}`}
                             checked={selectedMap.has(p.id)}
                             onChange={() => toggleSelect(p)}
@@ -504,19 +492,19 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       </td>
                       <td>
                         <div className="row-actions">
-                          <button
+                          <AntButton type="text" htmlType="button"
                             className="icon-button"
                             aria-label={`查看 ${p.name} 条码`}
                             onClick={() => barcode(p)}
                           >
                             <ScanLine size={17} />
-                          </button>
-                          <button
+                          </AntButton>
+                          <AntButton type="text" htmlType="button"
                             className="text-button"
                             hidden={!can("products")} onClick={() => edit(p)}
                           >
                             编辑
-                          </button>
+                          </AntButton>
                           {lifecycleActions(p)}
                         </div>
                       </td>
@@ -532,8 +520,8 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                   <div className="product-grid-top">
                     <div className="product-grid-top-left">
                       {isAdmin && (
-                        <input
-                          type="checkbox"
+                        <AntCheckbox
+
                           className="product-card-checkbox"
                           aria-label={`选择 ${p.name}`}
                           checked={selectedMap.has(p.id)}
@@ -563,14 +551,14 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                     </span>
                   </div>
                   <div className="product-grid-actions">
-                    <button onClick={() => barcode(p)}>
+                    <AntButton type="default" htmlType="button" onClick={() => barcode(p)}>
                       <ScanLine size={15} />
                       物料条码
-                    </button>
-                    <button hidden={!can("products")} onClick={() => edit(p)}>
+                    </AntButton>
+                    <AntButton type="default" htmlType="button" hidden={!can("products")} onClick={() => edit(p)}>
                       编辑
                       <ChevronRight size={13} />
-                    </button>
+                    </AntButton>
                     {lifecycleActions(p)}
                   </div>
                 </article>

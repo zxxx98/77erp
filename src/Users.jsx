@@ -1,3 +1,5 @@
+import { Input as AntInput, Button as AntButton, Checkbox as AntCheckbox } from 'antd';
+
 import { LoadingStatus } from './Loading.jsx';
 import { Select } from "./Dropdown.jsx";
 import { useEffect, useRef, useState } from 'react';
@@ -25,11 +27,11 @@ export function ChangePassword({ onChanged }) {
   return <section className="account-fields" aria-label="修改密码">
     <h3>修改密码</h3>
     <p className="muted">修改后所有设备需要重新登录。</p>
-    <label>当前密码<input type="password" autoComplete="current-password" maxLength={128} value={current} onChange={e => setCurrent(e.target.value)} disabled={busy} /></label>
-    <label>新密码<input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
-    <label>确认新密码<input type="password" autoComplete="new-password" maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
+    <label>当前密码<AntInput type="password" autoComplete="current-password" maxLength={128} value={current} onChange={e => setCurrent(e.target.value)} disabled={busy} /></label>
+    <label>新密码<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
+    <label>确认新密码<AntInput type="password" autoComplete="new-password" maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="btn btn-primary" type="button" disabled={busy} onClick={save}>{busy ? <LoadingStatus size={20}>正在修改…</LoadingStatus> : '确认修改密码'}</button>
+    <AntButton type="primary" className="btn btn-primary" htmlType="button" disabled={busy} onClick={save}>{busy ? <LoadingStatus size={20}>正在修改…</LoadingStatus> : '确认修改密码'}</AntButton>
   </section>;
 }
 
@@ -66,14 +68,14 @@ export function UserManager({ Modal, onChanged }) {
     {busy && <p><LoadingStatus>正在更新账号…</LoadingStatus></p>}
     <p className="muted">所有用户共享全部仓库。新员工默认只读，由管理员配置业务权限；管理员拥有全部权限。</p>
     <div className="account-fields">
-      <label>新账号<input autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>
-      <label>账号名称<input maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="例如：张三" /></label>
-      <label>初始密码<input type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
-      <label>新账号角色<Select value={role} onChange={e => setRole(e.target.value)} disabled={busy}><option value="employee">员工</option><option value="admin">管理员</option></Select></label>
-      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
+      <label>新账号<AntInput autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>
+      <label>账号名称<AntInput maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder="例如：张三" /></label>
+      <label>初始密码<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
+      <label>新账号角色<Select aria-label="新账号角色" value={role} onChange={e => setRole(e)} disabled={busy}><option value="employee">员工</option><option value="admin">管理员</option></Select></label>
+      <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
         await api('/users', { method: 'POST', body: { username, password, role, name } });
         setUsername(''); setPassword(''); setName('');
-      }, '账号已创建')}>新增账号</button>
+      }, '账号已创建')}>新增账号</AntButton>
     </div>
     {error && <p role="alert" className="form-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
@@ -82,61 +84,61 @@ export function UserManager({ Modal, onChanged }) {
         <thead><tr><th>账号</th><th>状态</th><th>角色</th><th>操作</th></tr></thead>
         <tbody>
           {users.map(user => <tr className="user-row" key={user.id}>
-            <td><strong>{user.name}</strong><small className="user-login">账号：{user.username}</small><button type="button" className="btn" disabled={busy} onClick={() => { setNameUser(user); setEditName(user.name); }}>修改名称</button></td>
+            <td><strong>{user.name}</strong><small className="user-login">账号：{user.username}</small><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => { setNameUser(user); setEditName(user.name); }}>修改名称</AntButton></td>
             <td>{user.active ? '正常' : '已停用'}</td>
             <td><Select aria-label={`${user.username}的角色`} value={user.role} disabled={busy} onChange={e => {
-              const nextRole = e.target.value;
+              const nextRole = e;
               if (window.confirm(`修改 ${user.username} 的角色？该账号需要重新登录。`)) void update(user, { role: nextRole });
             }}><option value="employee">员工</option><option value="admin">管理员</option></Select></td>
             <td><div className="user-actions">
-              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => {
+              <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => {
                 if (window.confirm(`${user.active ? '停用' : '启用'}账号 ${user.username}？`)) void update(user, { active: user.active ? 0 : 1 });
-              }}>{user.active ? '停用' : '启用'}</button>
-              {user.role === 'employee' ? <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPermissionUser(user); setPermissions([...user.permissions]); setError(''); }}>权限配置</button> : <span className="muted">全部权限</span>}
-              <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(user); setResetPassword(''); }}>重置密码</button>
+              }}>{user.active ? '停用' : '启用'}</AntButton>
+              {user.role === 'employee' ? <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPermissionUser(user); setPermissions([...user.permissions]); setError(''); }}>权限配置</AntButton> : <span className="muted">全部权限</span>}
+              <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(user); setResetPassword(''); }}>重置密码</AntButton>
             </div></td>
           </tr>)}
         </tbody>
       </table>
     </div>
     {nameUser && <Modal title={`修改 ${nameUser.username} 的名称`} onClose={() => { if (!busy) { setNameUser(null); setError(''); } }}>
-      <div className="form-body account-fields"><label>名称<input maxLength={60} value={editName} disabled={busy} onChange={e => setEditName(e.target.value)} /></label>
+      <div className="form-body account-fields"><label>名称<AntInput maxLength={60} value={editName} disabled={busy} onChange={e => setEditName(e.target.value)} /></label>
         <p className="muted">留空时显示登录账号。名称用于新单据的开单人，历史记录保留原名称。</p>
         {error && <p role="alert" className="form-error">{error}</p>}
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
+        <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
           await api(`/users/${nameUser.id}`, { method: 'PUT', body: { role: nameUser.role, active: nameUser.active, name: editName } });
           setNameUser(null);
-        }, '名称已更新')}>保存名称</button>
+        }, '名称已更新')}>保存名称</AntButton>
       </div>
     </Modal>}
     {permissionUser && <Modal title={`${permissionUser.username} 的权限配置`} className="permission-dialog" onClose={() => { if (!busy) { setPermissionUser(null); setError(''); } }}>
       <div className="form-body">
         <p className="muted">物料、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。</p>
         {permissionUser.legacy_permissions && <p className="info-box">此账号目前沿用原员工权限。保存后按下面的模块授权，勾选模块包含该模块的全部操作。</p>}
-        <div className="permission-options">{permissionOptions.map(option => <label key={option.key}>
-          <input type="checkbox" checked={permissions.includes(option.key)} disabled={busy} onChange={e => setPermissions(current => e.target.checked ? [...current, option.key] : current.filter(key => key !== option.key))} />
+        <div className="permission-options">{permissionOptions.map(option => <AntCheckbox key={option.key} checked={permissions.includes(option.key)} disabled={busy} onChange={e => setPermissions(current => e.target.checked ? [...current, option.key] : current.filter(key => key !== option.key))}>
+
           <span><strong>{option.label}</strong><small>{option.description}</small></span>
-        </label>)}</div>
+        </AntCheckbox>)}</div>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="permission-dialog-actions">
-          <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPermissionUser(null); setError(''); }}>取消配置</button>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
+          <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPermissionUser(null); setError(''); }}>取消配置</AntButton>
+          <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => {
             await api(`/users/${permissionUser.id}/permissions`, { method: 'PUT', body: { permissions, version: permissionUser.permissions_version } });
             setPermissionUser(null);
-          }, '权限配置已保存，立即生效')}>保存权限</button>
+          }, '权限配置已保存，立即生效')}>保存权限</AntButton>
         </div>
       </div>
     </Modal>}
     {resetUser && <div className="account-fields">
       <h4>重置 {resetUser.username} 的密码</h4>
-      <label>重置后的密码<input type="password" autoComplete="new-password" maxLength={128} value={resetPassword} onChange={e => setResetPassword(e.target.value)} disabled={busy} /></label>
-      <button type="button" className="btn btn-primary" disabled={busy} onClick={() => {
+      <label>重置后的密码<AntInput type="password" autoComplete="new-password" maxLength={128} value={resetPassword} onChange={e => setResetPassword(e.target.value)} disabled={busy} /></label>
+      <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
         if (window.confirm(`重置 ${resetUser.username} 的密码并退出该账号的所有设备？`)) void run(async () => {
           await api(`/users/${resetUser.id}/password`, { method: 'POST', body: { password: resetPassword } });
           setResetUser(null); setResetPassword('');
         }, '密码已重置');
-      }}>确认重置密码</button>
-      <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(null); setResetPassword(''); }}>取消重置</button>
+      }}>确认重置密码</AntButton>
+      <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(null); setResetPassword(''); }}>取消重置</AntButton>
     </div>}
   </section>;
 }

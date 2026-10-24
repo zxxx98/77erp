@@ -34,8 +34,8 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} defer
     await page.getByRole('button', { name: '查看操作记录', exact: true }).click();
     const history = page.getByRole('region', { name: '当前物料操作记录', exact: true });
     await expect(history).toContainText('物料改价');
-    await expect(history).toContainText('成本价：¥10.00 → ¥12.34');
-    await expect(history).toContainText('售价：¥20.00 → ¥25.67');
+    await expect(history).toContainText('成本价：$ 10.00 → $ 12.34');
+    await expect(history).toContainText('售价：$ 20.00 → $ 25.67');
     await expect(history).toContainText('操作人：admin');
     await expect(history).not.toContainText('期初已结转');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -18,7 +18,7 @@ for (const mobile of [false, true]) {
       }
       const page = await context.newPage();
       const home = `/?warehouse_id=${warehouse.id}`;
-      await page.goto(home);
+      await page.goto(`${home}#overview`);
       const warning = mobile ? page.locator('.mw-card').filter({ has: page.getByRole('heading', { name: '库存预警', exact: true }) }) : page.locator('.warning-panel');
       await expect(warning).toContainText('2 件物料');
       for (const p of products) await expect(warning.getByText(p.name, { exact: true })).toBeVisible();
@@ -41,7 +41,7 @@ for (const mobile of [false, true]) {
         await expect(page.locator('.data-table tbody tr')).toHaveCount(0);
       }
       for (const p of products) expect((await context.request.post(`/api/products/${p.id}/status`, { headers, data: { active: 1 } })).ok()).toBe(true);
-      await page.goto(home);
+      await page.goto(`${home}#overview`);
       await expect(warning).toContainText('2 件物料');
       for (const p of products) await expect(warning.getByText(p.name, { exact: true })).toBeVisible();
     } finally {
@@ -68,7 +68,7 @@ for (const mobile of [false, true]) {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       const home = `/?warehouse_id=${warehouse.id}`;
-      await page.goto(home);
+      await page.goto(`${home}#overview`);
       const warning = mobile ? page.locator('.mw-card').filter({ has: page.getByRole('heading', { name: '库存预警', exact: true }) }) : page.locator('.warning-panel');
       await expect(warning).toContainText('1 件物料');
       await expect(warning.getByText('无需预警物料', { exact: true })).toHaveCount(0);
@@ -76,12 +76,12 @@ for (const mobile of [false, true]) {
       await page.goto(`${home}#products`);
       const row = page.locator(mobile ? '.mw-product-row' : '.product-table tbody tr').filter({ hasText: '无需预警物料' });
       await expect(row).toContainText('不预警');
-      await expect(row.locator(mobile ? '.mw-badge.gray' : '.badge-gray')).toHaveCount(1);
+      await expect(row.locator('.ant-tag').filter({ hasText: '不预警' })).toHaveCount(1);
       await expect(row.getByText('缺货', { exact: true })).toHaveCount(0);
       await page.goto(`${home}#inventory`);
       const inventoryRow = page.locator(mobile ? '.mw-product-row' : '.data-table tbody tr').filter({ hasText: '无需预警物料' });
       await expect(inventoryRow).toContainText('不预警');
-      await expect(inventoryRow.locator('.red-text,.orange-text,.badge-red,.badge-orange,.mw-badge.red,.mw-badge.orange')).toHaveCount(0);
+      await expect(inventoryRow.locator('.red-text,.orange-text,.ant-tag-error,.ant-tag-warning')).toHaveCount(0);
       await page.getByRole('button', { name: mobile ? '库存预警' : /^库存预警/, exact: mobile }).click();
       const rows = page.locator(mobile ? '.mw-product-list .mw-product-row' : '.data-table tbody tr');
       await expect(rows).toHaveCount(1);
@@ -91,7 +91,7 @@ for (const mobile of [false, true]) {
       await expect(rows).toContainText('需要预警物料');
       const current = (await (await context.request.get(`/api/products/${products[1].id}`, { headers })).json()).product;
       expect((await context.request.put(`/api/products/${current.id}`, { headers, data: { ...current, threshold: 0 } })).ok()).toBe(true);
-      await page.goto(home);
+      await page.goto(`${home}#overview`);
       await expect(warning).toContainText('0 件物料');
       await expect(warning.getByText('需要预警物料', { exact: true })).toHaveCount(0);
       expect(errors).toEqual([]);

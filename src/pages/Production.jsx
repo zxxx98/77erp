@@ -1,3 +1,6 @@
+import { Input as AntInput, Form as AntForm } from 'antd';
+import { FormField } from './../ui/FormField.jsx';
+
 import { calculateBomNodes } from '../../shared/bom-expansion.js';
 import { BomStructure } from '../features/BomStructure.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -27,7 +30,7 @@ function BomPicker({ data, disabled, onSelect }) {
   const [q, setQ] = useState(''), [offset, setOffset] = useState(0);
   const list = useQuery(queryPath('/production-orders/boms', { q, offset, limit: 10 }), data, 150);
   return <section className="panel bom-section"><h2>选择成品配方</h2>
-    <input type="search" aria-label="搜索生产配方" placeholder="搜索成品名称、编码或清单名称" maxLength={100} value={q} disabled={disabled}
+    <AntInput type="search" aria-label="搜索生产配方" placeholder="搜索成品名称、编码或清单名称" maxLength={100} value={q} disabled={disabled}
       onChange={e => { setQ(e.target.value); setOffset(0); }} />
     <QueryStatus query={list} />
     <div className="production-bom-options">{list.result?.boms.map(bom => <div className="bom-search-product" key={bom.id}>
@@ -64,8 +67,8 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
         {row.product && row.unit !== row.product.unit && <p className="bom-warning">当前单位已变为 {row.product.unit}，此单保留 {row.unit}。</p>}
         {row.product && !row.product.active && <p className="bom-warning">材料已停用</p>}</div>
       <div><small>计划用量</small><span>{count(row.planned_quantity)} {row.unit}</span></div>
-      {complete ? <label>实际耗料（{row.unit}）<input aria-label={`${row.name}实际耗料`} inputMode="decimal" required disabled={disabled} value={row.quantity}
-        onChange={e => onQuantity(row.product_id, e.target.value)} /></label> : showActual && <div><small>实际耗料</small><span>{count(row.actual_quantity)} {row.unit}</span></div>}
+      {complete ? <label>实际耗料（{row.unit}）<FormField value={row.quantity} required label={`${row.name}实际耗料`}><AntInput aria-label={`${row.name}实际耗料`} inputMode="decimal"  disabled={disabled} value={row.quantity}
+        onChange={e => onQuantity(row.product_id, e.target.value)} /></FormField></label> : showActual && <div><small>实际耗料</small><span>{count(row.actual_quantity)} {row.unit}</span></div>}
       {!showActual && row.product && <div><small>账面库存</small><span>{count(row.product.stock)} {row.unit}</span>
         {shortage > 0 && <strong className="bom-shortage">缺料 {count(shortage)} {row.unit}</strong>}</div>}
       {costs && showActual && <div><small>材料成本</small><span>{money(row.cost_cents)}</span></div>}
@@ -165,9 +168,10 @@ export function Production({ data, initialBom, onChanged }) {
     if (!window.confirm('确认结束此生产单？已登记批次和库存保持当前结果，结束后不能继续登记，作废批次后会重新开放。')) return;
     await saved(await send(`/production-orders/${detail.id}/finish`, { version: detail.version }, { warehouseId: data.warehouse_id }), '生产单已结束，已登记批次和库存保持当前结果。');
   });
-  const submit = event => {
-    event.preventDefault();
-    const finishOrder = event.nativeEvent.submitter?.value !== 'continue';
+  const submitter = useRef(null);
+  const submit = () => {
+
+    const finishOrder = submitter.current !== 'continue';
     action.run(async () => {
       const options = { warehouseId: data.warehouse_id };
       if (editor.kind === 'new' || editor.kind === 'edit') {
@@ -231,28 +235,28 @@ export function Production({ data, initialBom, onChanged }) {
     const name = editor.kind === 'new' ? source?.product.name : detail.product_name, unit = editor.kind === 'new' ? source?.product.unit : detail.unit;
     return <div className="bom-page production-page">
       {heading({ new: '新建生产单', edit: '编辑生产草稿', complete: '确认生产完工', void: '作废生产单', void_batch: '作废完工批次' }[editor.kind], planning ? '选择配方和计划产量，保存草稿后安排生产。' : `${detail.number} · ${detail.product_name}`, detail ? '返回单据详情' : '返回生产单')}
-      <form onSubmit={submit}>
+      <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onSubmitCapture={event => { submitter.current = event.nativeEvent.submitter?.value; }} onFinish={submit}>
         {editor.kind === 'new' && <BomPicker data={listData} disabled={action.busy} onSelect={bom => action.run(() => chooseBom(bom))} />}
         {source && <section className="panel bom-section">
           <h2>{name}</h2><small>{editor.kind === 'new' ? source.product.barcode : detail.barcode} · {editor.kind === 'new' ? source.name : detail.bom_name} #{source.bom_id}</small>
           <p className="bom-hint">{source.snapshot_format === 2 || source.multi_level ? '根配方损耗计算方式' : '标准损耗计算方式'}：{bomLossMethodLabels[source.loss_method]}，标准投入＝{bomLossMethodFormulas[source.loss_method]}。</p>
           {planning ? <>
-            <div className="bom-form-grid production-fields"><label>计划产量（{unit}）<input aria-label="计划产量" inputMode="decimal" required value={editor.planned_quantity} disabled={action.busy} onChange={e => update({ planned_quantity: e.target.value })} /></label>
-              <label>生产备注<textarea aria-label="生产备注" rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label></div>
+            <div className="bom-form-grid production-fields"><label>计划产量（{unit}）<FormField value={editor.planned_quantity} required label="计划产量"><AntInput aria-label="计划产量" inputMode="decimal"  value={editor.planned_quantity} disabled={action.busy} onChange={e => update({ planned_quantity: e.target.value })} /></FormField></label>
+              <label>生产备注<AntInput.TextArea aria-label="生产备注" rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label></div>
             <p className="bom-hint">净用量、标准损耗率与计算方式随生产单保存，计划用量已含标准损耗。草稿不预留、不扣减库存，完工时再核对实际耗料。</p>
           </> : editor.kind === 'complete' ? <>
             <p className="bom-hint">计划产量 {count(detail.planned_quantity)} {unit}，累计合格 {count(detail.completed_quantity ?? 0)} {unit}。仅填写本批数量，实际耗料默认按剩余计划产量带出，请核对。</p>
-            <label className="production-output">合格成品数量（{unit}）<input aria-label="合格成品数量" inputMode="decimal" required disabled={action.busy} value={editor.completed_quantity} onChange={e => update({ completed_quantity: e.target.value })} /></label>
+            <label className="production-output">合格成品数量（{unit}）<FormField value={editor.completed_quantity} required label="合格成品数量"><AntInput aria-label="合格成品数量" inputMode="decimal"  disabled={action.busy} value={editor.completed_quantity} onChange={e => update({ completed_quantity: e.target.value })} /></FormField></label>
             <p className="bom-hint">只入库本次合格成品；实际耗料包含生产损耗。未使用的材料填 0，至少一种材料需大于 0。</p>
             <Button type="button" disabled={action.busy} onClick={() => action.run(async () => {
               const defaults = batchDefaults(parseQuantity(editor.completed_quantity, true));
               update({ items: defaults.items.map(item => ({ ...item, variance_reason: editor.items.find(row => row.product_id === item.product_id).variance_reason })) });
             })}>按本批产量带出耗料</Button>
-            <label className="bom-note">本批备注<textarea aria-label="本批备注" rows={2} maxLength={500} disabled={action.busy} value={editor.note} onChange={e => update({ note: e.target.value })} /></label>
+            <label className="bom-note">本批备注<AntInput.TextArea aria-label="本批备注" rows={2} maxLength={500} disabled={action.busy} value={editor.note} onChange={e => update({ note: e.target.value })} /></label>
             <p className="bom-hint">「本批入库并继续生产」保持单据开放；「本批入库并结束生产」完成本单。允许少于或超过计划，达到计划数量也不会自动结束。</p>
           </> : <>
             <p className="bom-warning">{editor.kind === 'void_batch' ? `仅回退第 ${detail.batches.find(batch => batch.id === editor.batchId).batch_number} 批，其他批次保持原记录。` : detail.completed_at ? `将扣回 ${count(detail.completed_quantity)} ${unit}成品和已入库废料，并按各批原数量、原成本退回材料。成品库存或成本不足、物料单位变化时无法作废。` : '此单当前没有有效完工库存，作废后不能继续生产。'}</p>
-            <label>作废原因<textarea aria-label="作废原因" required rows={3} maxLength={500} value={editor.reason} disabled={action.busy} onChange={e => update({ reason: e.target.value })} /></label>
+            <label>作废原因<FormField value={editor.reason} required maxLength={500} label="作废原因"><AntInput.TextArea aria-label="作废原因"  rows={3} maxLength={500} value={editor.reason} disabled={action.busy} onChange={e => update({ reason: e.target.value })} /></FormField></label>
           </>}
         </section>}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? '核对实际耗料' : '计划备料'}</h2><span className="bom-hint">共 {rows.length} 种材料</span></div>
@@ -279,7 +283,7 @@ export function Production({ data, initialBom, onChanged }) {
           <Button type="submit" kind="primary" icon={planning ? Save : editor.kind === 'complete' ? Check : XCircle} busy={action.busy} disabled={!source || !!quantityError}>
             {planning ? '保存生产草稿' : editor.kind === 'complete' ? '本批入库并结束生产' : '确认作废'}</Button>
         </div>
-      </form>
+      </AntForm>
     </div>;
   }
 
@@ -328,8 +332,8 @@ export function Production({ data, initialBom, onChanged }) {
       <Button kind="primary" icon={Plus} disabled={action.busy} onClick={() => begin({ kind: 'new', note: '', planned_quantity: '1', plan: null })}>新建生产单</Button>
     </PageHeading>{notices}
     <section className="panel bom-section"><div className="bom-list-filters">
-      <input type="search" aria-label="搜索生产单" placeholder="搜索单号、成品名称、编码或配方" maxLength={100} value={q} onChange={e => { setQ(e.target.value); setOffset(0); }} />
-      <Select aria-label="生产单状态" value={status} onChange={e => { setStatus(e.target.value); setOffset(0); }}><option value="all">全部状态</option>
+      <AntInput type="search" aria-label="搜索生产单" placeholder="搜索单号、成品名称、编码或配方" maxLength={100} value={q} onChange={e => { setQ(e.target.value); setOffset(0); }} />
+      <Select aria-label="生产单状态" value={status} onChange={e => { setStatus(e); setOffset(0); }}><option value="all">全部状态</option>
         {Object.entries(productionStatusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select>
     </div><QueryStatus query={list} />
       <div className="production-list">{list.result?.orders.map(order => <article className="bom-list-item" key={order.id}>

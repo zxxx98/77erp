@@ -1,3 +1,7 @@
+import { currencySymbol, money as formatMoney } from './app/format.js';
+import { FormField } from './ui/FormField.jsx';
+import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+
 import { useBusiness } from './business-api.js';
 export { useBusiness } from './business-api.js';
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
@@ -36,8 +40,8 @@ export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onU
     <section className="operation-panel">
       <div className="operation-tabs" aria-label="业务分类">
         {available.map(([id, label]) => (
-          <button type="button" key={id} aria-pressed={active === id}
-            className={`btn btn-${active === id ? 'primary' : 'secondary'}`} onClick={() => { setTab(id); setVisited(current => new Set([...current, id])); }}>{label}</button>
+          <AntButton type="primary" htmlType="button" key={id} aria-pressed={active === id}
+            className={`btn btn-${active === id ? 'primary' : 'secondary'}`} onClick={() => { setTab(id); setVisited(current => new Set([...current, id])); }}>{label}</AntButton>
         ))}
       </div>
       {active === 'contacts' && <Contacts onRefresh={onRefresh} />}
@@ -78,21 +82,21 @@ function Contacts({ onRefresh }) {
       </p>
       <ContactPicker contacts={contacts} value={form.id ? form.name : ""} selectedId={form.id}
         label="搜索往来单位" searchable loading={loading} disabled={busy} onSelect={setForm} />
-      <button
-        type="button"
+      <AntButton type="default"
+        htmlType="button"
         className="btn"
         disabled={busy}
         onClick={() => { setForm(empty); }}
       >
         新增往来单位
-      </button>
+      </AntButton>
       <label>
         往来类型
         <Select
           aria-label="往来类型"
           value={form.role}
           disabled={busy || !!form.id}
-          onChange={(e) => setForm({ ...form, role: e.target.value })}
+          onChange={(e) => setForm({ ...form, role: e })}
         >
           <option value="supplier">供应商</option>
           <option value="customer">客户</option>
@@ -108,7 +112,7 @@ function Contacts({ onRefresh }) {
       ].map(([key, label, max]) => (
         <label key={key}>
           {label}
-          <input
+          <AntInput
             value={form[key]}
             maxLength={max}
             disabled={busy}
@@ -116,19 +120,14 @@ function Contacts({ onRefresh }) {
           />
         </label>
       ))}
-      <label>
-        <input
-          type="checkbox"
-          checked={!!form.active}
-          disabled={busy}
-          onChange={(e) =>
+      <AntCheckbox  checked={!!form.active} disabled={busy} onChange={(e) =>
             setForm({ ...form, active: e.target.checked ? 1 : 0 })
-          }
-        />
+          }>
+
         启用此往来单位
-      </label>
-      <button
-        type="button"
+      </AntCheckbox>
+      <AntButton type="primary"
+        htmlType="button"
         className="btn btn-primary"
         disabled={busy}
         onClick={() =>
@@ -141,8 +140,8 @@ function Contacts({ onRefresh }) {
         }
       >
         保存往来单位
-      </button>
-      {form.id && <button type="button" className="btn btn-danger" disabled={busy} onClick={() => {
+      </AntButton>
+      {form.id && <AntButton type="default" danger htmlType="button" className="btn btn-danger" disabled={busy} onClick={() => {
         if (!window.confirm(`确定删除「${form.name}」？删除后无法恢复，已关联单据、模板或出入库二维码的单位不能删除。`)) return;
         void run(async () => {
           await send(`/contacts/${form.id}/delete`, { version: form.version });
@@ -150,7 +149,7 @@ function Contacts({ onRefresh }) {
           await load();
           await onRefresh?.();
         });
-      }}>删除往来单位</button>}
+      }}>删除往来单位</AntButton>}
       {error && (
         <p role="alert" className="form-error">
           {error}
@@ -189,16 +188,16 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
   </>;
   return (
     <section className={`template-panel${collapsible ? " template-picker" : ""}`}>
-      {collapsible ? <button
+      {collapsible ? <AntButton type="text"
         ref={trigger}
-        type="button"
+        htmlType="button"
         className="template-trigger"
         aria-label="选择单据模板"
         aria-expanded={expanded}
         aria-controls={listId}
         disabled={disabled || busy}
         onClick={() => setExpanded(!expanded)}
-      >{header}<ChevronDown className="template-chevron" size={18} aria-hidden="true" /></button>
+      >{header}<ChevronDown className="template-chevron" size={18} aria-hidden="true" /></AntButton>
         : <div className="template-heading">{header}</div>}
       <div id={listId} className="template-content" hidden={collapsible && !expanded}>
         {collapsible && <p className="template-hint">套用后可修改本次单据，提交后模板仍会保留。</p>}
@@ -225,8 +224,8 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
               </div>
               {d.note && <p className="template-note" title={d.note}>{d.note}</p>}
               <div className="template-actions">
-                <button
-                  type="button"
+                <AntButton type="default"
+                  htmlType="button"
                   className="btn btn-secondary template-resume"
                   aria-label={`使用模板 #${d.id}`}
                   disabled={busy || disabled || loading || !can(d.type === 'in' ? 'purchase' : 'sale')}
@@ -238,9 +237,9 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
                   }}
                 >
                   使用模板 <ArrowRight size={15} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
+                </AntButton>
+                <AntButton type="text"
+                  htmlType="button"
                   className="template-delete"
                   hidden={!manageTemplates}
                   aria-label={`删除模板 #${d.id}`}
@@ -255,7 +254,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
                   }
                 >
                   <Trash2 size={16} aria-hidden="true" />
-                </button>
+                </AntButton>
               </div>
             </article>
           ))}
@@ -263,7 +262,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
         {error && (
           <div className="template-error">
             <p role="alert" className="form-error">{error}</p>
-            <button type="button" className="btn btn-secondary" disabled={busy || disabled} onClick={() => run(load)}>重新加载</button>
+            <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy || disabled} onClick={() => run(load)}>重新加载</AntButton>
           </div>
         )}
       </div>
@@ -305,7 +304,7 @@ export function Payments({ order, onChanged }) {
                   {data.payment_status === "unverified"
                     ? "历史已收付金额"
                     : "本次收付款金额"}
-                  <input
+                  <FormField value={amount} type="number" min="0" label="收付款金额"><AntInput
                     aria-label="收付款金额"
                     type="number"
                     min="0"
@@ -313,11 +312,11 @@ export function Payments({ order, onChanged }) {
                     value={amount}
                     disabled={busy}
                     onChange={(e) => setAmount(e.target.value)}
-                  />
+                  /></FormField>
                 </label>
                 <label>
                   收付款方式
-                  <input
+                  <AntInput
                     value={method}
                     maxLength={50}
                     disabled={busy}
@@ -326,15 +325,15 @@ export function Payments({ order, onChanged }) {
                 </label>
                 <label>
                   收付款说明
-                  <input
+                  <AntInput
                     value={note}
                     maxLength={500}
                     disabled={busy}
                     onChange={(e) => setNote(e.target.value)}
                   />
                 </label>
-                <button
-                  type="button"
+                <AntButton type="primary"
+                  htmlType="button"
                   className="btn btn-primary"
                   disabled={busy}
                   onClick={() =>
@@ -367,7 +366,7 @@ export function Payments({ order, onChanged }) {
                   {data.payment_status === "unverified"
                     ? "确认历史收付"
                     : "登记收付款"}
-                </button>
+                </AntButton>
               </>
             )}
           <p>
@@ -381,8 +380,8 @@ export function Payments({ order, onChanged }) {
                 {p.reversed_at ? `已撤销：${p.reverse_reason}` : ""}
               </p>
               {!p.reversed_at && (
-                <button
-                  type="button"
+                <AntButton type="default"
+                  htmlType="button"
                   className="btn"
                   disabled={busy}
                   onClick={() =>
@@ -397,7 +396,7 @@ export function Payments({ order, onChanged }) {
                   }
                 >
                   撤销登记 #{p.id}
-                </button>
+                </AntButton>
               )}
             </div>
           ))}
@@ -451,11 +450,11 @@ function Finance() {
           </div>
           <label>
             选择收付款单据
-            <Select
+            <Select aria-label="选择收付款单据"
               value={selected?.id || ""}
               onChange={(e) =>
                 setSelected(
-                  data.orders.find((o) => o.id === Number(e.target.value)) ||
+                  data.orders.find((o) => o.id === Number(e)) ||
                     null,
                 )
               }
@@ -500,7 +499,7 @@ function Profit() {
       </p>
       <label>
         开始日期
-        <input
+        <AntInput
           type="date"
           value={from}
           onChange={(e) => setFrom(e.target.value)}
@@ -508,11 +507,11 @@ function Profit() {
       </label>
       <label>
         结束日期
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <AntInput type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </label>
-      <button type="button" className="btn" disabled={busy} onClick={load}>
+      <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={load}>
         查询毛利
-      </button>
+      </AntButton>
       {data && (
         <>
           <p>

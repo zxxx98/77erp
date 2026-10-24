@@ -1,3 +1,7 @@
+import { currencySymbol, money as formatMoney } from './app/format.js';
+import { ConfigProvider as AntConfigProvider, Input as AntInput, Button as AntButton, Checkbox as AntCheckbox } from 'antd';
+import { FormField } from './ui/FormField.jsx';
+
 import { orderLabel } from './order-utils.js';
 export { orderLabel, businessType, reportOrders } from './order-utils.js';
 import { useQuery, usePagedQuery, queryPath } from './queries.js';
@@ -108,7 +112,7 @@ export function OrderActions({ order, onSaved }) {
       {order.source_order_id && <p>关联原单 ID：{order.source_order_id}</p>}
       <label>
         操作原因
-        <input
+        <AntInput
           value={reason}
           maxLength={500}
           disabled={busy}
@@ -121,7 +125,7 @@ export function OrderActions({ order, onSaved }) {
           {order.items.map((i) => (
             <label key={i.product_id}>
               {i.name}（可退 {addQuantity(i.quantity, -(i.returned_quantity || 0))}）
-              <input
+              <FormField value={quantities[i.product_id] ?? ""} type="number" min="0" max={addQuantity(i.quantity, -(i.returned_quantity || 0))} label={`${i.name} 退货数量`}><AntInput
                 aria-label={`${i.name} 退货数量`}
                 type="number"
                 min="0"
@@ -135,27 +139,27 @@ export function OrderActions({ order, onSaved }) {
                     [i.product_id]: e.target.value,
                   })
                 }
-              />
+              /></FormField>
             </label>
           ))}
-          <button
+          <AntButton type="primary"
             className="btn btn-primary"
-            type="button"
+            htmlType="button"
             disabled={busy}
             onClick={() => act("returns")}
           >
             确认退货
-          </button>
+          </AntButton>
         </>
       )}
-      <button
+      <AntButton type="default"
         className="btn"
-        type="button"
+        htmlType="button"
         disabled={busy}
         onClick={() => act("void")}
       >
         作废单据
-      </button>
+      </AntButton>
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -186,13 +190,13 @@ export function Stocktake({ data, onSaved }) {
       </p>
       <label>
         搜索盘点物料
-        <input
+        <AntInput
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           disabled={busy}
         />
       </label>
-      {catalog.error && <div role="alert">{catalog.error}<button onClick={catalog.retry}>重新加载</button></div>}
+      {catalog.error && <div role="alert">{catalog.error}<AntButton type="default" htmlType="button" onClick={catalog.retry}>重新加载</AntButton></div>}
       {catalog.loading && <LoadingStatus>正在读取物料…</LoadingStatus>}
       <div className="operation-scroll">
         {products
@@ -203,12 +207,7 @@ export function Stocktake({ data, onSaved }) {
           )
           .map((p) => (
             <div className="operation-row stocktake-row" key={p.id}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!!selected[p.id]}
-                  disabled={busy}
-                  onChange={(e) => {
+              <AntCheckbox  checked={!!selected[p.id]} disabled={busy} onChange={(e) => {
                     const next = { ...selected };
                     if (e.target.checked)
                       next[p.id] = {
@@ -219,14 +218,14 @@ export function Stocktake({ data, onSaved }) {
                       };
                     else delete next[p.id];
                     setSelected(next);
-                  }}
-                />
+                  }}>
+
                 <div className="stocktake-product"><strong>{p.name}</strong><small>{p.barcode} · 账面 {p.stock} {p.unit}</small></div>
-              </label>
+              </AntCheckbox>
               {selected[p.id] && (
                 <label className="stocktake-count">
                   实盘
-                  <input
+                  <FormField value={selected[p.id].counted} type="number" min="0" label={`${p.name} 实盘数量`}><AntInput
                     aria-label={`${p.name} 实盘数量`}
                     type="number"
                     min="0"
@@ -239,13 +238,13 @@ export function Stocktake({ data, onSaved }) {
                         [p.id]: { ...selected[p.id], counted: e.target.value },
                       })
                     }
-                  />
+                  /></FormField>
                 </label>
               )}
             </div>
           ))}
       </div>
-      {catalog.result?.has_more && <button type="button" className="btn" disabled={catalog.loading} onClick={catalog.loadMore}>加载更多物料</button>}
+      {catalog.result?.has_more && <AntButton type="default" htmlType="button" className="btn" disabled={catalog.loading} onClick={catalog.loadMore}>加载更多物料</AntButton>}
       {items.length > 0 && (
         <p>
           已选 {items.length} 件：
@@ -259,7 +258,7 @@ export function Stocktake({ data, onSaved }) {
       )}
       <label>
         盘点原因
-        <input
+        <AntInput
           value={reason}
           maxLength={500}
           disabled={busy}
@@ -267,8 +266,8 @@ export function Stocktake({ data, onSaved }) {
           placeholder="例如：月末盘点、破损损耗"
         />
       </label>
-      <button
-        type="button"
+      <AntButton type="primary"
+        htmlType="button"
         className="btn btn-primary"
         disabled={busy || !items.length}
         onClick={() =>
@@ -294,7 +293,7 @@ export function Stocktake({ data, onSaved }) {
         }
       >
         确认盘点
-      </button>
+      </AntButton>
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -349,8 +348,8 @@ export function ProductImport({ onSaved }) {
         支持 UTF-8 CSV 和 Excel .xlsx 的第一张工作表，每次最多 1000
         行。仅新增物料，不覆盖已有条码；期初库存会记录来源。条码请使用文本格式保留前导零。
       </p>
-      <button
-        type="button"
+      <AntButton type="default"
+        htmlType="button"
         className="btn"
         onClick={() =>
           download(
@@ -361,7 +360,7 @@ export function ProductImport({ onSaved }) {
         }
       >
         下载物料模板
-      </button>
+      </AntButton>
       <div className="file-upload-field" role="group">
         <div className="file-upload-label">选择物料文件</div>
         <input
@@ -384,8 +383,8 @@ export function ProductImport({ onSaved }) {
             });
           }}
         />
-        <button
-          type="button"
+        <AntButton type="text"
+          htmlType="button"
           className="file-upload-button"
           disabled={busy}
           aria-busy={busy}
@@ -403,7 +402,7 @@ export function ProductImport({ onSaved }) {
             </span>
           </span>
           {!busy && <Upload size={18} aria-hidden="true" />}
-        </button>
+        </AntButton>
       </div>
       {rows && (
         <div className="operation-scroll">
@@ -448,8 +447,8 @@ export function ProductImport({ onSaved }) {
               第 {e.row} 行：{e.error}
             </p>
           ))}
-          <button
-            type="button"
+          <AntButton type="primary"
+            htmlType="button"
             className="btn btn-primary"
             disabled={busy || !!preview.errors.length}
             onClick={() =>
@@ -466,7 +465,7 @@ export function ProductImport({ onSaved }) {
             }
           >
             确认导入
-          </button>
+          </AntButton>
         </>
       )}
       {error && (
@@ -521,36 +520,27 @@ export function ProductExport({ warehouses = [], warehouseId }) {
       <p>
         选择要导出的仓库，将各仓库的物料信息导出为包含多个工作表的 Excel（.xlsx）文件，每个仓库一张工作表。仅导出启用中的物料，列顺序与批量导入模板一致，可直接回导。
       </p>
-      <fieldset className="export-warehouses" disabled={busy}>
+      <AntConfigProvider componentDisabled={busy}><fieldset className="export-warehouses" disabled={busy}>
         <legend>选择导出仓库</legend>
         {warehouses.map((w) => (
-          <label key={w.id}>
-            <input
-              type="checkbox"
-              checked={selected.includes(w.id)}
-              onChange={() => toggle(w.id)}
-            />
+          <AntCheckbox key={w.id} checked={selected.includes(w.id)} onChange={() => toggle(w.id)}>
+
             {w.name}
-          </label>
+          </AntCheckbox>
         ))}
-      </fieldset>
-      <label className="export-fixed-asset">
-        <input
-          type="checkbox"
-          checked={fixedOnly}
-          disabled={busy}
-          onChange={(e) => setFixedOnly(e.target.checked)}
-        />
+      </fieldset></AntConfigProvider>
+      <AntCheckbox className="export-fixed-asset" checked={fixedOnly} disabled={busy} onChange={(e) => setFixedOnly(e.target.checked)}>
+
         只导出固定资产
-      </label>
-      <button
-        type="button"
+      </AntCheckbox>
+      <AntButton type="primary"
+        htmlType="button"
         className="btn btn-primary"
         disabled={busy || !selected.length}
         onClick={exportAll}
       >
         导出为 Excel
-      </button>
+      </AntButton>
       {progress && <p><LoadingStatus>{progress}</LoadingStatus></p>}
       {done && <p className="template-success" role="status">{done}</p>}
       {error && (
@@ -573,8 +563,8 @@ export function Backup({ onSaved }) {
       <p>
         备份包含全部仓库、物料、库存成本、单据、盘点、往来单位、模板、收付款记录及操作人名称，不包含用户账号、密码和图床凭据。物料图片只备份 URL，图片文件需在图床保留。品质模板包含配置、历史版本和文件引用，原始 Excel 需在 R2 保留。恢复会替换全部业务数据，保留当前账户、登录信息、图床配置、服务器及商户名称，仓库配置随备份恢复。请先下载当前备份。
       </p>
-      <button
-        type="button"
+      <AntButton type="default"
+        htmlType="button"
         className="btn"
         disabled={busy}
         onClick={() =>
@@ -587,7 +577,7 @@ export function Backup({ onSaved }) {
         }
       >
         下载业务备份
-      </button>
+      </AntButton>
       <div className="file-upload-field" role="group" aria-label="业务备份文件">
         <div className="file-upload-label">选择备份文件</div>
         <input
@@ -618,8 +608,8 @@ export function Backup({ onSaved }) {
             });
           }}
         />
-        <button
-          type="button"
+        <AntButton type="text"
+          htmlType="button"
           className="file-upload-button"
           disabled={busy}
           aria-busy={busy}
@@ -633,7 +623,7 @@ export function Backup({ onSaved }) {
             <span>{busy ? "正在处理，请稍候" : "点击选择 JSON 业务备份文件，最大 95 MB"}</span>
           </span>
           {!busy && <Upload size={18} aria-hidden="true" />}
-        </button>
+        </AntButton>
       </div>
       {preview && (
         <>
@@ -643,8 +633,8 @@ export function Backup({ onSaved }) {
             品质模板 {preview.quality_templates ?? 0} 个，验收单 {preview.quality_acceptances ?? 0} 张，品质图表 {preview.quality_charts ?? 0} 个，R2 Excel 文件引用 {preview.quality_files ?? 0} 个，原文件需在 R2 保留。
             BOM {preview.boms ?? 0} 张（废料规则 {preview.bom_scraps ?? 0} 条），生产单 {preview.production_orders ?? 0} 张（完工批次 {preview.production_batches ?? 0} 批，废料记录 {preview.production_scraps ?? 0} 条）。
           </p>
-          <button
-            type="button"
+          <AntButton type="primary"
+            htmlType="button"
             className="btn btn-primary"
             disabled={busy}
             onClick={() =>
@@ -666,7 +656,7 @@ export function Backup({ onSaved }) {
             }
           >
             确认恢复备份
-          </button>
+          </AntButton>
         </>
       )}
       {error && (
@@ -742,11 +732,11 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
       <div className="form-grid">
         <label>
           调出仓库
-          <input value={warehouses.find((w) => w.id === warehouseId)?.name || ""} disabled />
+          <AntInput value={warehouses.find((w) => w.id === warehouseId)?.name || ""} disabled />
         </label>
         <label>
           调入仓库
-          <Select label="调入仓库" aria-label="调入仓库" value={target} disabled={busy || !others.length} onChange={(e) => setTarget(e.target.value)}>
+          <Select label="调入仓库" aria-label="调入仓库" value={target} disabled={busy || !others.length} onChange={(e) => setTarget(e)}>
             <option value="">请选择</option>
             {others.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </Select>
@@ -754,13 +744,13 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
       </div>
       <label>
         搜索要调拨的物料
-        <input value={query} disabled={busy} placeholder="物料名称、条码或规格型号" onChange={(e) => setQuery(e.target.value)} />
+        <AntInput value={query} disabled={busy} placeholder="物料名称、条码或规格型号" onChange={(e) => setQuery(e.target.value)} />
       </label>
-      {catalog.error && <div role="alert">{catalog.error}<button onClick={catalog.retry}>重新加载</button></div>}
+      {catalog.error && <div role="alert">{catalog.error}<AntButton type="default" htmlType="button" onClick={catalog.retry}>重新加载</AntButton></div>}
       {matches.map((p) => (
         <div className="operation-row" key={p.id}>
           <div className="stocktake-product"><strong>{p.name}</strong><small>{p.barcode} · 库存 {p.stock} {p.unit}{p.active === 0 ? " · 已停用" : ""}</small></div>
-          <button type="button" className="btn" disabled={busy || p.stock <= 0} onClick={() => add(p)}>添加</button>
+          <AntButton type="default" htmlType="button" className="btn" disabled={busy || p.stock <= 0} onClick={() => add(p)}>添加</AntButton>
         </div>
       ))}
       {keyword && !matches.length && <p>未找到匹配的物料。</p>}
@@ -774,18 +764,18 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
                   <td>{r.name}</td>
                   <td>{r.stock} {r.unit}</td>
                   <td className="number-cell">
-                    <input
+                    <FormField value={r.quantity} type="number" min="0" max={r.stock} label={`${r.name} 调拨数量`}><AntInput
                       aria-label={`${r.name} 调拨数量`}
                       type="number" min="0" step="0.000001" max={r.stock}
                       value={r.quantity} disabled={busy}
                       onChange={(e) => update(r.product_id, e.target.value)}
-                    />
+                    /></FormField>
                   </td>
                   <td className="number-cell">
-                    <button type="button" className="text-button danger" aria-label={`移除 ${r.name}`} disabled={busy}
+                    <AntButton type="text" danger htmlType="button" className="text-button danger" aria-label={`移除 ${r.name}`} disabled={busy}
                       onClick={() => setRows((prev) => prev.filter((row) => row.product_id !== r.product_id))}>
                       <Trash2 size={14} /> 移除
-                    </button>
+                    </AntButton>
                   </td>
                 </tr>
               ))}
@@ -795,11 +785,11 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
       )}
       <label>
         调拨原因
-        <input value={note} maxLength={500} disabled={busy} placeholder="例如：门店补货、仓库合并" onChange={(e) => setNote(e.target.value)} />
+        <AntInput value={note} maxLength={500} disabled={busy} placeholder="例如：门店补货、仓库合并" onChange={(e) => setNote(e.target.value)} />
       </label>
-      <button type="button" className="btn btn-primary" disabled={busy || !others.length || !rows.length} onClick={submit}>
+      <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy || !others.length || !rows.length} onClick={submit}>
         <Truck size={15} /> 确认调拨
-      </button>
+      </AntButton>
       {message && <p role="status" className="template-success">{message}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <h3>调拨记录</h3>
@@ -824,16 +814,16 @@ export function Transfer({ data, warehouses = [], warehouseId, onSaved }) {
             {record.status === "void" && <small>撤销原因：{record.void_reason}</small>}
           </div>
           {record.status !== "void" && record.direction === "out" && can("transfer") && (
-            <button type="button" className="btn" disabled={busy} onClick={() => { setVoiding(record); setReason(""); }}>撤销调拨</button>
+            <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => { setVoiding(record); setReason(""); }}>撤销调拨</AntButton>
           )}
           {voiding?.id === record.id && (
             <div className="operation-row">
               <label>
                 撤销原因
-                <input value={reason} maxLength={500} disabled={busy} onChange={(e) => setReason(e.target.value)} />
+                <AntInput value={reason} maxLength={500} disabled={busy} onChange={(e) => setReason(e.target.value)} />
               </label>
-              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => undo(record)}>确认撤销</button>
-              <button type="button" className="btn" disabled={busy} onClick={() => setVoiding(null)}>取消</button>
+              <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => undo(record)}>确认撤销</AntButton>
+              <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => setVoiding(null)}>取消</AntButton>
             </div>
           )}
         </div>

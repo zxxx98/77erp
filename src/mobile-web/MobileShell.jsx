@@ -1,3 +1,6 @@
+import { Button as AntButton, Checkbox as AntCheckbox } from 'antd';
+
+import { Select } from './../Dropdown.jsx';
 import { modeItems } from '../app/navigation.js';
 import { ModeSwitch } from '../app/ModeSwitch.jsx';
 import { useQuery, usePagedQuery, queryPath } from '../queries.js';
@@ -59,8 +62,8 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
     <header className="mw-header" inert={switching}>
       {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label="返回工作台" onClick={() => navigate('overview')} /><strong className="mw-modal-title">扫码工作台</strong></> : <>
         <strong className="mw-wordmark">77 <span>ERP</span></strong>
-        <button type="button" className="mw-warehouse" disabled={!ready || loading || switching} aria-label="切换仓库" onClick={() => openModal({ kind: 'warehousePicker' })}>{data.settings.warehouse_name} ▾</button>
-        <button type="button" className="mw-icon announcement-entry" aria-label="公告中心" onClick={() => navigate('announcements')} disabled={!ready}><Megaphone size={22} />{announcementCount > 0 && <span className="announcement-entry-count" aria-label={`${announcementCount} 条未读公告`}>{announcementCount > 99 ? '99+' : announcementCount}</span>}</button>
+        <AntButton type="text" htmlType="button" className="mw-warehouse" disabled={!ready || loading || switching} aria-label="切换仓库" onClick={() => openModal({ kind: 'warehousePicker' })}>{data.settings.warehouse_name} ▾</AntButton>
+        <AntButton type="text" htmlType="button" className="mw-icon announcement-entry" aria-label="公告中心" onClick={() => navigate('announcements')} disabled={!ready}><Megaphone size={22} />{announcementCount > 0 && <span className="announcement-entry-count" aria-label={`${announcementCount} 条未读公告`}>{announcementCount > 99 ? '99+' : announcementCount}</span>}</AntButton>
         <MobileIcon icon={ScanLine} label="打开扫码工作台" onClick={() => navigate('scanner')} disabled={!ready} />
       </>}
     </header>
@@ -81,12 +84,12 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
           {page === 'production' && renderProduction()}
           {page === 'scanner' && renderScanner()}
           {page === 'announcements' && renderAnnouncements()}
-          <div className="mw-refresh"><span className="mw-muted">{updated ? `读取于 ${updated.toLocaleTimeString('zh-CN', { hour12: false })}` : '数据保存在服务器'}</span><button type="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}刷新数据</button></div>
+          <div className="mw-refresh"><span className="mw-muted">{updated ? `读取于 ${updated.toLocaleTimeString('zh-CN', { hour12: false })}` : '数据保存在服务器'}</span><AntButton type="default" htmlType="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}刷新数据</AntButton></div>
         </>}
       </>}
     </main>
     {page !== 'scanner' && <nav className="mw-tabs" aria-label="移动端主导航" inert={switching}>
-      {tabs.map(({id, mobile: label, icon: Icon}) => <button type="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></button>)}
+      {tabs.map(({id, mobile: label, icon: Icon}) => <AntButton type="default" htmlType="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></AntButton>)}
     </nav>}
   </div>;
 }
@@ -202,20 +205,14 @@ function Products({ data, inventory, showProduct, openModal, onSaved }) {
     )}
     <SearchField value={query} onChange={setQuery} label="搜索名称、条码、规格或客户料号" />
     <Chips label={inventory ? '库存筛选' : '使用状态'} value={filter} onChange={setFilter} options={inventory ? [['all', '全部库存'], ['low', '库存预警'], ['empty', '缺货']] : [['all', '全部状态'], ['active', '已启用'], ['inactive', '已停用']]} />
-    <label className="mw-field"><span>物料分类</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</select></label>
+    <label className="mw-field"><span>物料分类</span><Select value={category} onChange={e => setCategory(e)}><option value="all">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
     <Notice>{error}</Notice>{error && <Button onClick={retry}>重新加载</Button>}
     {batchSelecting && products.length > 0 && (
       <div className="mw-batch-header">
-        <label className="mw-batch-check-all">
-          <input
-            ref={el => { if (el) el.indeterminate = someLoadedSelected; }}
-            type="checkbox"
-            aria-label="全选本页物料"
-            checked={allLoadedSelected}
-            onChange={toggleSelectAllLoaded}
-          />
+        <AntCheckbox className="mw-batch-check-all" indeterminate={someLoadedSelected} aria-label="全选本页物料" checked={allLoadedSelected} onChange={toggleSelectAllLoaded}>
+
           <span>全选已加载</span>
-        </label>
+        </AntCheckbox>
         <span className="mw-muted">已选 {selectedList.length} 项</span>
       </div>
     )}
@@ -228,9 +225,9 @@ function Products({ data, inventory, showProduct, openModal, onSaved }) {
         <div className="mw-batch-summary">
           <strong>已选 {selectedList.length} 项</strong>
           {selectedList.length > 0 && (
-            <button type="button" className="mw-batch-clear" onClick={() => setSelectedMap(new Map())}>
+            <AntButton type="text" htmlType="button" className="mw-batch-clear" onClick={() => setSelectedMap(new Map())}>
               清除选择
-            </button>
+            </AntButton>
           )}
         </div>
         <div className="mw-batch-buttons">
@@ -255,9 +252,9 @@ function Products({ data, inventory, showProduct, openModal, onSaved }) {
 }
 
 function OrderSummary({ order, onOpen }) {
-  return <button type="button" className="mw-order-summary" onClick={() => onOpen(order)}>
+  return <AntButton type="text" htmlType="button" className="mw-order-summary" onClick={() => onOpen(order)}>
     <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? '不涉及金额' : `${order.kind === 'internal' ? '参考 ' : ''}${money(order.total)}`}</strong>
-  </button>;
+  </AntButton>;
 }
 
 function Orders({ data, initial, openOrder, showOrder }) {

@@ -1,3 +1,6 @@
+import { FormField } from './ui/FormField.jsx';
+import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton, Form as AntForm } from 'antd';
+
 import { chartTypeLabels, metricLabels } from '../shared/quality-charts.js';
 import { orderLabel } from './order-utils.js';
 import React, { useEffect, useRef, useState } from 'react';
@@ -32,17 +35,17 @@ export function AiSettings({ onBusy = () => {} }) {
     <h3>AI 助手</h3><p>支持工具调用的兼容 Chat Completions 接口。请求由服务器发送，员工需分配 AI 助手权限；写操作仍需对应业务权限并逐批确认。</p>
     {form && <div className="ai-fields">
       {!form.encryption_ready && <p className="form-error">服务器尚未配置 AI_ENCRYPTION_KEY，请先由部署人员配置加密密钥。</p>}
-      <label><input type="checkbox" checked={form.enabled} disabled={busy} onChange={e => setForm({ ...form, enabled: e.target.checked })} />启用 AI 助手</label>
-      <label>API 基础地址<input type="url" placeholder="https://你的服务地址/v1" value={form.base_url} disabled={busy} onChange={e => setForm({ ...form, base_url: e.target.value })} /></label>
-      <label>模型名称<input value={form.model} maxLength={100} disabled={busy} onChange={e => setForm({ ...form, model: e.target.value })} /></label>
-      <label>API Key<input type="password" autoComplete="new-password" value={form.secret} disabled={busy} placeholder={form.has_secret ? '已保存，留空保留原密钥' : '请输入 API Key'} onChange={e => setForm({ ...form, secret: e.target.value })} /></label>
-      <label><input type="checkbox" checked={!!form.clear_secret} disabled={busy} onChange={e => setForm({ ...form, clear_secret: e.target.checked })} />清除已保存密钥（请同时关闭助手）</label>
-      <label>每人每日最多请求数<input type="number" min="1" max="10000" value={form.daily_limit} disabled={busy} onChange={e => setForm({ ...form, daily_limit: Number(e.target.value) })} /></label>
-      <label><input type="checkbox" checked={form.writes} disabled={busy} onChange={e => setForm({ ...form, writes: e.target.checked })} />允许生成并确认写操作</label>
+      <AntCheckbox  checked={form.enabled} disabled={busy} onChange={e => setForm({ ...form, enabled: e.target.checked })}>启用 AI 助手</AntCheckbox>
+      <label>API 基础地址<AntInput type="url" placeholder="https://你的服务地址/v1" value={form.base_url} disabled={busy} onChange={e => setForm({ ...form, base_url: e.target.value })} /></label>
+      <label>模型名称<AntInput value={form.model} maxLength={100} disabled={busy} onChange={e => setForm({ ...form, model: e.target.value })} /></label>
+      <label>API Key<AntInput type="password" autoComplete="new-password" value={form.secret} disabled={busy} placeholder={form.has_secret ? '已保存，留空保留原密钥' : '请输入 API Key'} onChange={e => setForm({ ...form, secret: e.target.value })} /></label>
+      <AntCheckbox  checked={!!form.clear_secret} disabled={busy} onChange={e => setForm({ ...form, clear_secret: e.target.checked })}>清除已保存密钥（请同时关闭助手）</AntCheckbox>
+      <label>每人每日最多请求数<FormField value={form.daily_limit} type="number" min="1" max="10000" label="每人每日最多请求数"><AntInput type="number" min="1" max="10000" value={form.daily_limit} disabled={busy} onChange={e => setForm({ ...form, daily_limit: Number(e.target.value) })} /></FormField></label>
+      <AntCheckbox  checked={form.writes} disabled={busy} onChange={e => setForm({ ...form, writes: e.target.checked })}>允许生成并确认写操作</AntCheckbox>
       <p>查询所需数据及上传表格的表头和前5行会发送给配置的模型服务。完整导入数据由本系统校验处理。单批最多20张出入库单、合计100行；物料导入最多1000行。</p>
-      <div className="ai-buttons"><button type="button" className="btn primary" disabled={busy} onClick={() => run(false)}>保存 AI 设置</button><button type="button" className="btn" disabled={busy} onClick={() => run(true)}>保存并测试连接</button></div>
+      <div className="ai-buttons"><AntButton type="primary" htmlType="button" className="btn primary" disabled={busy} onClick={() => run(false)}>保存 AI 设置</AntButton><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => run(true)}>保存并测试连接</AntButton></div>
     </div>}
-    <button type="button" className="btn" disabled={busy} onClick={() => api('/settings/ai/audit').then(setAudit).catch(e => setError(e.message))}>查看最近操作记录</button>
+    <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => api('/settings/ai/audit').then(setAudit).catch(e => setError(e.message))}>查看最近操作记录</AntButton>
     {audit && <div className="ai-table"><table><thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>状态 / 详情</th></tr></thead><tbody>{audit.map(row => <tr key={row.id}><td>{row.created_at}</td><td>{row.username}</td><td>{row.tool}</td><td>{row.status}<details><summary>详情</summary><pre>{row.detail}</pre></details></td></tr>)}</tbody></table></div>}
     {error && <p className="form-error" role="alert">{error}</p>}{status && <p role="status">{status}</p>}
   </section>;
@@ -58,7 +61,7 @@ function ActionCard({ action, busy, confirm }) {
   const [expanded, setExpanded] = useState(false);
   if (action.result) return <section className="ai-action-result">
     <ActionResult action={action}/>
-    <button type="button" className="ai-result-toggle" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '收起详情' : action.kind === 'quality_chart' ? '查看图表与详情' : '查看操作详情'}</button>
+    <AntButton type="text" htmlType="button" className="ai-result-toggle" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? '收起详情' : action.kind === 'quality_chart' ? '查看图表与详情' : '查看操作详情'}</AntButton>
     {expanded && <ActionPreview action={action} busy={busy} confirm={confirm}/>}
   </section>;
   return <ActionPreview action={action} busy={busy} confirm={confirm}/>;
@@ -115,7 +118,7 @@ function ActionPreview({ action, busy, confirm }) {
       <div className="ai-table"><table><thead><tr>{['物料 / 条码', '单位', '原校验日期', action.kind === 'inspection' ? '新校验日期' : '下次校验日期', '校验周期'].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{p.items.map(i => <tr key={i.product_id}><td>{i.name}<small>{i.barcode}</small></td><td>{i.unit}</td><td>{i.before_date || '未配置'}</td><td>{i.after_date}</td><td>{i.interval ? `每 ${i.interval} ${{ day: '天', month: '月', year: '年' }[i.interval_unit] || '月'}` : '手动设置日期'}</td></tr>)}</tbody></table></div>
       <p>{action.kind === 'inspection' ? '确认后按以上日期和周期更新校验提醒。' : `确认后将上次校验日期记为 ${p.last_inspected_on}，有周期的物料从该日期按配置周期顺延。`}</p>
     </>}
-    {!action.result && <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，业务数据变化需重新生成。继续聊天会取消本批未确认预览。</p><button type="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>{action.kind==='quality_chart'?'确认保存图表':'确认执行本批操作'}</button></>}
+    {!action.result && <><p>操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，业务数据变化需重新生成。继续聊天会取消本批未确认预览。</p><AntButton type="primary" htmlType="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>{action.kind==='quality_chart'?'确认保存图表':'确认执行本批操作'}</AntButton></>}
   </section>;
 }
 
@@ -221,16 +224,16 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
   }
   return <div className="ai-assistant">
     <aside className={`ai-sidebar ${showHistory ? 'is-open' : ''}`} aria-label="对话历史">
-      <div className="ai-brand"><span>77</span>ERP <button className="ai-icon ai-history-close" aria-label="关闭历史对话" onClick={() => setShowHistory(false)}><X size={18} /></button></div>
-      <button className="ai-new" disabled={busy} onClick={newThread}><Plus size={16} />开始新对话</button>
+      <div className="ai-brand"><span>77</span>ERP <AntButton type="text" htmlType="button" className="ai-icon ai-history-close" aria-label="关闭历史对话" onClick={() => setShowHistory(false)}><X size={18} /></AntButton></div>
+      <AntButton type="text" htmlType="button" className="ai-new" disabled={busy} onClick={newThread}><Plus size={16} />开始新对话</AntButton>
       <div className="ai-sidebar-caption">最近对话 · 所有仓库</div>
       <div className="ai-history-list">
-        {historyError ? <p className="ai-history-error" role="status">{historyError}<button className="ai-new" onClick={refreshHistory}>重新加载</button></p> : history.length ? history.map(h => <button key={h.id} className={`ai-history-item ${thread.conversation_id === h.id ? 'active' : ''}`} disabled={busy} onClick={() => openThread(h.id)} title={h.title} aria-current={thread.conversation_id === h.id ? 'true' : undefined}><span>{h.title}</span><small>{new Date(h.created_at).toLocaleDateString('zh-CN')}</small></button>) : <p className="ai-history-empty">开始聊天后，对话会保存在这里。</p>}
+        {historyError ? <p className="ai-history-error" role="status">{historyError}<AntButton type="text" htmlType="button" className="ai-new" onClick={refreshHistory}>重新加载</AntButton></p> : history.length ? history.map(h => <AntButton type="text" htmlType="button" key={h.id} className={`ai-history-item ${thread.conversation_id === h.id ? 'active' : ''}`} disabled={busy} onClick={() => openThread(h.id)} title={h.title} aria-current={thread.conversation_id === h.id ? 'true' : undefined}><span>{h.title}</span><small>{new Date(h.created_at).toLocaleDateString('zh-CN')}</small></AntButton>) : <p className="ai-history-empty">开始聊天后，对话会保存在这里。</p>}
       </div>
       <div className="ai-sidebar-footer"><Sparkles size={15} />你的业务助手<p>查询、整理，协助日常工作</p></div>
     </aside>
     <section className="ai-chat" aria-label="AI 对话">
-      <div className="ai-context"><span className="ai-context-title"><Sparkles size={17} />{warehouseName || '当前仓库'} · {mode === 'production' ? '生产' : '仓储'}</span><span className="ai-context-note">库存与业务，随时问我</span><div className="ai-mobile-tools"><button className="ai-icon" aria-label="查看历史对话" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></button><button className="ai-icon" aria-label="开始新对话" disabled={busy} onClick={newThread}><Plus size={19} /></button></div></div>
+      <div className="ai-context"><span className="ai-context-title"><Sparkles size={17} />{warehouseName || '当前仓库'} · {mode === 'production' ? '生产' : '仓储'}</span><span className="ai-context-note">库存与业务，随时问我</span><div className="ai-mobile-tools"><AntButton type="text" htmlType="button" className="ai-icon" aria-label="查看历史对话" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></AntButton><AntButton type="text" htmlType="button" className="ai-icon" aria-label="开始新对话" disabled={busy} onClick={newThread}><Plus size={19} /></AntButton></div></div>
       <div className="ai-feed" ref={feed}>
         {!thread.messages.length && !busy && <div className="ai-welcome">
           <div className="ai-welcome-icon"><Sparkles size={30} /></div><h3>今天，有什么<br />可以帮你？</h3><p>{mode === 'production' ? '查询分批完工进度、分析耗料差异、测算备料和废料。' : '查库存、整理单据、导入物料。'}<br />把需求告诉我，剩下的一起完成。</p>
@@ -239,14 +242,14 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
             mode === 'production' ? [ArrowLeftRight, '查询待生产任务', '当前仓库有哪些待生产的生产单？请列出成品、计划产量和单号。'] : [ArrowLeftRight, '查询跨仓库库存', '我想对比不同仓库的物料库存，请先列出仓库。'],
             [ChartColumn, '推荐品质图表', '请查看当前仓库已保存的验收数据，推荐可以生成哪些品质图表，并说明统计口径。'],
             [FileSpreadsheet, '上传表格，新增物料', '我想上传表格新增物料档案，请帮我核对列对应关系。'],
-          ].sort((a, b) => mode === 'production' ? Number(b[0] === ChartColumn) - Number(a[0] === ChartColumn) : 0).map(([Icon, label, value]) => <button key={label} onClick={() => suggest(value)}><Icon size={19} /><span>{label}</span><ArrowUpRight size={15} /></button>)}</div>
+          ].sort((a, b) => mode === 'production' ? Number(b[0] === ChartColumn) - Number(a[0] === ChartColumn) : 0).map(([Icon, label, value]) => <AntButton type="default" htmlType="button" key={label} onClick={() => suggest(value)}><Icon size={19} /><span>{label}</span><ArrowUpRight size={15} /></AntButton>)}</div>
         </div>}
         <div className="ai-messages" aria-live="polite" aria-busy={busy}>
           {turns.map((turn, turnIndex) => <div className="ai-turn" key={turnIndex}>
           {turn.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
             {m.role !== 'user' && <div className="ai-avatar"><Sparkles size={17} /></div>}
             <div className="ai-message-body">{m.role !== 'user' && <div className="ai-author">AI 助手</div>}
-              {m.role === 'user' ? <UserMessage content={m.content} attachment={m.attachment} /> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><button className="ai-copy" onClick={() => copy(m.content, `${turnIndex}:${i}`)}>{copied === `${turnIndex}:${i}` ? <Check size={13} /> : <Copy size={13} />}{copied === `${turnIndex}:${i}` ? '已复制' : '复制'}</button></>}
+              {m.role === 'user' ? <UserMessage content={m.content} attachment={m.attachment} /> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><AntButton type="text" htmlType="button" className="ai-copy" onClick={() => copy(m.content, `${turnIndex}:${i}`)}>{copied === `${turnIndex}:${i}` ? <Check size={13} /> : <Copy size={13} />}{copied === `${turnIndex}:${i}` ? '已复制' : '复制'}</AntButton></>}
             </div>
           </div>)}
           {!!turn.actions.length && <div className="ai-actions">{turn.actions.map(action => <ActionCard key={action.id} action={action} busy={busy} confirm={confirm}/>)}</div>}
@@ -257,11 +260,11 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
       </div>
       <div className="ai-compose-area">
         {error && <p className="form-error" role="alert">{error}</p>}
-        <form className="ai-composer" onSubmit={e => { e.preventDefault(); send(); }}>
-          {file && <div className="ai-attachment"><FileSpreadsheet size={17} /><span>{file.name} · {file.table.length - 1} 行</span><button type="button" className="ai-icon" aria-label="移除附件" disabled={busy} onClick={() => { setFile(null); input.current.value = ''; }}><X size={15} /></button></div>}
-          <textarea ref={prompt} aria-label="你的需求" rows={2} maxLength={4000} value={text} disabled={busy} placeholder="描述你的需求，或上传物料表格…" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
-          <div className="ai-composer-tools"><input className="ai-file-input" ref={input} aria-label="附加物料 Excel / CSV" type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => upload(e.target.files?.[0])} /><button className="ai-upload" type="button" disabled={busy} onClick={() => input.current?.click()}><Plus size={19} /><span>添加表格</span></button><span className="ai-shortcut">Ctrl / ⌘ + Enter 发送</span><button type="submit" className="ai-send" aria-label="发送" disabled={busy || !text.trim()}><ArrowUp size={21} /></button></div>
-        </form>
+        <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} className="ai-composer" onFinish={() => {  send(); }}>
+          {file && <div className="ai-attachment"><FileSpreadsheet size={17} /><span>{file.name} · {file.table.length - 1} 行</span><AntButton type="text" htmlType="button" className="ai-icon" aria-label="移除附件" disabled={busy} onClick={() => { setFile(null); input.current.value = ''; }}><X size={15} /></AntButton></div>}
+          <AntInput.TextArea ref={prompt} aria-label="你的需求" rows={2} maxLength={4000} value={text} disabled={busy} placeholder="描述你的需求，或上传物料表格…" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
+          <div className="ai-composer-tools"><input className="ai-file-input" ref={input} aria-label="附加物料 Excel / CSV" type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => upload(e.target.files?.[0])} /><AntButton type="text" className="ai-upload" htmlType="button" disabled={busy} onClick={() => input.current?.click()}><Plus size={19} /><span>添加表格</span></AntButton><span className="ai-shortcut">Ctrl / ⌘ + Enter 发送</span><AntButton type="text" htmlType="submit" className="ai-send" aria-label="发送" disabled={busy || !text.trim()}><ArrowUp size={21} /></AntButton></div>
+        </AntForm>
         <details className="ai-upload-help"><summary>Excel / CSV 上传说明</summary><p>仅解析第一张工作表，最多1000行、5 MB；条码请设为文本以保留前导零。请说明数量是期初库存还是入出库数量。</p></details>
         <p className="ai-safety"><ShieldCheck size={12} />涉及库存变更的操作，将在你确认后执行</p>
       </div>

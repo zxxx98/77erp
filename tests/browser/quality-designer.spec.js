@@ -1,3 +1,4 @@
+import { chooseOption } from './dropdown-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { createRequire } from 'node:module';
 const ExcelJS=createRequire(import.meta.url)('exceljs');
@@ -45,7 +46,7 @@ test('blank template supports formatting, safe merging, undo, field setup and ed
   await select(page,'A1:D1');await page.getByRole('button',{name:'合并单元格',exact:true}).click();
   await expect(page.locator('[data-address=A1]')).toHaveAttribute('colspan','4');
   await page.getByRole('spinbutton',{name:'字号',exact:true}).fill('24');await page.getByRole('spinbutton',{name:'字号',exact:true}).press('Enter');
-  await page.getByRole('combobox',{name:'水平对齐',exact:true}).selectOption('center');
+  await chooseOption(page.getByRole('combobox',{name:'水平对齐',exact:true}), 'center');
   await page.getByRole('button',{name:'加粗',exact:true}).click();await page.getByRole('button',{name:'全部边框',exact:true}).click();
   await select(page,'A3');await page.getByRole('textbox',{name:'单元格内容',exact:true}).fill('误输入');
   await page.getByRole('button',{name:'撤销',exact:true}).click();await expect(page.locator('[data-address=A3]')).toHaveText('');
@@ -85,6 +86,7 @@ test('starter template can be created, published, filled and submitted entirely 
   await page.getByRole('button',{name:'在线新建验收单',exact:true}).click();
   await page.getByRole('combobox',{name:'验收模板',exact:true}).click();await page.getByRole('option',{name:`${name} · v1`,exact:true}).click();
   await page.getByRole('button',{name:'开始填写',exact:true}).click();
+  await page.getByRole('button',{name:'字段填写',exact:true}).click();
   for(const [label,value] of Object.entries({'检验单号 · B3':'QC-001','检验日期 · F3':'2026-10-21','产品名称 · B4':'连接件','批次数量 · F4':'100','检验明细 · 第 1 条 · 检验项目 · A8':'外观','综合判定 · B13':'合格','检验员 · F13':'李明'}))
     await page.getByRole('textbox',{name:label,exact:true}).fill(value);
   await page.getByRole('button',{name:'校验并预览',exact:true}).click();
@@ -104,7 +106,7 @@ for(const platform of ['Android PWA','iPhone'])test(`${platform} creates and sav
     const name=`${platform}创建模板`;await start(page,name,{mobile:true});
     await page.locator('[data-address=A1]').tap();await page.getByRole('textbox',{name:'单元格内容',exact:true}).fill('手机检验模板');
     await select(page,'A1:D1');await page.getByRole('button',{name:'合并单元格',exact:true}).tap();
-    await page.getByRole('combobox',{name:'水平对齐',exact:true}).selectOption('center');
+    await chooseOption(page.getByRole('combobox',{name:'水平对齐',exact:true}), 'center');
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
     await page.screenshot({path:`output/ui-preview/quality-template-designer-${platform==='iPhone'?'ios':'android'}.png`,fullPage:true});
     await apply(page);const row=await save(page);expect(row.name).toBe(name);

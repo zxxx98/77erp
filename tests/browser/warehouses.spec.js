@@ -1,4 +1,4 @@
-import { chooseOption } from "./dropdown-helpers.js";
+import { chooseOption, selectedControl } from "./dropdown-helpers.js";
 import { test, expect } from '@playwright/test';
 import { createApp } from '../../server/app.js';
 
@@ -40,7 +40,7 @@ test('create and rename a warehouse, selectively sync a product, switch and pers
   const main = await (await page.request.get(`/api/products/barcode/WH-UI-${suffix}`)).json();
   expect((await page.request.post('/api/orders', { data: { type: 'in', partner: '测试供应商', items: [{ product_id: main.id, quantity: 5, price: 10 }] } })).ok()).toBe(true);
   await chooseOption(page.getByRole('combobox', { name: '当前仓库', exact: true }), String(w.id));
-  await expect(page.getByRole('combobox', { name: '当前仓库', exact: true })).toHaveValue(renamed);
+  await expect(selectedControl(page.getByRole('combobox', { name: '当前仓库', exact: true }))).toContainText(renamed);
   await page.getByRole('textbox', { name: '筛选物料', exact: true }).fill(`多仓物料-${suffix}`);
   await expect(page.locator('.product-table tbody tr')).toHaveCount(1);
   await expect(page.locator('.product-table tbody tr')).toContainText('缺货');
@@ -51,19 +51,19 @@ test('create and rename a warehouse, selectively sync a product, switch and pers
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect((await (await page.request.get(`/api/products/barcode/WH-UI-${suffix}`)).json()).name).toBe(`多仓物料-${suffix}`);
   await page.reload();
-  await expect(page.getByRole('combobox', { name: '当前仓库', exact: true })).toHaveValue(renamed);
+  await expect(selectedControl(page.getByRole('combobox', { name: '当前仓库', exact: true }))).toContainText(renamed);
   await page.getByRole('textbox', { name: '筛选物料', exact: true }).fill(`分仓独立修改-${suffix}`);
   await expect(page.locator('.product-table tbody tr')).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   // A data-management deep link selects a warehouse once; later choices survive refresh.
   await page.goto(`/?warehouse_id=${w.id}#products`);
-  await expect(page.getByRole('combobox', { name: '当前仓库', exact: true })).toHaveValue(renamed);
+  await expect(selectedControl(page.getByRole('combobox', { name: '当前仓库', exact: true }))).toContainText(renamed);
   await expect.poll(() => new URL(page.url()).searchParams.has('warehouse_id')).toBe(false);
   await chooseOption(page.getByRole('combobox', { name: '当前仓库', exact: true }), '1');
-  await expect(page.getByRole('combobox', { name: '当前仓库', exact: true })).toHaveValue('主仓库');
+  await expect(selectedControl(page.getByRole('combobox', { name: '当前仓库', exact: true }))).toContainText('主仓库');
   await page.reload();
-  await expect(page.getByRole('combobox', { name: '当前仓库', exact: true })).toHaveValue('主仓库');
+  await expect(selectedControl(page.getByRole('combobox', { name: '当前仓库', exact: true }))).toContainText('主仓库');
   expect(errors).toEqual([]);
 });
 

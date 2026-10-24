@@ -1,3 +1,7 @@
+import { ConfigProvider as AntConfigProvider, Form as AntForm, Input as AntInput } from 'antd';
+
+import { FormField } from './../ui/FormField.jsx';
+
 import { contactMatchesDirection } from '../../shared/contacts.js';
 import { useQuery } from '../queries.js';
 import { lookupProductCode, useProductSelection } from '../product-query.js';
@@ -123,8 +127,8 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
       return { product_id: p.id, quantity, price };
     }) };
   };
-  const confirm = event => {
-    event?.preventDefault();
+  const confirm = () => {
+
     if (disabled) return;
     try { payload(); reportError(''); setCamera(false); setConfirming(true); }
     catch (e) { reportError(e.message); }
@@ -192,26 +196,26 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
 
   return <>
     <Modal title={internal ? (type === 'in' ? '内部入库' : '内部出库') : type === 'in' ? '采购入库' : '销售出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
-      <form onSubmit={confirm} className="mw-order-form">
+      <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={confirm} className="mw-order-form">
         <div ref={bodyRef} className="form-body mw-stack mw-order-body">
           <Notice>{error.message || selection.error || contacts.error}</Notice><Notice>{storageError}</Notice>
           <p className="mw-muted" aria-live="polite">{savedAt ? `草稿已保存 · ${new Date(savedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '本地草稿自动保存'}</p>
           {pending && <section className="mw-card mw-stack"><h2>提交结果待确认</h2><p>保留原单据内容，核对时不会重复开单。</p><Button primary busy={busy} disabled={!online} onClick={submit}>核对并重试原提交</Button></section>}
           {!!stale.length && !pending && <section className="mw-card mw-stack"><Notice>物料资料已变化：{stale.map(line => line.name).join('、')}。请核对物料与成交单价。</Notice><Button onClick={() => setItems(current => current.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? { ...line, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version } : line; }))}>使用最新档案继续核对</Button></section>}
-          <fieldset disabled={disabled} className="mw-stack mw-fieldset">
+          <AntConfigProvider componentDisabled={disabled}><fieldset disabled={disabled} className="mw-stack mw-fieldset">
             {online && <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={disabled} onUse={selected => {
               if (items.length && !window.confirm('套用模板将替换当前编辑内容，是否继续？')) return false;
               setTemplate(selected); setTemplateName(selected.name); setTemplateMessage(''); setPartner(selected.partner); setPartnerId(selected.partner_id); setNote(selected.note);
               setItems(selected.items.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? snapshot(p, line) : { ...line, name: line.name || '正在读取物料' }; }));
             }} />}
             {template && <p className="mw-muted">已套用「{template.name}」，本次修改不会自动更新模板。</p>}
-            {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">模板名称<input maxLength={100} placeholder="例如：每周日用品补货" value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? '另存为模板' : '保存为模板'}</Button>{template && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
+            {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">模板名称<AntInput maxLength={100} placeholder="例如：每周日用品补货" value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? '另存为模板' : '保存为模板'}</Button>{template && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
             <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable label={type === 'in' ? '供应商' : '客户 / 往来单位'} required disabled={disabled} onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
             {internal && <p className="mw-muted">内部流转仅调整库存，不计入采购额、销售额、利润及应收应付。入库单价用于库存计价。</p>}
             <Button primary icon={Camera} disabled={!online} onClick={() => setCamera(value => !value)}>{camera ? '关闭摄像头' : '扫码添加物料'}</Button>
             {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加物料" note="识别后自动添加到当前单据"
               onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
-            <label className="mw-field">手动输入物料条码<div className="mw-manual-row"><input ref={barcodeInput} aria-label="扫描物料条码" value={barcode} onChange={e => setBarcode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (barcode.trim()) scan(barcode); } }} /><Button disabled={!online || !barcode.trim()} onClick={() => scan(barcode)}>添加</Button></div></label>
+            <label className="mw-field">手动输入物料条码<div className="mw-manual-row"><AntInput ref={barcodeInput} aria-label="扫描物料条码" value={barcode} onChange={e => setBarcode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (barcode.trim()) scan(barcode); } }} /><Button disabled={!online || !barcode.trim()} onClick={() => scan(barcode)}>添加</Button></div></label>
             <SearchField label="搜索要添加的物料或条码" value={query} onChange={setQuery} />
             {!!query.trim() && <section className="mw-card">{online ? matches.length ? matches.map(p => <ProductRow key={p.id} product={p} onOpen={add} />) : <p className="mw-muted">未找到物料，请先建立物料档案。</p> : <p className="mw-muted">联网后可以查询并添加物料。</p>}</section>}
             <Button onClick={() => setIncludeInactive(value => !value)}>{includeInactive ? '隐藏停用物料' : '包含停用物料（清库存等）'}</Button>
@@ -219,13 +223,13 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             {items.map(line => {
               const p = data.products.find(p => p.id === line.product_id);
               const name = p?.name || line.name || '物料已不存在';
-              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已停用）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '物料已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<input type="number" inputMode="decimal" min="0.000001" max="99999999" step="0.000001" required aria-label={`${name} 数量`} value={line.quantity} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></label><label className="mw-field">单价<input type="number" inputMode="decimal" min="0" max="99999999" step="0.0001" required aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.000001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round(Number(line.quantity) * Number(line.price) * 100) / 100)}</strong></div></section>;
+              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已停用）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '物料已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<FormField value={line.quantity} required type="number" min="0.000001" max="99999999" label={`${name} 数量`}><AntInput type="number" inputMode="decimal" min="0.000001" max="99999999" step="0.000001"  aria-label={`${name} 数量`} value={line.quantity} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></FormField></label><label className="mw-field">单价<FormField value={line.price} required type="number" min="0" max="99999999" label={`${name} 单价`}><AntInput type="number" inputMode="decimal" min="0" max="99999999" step="0.0001"  aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></FormField></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.000001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round(Number(line.quantity) * Number(line.price) * 100) / 100)}</strong></div></section>;
             })}
-            <label className="mw-field">备注（选填）<textarea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
-          </fieldset>
+            <label className="mw-field">备注（选填）<AntInput.TextArea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
+          </fieldset></AntConfigProvider>
         </div>
         <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料 · 总量 {count(totalQuantity)}</span><h2>{moneyBase(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
-      </form>
+      </AntForm>
     </Modal>
     {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {moneyBase(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
     {closing && <Modal title={pending ? '保存待核对单据？' : '保存本地草稿？'} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? '提交结果尚未确认，请保留草稿，联网后核对原提交。' : '保存后可从“更多 → 本地草稿”继续编辑。'}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>保存草稿并关闭</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>放弃草稿</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>继续编辑</Button></div></Modal>}

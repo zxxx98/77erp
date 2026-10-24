@@ -1,3 +1,5 @@
+import { Spin, Button as AntButton, Tag, Empty as AntEmpty, Pagination as AntPagination } from 'antd';
+
 import { usePermissions } from '../permissions.jsx';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
 import { ProductImage } from '../ProductImage.jsx';
@@ -13,25 +15,22 @@ function Button({
   className = "",
   permission,
   busy = false,
+  type: htmlType = "button",
   ...props
 }) {
   const { can } = usePermissions();
   if (permission && !can(permission)) return null;
   return (
-    <button className={`btn btn-${kind} ${className}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
-      {busy ? <LoadingIndicator size={20} /> : Icon && <Icon size={16} strokeWidth={1.8} />}
+    <AntButton type={kind === "primary" ? "primary" : "default"} danger={kind === "danger"} htmlType={htmlType} loading={busy && { icon: <span aria-hidden="true"><Spin size="small" /></span> }} className={`btn btn-${kind} ${className}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
+      {Icon && <Icon size={16} strokeWidth={1.8} />}
       {children}
-    </button>
+    </AntButton>
   );
 }
 
-function Badge({ children, tone = "green", dot = true }) {
-  return (
-    <span className={`badge badge-${tone}`}>
-      {dot && <i />}
-      {children}
-    </span>
-  );
+function Badge({ children, tone = 'green' }) {
+  const colors = { green: 'success', orange: 'warning', red: 'error', blue: 'processing', gray: 'default' };
+  return <Tag color={colors[tone] || tone}>{children}</Tag>;
 }
 
 function ProductArt({ product, size = "normal", preview = true }) {
@@ -275,15 +274,15 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
           </div>
           <div className="modal-header-actions">
           {headerActions}
-          <button
-            type="button"
+          <AntButton type="text"
+            htmlType="button"
             className="icon-button"
             onClick={onClose}
             aria-label={closeLabel}
             title={closeLabel}
           >
             <X size={20} />
-          </button>
+          </AntButton>
           </div>
         </div>
         {children}
@@ -293,21 +292,8 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
   );
 }
 
-function Empty({
-  title = "暂无记录",
-  description = "新的记录会出现在这里。",
-  action,
-}) {
-  return (
-    <div className="empty">
-      <div className="empty-icon">
-        <Package size={27} />
-      </div>
-      <h3>{title}</h3>
-      <p>{description}</p>
-      {action}
-    </div>
-  );
+function Empty({ title = '暂无记录', description = '新的记录会出现在这里。', action }) {
+  return <AntEmpty description={<><h3>{title}</h3><p>{description}</p></>}>{action}</AntEmpty>;
 }
 
 function PageHeading({ eyebrow, title, description, children }) {
@@ -354,48 +340,15 @@ function QueryStatus({ query }) {
 }
 
 function Pagination({ total, page, setPage }) {
-  const pages = Math.max(1, Math.ceil(total / 8));
-  return (
-    <div className="pagination">
-      <span>
-        共 <strong>{total}</strong> 条记录
-        {total > 0 && (
-          <>
-            ，显示 {(page - 1) * 8 + 1}–{Math.min(page * 8, total)} 条
-          </>
-        )}
-      </span>
-      <div>
-        <button
-          className="pagination-button"
-          aria-label="上一页"
-          disabled={page === 1}
-          onClick={() => setPage(page - 1)}
-        >
-          <ChevronLeft size={16} />
-        </button>
-        {Array.from({ length: pages }, (_, i) => i + 1)
-          .filter((p) => Math.abs(p - page) < 3 || p === 1 || p === pages)
-          .map((p) => (
-            <button
-              key={p}
-              onClick={() => setPage(p)}
-              className={`pagination-button ${page === p ? "active" : ""}`}
-            >
-              {p}
-            </button>
-          ))}
-        <button
-          className="pagination-button"
-          aria-label="下一页"
-          disabled={page === pages}
-          onClick={() => setPage(page + 1)}
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
-    </div>
-  );
+  return <div className="pagination">
+    <span>共 <strong>{total}</strong> 条记录{total > 0 && `，显示 ${(page - 1) * 8 + 1}–${Math.min(page * 8, total)} 条`}</span>
+    <AntPagination current={page} total={total} pageSize={8} onChange={setPage} showSizeChanger={false} responsive
+      itemRender={(number, type, original) => type === 'prev' || type === 'next'
+        ? <AntButton type="text" aria-label={type === 'prev' ? '上一页' : '下一页'}
+            disabled={type === 'prev' ? page <= 1 : page >= Math.ceil(total / 8)}
+            icon={type === 'prev' ? <ChevronLeft size={16} /> : <ChevronRight size={16} />} />
+        : original} />
+  </div>;
 }
 
 function CategoryTree({ categories, counts = [], active = false, selected, onSelect }) {
@@ -406,21 +359,21 @@ function CategoryTree({ categories, counts = [], active = false, selected, onSel
     const total = counts.filter(row => branch.has(row.category_id)).reduce((sum, row) => sum + (active ? row.active : row.total), 0);
     return <li key={c.id}>
       <div className="category-tree-row" style={{ paddingLeft: depth * 14 }}>
-        {children ? <button className="category-expand" aria-label={`${collapsed.has(c.id) ? '展开' : '折叠'} ${c.name}`} aria-expanded={!collapsed.has(c.id)} onClick={() => setCollapsed(current => { const next = new Set(current); next.has(c.id) ? next.delete(c.id) : next.add(c.id); return next; })}>{collapsed.has(c.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button> : <span className="category-expand" />}
-        <button className={`category-select ${selected === c.id ? 'active' : ''}`} aria-pressed={selected === c.id} onClick={() => onSelect(c.id)}><span>{c.name}</span><small>{total}</small></button>
+        {children ? <AntButton type="text" htmlType="button" className="category-expand" aria-label={`${collapsed.has(c.id) ? '展开' : '折叠'} ${c.name}`} aria-expanded={!collapsed.has(c.id)} onClick={() => setCollapsed(current => { const next = new Set(current); next.has(c.id) ? next.delete(c.id) : next.add(c.id); return next; })}>{collapsed.has(c.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</AntButton> : <span className="category-expand" />}
+        <AntButton type="text" htmlType="button" className={`category-select ${selected === c.id ? 'active' : ''}`} aria-pressed={selected === c.id} onClick={() => onSelect(c.id)}><span>{c.name}</span><small>{total}</small></AntButton>
       </div>
       {children && !collapsed.has(c.id) && <ul>{render(c.id, depth + 1)}</ul>}
     </li>;
   });
   return <nav aria-label="物料分类树" className="category-tree">
-    <button className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部物料</span><small>{counts.reduce((sum, row) => sum + (active ? row.active : row.total), 0)}</small></button>
+    <AntButton type="text" htmlType="button" className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部物料</span><small>{counts.reduce((sum, row) => sum + (active ? row.active : row.total), 0)}</small></AntButton>
     <ul>{render()}</ul>
     {!categories.length && <p className="muted">暂无分类，请添加分类。</p>}
   </nav>;
 }
 
 function ProductName({ product, onView }) {
-  return <button type="button" className="product-name-link" aria-label={`查看 ${product.name} 物料详情`} onClick={() => onView(product)}>{product.name}</button>;
+  return <AntButton type="text" htmlType="button" className="product-name-link" aria-label={`查看 ${product.name} 物料详情`} onClick={() => onView(product)}>{product.name}</AntButton>;
 }
 
 export { Button, Badge, ProductArt, Modal, Empty, PageHeading, Panel, QueryStatus, Pagination, CategoryTree, ProductName };

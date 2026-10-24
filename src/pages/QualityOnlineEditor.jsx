@@ -1,3 +1,5 @@
+import { Button as AntButton, Input as AntInput } from 'antd';
+
 import { useMemo, useState } from 'react';
 import { Check, FileSpreadsheet, List } from 'lucide-react';
 import { Button } from '../components/common.jsx';
@@ -19,19 +21,19 @@ function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
   const begin=()=>{if(!busy){setOriginal(value);setEditing(true);}};
   return <div className={`quality-online-entry${inline&&editing&&!choice?' is-editing':''}${errors.length?' has-errors':''}`}>
     {boolean?<div className="quality-online-choices" role="radiogroup" aria-label={props['aria-label']} aria-invalid={!!errors.length}>
-      {onlineBooleanOptions(config).map(option=><button type="button" key={option.label} className="quality-online-option" role="radio" aria-label={`${props['aria-label']} · ${option.label}`} aria-checked={booleanValue===option.value} disabled={busy} onClick={()=>onChange(input.address,booleanValue===option.value?'':option.label)}>{option.label}</button>)}
+      {onlineBooleanOptions(config).map(option=><AntButton type="text" htmlType="button" key={option.label} className="quality-online-option" role="radio" aria-label={`${props['aria-label']} · ${option.label}`} aria-checked={booleanValue===option.value} disabled={busy} onClick={()=>onChange(input.address,booleanValue===option.value?'':option.label)}>{option.label}</AntButton>)}
     </div>:choice?<div className="quality-online-choices" role={config.type==='single'?'radiogroup':'group'} aria-label={props['aria-label']} aria-invalid={!!errors.length}>
       {onlineChoiceOptions(config).map(option=>{
         const parsed=previewChoice(value,config), selected=Array.isArray(parsed.value)?parsed.value:parsed.value?[parsed.value]:[];
         const checked=selected.includes(option), marker=checked?config.checkChar:(config.uncheckChars||'').split('\n').find(Boolean)||'○';
-        return <button type="button" className="quality-online-option" key={option} role={config.type==='single'?'radio':'checkbox'} aria-label={`${input.label} · ${input.address} · ${option}`} aria-checked={checked} disabled={busy} onClick={()=>{
+        return <AntButton type="text" htmlType="button" className="quality-online-option" key={option} role={config.type==='single'?'radio':'checkbox'} aria-label={`${input.label} · ${input.address} · ${option}`} aria-checked={checked} disabled={busy} onClick={()=>{
           const next=checked?selected.filter(item=>item!==option):(config.type==='single'||choiceModeOf(config)==='plain'?[option]:[...selected,option]);
           onChange(input.address,onlineChoiceText(next,config));
-        }}><span aria-hidden="true">{choiceModeOf(config)==='plain'?option:config.markerPosition==='after'?`${option}${marker}`:`${marker}${option}`}</span></button>;
+        }}><span aria-hidden="true">{choiceModeOf(config)==='plain'?option:config.markerPosition==='after'?`${option}${marker}`:`${marker}${option}`}</span></AntButton>;
       })}
-    </div>:inline&&!editing?<button type="button" className="quality-online-cell-value" {...props} title="双击填写，触屏轻点填写，也可按 Enter" onDoubleClick={begin}
+    </div>:inline&&!editing?<AntButton type="text" htmlType="button" className="quality-online-cell-value" {...props} title="双击填写，触屏轻点填写，也可按 Enter" onDoubleClick={begin}
       onPointerUp={event=>{if(event.pointerType==='touch'||event.pointerType==='pen')begin();}}
-      onKeyDown={event=>{if(event.key==='Enter'||event.key==='F2'){event.preventDefault();begin();}}}>{value||'\u00a0'}</button>:<textarea {...props} autoFocus={inline} rows={config.type==='measurements'||value.includes('\n')?3:1} maxLength={10000}
+      onKeyDown={event=>{if(event.key==='Enter'||event.key==='F2'){event.preventDefault();begin();}}}>{value||'\u00a0'}</AntButton>:<AntInput.TextArea {...props} autoFocus={inline} rows={config.type==='measurements'||value.includes('\n')?3:1} maxLength={10000}
       inputMode={config.type==='number'?'decimal':undefined} placeholder={`${config.required?'必填 · ':''}${['date','datetime'].includes(config.type)?(config.dateFormat||(config.type==='datetime'?'YYYY-MM-DD HH:mm:ss':'YYYY-MM-DD')):{string:'填写内容',uniqueKey:'填写编号'}[config.type]||qualityTypeLabels[config.type]||'填写内容'}`}
       value={value} onChange={e=>onChange(input.address,e.target.value)} onBlur={()=>setEditing(false)} onKeyDown={event=>{
         if(!inline||event.nativeEvent.isComposing)return;

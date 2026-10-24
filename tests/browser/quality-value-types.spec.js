@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -49,7 +50,7 @@ for (const platform of ['desktop','iPhone','Android PWA']) test(`${platform} con
     await page.reload();
     if(platform!=='desktop')await page.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'模板配置',exact:true}).click();
     await page.getByRole('row').filter({hasText:name}).getByRole('button',{name:'编辑',exact:true}).click();
-    await page.locator('.quality-field').filter({hasText:'合格率'}).click();await expect(editor.getByRole('combobox',{name:'数字模式',exact:true})).toHaveValue('百分比（95% → 95）');
+    await page.locator('.quality-field').filter({hasText:'合格率'}).click();await expect(selectedControl(editor.getByRole('combobox',{name:'数字模式',exact:true}))).toContainText('百分比（95% → 95）');
     await editor.getByRole('button',{name:'完成配置',exact:true}).click();await page.getByRole('button',{name:'返回模板列表',exact:true}).click();
     await page.getByRole('navigation',{name:'品质管理功能'}).getByRole('button',{name:'验收单',exact:true}).click();
     await page.getByRole('button',{name:'在线新建验收单',exact:true}).click();

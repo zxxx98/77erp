@@ -1,3 +1,6 @@
+import { FormField } from './ui/FormField.jsx';
+import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from 'antd';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import './notifications.css';
@@ -24,23 +27,23 @@ export function R2BackupSettings({ active, onBusy, onDirty }) {
   return <section className="notification-settings r2-backup-settings" aria-label="R2 自动备份">
     <div className="settings-section-heading"><h3>Cloudflare R2 自动备份</h3><p>完整 SQLite 在线备份，包含所有仓库、账号和系统凭据。请使用私有存储桶；图片文件仍需在图床保留。</p></div>
     {config && <div className="notification-fields">
-      <label className="notification-choice"><input type="checkbox" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)} /><span>启用定时备份</span></label>
-      {[['account_id', 'Cloudflare Account ID', '32 位账户 ID'], ['bucket', 'R2 存储桶', '预先创建的私有存储桶'], ['prefix', '备份目录前缀', '77erp'], ['cron', 'Cron 表达式（五段）', '0 2 * * *'], ['timezone', '执行时区', 'Asia/Shanghai']].map(([key, label, placeholder]) => <label key={key}>{label}<input value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
-      <label>Excel 目录前缀<input required value={config.excel_prefix || ''} maxLength={200} placeholder="excel" disabled={busy} onChange={e => field('excel_prefix', e.target.value)} /><small>验收单原始 Excel 使用此独立目录，复用上方 R2 连接；不参与数据库备份轮转。</small></label>
+      <AntCheckbox className="notification-choice" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)}><span>启用定时备份</span></AntCheckbox>
+      {[['account_id', 'Cloudflare Account ID', '32 位账户 ID'], ['bucket', 'R2 存储桶', '预先创建的私有存储桶'], ['prefix', '备份目录前缀', '77erp'], ['cron', 'Cron 表达式（五段）', '0 2 * * *'], ['timezone', '执行时区', 'Asia/Shanghai']].map(([key, label, placeholder]) => <label key={key}>{label}<AntInput value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
+      <label>Excel 目录前缀<FormField value={config.excel_prefix || ''} required maxLength={200} label="Excel 目录前缀"><AntInput  value={config.excel_prefix || ''} maxLength={200} placeholder="excel" disabled={busy} onChange={e => field('excel_prefix', e.target.value)} /></FormField><small>验收单原始 Excel 使用此独立目录，复用上方 R2 连接；不参与数据库备份轮转。</small></label>
       <small>Cron 顺序：分 时 日 月 周。例如 0 2 * * * 为每天 02:00，0 * * * * 为每小时。服务需保持运行；停机错过的计划不补跑。每次成功上传后自动保留当前目录内最新 10 个备份，超出的旧备份会被删除。</small>
       {[['access_key', 'R2 Access Key ID'], ['secret_key', 'R2 Secret Access Key']].map(([key, label]) => <React.Fragment key={key}>
-        <label>{label}<input type="password" autoComplete="new-password" maxLength={4096} disabled={busy || credentials[`clear_${key}`]} value={credentials[key] || ''} placeholder={config[`has_${key}`] ? '已保存，留空保留' : '尚未配置'} onChange={e => setCredentials(c => ({ ...c, [key]: e.target.value }))} /></label>
-        {config[`has_${key}`] && <label className="notification-choice"><input type="checkbox" disabled={busy} checked={!!credentials[`clear_${key}`]} onChange={e => setCredentials(c => ({ ...c, [`clear_${key}`]: e.target.checked }))} /><span>清除{label}</span></label>}
+        <label>{label}<AntInput type="password" autoComplete="new-password" maxLength={4096} disabled={busy || credentials[`clear_${key}`]} value={credentials[key] || ''} placeholder={config[`has_${key}`] ? '已保存，留空保留' : '尚未配置'} onChange={e => setCredentials(c => ({ ...c, [key]: e.target.value }))} /></label>
+        {config[`has_${key}`] && <AntCheckbox className="notification-choice" disabled={busy} checked={!!credentials[`clear_${key}`]} onChange={e => setCredentials(c => ({ ...c, [`clear_${key}`]: e.target.checked }))}><span>清除{label}</span></AntCheckbox>}
       </React.Fragment>)}
       <small>R2 凭据需要目标存储桶的对象读写权限（含列举、删除）。如需备份结果通知，请在「通知设置」启用 Webhook 并勾选「数据库备份」。</small>
-      <div className="notification-actions"><button type="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
+      <div className="notification-actions"><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
         const c = await api('/settings/r2-backup', { method: 'PUT', body: { ...config, ...credentials } });
         setConfig(c); setSaved(JSON.stringify(c)); setCredentials({}); setNotice('R2 备份设置已保存。');
-      })}>保存备份设置</button>
-      <button type="button" className="btn" disabled={busy || dirty} onClick={() => void run(async () => {
+      })}>保存备份设置</AntButton>
+      <AntButton type="default" htmlType="button" className="btn" disabled={busy || dirty} onClick={() => void run(async () => {
         const result = await api('/settings/r2-backup/run', { method: 'POST', body: { version: config.version } });
         setNotice(`备份成功：${result.object_key}${result.warning ? `；${result.warning}` : ""}`);
-      })}>{busy ? '处理中…' : '立即备份'}</button></div>
+      })}>{busy ? '处理中…' : '立即备份'}</AntButton></div>
       <small>先保存再立即备份；关闭定时备份后仍可手动执行。</small>
     </div>}
     {error && <p className="form-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}

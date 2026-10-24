@@ -42,8 +42,8 @@ for (const device of ['desktop', 'Android', 'iOS PWA']) {
       await confirm.click();
       await expect(editor.getByRole('alert')).toContainText('请选择客户并填写客户料号');
       await editor.getByRole('combobox', { name: '客户 1', exact: true }).click();
-      await expect(page.getByRole('listbox', { name: '客户 1', exact: true })).not.toContainText(supplier);
-      await page.getByRole('listbox', { name: '客户 1', exact: true }).getByText(customerName, { exact: true }).click();
+      await expect(page.getByRole('listbox')).not.toContainText(supplier);
+      await page.getByRole('listbox').getByText(customerName, { exact: true }).click();
       await editor.getByRole('textbox', { name: '客户料号 1', exact: true }).fill(part);
       await form.getByRole('button', { name: '保存物料', exact: true }).click();
       await expect(form.getByRole('alert')).toContainText('请先点击勾选确认客户料号');

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createApp } from '../../server/app.js';
-import { chooseOption } from './dropdown-helpers.js';
+import { chooseOption, selectedControl } from './dropdown-helpers.js';
 
 // A value assertion alone misses inputs whose text area has collapsed to zero.
 async function expectReadable(control, minimum = 90) {
@@ -66,7 +66,7 @@ for (const scenario of [
         const operator = page.getByRole('combobox', { name: `第 ${index} 项运算符`, exact: true });
         await expectReadable(operator);
         await chooseOption(operator, '-');
-        await expect(operator).toHaveValue('−');
+        await expect(selectedControl(operator)).toContainText('−');
         await expectReadable(operator);
         await expectReadable(page.getByRole('combobox', { name: `第 ${index} 项仓库`, exact: true }));
       }

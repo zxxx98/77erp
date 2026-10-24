@@ -47,7 +47,7 @@ test('administrator creates accounts, protects the last administrator, resets pa
     await page.getByLabel('重置后的密码', { exact: true }).fill('Reset-password-456');
     page.once('dialog', d => d.accept());
     await page.getByRole('button', { name: '确认重置密码', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('密码已重置');
+    await expect(page.getByRole('status').filter({ hasText: '密码已重置' })).toBeVisible();
     page.once('dialog', d => d.accept());
     await employee.getByRole('button', { name: '停用', exact: true }).click();
     await expect(employee).toContainText('已停用');

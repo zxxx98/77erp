@@ -212,7 +212,7 @@ test('a fully returned fractional sale displays its zero-cent tail instead of re
     await page.goto(f.base + '/#history');
     await page.getByText(tail.number, { exact: true }).click();
     const row = page.getByRole('dialog').getByRole('row').filter({ hasText: '尾差物料' });
-    await expect(row.getByRole('cell').last()).toHaveText('¥ 0.00');
+    await expect(row.getByRole('cell').last()).toHaveText('$ 0.00');
     await page.getByRole('button', { name: '关闭详情', exact: true }).click();
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: /导出/ }).click();

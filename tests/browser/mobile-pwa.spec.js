@@ -120,7 +120,7 @@ test('drafts survive reload and offline editing, are isolated by warehouse and c
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await context.setOffline(false);
   const newWarehouse = await (await context.request.post('/api/warehouses', { data: { name: `PWA隔离仓-${Date.now()}` } })).json();
-  await page.getByRole('button', { name: '刷新数据', exact: true }).click();
+  await page.getByRole('button', { name: '刷新数据', exact: true }).last().click();
   await page.getByRole('button', { name: '切换仓库', exact: true }).click();
   await page.getByRole('button', { name: new RegExp(`PWA隔离仓`) }).click();
   await page.getByRole('button', { name: '本地草稿', exact: true }).click();

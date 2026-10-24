@@ -1,3 +1,6 @@
+import { Form as AntForm, Input as AntInput } from 'antd';
+import { FormField } from './ui/FormField.jsx';
+
 import { useMemo, useState } from 'react';
 import { usePagedQuery } from './queries.js';
 import { api } from './api.js';
@@ -49,17 +52,17 @@ export function InspectionPanel({ data }) {
     </div>)}
     {query.result?.has_more && <Button disabled={query.loading || action.busy} onClick={query.loadMore}>{query.loading ? '正在加载…' : '加载更多待校验物料'}</Button>}
     {selected && <Modal title="记录已校验" subtitle={selected.name} onClose={() => { if (!action.busy) setSelected(null); }}>
-      <form onSubmit={event => { event.preventDefault(); complete(selected); }}>
+      <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => {  complete(selected); }}>
         <div className="form-body">
-          <label>实际校验日期<input type="date" aria-label="实际校验日期" required max={inspectionToday()} value={inspectedOn} disabled={action.busy} onChange={event => setInspectedOn(event.target.value)} /><small>默认今天，补录时请选择实际完成校验的日期。</small></label>
+          <label>实际校验日期<FormField value={inspectedOn} required type="date" max={inspectionToday()} label="实际校验日期"><AntInput type="date" aria-label="实际校验日期"  max={inspectionToday()} value={inspectedOn} disabled={action.busy} onChange={event => setInspectedOn(event.target.value)} /></FormField><small>默认今天，补录时请选择实际完成校验的日期。</small></label>
           {selected.inspection_interval ? <p>校验周期：{inspectionCycleLabel(selected)}；下次校验日期：{periodicDate || '请选择有效的实际校验日期'}。从实际校验日期按配置周期顺延。</p> : <>
             <p>此物料未配置周期，请手动填写下次校验日期。</p>
-            <label>下次校验日期<input type="date" required min={validInspectionDate(inspectedOn) && inspectedOn < '9999-12-31' ? nextInspectionDate(inspectedOn, 1, 'day') : undefined} value={nextDate} disabled={action.busy} onChange={event => setNextDate(event.target.value)} /></label>
+            <label>下次校验日期<FormField label="下次校验日期" value={nextDate} required type="date" min={validInspectionDate(inspectedOn) && inspectedOn < '9999-12-31' ? nextInspectionDate(inspectedOn, 1, 'day') : undefined}><AntInput type="date"  min={validInspectionDate(inspectedOn) && inspectedOn < '9999-12-31' ? nextInspectionDate(inspectedOn, 1, 'day') : undefined} value={nextDate} disabled={action.busy} onChange={event => setNextDate(event.target.value)} /></FormField></label>
           </>}
           {action.error && <p role="alert" className="form-error">{action.error}</p>}
         </div>
         <div className="modal-footer"><Button type="button" disabled={action.busy} onClick={() => setSelected(null)}>取消</Button><Button type="submit" kind="primary" busy={action.busy}>完成</Button></div>
-      </form>
+      </AntForm>
     </Modal>}
   </section>;
 }

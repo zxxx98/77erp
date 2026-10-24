@@ -1,3 +1,7 @@
+import { ConfigProvider as AntConfigProvider, Button as AntButton, Form as AntForm, Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+
+import { FormField } from './ui/FormField.jsx';
+
 import { contactMatchesDirection } from '../shared/contacts.js';
 import { useQuery } from './queries.js';
 import { lookupProductCode, useProductSelection } from './product-query.js';
@@ -371,22 +375,22 @@ export function StockQrManager({
         : "管理出入库二维码";
   return (
     <Modal title={title} onClose={close} wide presentation="drawer" drawerSize="wide"
-      headerNavigation={(selected || form) && <button type="button" className={`${button} drawer-header-back`} disabled={busy} onClick={back}>返回列表</button>}
+      headerNavigation={(selected || form) && <AntButton type="text" htmlType="button" className={`${button} drawer-header-back`} disabled={busy} onClick={back}>返回列表</AntButton>}
       footer={<div className="modal-footer">
         {form ? <>
-          <button type="button" className={button} disabled={busy} onClick={back}>取消编辑</button>
-          <button className="btn btn-primary" type="submit" form={formId} disabled={busy} aria-busy={busy}>
+          <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={back}>取消编辑</AntButton>
+          <AntButton type="primary" className="btn btn-primary" htmlType="submit" form={formId} disabled={busy} aria-busy={busy}>
             {busy && <LoadingIndicator size={20} />}保存二维码
-          </button>
-        </> : <button type="button" className={button} disabled={busy} onClick={close}>关闭</button>}
+          </AntButton>
+        </> : <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={close}>关闭</AntButton>}
       </div>}
     >
       <div ref={contentRef} className="form-body stock-qr-manager" aria-busy={busy}>
         {busy && <p><LoadingStatus>正在处理出入库二维码…</LoadingStatus></p>}
         {mobileDevice && (selected || form) && (
-          <button className={button} disabled={busy} onClick={back}>
+          <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={back}>
             返回列表
-          </button>
+          </AntButton>
         )}
         {error && (
           <p ref={errorRef} className="form-error" role="alert">
@@ -394,31 +398,31 @@ export function StockQrManager({
           </p>
         )}
         {form ? (
-          <form
+          <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }}
             id={formId}
-            onSubmit={(e) => {
-              e.preventDefault();
+            onFinish={() => {
+
               save();
             }}
           >
-            <fieldset disabled={busy}>
+            <AntConfigProvider componentDisabled={busy}><fieldset disabled={busy}>
               <label>
                 二维码名称
-                <input
-                  required
+                <FormField label="二维码名称" value={form.name} required maxLength={60}><AntInput
+
                   data-autofocus
                   maxLength={60}
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
+                /></FormField>
               </label>
               <label>
                 操作类型
-                <Select
+                <Select aria-label="操作类型"
                   value={form.type}
                   disabled={!!selected}
                   onChange={(e) => {
-                    const t = e.target.value;
+                    const t = e;
                     setForm({
                       ...form,
                       type: t,
@@ -442,7 +446,7 @@ export function StockQrManager({
               <h3>物料明细（{form.items.length}/100）</h3>
               <label>
                 搜索添加物料
-                <input
+                <AntInput
                   value={query}
                   placeholder="输入名称或编码"
                   onChange={(e) => setQuery(e.target.value)}
@@ -453,37 +457,37 @@ export function StockQrManager({
                 {query &&
                   selection.matches
                     .map((p) => (
-                      <button
-                        type="button"
+                      <AntButton type="text"
+                        htmlType="button"
                         className={button}
                         key={p.id}
                         onClick={() => add(p)}
                       >
                         {p.name} · {p.barcode}
-                      </button>
+                      </AntButton>
                     ))}
               </div>
               <div className="stock-qr-actions">
-                <button
-                  type="button"
+                <AntButton type="text"
+                  htmlType="button"
                   className={button}
                   onClick={() => setCamera(!camera)}
                 >
                   {camera ? "关闭摄像头" : "扫描添加物料"}
-                </button>
-                <input
+                </AntButton>
+                <AntInput
                   ref={barcodeInput}
                   aria-label="添加物料条码"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
-                <button
-                  type="button"
+                <AntButton type="text"
+                  htmlType="button"
                   className={button}
                   onClick={() => scan(barcode)}
                 >
                   识别物料
-                </button>
+                </AntButton>
               </div>
               {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加物料" note="识别后自动添加到二维码物料明细"
                 onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
@@ -497,9 +501,8 @@ export function StockQrManager({
                   </strong>
                   <label>
                     {i.name} 单次数量（{i.unit}）
-                    <input
+                    <FormField label="单次数量（ ）" value={i.quantity} required type="number" min={0.000001} max={99999999}><AntInput
                       type="number"
-                      required
                       min={0.000001}
                       max={99999999}
                       step={0.000001}
@@ -507,13 +510,12 @@ export function StockQrManager({
                       onChange={(e) =>
                         updateLine(i.product_id, "quantity", e.target.value)
                       }
-                    />
+                    /></FormField>
                   </label>
                   <label>
                     {i.name} 成交单价
-                    <input
+                    <FormField label="成交单价" value={i.price} required type="number" min={0} max={99999999}><AntInput
                       type="number"
-                      required
                       min={0}
                       max={99999999}
                       step="0.0001"
@@ -521,7 +523,7 @@ export function StockQrManager({
                       onChange={(e) =>
                         updateLine(i.product_id, "price", e.target.value)
                       }
-                    />
+                    /></FormField>
                   </label>
                   <span>
                     金额{" "}
@@ -535,8 +537,8 @@ export function StockQrManager({
                     </p>
                   )}
                   <div className="stock-qr-actions">
-                    <button
-                      type="button"
+                    <AntButton type="text"
+                      htmlType="button"
                       className={button}
                       disabled={!index}
                       onClick={() => {
@@ -549,9 +551,9 @@ export function StockQrManager({
                       }}
                     >
                       上移
-                    </button>
-                    <button
-                      type="button"
+                    </AntButton>
+                    <AntButton type="text"
+                      htmlType="button"
                       className={button}
                       onClick={() =>
                         setForm({
@@ -563,7 +565,7 @@ export function StockQrManager({
                       }
                     >
                       移除 {i.name}
-                    </button>
+                    </AntButton>
                   </div>
                 </div>
               ))}
@@ -585,13 +587,13 @@ export function StockQrManager({
               )}
               <label>
                 次数限制
-                <Select
+                <Select aria-label="次数限制"
                   value={form.max_scans === null ? "unlimited" : "limited"}
                   onChange={(e) =>
                     setForm({
                       ...form,
                       max_scans:
-                        e.target.value === "unlimited"
+                        e === "unlimited"
                           ? null
                           : String(Math.max(selected?.used_scans || 0, 1)),
                     })
@@ -604,9 +606,8 @@ export function StockQrManager({
               {form.max_scans !== null && (
                 <label>
                   可扫描次数（累计上限）
-                  <input
+                  <FormField label="可扫描次数（累计上限）" value={form.max_scans} required type="number" min={Math.max(selected?.used_scans || 0, 1)} max={99999999}><AntInput
                     type="number"
-                    required
                     min={Math.max(selected?.used_scans || 0, 1)}
                     max={99999999}
                     step={1}
@@ -614,19 +615,15 @@ export function StockQrManager({
                     onChange={(e) =>
                       setForm({ ...form, max_scans: e.target.value })
                     }
-                  />
+                  /></FormField>
                 </label>
               )}
-              <label className="stock-qr-check">
-                <input
-                  type="checkbox"
-                  checked={form.require_confirmation}
-                  onChange={(e) =>
+              <AntCheckbox className="stock-qr-check" checked={form.require_confirmation} onChange={(e) =>
                     setForm({ ...form, require_confirmation: e.target.checked })
-                  }
-                />
+                  }>
+
                 需要二次确认
-              </label>
+              </AntCheckbox>
               {!form.require_confirmation && (
                 <p className="info-box">
                   扫码后将直接生成整张单据并更新全部物料库存。
@@ -641,27 +638,23 @@ export function StockQrManager({
                 onSelect={contact => setForm({ ...form, partner: contact.name, partner_id: contact.id })} />
               <label>
                 单据备注
-                <textarea
+                <AntInput.TextArea
                   maxLength={500}
                   value={form.note}
                   onChange={(e) => setForm({ ...form, note: e.target.value })}
                 />
               </label>
-              <label className="stock-qr-check">
-                <input
-                  type="checkbox"
-                  checked={form.enabled}
-                  onChange={(e) =>
+              <AntCheckbox className="stock-qr-check" checked={form.enabled} onChange={(e) =>
                     setForm({ ...form, enabled: e.target.checked })
-                  }
-                />
+                  }>
+
                 启用
-              </label>
-              {mobileDevice && <button className="btn btn-primary" type="submit">
+              </AntCheckbox>
+              {mobileDevice && <AntButton type="primary" className="btn btn-primary" htmlType="submit">
                 保存二维码
-              </button>}
-            </fieldset>
-          </form>
+              </AntButton>}
+            </fieldset></AntConfigProvider>
+          </AntForm>
         ) : records ? (
           <>
             {!records.rows.length && <p>暂无记录。</p>}
@@ -679,23 +672,23 @@ export function StockQrManager({
               </section>
             ))}
             <div className="stock-qr-actions">
-              <button
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy || recordPage === 1}
                 onClick={() => recordLoad(selected, recordKind, recordPage - 1)}
               >
                 上一页
-              </button>
+              </AntButton>
               <span>
                 第 {recordPage} 页 · 共 {records.total} 条
               </span>
-              <button
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy || recordPage * 20 >= records.total}
                 onClick={() => recordLoad(selected, recordKind, recordPage + 1)}
               >
                 下一页
-              </button>
+              </AntButton>
             </div>
           </>
         ) : selected ? (
@@ -716,14 +709,14 @@ export function StockQrManager({
             )}
             <Lines items={selected.items} />
             <div className="stock-qr-actions">
-              <button
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy}
                 onClick={() => edit(selected)}
               >
                 编辑配置
-              </button>
-              <button
+              </AntButton>
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={!symbol}
                 onClick={() =>
@@ -735,34 +728,34 @@ export function StockQrManager({
                 }
               >
                 下载标签
-              </button>
-              <button
+              </AntButton>
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy}
                 onClick={() => recordLoad(selected, "usages")}
               >
                 查看使用记录
-              </button>
-              <button
+              </AntButton>
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy}
                 onClick={() => recordLoad(selected, "revisions")}
               >
                 查看修改记录
-              </button>
+              </AntButton>
             </div>
           </>
         ) : (
           <>
             <div className="stock-qr-actions">
-              <button className="btn btn-primary" onClick={() => edit(null)}>
+              <AntButton type="primary" htmlType="button" className="btn btn-primary" onClick={() => edit(null)}>
                 新建二维码
-              </button>
+              </AntButton>
               <Select
                 aria-label="按操作类型筛选"
                 value={type}
                 onChange={(e) => {
-                  setType(e.target.value);
+                  setType(e);
                   setPage(1);
                 }}
               >
@@ -774,7 +767,7 @@ export function StockQrManager({
                 aria-label="按二维码状态筛选"
                 value={status}
                 onChange={(e) => {
-                  setStatus(e.target.value);
+                  setStatus(e);
                   setPage(1);
                 }}
               >
@@ -802,7 +795,7 @@ export function StockQrManager({
                 </p>
                 <Lines items={q.items} />
                 <div className="stock-qr-actions">
-                  <button
+                  <AntButton type="text" htmlType="button"
                     className={button}
                     onClick={() => {
                       setSelected(q);
@@ -810,11 +803,11 @@ export function StockQrManager({
                     }}
                   >
                     查看标签
-                  </button>
-                  <button className={button} aria-label={`编辑 ${q.name}`} onClick={() => edit(q)}>
+                  </AntButton>
+                  <AntButton type="text" htmlType="button" className={button} aria-label={`编辑 ${q.name}`} onClick={() => edit(q)}>
                     编辑
-                  </button>
-                  <button
+                  </AntButton>
+                  <AntButton type="text" htmlType="button"
                     className={button}
                     disabled={busy}
                     onClick={() =>
@@ -829,28 +822,28 @@ export function StockQrManager({
                     }
                   >
                     {q.enabled ? "停用" : "启用"}
-                  </button>
+                  </AntButton>
                 </div>
               </section>
             ))}
             <div className="stock-qr-actions">
-              <button
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={page === 1}
                 onClick={() => setPage(page - 1)}
               >
                 上一页
-              </button>
+              </AntButton>
               <span>
                 第 {page} 页 · 共 {total} 条
               </span>
-              <button
+              <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={page * 20 >= total}
                 onClick={() => setPage(page + 1)}
               >
                 下一页
-              </button>
+              </AntButton>
             </div>
           </>
         )}
@@ -990,13 +983,13 @@ export function StockQrExecution({
       {pending && (
         <section className="info-box">
           <p>上次扫码提交结果未知，请重试同一请求，避免重复出入库。</p>
-          <button
+          <AntButton type="primary" htmlType="button"
             className="btn btn-primary"
             disabled={busy}
             onClick={() => execute(pending)}
           >
             重试原扫码请求
-          </button>
+          </AntButton>
         </section>
       )}
       {result && (
@@ -1032,10 +1025,10 @@ export function StockQrExecution({
             )}
           </div>
           <div className="modal-footer">
-            <button className={button} disabled={busy} onClick={cancel}>
+            <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={cancel}>
               取消
-            </button>
-            <button
+            </AntButton>
+            <AntButton type="primary" htmlType="button"
               className="btn btn-primary"
               disabled={busy}
               onClick={() => submit(preview)}
@@ -1043,7 +1036,7 @@ export function StockQrExecution({
             >
               {busy && <LoadingIndicator size={20} />}
               {preview.type === "in" ? "确认入库" : "确认出库"}
-            </button>
+            </AntButton>
           </div>
         </Modal>
       )}

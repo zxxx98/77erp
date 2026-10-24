@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
@@ -17,7 +18,11 @@ export async function ensureContact(request, name, { base = '', role = 'supplier
 export async function chooseContact(page, name, label = '供应商') {
   const control = page.getByRole('combobox', { name: label, exact: true });
   await control.click();
-  await page.getByRole('listbox', { name: label, exact: true }).getByText(name, { exact: true }).click();
-  await expect(control).toHaveValue(name);
+  await page.getByRole('listbox').getByText(name, { exact: true }).click();
+  if (await selectedControl(control).evaluate(element => element.classList.contains('ant-select-auto-complete'))) {
+    await expect(control).toHaveValue(name);
+  } else {
+    await expect(selectedControl(control)).toContainText(name);
+  }
   await expect(control).toHaveAttribute('aria-expanded', 'false');
 }

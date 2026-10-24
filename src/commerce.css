@@ -28,7 +28,7 @@
 .template-card h4 { margin: 12px 0 9px; color: #304563; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .template-panel .template-partner { margin: 0 0 9px; color: #64748b; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .template-save-panel { display: grid; gap: 10px; padding: 14px; border: 1px dashed #dbe3ee; border-radius: 10px; background: #fafbfd; }
-.template-save-panel > label { min-width: 0; }
+:where(.template-save-panel > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { min-width: 0; }
 .template-success { color: #16816b; font-size: 12px; line-height: 1.6; }
 .template-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; color: #7b8799; font-size: 12px; line-height: 1.6; }
 .template-meta > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
@@ -42,11 +42,11 @@
 .template-empty strong { font-size: 13px; color: #64748b; }
 .template-empty span { font-size: 12px; line-height: 1.6; }
 .template-error { display: grid; justify-items: start; gap: 10px; }
-.template-error .btn { margin: 0; }
+:where(.template-error .btn) { margin: 0; }
 .order-template-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
 .order-template-status { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--accent); font-size: 12px; }
 .order-template-status small { color: #94a0b1; font-size: 11px; }
-.order-template-actions > .btn { margin: 0; }
+:where(.order-template-actions > .btn) { margin: 0; }
 @media (max-width: 480px) {
   .template-panel .template-trigger { gap: 8px; padding: 12px; }
   .template-heading-icon { width: 34px; height: 34px; flex-basis: 34px; }

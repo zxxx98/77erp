@@ -1,3 +1,5 @@
+import { Button as AntButton, Form as AntForm, Input as AntInput } from 'antd';
+
 import {
   Box,
   ArrowDownToLine,
@@ -336,7 +338,7 @@ function App({ admin, onLogout }) {
           </div>
         </a>
         <ModeSwitch mode={mode} onChange={switchMode} disabled={!!modal || switching} />
-        <button
+        <AntButton type="text" htmlType="button"
           className="workspace-selector"
           onClick={() => setModal({ kind: "settings" })}
         >
@@ -348,7 +350,7 @@ function App({ admin, onLogout }) {
             <small>我的工作空间</small>
           </span>
           <ChevronDown size={14} />
-        </button>
+        </AntButton>
         <div className="nav-label">{mode === 'production' ? '生产管理' : '仓储管理'}</div>
         <nav aria-label="主导航">
           {visibleNav.filter(item => item.group === 'main').map(({ id, name, icon: Icon }) => (
@@ -395,18 +397,18 @@ function App({ admin, onLogout }) {
             </span>
             <strong>扫码管理</strong>
             <p>使用手机摄像头识别物料条码。</p>
-            <button onClick={() => navigate("scanner")}>
+            <AntButton type="default" htmlType="button" onClick={() => navigate("scanner")}>
               打开扫码工作台 <ArrowRight size={13} />
-            </button>
+            </AntButton>
           </div>}
-          <button className="nav-item" onClick={() => setModal({ kind: 'businessTools' })}>
+          <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'businessTools' })}>
             <History size={18} /><span>业务管理</span>
-          </button>
-          {can('ai') && <button className="nav-item" onClick={() => setModal({ kind: 'ai' })}><Settings size={18} /><span>AI 助手</span></button>}
-          {isAdmin && <button className="nav-item" aria-label="系统设置" title="系统设置" onClick={() => setModal({ kind: 'settings' })}>
+          </AntButton>
+          {can('ai') && <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'ai' })}><Settings size={18} /><span>AI 助手</span></AntButton>}
+          {isAdmin && <AntButton type="text" htmlType="button" className="nav-item" aria-label="系统设置" title="系统设置" onClick={() => setModal({ kind: 'settings' })}>
             <Settings size={18} /><span>系统设置</span>
-          </button>}
-          <button
+          </AntButton>}
+          <AntButton type="text" htmlType="button"
             className="user-profile"
             onClick={() => setModal({ kind: "account" })}
           >
@@ -416,7 +418,7 @@ function App({ admin, onLogout }) {
               <small>{isAdmin ? "管理员" : "员工"}</small>
             </span>
             <Ellipsis size={18} />
-          </button>
+          </AntButton>
         </div>
       </aside>
       <div className="main-shell">
@@ -427,39 +429,37 @@ function App({ admin, onLogout }) {
             <strong>{currentNav?.name}</strong>
           </div>
           <div className="topbar-right">
-            <Select className="warehouse-select" aria-label="当前仓库" value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e.target.value))}>
+            <Select className="warehouse-select" aria-label="当前仓库" value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e))}>
               {(data.warehouses || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </Select>
             <div className={`sync-state${updatesAvailable ? ' pending' : ''}`}>
               <i />
               {refreshing ? '正在刷新' : updatesAvailable ? '有数据变更' : '数据已读取'}
             </div>
-            <form
+            <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }}
               className="global-search"
-              onSubmit={(e) => {
-                e.preventDefault();
+              onFinish={() => {
+
                 navigate("products");
               }}
             >
-              <Search size={16} />
-              <input
+              <AntInput prefix={<Search size={16} />} suffix={<kbd>⌘ K</kbd>}
                 ref={searchRef}
                 aria-label="搜索物料或条码"
                 placeholder="搜索物料、条码…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <kbd>⌘ K</kbd>
-            </form>
+            </AntForm>
             <div className="notification-wrap">
-              <button
+              <AntButton type="text" htmlType="button"
                 className={`icon-button notification-button ${notification ? "selected" : ""}`}
                 aria-label="库存提醒"
                 onClick={() => setNotification(!notification)}
               >
                 <Bell size={19} />
                 {low.length > 0 && <i />}
-              </button>
+              </AntButton>
               {notification && (
                 <div className="notification-popover">
                   <div className="popover-title">
@@ -468,7 +468,7 @@ function App({ admin, onLogout }) {
                   </div>
                   {low.length ? (
                     low.map((p) => (
-                      <button
+                      <AntButton type="default" htmlType="button"
                         key={p.id}
                         onClick={() => navigate("inventory", "warning")}
                       >
@@ -484,7 +484,7 @@ function App({ admin, onLogout }) {
                           </small>
                         </span>
                         <ChevronRight size={14} />
-                      </button>
+                      </AntButton>
                     ))
                   ) : (
                     <p className="popover-empty">所有物料库存充足</p>
@@ -495,22 +495,22 @@ function App({ admin, onLogout }) {
                 </div>
               )}
             </div>
-            <button
+            <AntButton type="text" htmlType="button"
               className="icon-button help-button"
               aria-label="使用帮助"
               onClick={() => setModal({ kind: "help" })}
             >
               <CircleHelp size={19} />
-            </button>
+            </AntButton>
             <span className="topbar-divider" />
-            <button
+            <AntButton type="text" htmlType="button"
               className="avatar avatar-small"
               aria-label={isAdmin ? "商户设置" : "账户设置"}
               onClick={() => setModal({ kind: isAdmin ? "settings" : "account" })}
             >
               {(user.name || user.username).slice(0, 1).toUpperCase()}
-            </button>
-            <button
+            </AntButton>
+            <AntButton type="text" htmlType="button"
               className="icon-button logout-button"
               aria-label="退出登录"
               title="退出登录"
@@ -519,7 +519,7 @@ function App({ admin, onLogout }) {
               aria-busy={loggingOut}
             >
               {loggingOut ? <LoadingIndicator size={20} /> : <LogOut size={18} />}
-            </button>
+            </AntButton>
           </div>
         </header>
         <main key={data.warehouse_id || 1} className="main-content" inert={switching}>
@@ -743,9 +743,9 @@ function App({ admin, onLogout }) {
             <TriangleAlert size={19} />
           )}
           <span>{toast.message}</span>
-          <button aria-label="关闭通知" onClick={() => setToast(null)}>
+          <AntButton type="default" htmlType="button" aria-label="关闭通知" onClick={() => setToast(null)}>
             <X size={14} />
-          </button>
+          </AntButton>
         </div>
       )}
     </div></PermissionContext.Provider>

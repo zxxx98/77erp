@@ -1,3 +1,7 @@
+import { ConfigProvider as AntConfigProvider, Button as AntButton, Input as AntInput, Form as AntForm, Checkbox as AntCheckbox } from 'antd';
+
+import { FormField } from './../ui/FormField.jsx';
+
 import { useState, useRef, useEffect } from 'react';
 import { downloadFile } from '../app/download.js';
 import { Modal, ProductArt, Button } from '../components/common.jsx';
@@ -63,8 +67,8 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
   return (
     <Modal title="物料条码" subtitle="打印或下载物料标签" onClose={onClose} className="product-code-modal" headerActions={
       <div className="code-format-switch" role="group" aria-label="标签类型">
-        <button type="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>条形码</button>
-        <button type="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>二维码</button>
+        <AntButton type="default" htmlType="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>条形码</AntButton>
+        <AntButton type="default" htmlType="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>二维码</AntButton>
       </div>
     }>
       <div className="barcode-detail">
@@ -137,7 +141,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
         <ProductArt product={product} size="large" />
         <h3>{product.name}</h3>
       </div>
-      {showQuality&&<div className="product-quality-tabs" role="tablist" aria-label="物料详情视图">{[['details','物料信息'],['quality','品质图表']].map(([id,label])=><button key={id} type="button" role="tab" id={`product-tab-${id}`} aria-controls={`product-panel-${id}`} aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>}
+      {showQuality&&<div className="product-quality-tabs" role="tablist" aria-label="物料详情视图">{[['details','物料信息'],['quality','品质图表']].map(([id,label])=><AntButton type="default" key={id} htmlType="button" role="tab" id={`product-tab-${id}`} aria-controls={`product-panel-${id}`} aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</AntButton>)}</div>}
       {showQuality&&tab==='quality'?<div id="product-panel-quality" role="tabpanel" aria-labelledby="product-tab-quality"><ProductQualityCharts key={product.id} product={product} data={data}/></div>:<div id="product-panel-details" role={showQuality?'tabpanel':undefined} aria-labelledby={showQuality?'product-tab-details':undefined}>
       <dl className="product-detail-fields">
         {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}
@@ -211,8 +215,8 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   useEffect(() => {
     if (!mobileDevice && error) errorRef.current?.scrollIntoView({ block: 'nearest' });
   }, [error, conflict]);
-  const submit = async (e) => {
-    e.preventDefault();
+  const submit = async () => {
+
     if (busy || readingImage || conflict) return;
     setBusy(true);
     setError("");
@@ -252,35 +256,33 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
     <>
       <label>
         参考采购价（{baseCurrency()}） <span>*</span>
-        <input
+        <FormField value={form.cost} required type="number" min="0" max="99999999" label="参考采购价（ ）"><AntInput
           type="number"
-          required
           min="0"
           max="99999999"
           step="0.0001"
           placeholder="0.0000"
           value={form.cost}
           onChange={(e) => change("cost", e.target.value)}
-        />
+        /></FormField>
       </label>
       <label>
         参考销售价（{baseCurrency()}） <span>*</span>
-        <input
+        <FormField value={form.price} required type="number" min="0" max="99999999" label="参考销售价（ ）"><AntInput
           type="number"
-          required
           min="0"
           max="99999999"
           step="0.0001"
           placeholder="0.0000"
           value={form.price}
           onChange={(e) => change("price", e.target.value)}
-        />
+        /></FormField>
       </label>
     </>
   );
   const specificationField = (
     <label>规格型号
-      <input maxLength={500} placeholder="例如：3 芯 / 1.5 mm² / 额定电压 300/500V" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
+      <AntInput maxLength={500} placeholder="例如：3 芯 / 1.5 mm² / 额定电压 300/500V" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
     </label>
   );
   return (
@@ -290,32 +292,32 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       onClose={close}
       presentation="drawer"
     >
-      <form onSubmit={submit}>
+      <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
         <div className="form-body">
           <ProductFormSection title="基础信息">
             <label>
               物料名称 <span>*</span>
-              <input
-                required
+              <FormField label="物料名称" value={form.name} required maxLength={100}><AntInput
+
                 data-autofocus
                 maxLength={100}
                 placeholder="例如：RVV 护套电线"
                 value={form.name}
                 onChange={(e) => change("name", e.target.value)}
-              />
+              /></FormField>
             </label>
             <label>
               物料条码（选填）
               <div className="input-with-icon">
-                <ScanLine size={17} />
-                <input
+
+                <FormField value={form.barcode} maxLength={64} pattern="[A-Za-z0-9_.\-]{3,64}" label="物料条码（选填）"><AntInput prefix={<ScanLine size={17} />}
                   pattern="[A-Za-z0-9_.\-]{3,64}"
                   maxLength={64}
                   title="3–64 位字母、数字或 ._-"
                   placeholder="扫描或输入条码，可留空"
                   value={form.barcode}
                   onChange={(e) => change("barcode", e.target.value)}
-                />
+                /></FormField>
               </div>
               <small>
                 {product
@@ -326,11 +328,11 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             <div className="form-grid">
               <label>
                 物料分类 <span>*</span>
-                <Select
+                <Select aria-label="物料分类"
                   required
                   value={form.category_id || ''}
                   onChange={(e) => {
-                    const c = options.find(c => c.id === Number(e.target.value));
+                    const c = options.find(c => c.id === Number(e));
                     setForm(current => ({ ...current, category_id: c?.id || '', category: c?.path || '' }));
                   }}
                 >
@@ -341,10 +343,10 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               </label>
               <label>
                 计量单位 <span>*</span>
-                <Select
+                <Select aria-label="计量单位"
                   required
                   value={form.unit}
-                  onChange={(e) => change("unit", e.target.value)}
+                  onChange={(e) => change("unit", e)}
                 >
                   {[...new Set([...units, form.unit])].map((c) => (
                     <option key={c}>{c}</option>
@@ -354,15 +356,11 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               </label>
               {mobileDevice && priceFields}
             </div>
-            <label className="product-fixed-asset">
-              <input
-                type="checkbox"
-                checked={!!form.is_fixed_asset}
-                onChange={(e) => change("is_fixed_asset", e.target.checked ? 1 : 0)}
-              />
+            <AntCheckbox className="product-fixed-asset" checked={!!form.is_fixed_asset} onChange={(e) => change("is_fixed_asset", e.target.checked ? 1 : 0)}>
+
               固定资产
               <small>勾选后该物料标记为固定资产，导出时可选择只导出固定资产。</small>
-            </label>
+            </AntCheckbox>
             {!mobileDevice && specificationField}
           </ProductFormSection>
           <div className="drawer-form-section">
@@ -381,41 +379,40 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                     catch (e) { setError(e.message); }
                     finally { setReadingImage(false); }
                   }} />
-              <button type="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
+              <AntButton type="text" htmlType="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
                 <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoadingIndicator size={22} /> : <ImagePlus size={22} />}</span>
                 <span className="product-image-upload-copy">
                   <strong>{readingImage ? '正在上传图片…' : form.image ? '更换物料图片' : '上传物料图片'}</strong>
                   <span>{readingImage ? '正在压缩并上传，请稍候' : '点击选择图片，支持 JPEG、PNG、WebP'}</span>
                 </span>
                 {!readingImage && <Plus size={18} aria-hidden="true" />}
-              </button>
+              </AntButton>
               <small className="product-image-hint">单张图片不超过 10 MB，上传时自动压缩。</small>
               {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="物料图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
             </div>
             {mobileDevice && specificationField}
             <label>物料备注
-              <textarea maxLength={2000} rows={3} placeholder="填写物料补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
+              <AntInput.TextArea maxLength={2000} rows={3} placeholder="填写物料补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
             </label>
           </ProductFormSection>
           <ProductFormSection title="价格与库存设置">
             {!mobileDevice && <div className="form-grid">{priceFields}</div>}
             <label>
               安全库存 <span>*</span>
-              <input
+              <FormField label="安全库存" value={form.threshold} required type="number" min="0" max="99999999"><AntInput
                 type="number"
-                required
                 min="0"
                 max="99999999"
                 step="0.000001"
                 value={form.threshold}
                 onChange={(e) => change("threshold", e.target.value)}
-              />
+              /></FormField>
               <small>设为 0 则不启用缺货和低库存预警；大于 0 时，库存小于或等于此数量会提醒补货。</small>
             </label>
           </ProductFormSection>
           <ProductFormSection title="校验提醒（可选）">
             <label>下次校验日期
-              <input type="date" aria-label="下次校验日期" value={form.inspection_date || ''} onChange={e => {
+              <AntInput type="date" aria-label="下次校验日期" value={form.inspection_date || ''} onChange={e => {
                 change('inspection_date', e.target.value);
                 if (!e.target.value) change('inspection_interval', 0);
               }} />
@@ -423,10 +420,10 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             </label>
             <div className="form-grid">
               <label>校验周期
-                <input type="number" aria-label="校验周期" min="1" max="999" step="1" disabled={!form.inspection_date} placeholder="留空则手动设置日期" value={form.inspection_interval || ''} onChange={e => change('inspection_interval', e.target.value)} />
+                <FormField value={form.inspection_interval || ''} type="number" min="1" max="999" label="校验周期"><AntInput type="number" aria-label="校验周期" min="1" max="999" step="1" disabled={!form.inspection_date} placeholder="留空则手动设置日期" value={form.inspection_interval || ''} onChange={e => change('inspection_interval', e.target.value)} /></FormField>
               </label>
               <label>周期单位
-                <Select className="inspection-unit-select" aria-label="周期单位" disabled={!form.inspection_date} value={form.inspection_unit || 'month'} onChange={e => change('inspection_unit', e.target.value)}>
+                <Select className="inspection-unit-select" aria-label="周期单位" disabled={!form.inspection_date} value={form.inspection_unit || 'month'} onChange={e => change('inspection_unit', e)}>
                   {Object.entries(inspectionUnits).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </Select>
               </label>
@@ -486,7 +483,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
             {busy ? "正在保存…" : "保存物料"}
           </Button>
         </div>
-      </form>
+      </AntForm>
     </Modal>
   );
 }
@@ -511,20 +508,20 @@ function CategoryManager({ categories, onClose, onChanged }) {
     finally { setBusy(false); }
   };
   return <Modal title="管理物料分类" subtitle="建立多级分类；选择上级分类即可添加子分类。" onClose={busy ? () => {} : onClose}>
-    <form onSubmit={e => { e.preventDefault(); void run(() => api(id ? `/categories/${id}` : '/categories', { method: id ? 'PUT' : 'POST', body: { name, parent_id: parent ? Number(parent) : null } })); }}>
-      <fieldset className="form-body category-form" disabled={busy}>
-        <label>编辑分类<Select value={id} onChange={e => choose(e.target.value)}><option value="">新增分类</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
-        <label>分类名称 <span>*</span><input required maxLength={100} value={name} placeholder="例如：电线" onChange={e => setName(e.target.value)} /></label>
-        <label>上级分类<Select value={parent} onChange={e => setParent(e.target.value)}><option value="">无（一级分类）</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
+    <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => {  void run(() => api(id ? `/categories/${id}` : '/categories', { method: id ? 'PUT' : 'POST', body: { name, parent_id: parent ? Number(parent) : null } })); }}>
+      <AntConfigProvider componentDisabled={busy}><fieldset className="form-body category-form" disabled={busy}>
+        <label>编辑分类<Select aria-label="编辑分类" value={id} onChange={e => choose(e)}><option value="">新增分类</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
+        <label>分类名称 <span>*</span><FormField label="分类名称" value={name} required maxLength={100}><AntInput  maxLength={100} value={name} placeholder="例如：电线" onChange={e => setName(e.target.value)} /></FormField></label>
+        <label>上级分类<Select aria-label="上级分类" value={parent} onChange={e => setParent(e)}><option value="">无（一级分类）</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
         <small className="muted">选中父分类会包含下级物料。删除前需移走该分类的下级分类及物料。</small>
         {error && <div className="form-error" role="alert">{error}</div>}
-      </fieldset>
+      </fieldset></AntConfigProvider>
       <div className="modal-footer">
         {id && <Button type="button" disabled={busy} onClick={() => { if (window.confirm(`确定删除分类「${name}」？`)) void run(() => api(`/categories/${id}/delete`, { method: 'POST', body: {} })); }}>删除分类</Button>}
         <Button type="button" disabled={busy} onClick={onClose}>完成</Button>
         <Button type="submit" kind="primary" busy={busy}>{busy ? '正在保存…' : '保存分类'}</Button>
       </div>
-    </form>
+    </AntForm>
   </Modal>;
 }
 
@@ -533,8 +530,8 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
   const { busy, error, run, send } = useBusiness();
   const [quantity, setQuantity] = useState(""),
     [reason, setReason] = useState("");
-  const submit = (e) => {
-    e.preventDefault();
+  const submit = () => {
+
     run(async () => {
       const amount = parseQuantity(quantity, true);
       if (!reason.trim()) throw new Error(`请填写${action}原因。`);
@@ -561,7 +558,7 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
       subtitle={increase ? "用于生产余料退回，直接增加库存并记录原因。按当前库存平均成本计价，零库存时使用参考采购价。" : "用于报损、损耗或盘亏，直接调整现有库存并记录原因。"}
       onClose={busy ? () => {} : onClose}
     >
-      <form onSubmit={submit}>
+      <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
         <div className="form-body">
           <div className="reduce-stock-product">
             <strong>{product.name}</strong>
@@ -571,8 +568,8 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
           </div>
           <label>
             {action}数量（{product.unit}） <span>*</span>
-            <input
-              required
+            <FormField label="数量（ ）" value={quantity} required type="number" min="0.000001"><AntInput
+
               data-autofocus
               type="number"
               min="0.000001"
@@ -581,18 +578,18 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
               value={quantity}
               disabled={busy}
               onChange={(e) => setQuantity(e.target.value)}
-            />
+            /></FormField>
           </label>
           <label>
             {action}原因 <span>*</span>
-            <input
-              required
+            <FormField label="原因" value={reason} required maxLength={500}><AntInput
+
               maxLength={500}
               placeholder={increase ? "例如：生产余料退回" : "例如：破损报废、盘点损耗"}
               value={reason}
               disabled={busy}
               onChange={(e) => setReason(e.target.value)}
-            />
+            /></FormField>
           </label>
           {error && (
             <div className="form-error" role="alert">
@@ -608,7 +605,7 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
             {busy ? "处理中…" : `确认${action}`}
           </Button>
         </div>
-      </form>
+      </AntForm>
     </Modal>
   );
 }

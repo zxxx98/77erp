@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect } from "@playwright/test";
 import { createApp } from "../../server/app.js";
@@ -57,24 +58,24 @@ for (const width of [1440, 390]) {
         const label = type === "in" ? "供应商" : "客户 / 往来单位";
         const input = page.getByRole("combobox", { name: label });
         await expect(input).toHaveAttribute("aria-expanded", "false");
-        await expect(page.getByRole("listbox", { name: label })).toHaveCount(0);
-        await page.getByRole("button", { name: `展开${label}列表`, exact: true }).click();
-        const options = page.getByRole("listbox", { name: label }).getByRole("option");
+        await expect(page.getByRole('listbox')).toHaveCount(0);
+        await input.click();
+        const options = page.getByRole('listbox').getByRole("option");
         await expect(options).toHaveCount(type === "in" ? 2 : 1);
         await expect(options.filter({ hasText: "停用供应商" })).toHaveCount(0);
-        const bounds = await page.getByRole("listbox", { name: label }).boundingBox();
+        const bounds = await page.getByRole('listbox').boundingBox();
         expect(bounds.x).toBeGreaterThanOrEqual(0);
         expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
         // Typing only filters the list; it must never create or replace a partner.
         await input.fill("未建档的往来单位");
         await expect(options).toHaveCount(0);
         await input.press("Escape");
-        await expect(input).toHaveValue(type === "in" ? "" : "零售客户");
+        await expect(selectedControl(input)).toContainText(type === "in" ? "" : "零售客户");
         await input.fill(type === "in" ? "备用" : "城南");
         await expect(options).toHaveCount(1);
         await input.press("ArrowDown");
         await input.press("Enter");
-        await expect(input).toHaveValue(type === "in" ? "备用供应商" : "城南门店");
+        await expect(selectedControl(input)).toContainText(type === "in" ? "备用供应商" : "城南门店");
         await expect(input).toHaveAttribute("aria-expanded", "false");
         // Reopening must show every eligible contact, even after selecting one.
         await input.click();
@@ -183,12 +184,12 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
     await page.getByRole("button", { name: "业务管理", exact: true }).click();
   await page.getByRole("button", { name: "往来单位", exact: true }).click();
     await page.getByRole("button", { name: "成本与毛利", exact: true }).click();
-    await expect(page.getByText(/已知毛利 ¥ 40.00/)).toBeVisible();
+    await expect(page.getByText(/已知毛利 \$40.00/)).toBeVisible();
     await page
       .getByRole("button", { name: "收付款与欠款", exact: true })
       .click();
     await expect(
-      page.getByRole("cell", { name: "¥ 60.00", exact: true }),
+      page.getByRole("cell", { name: "$60.00", exact: true }),
     ).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
@@ -211,9 +212,9 @@ test("contact search stays collapsed, filters in a dropdown and selects without 
     await page.goto(f.base + "/?manage=data");
     await page.getByRole("button", { name: "往来单位", exact: true }).click();
     const search = page.getByRole("combobox", { name: "搜索往来单位", exact: true });
-    const list = page.getByRole("listbox", { name: "往来单位" });
+    const list = page.getByRole('listbox');
     await expect(search).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByRole("listbox", { name: "往来单位" })).toHaveCount(0);
+    await expect(page.getByRole('listbox')).toHaveCount(0);
     await search.click();
     await expect(list.getByRole("option")).toHaveCount(3);
     await expect(list.getByRole("option").filter({ hasText: "停用供应商" })).toContainText("已停用");
@@ -222,7 +223,7 @@ test("contact search stays collapsed, filters in a dropdown and selects without 
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await expect(search).toHaveAttribute("aria-expanded", "false");
-    await expect(search).toHaveValue("城南门店");
+    await expect(selectedControl(search)).toContainText("城南门店");
     await expect(page.getByLabel("单位名称", { exact: true })).toHaveValue("城南门店");
     await expect(page.getByLabel("联系人", { exact: true })).toHaveValue("李女士");
     expect(f.db.prepare("SELECT COUNT(*) AS n FROM contacts").get().n).toBe(3);
@@ -252,7 +253,7 @@ test("contact search stays collapsed, filters in a dropdown and selects without 
     await expect(search).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByLabel("单位名称", { exact: true })).toHaveValue("常用供应商");
     await page.getByRole("button", { name: "新增往来单位", exact: true }).click();
-    await expect(search).toHaveValue("");
+    await expect(selectedControl(search)).toContainText("");
     await expect(page.getByLabel("单位名称", { exact: true })).toHaveValue("");
   } finally {
     await f.close();
@@ -290,7 +291,7 @@ test("template picker filters by order type, preserves canceled edits and fits a
     await page.getByRole("button", { name: `使用模板 #${template.id}`, exact: true }).click();
     await expect(picker).toHaveAttribute("aria-expanded", "false");
     await expect(picker).toBeFocused();
-    await expect(page.getByRole("combobox", { name: "供应商", exact: true })).toHaveValue("继续采购的供应商");
+    await expect(selectedControl(page.getByRole("combobox", { name: "供应商", exact: true }))).toContainText("继续采购的供应商");
     await expect(page.locator(".order-template-status")).toContainText("已套用「采购补货组合」");
 
     await chooseContact(page, "当前正在编辑的供应商");
@@ -299,7 +300,7 @@ test("template picker filters by order type, preserves canceled edits and fits a
     page.once("dialog", dialog => dialog.dismiss());
     await page.getByRole("button", { name: `使用模板 #${template.id}`, exact: true }).click();
     await expect(picker).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByRole("combobox", { name: "供应商", exact: true })).toHaveValue("当前正在编辑的供应商");
+    await expect(selectedControl(page.getByRole("combobox", { name: "供应商", exact: true }))).toContainText("当前正在编辑的供应商");
 
     page.once("dialog", dialog => dialog.accept());
     await page.getByRole("button", { name: `删除模板 #${template.id}`, exact: true }).click();

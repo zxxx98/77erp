@@ -1,4 +1,4 @@
-import { chooseOption } from "./dropdown-helpers.js";
+import { chooseOption, selectedControl } from "./dropdown-helpers.js";
 import { test, expect } from '@playwright/test';
 
 test.beforeAll(async ({ request }) => {
@@ -23,7 +23,7 @@ test('configure units, reload, use a custom unit and preserve a removed unit on 
     await page.reload();
     await page.getByRole('button', { name: '新增物料', exact: true }).first().click();
     const select = page.getByRole('combobox', { name: /计量单位/ });
-    await expect(select).toHaveValue('套');
+    await expect(selectedControl(select)).toContainText('套');
     await select.click();
     await expect(page.getByRole('option', { name: '个', exact: true })).toHaveCount(0);
     await select.press('Escape');
@@ -38,7 +38,7 @@ test('configure units, reload, use a custom unit and preserve a removed unit on 
     expect(product.unit).toBe('瓶');
     await page.getByRole('textbox', { name: '筛选物料' }).fill('6901234567001');
     await page.locator('.product-table tbody tr').getByRole('button', { name: '编辑', exact: true }).click();
-    await expect(page.getByRole('combobox', { name: /计量单位/ })).toHaveValue('个');
+    await expect(selectedControl(page.getByRole('combobox', { name: /计量单位/ }))).toContainText('个');
     await page.getByRole('button', { name: '保存物料', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect((await (await page.request.get('/api/products/barcode/6901234567001')).json()).unit).toBe('个');

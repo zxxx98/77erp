@@ -1,3 +1,5 @@
+import { Input as AntInput } from 'antd';
+
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 const rate = value => value !== 0 && Math.abs(value) < 0.000001
   ? `${value < 0 ? '-' : '+'}<0.000001%`
@@ -16,7 +18,7 @@ export function MaterialVariance({ row, analysis, complete, disabled, onReason }
       <div><small>差异率</small><span>{available ? rate(analysis.variance_rate) : '—'}</span></div>
     </div>
     {analysis.analysis_error && <p className="bom-warning">{analysis.analysis_error}</p>}
-    {complete ? <label>耗料差异原因（可选）<textarea aria-label={`${row.name}耗料差异原因`} rows={2} maxLength={500}
+    {complete ? <label>耗料差异原因（可选）<AntInput.TextArea aria-label={`${row.name}耗料差异原因`} rows={2} maxLength={500}
       placeholder="例如：调机耗料、返工、材料问题" disabled={disabled} value={row.variance_reason ?? ''}
       onChange={event => onReason(row.product_id, event.target.value)} /></label>
       : <div className="production-variance-reason"><small>耗料差异原因</small>{row.variance_reasons?.length

@@ -12,7 +12,7 @@ test("first-run setup, password confirmation, logout, login and session expiry",
   await page.getByLabel("设置密码", { exact: true }).fill("Strong-password-123");
   await page.getByLabel("确认密码", { exact: true }).fill("Different-password-123");
   await page.getByRole("button", { name: "创建管理员并进入" }).click();
-  await expect(page.getByRole("alert")).toContainText("两次输入的密码不一致");
+  await expect(page.getByText("两次输入的密码不一致。", { exact: true })).toBeVisible();
   await page.getByLabel("确认密码", { exact: true }).fill("Strong-password-123");
   await page.getByRole("button", { name: "创建管理员并进入" }).click();
   await expect(page.getByRole("heading", { name: "库存管理", exact: true })).toBeVisible();
@@ -29,7 +29,7 @@ test("first-run setup, password confirmation, logout, login and session expiry",
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("账号或密码错误");
   await page.getByLabel("密码", { exact: true }).fill("Strong-password-123");
-  await page.getByRole("button", { name: "显示密码" }).click();
+  await page.getByRole("button", { name: "显示", exact: true }).click();
   await expect(page.getByLabel("密码", { exact: true })).toHaveAttribute("type", "text");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "库存管理", exact: true })).toBeVisible();

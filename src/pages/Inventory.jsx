@@ -1,3 +1,5 @@
+import { Button as AntButton, Input as AntInput } from 'antd';
+
 import { usePermissions } from '../permissions.jsx';
 import { useState, useEffect } from 'react';
 import { useQuery, queryPath } from '../queries.js';
@@ -127,19 +129,18 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
               ["warning", "库存预警", lowCount],
               ["empty", "已缺货", summary?.out_of_stock || 0],
             ].map(([id, label, n]) => (
-              <button
+              <AntButton type="text" htmlType="button"
                 key={id}
                 className={filter === id ? "active" : ""}
                 onClick={() => setFilter(id)}
               >
                 {label}
                 <span>{n}</span>
-              </button>
+              </AntButton>
             ))}
           </div>
           <div className="table-search">
-            <Search size={16} />
-            <input
+            <AntInput prefix={<Search size={16} />} allowClear
               aria-label="搜索库存物料"
               placeholder="搜索物料或条码"
               value={query}
@@ -168,12 +169,12 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
                       <ProductArt product={p} />
                       <div>
                         <strong><ProductName product={p} onView={showProduct} /></strong>
-                        <button
+                        <AntButton type="text" htmlType="button"
                           className="barcode-link"
                           onClick={() => showBarcode(p)}
                         >
                           {p.barcode}
-                        </button>
+                        </AntButton>
                       </div>
                     </div>
                   </td>
@@ -205,23 +206,23 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
                   <td className="number-cell">{currencySymbol()} {costs ? money((p.inventory_value_cents ?? Math.round(p.cost * p.stock * 100)) / 100) : '—'}</td>
                   <td className="number-cell">
                     <div className="row-actions">
-                      <button
+                      <AntButton type="text" htmlType="button"
                         className="text-button"
                         hidden={!can("purchase")} onClick={() => openOrder("in", p)}
                       >
                         <Plus size={14} />
                         补货
-                      </button>
-                      <button className="text-button" hidden={!can("stocktake")} onClick={() => increaseStock(p)}>
+                      </AntButton>
+                      <AntButton type="text" htmlType="button" className="text-button" hidden={!can("stocktake")} onClick={() => increaseStock(p)}>
                         <Plus size={14} />增加库存（退料）
-                      </button>
-                      <button
+                      </AntButton>
+                      <AntButton type="text" danger htmlType="button"
                         className="text-button danger"
                         hidden={!can("stocktake")} onClick={() => reduceStock(p)}
                       >
                         <Minus size={14} />
                         减少
-                      </button>
+                      </AntButton>
                     </div>
                   </td>
                 </tr>

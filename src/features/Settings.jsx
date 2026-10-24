@@ -1,3 +1,7 @@
+import { ConfigProvider as AntConfigProvider, Form as AntForm, Button as AntButton, Input as AntInput } from 'antd';
+
+import { FormField } from './../ui/FormField.jsx';
+
 import { describeStockExpression } from '../../shared/stock-compare.js';
 import { Select } from '../Dropdown.jsx';
 import { Button, Modal, Badge } from '../components/common.jsx';
@@ -32,20 +36,20 @@ function StockExpressionEditor({ warehouses, value, onChange, disabled }) {
   const preview = expression ? describeStockExpression(expression, nameById) : "";
   return <section className="stock-expression" aria-label="库存对比表达式">
     <div className="settings-section-heading"><h3>库存对比表达式</h3><p>配置一个全局表达式，在物料详情中按各仓库库存求值并显示对比结果。左侧为起始仓库，右侧可添加带加减符号的仓库项。留空则不显示对比。</p></div>
-    <fieldset disabled={disabled}>
+    <AntConfigProvider componentDisabled={disabled}><fieldset disabled={disabled}>
       <label className="stock-expression-left">起始仓库
-        <Select aria-label="起始仓库" value={expression?.left ?? ""} onChange={(e) => setLeft(e.target.value)}>
+        <Select aria-label="起始仓库" value={expression?.left ?? ""} onChange={(e) => setLeft(e)}>
           <option value="" disabled>请选择</option>
           {leftOptions.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </Select>
       </label>
       {expression && <div className="stock-expression-terms">
         {terms.map((term, index) => <div className="stock-expression-term" key={index}>
-          <Select aria-label={`第 ${index + 1} 项运算符`} value={term.op} onChange={(e) => setTerm(index, (t) => ({ ...t, op: e.target.value }))}>
+          <Select aria-label={`第 ${index + 1} 项运算符`} value={term.op} onChange={(e) => setTerm(index, (t) => ({ ...t, op: e }))}>
             <option value="+">+</option>
             <option value="-">−</option>
           </Select>
-          <Select aria-label={`第 ${index + 1} 项仓库`} value={term.warehouse_id} onChange={(e) => setTerm(index, (t) => ({ ...t, warehouse_id: Number(e.target.value) }))}>
+          <Select aria-label={`第 ${index + 1} 项仓库`} value={term.warehouse_id} onChange={(e) => setTerm(index, (t) => ({ ...t, warehouse_id: Number(e) }))}>
             {warehouses.filter((w) => w.id === term.warehouse_id || !used.has(w.id)).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </Select>
           <Button type="button" icon={Trash2} aria-label={`删除第 ${index + 1} 项`} onClick={() => removeTerm(index)} />
@@ -56,7 +60,7 @@ function StockExpressionEditor({ warehouses, value, onChange, disabled }) {
         {expression && <Button type="button" onClick={() => update(null)}>清除表达式</Button>}
       </div>
       {preview && <p className="stock-expression-preview">当前表达式：<strong>{preview}</strong></p>}
-    </fieldset>
+    </fieldset></AntConfigProvider>
   </section>;
 }
 
@@ -76,8 +80,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
     [rateBusy, setRateBusy] = useState(false),
     [rateNotice, setRateNotice] = useState("");
   useEffect(() => setForm(current => ({ ...current, warehouse_name: settings.warehouse_name })), [settings.warehouse_name]);
-  const submit = async (e) => {
-    e.preventDefault();
+  const submit = async () => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
@@ -130,13 +133,13 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
       className="settings-modal"
       onClose={busy ? () => {} : closeSettings}
     >
-      <form onSubmit={(e) => { if (section === "general") void submit(e); else e.preventDefault(); }}>
+      <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => { if (section === "general") void submit(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
             {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["ai", "AI 助手", Settings, "模型连接与操作范围"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
-              <button key={id} type="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); setVisited(current => new Set([...current, id])); contentRef.current?.scrollTo(0, 0); }}>
+              <AntButton type="text" key={id} htmlType="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); setVisited(current => new Set([...current, id])); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
-              </button>
+              </AntButton>
             ))}
           </nav>
           <div className="form-body settings-content" ref={contentRef}>
@@ -145,25 +148,25 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           <div className="form-grid">
           <label>
             商户名称 <span>*</span>
-            <input
-              required
+            <FormField label="商户名称" value={form.business_name} required maxLength={60}><AntInput
+
               maxLength={60}
               value={form.business_name}
               onChange={(e) =>
                 setForm({ ...form, business_name: e.target.value })
               }
-            />
+            /></FormField>
           </label>
           <label>
             仓库名称 <span>*</span>
-            <input
-              required
+            <FormField label="仓库名称" value={form.warehouse_name} required maxLength={60}><AntInput
+
               maxLength={60}
               value={form.warehouse_name}
               onChange={(e) =>
                 setForm({ ...form, warehouse_name: e.target.value })
               }
-            />
+            /></FormField>
           </label>
           </div>
           <section className="currency-settings" aria-label="币种设置">
@@ -171,28 +174,27 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             <div className="form-grid">
               <label>
                 基准币种（不可修改）
-                <input value={`${CURRENCY_LABELS[form.base_currency] || '美元'}（${form.base_currency || 'USD'}）`} readOnly disabled />
+                <AntInput value={`${CURRENCY_LABELS[form.base_currency] || '美元'}（${form.base_currency || 'USD'}）`} readOnly disabled />
               </label>
               <label>
                 显示币种
-                <Select aria-label="显示币种" value={form.display_currency || form.base_currency || 'USD'} disabled={busy || rateBusy} onChange={(e) => setForm(current => ({ ...current, display_currency: e.target.value }))}>
+                <Select aria-label="显示币种" value={form.display_currency || form.base_currency || 'USD'} disabled={busy || rateBusy} onChange={(e) => setForm(current => ({ ...current, display_currency: e }))}>
                   {Object.entries(CURRENCY_LABELS).map(([code, label]) => <option key={code} value={code}>{label}（{code}）</option>)}
                 </Select>
               </label>
             </div>
             <label>
               汇率（1 USD = ? CNY）
-              <input
+              <FormField label="汇率（1 USD = ? CNY）" value={form.usd_cny_rate ?? 7.2} required type="number" min="0.000001" max="1000000"><AntInput
                 type="number"
                 inputMode="decimal"
-                required
                 min="0.000001"
                 max="1000000"
                 step="0.000001"
                 value={form.usd_cny_rate ?? 7.2}
                 disabled={busy || rateBusy}
                 onChange={(e) => setForm(current => ({ ...current, usd_cny_rate: e.target.value }))}
-              />
+              /></FormField>
             </label>
             <div className="currency-rate-actions">
               <Button type="button" onClick={syncRate} disabled={busy || rateBusy}>{rateBusy ? '正在同步…' : '同步最新汇率'}</Button>
@@ -208,7 +210,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
                 <div className="unit-row" key={index}>
                   <label>
                     单位 {index + 1}{index === 0 ? "（默认）" : ""}
-                    <input required maxLength={100} value={unit} disabled={busy} onChange={e => setForm(current => ({ ...current, units: current.units.map((value, i) => i === index ? e.target.value : value) }))} />
+                    <FormField label="单位" value={unit} required maxLength={100}><AntInput  maxLength={100} value={unit} disabled={busy} onChange={e => setForm(current => ({ ...current, units: current.units.map((value, i) => i === index ? e.target.value : value) }))} /></FormField>
                   </label>
                   <Button type="button" icon={Trash2} aria-label={`删除单位 ${index + 1}`} disabled={busy || form.units.length === 1} onClick={() => setForm(current => ({ ...current, units: current.units.filter((_, i) => i !== index) }))} />
                 </div>
@@ -266,7 +268,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             {busy ? "保存中…" : "保存设置"}
           </Button>}
         </div>
-      </form>
+      </AntForm>
     </Modal>
   );
 }

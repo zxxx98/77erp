@@ -1,3 +1,5 @@
+import { Button as AntButton, Input as AntInput } from 'antd';
+
 import { downloadFile } from '../app/download.js';
 import { api } from '../api.js';
 import { orderLabel } from '../order-utils.js';
@@ -164,7 +166,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                   ["internal", "内部流转"],
                 ]
             ).map(([id, name]) => (
-              <button
+              <AntButton type="text" htmlType="button"
                 key={id}
                 className={type || tab === id ? "active" : ""}
                 onClick={() => setTab(id)}
@@ -173,13 +175,12 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                 <span>
                   {type ? total : list.result?.counts?.[`${id}_count`] || 0}
                 </span>
-              </button>
+              </AntButton>
             ))}
           </div>
           <div className="toolbar-right">
             <div className="table-search">
-              <Search size={16} />
-              <input
+              <AntInput prefix={<Search size={16} />} allowClear
                 aria-label="搜索单据"
                 placeholder="搜索单号、单位或物料"
                 value={query}
@@ -190,7 +191,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               className="filter-select"
               aria-label="单据时间范围"
               value={days}
-              onChange={(e) => setDays(e.target.value)}
+              onChange={(e) => setDays(e)}
             >
               <option value="all">全部时间</option>
               <option value="7">近 7 天</option>
@@ -259,7 +260,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                     <Badge>已完成</Badge>
                   </td>
                   <td>
-                    <button
+                    <AntButton type="text" htmlType="button"
                       className="table-arrow"
                       aria-label={`查看单据 ${o.number}`}
                       onClick={(e) => {
@@ -268,7 +269,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
                       }}
                     >
                       <ChevronRight size={16} />
-                    </button>
+                    </AntButton>
                   </td>
                 </tr>
               ))}

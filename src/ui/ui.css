@@ -1,0 +1,21 @@
+/* Layout integration only. Control colors, states and spacing come from Ant tokens. */
+.ant-app { min-height: 100dvh; }
+.ant-input, .ant-input-affix-wrapper, .ant-select { max-width: 100%; }
+.ant-btn { white-space: normal; }
+.ant-btn > svg { flex-shrink: 0; }
+.ant-checkbox-wrapper, .ant-radio-wrapper { margin: 0; }
+.mobile-device .ant-input, .mobile-device .ant-select, .mobile-device textarea.ant-input { font-size: 16px; }
+.mobile-device .ant-btn { min-height: 44px; }
+.mobile-device .ant-checkbox-wrapper, .mobile-device .ant-radio-wrapper { min-height: 24px; align-items: center; }
+.erp-form-field.ant-form-item { margin: 0; min-width: 0; flex: 1; }
+.erp-form-field .ant-form-item-explain-error { font-size: 12px; }
+.ant-select-dropdown input:focus { box-shadow: none; }
+/* Business navigation and item cards can contain multiple lines. */
+.ant-btn.ant-btn { height: auto; min-height: 36px; }
+.mobile-device .ant-btn.ant-btn { min-height: 44px; }
+input[hidden] { display: none !important; }
+.form-body .product-fixed-asset .ant-checkbox-label { display: flex; flex-direction: column; gap: 4px; }
+.form-body .product-fixed-asset .ant-checkbox-label > small { color: var(--muted); font-size: 12px; font-weight: 400; }
+.page-heading { flex-wrap: wrap; }
+.heading-actions { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.quality-limit-field { display: grid; gap: 8px; }

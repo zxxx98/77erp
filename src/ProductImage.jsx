@@ -1,3 +1,5 @@
+import { Button as AntButton } from 'antd';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
@@ -11,7 +13,7 @@ export function ProductImage({ src, alt, className = '', preview = true, thumbna
   const img = <img src={displaySrc} alt={alt} loading="lazy" decoding="async" onError={() => { if (displaySrc !== src) setFailedThumbnail(thumbnail); }} />;
   if (!preview) return <span className={className}>{img}</span>;
   return <>
-    <button type="button" className={`product-image-button ${className}`} aria-label={`放大查看 ${alt}`} onClick={e => { e.stopPropagation(); setOpen(true); }}>{img}</button>
+    <AntButton type="text" htmlType="button" className={`product-image-button ${className}`} aria-label={`放大查看 ${alt}`} onClick={e => { e.stopPropagation(); setOpen(true); }}>{img}</AntButton>
     {open && createPortal(<ImageViewer src={src} title={alt} onClose={() => setOpen(false)} />, document.body)}
   </>;
 }
@@ -49,7 +51,7 @@ function ImageViewer({ src, title, onClose }) {
     };
   }, []);
   return <section className="image-viewer" role="dialog" aria-modal="true" aria-label={`图片预览：${title}`}>
-    <button ref={closeButton} type="button" className="image-viewer-close" aria-label="关闭图片预览" onClick={e => { e.stopPropagation(); onClose(); }}><X size={24} /></button>
+    <AntButton type="text" ref={closeButton} htmlType="button" className="image-viewer-close" aria-label="关闭图片预览" onClick={e => { e.stopPropagation(); onClose(); }}><X size={24} /></AntButton>
     {failed ? <p role="alert">图片无法显示，请关闭后重试。</p> : <img className="image-viewer-image" src={src} alt={`${title} 大图`} draggable={false} onClick={e => e.stopPropagation()} onError={() => setFailed(true)} />}
   </section>;
 }

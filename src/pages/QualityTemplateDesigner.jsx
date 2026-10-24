@@ -1,3 +1,6 @@
+import { ColorPicker, ConfigProvider as AntConfigProvider, Input as AntInput, Checkbox as AntCheckbox, Button as AntButton } from 'antd';
+
+import { Select } from './../Dropdown.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Bold, Italic, Undo2, Redo2, Check } from 'lucide-react';
 import { Button, PageHeading } from '../components/common.jsx';
@@ -50,32 +53,32 @@ export function QualityTemplateDesigner({designer,name,busy,error,onApply,onClos
       <Button kind="primary" icon={Check} busy={busy} onClick={()=>onApply({commands:state.commands,definition:starter,keepFields,name:templateName})}>继续配置字段</Button>
     </PageHeading>
     {(localError||error)&&<p role="alert" className="form-error quality-notice">{localError||error}</p>}
-    <div className="panel quality-designer-meta"><label>模板名称<input aria-label="模板名称" maxLength={60} disabled={busy} value={templateName} onChange={e=>setName(e.target.value)}/></label>
-      <label>工作表<select aria-label="编辑工作表" disabled={busy} value={sheetName} onChange={e=>{setSheetName(e.target.value);setSelection(parseRegion('A1'));}}>{state.model.sheets.map(sheet=><option key={sheet.name}>{sheet.name}</option>)}</select></label>
+    <div className="panel quality-designer-meta"><label>模板名称<AntInput aria-label="模板名称" maxLength={60} disabled={busy} value={templateName} onChange={e=>setName(e.target.value)}/></label>
+      <label>工作表<Select aria-label="编辑工作表" disabled={busy} value={sheetName} onChange={e=>{setSheetName(e);setSelection(parseRegion('A1'));}}>{state.model.sheets.map(sheet=><option key={sheet.name}>{sheet.name}</option>)}</Select></label>
       {!designer.file&&<Button disabled={busy} onClick={insertExample}>使用检验单示例</Button>}
-      {(designer.hasFields||starter)&&<label className="quality-check"><input type="checkbox" checked={keepFields} disabled={busy} onChange={e=>setKeepFields(e.target.checked)}/>保留字段配置（会重新校验）</label>}
+      {(designer.hasFields||starter)&&<AntCheckbox className="quality-check" checked={keepFields} disabled={busy} onChange={e=>setKeepFields(e.target.checked)}>保留字段配置（会重新校验）</AntCheckbox>}
     </div>
     <section className="panel quality-designer" aria-label="模板表格编辑器">
-      <fieldset className="quality-designer-controls" disabled={busy}>
+      <AntConfigProvider componentDisabled={busy}><fieldset className="quality-designer-controls" disabled={busy}>
         <div className="quality-designer-toolbar">
-          <label>区域<input aria-label="选择区域" value={range} onChange={e=>setRange(e.target.value.toUpperCase())} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();select(range);}}}/></label><Button onClick={()=>select(range)}>选中区域</Button>
+          <label>区域<AntInput aria-label="选择区域" value={range} onChange={e=>setRange(e.target.value.toUpperCase())} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();select(range);}}}/></label><Button onClick={()=>select(range)}>选中区域</Button>
           <Button icon={Undo2} disabled={!state.past.length} onClick={()=>restore(state.past.at(-1),state.past.slice(0,-1),[{model:state.model,commands:state.commands},...state.future])}>撤销</Button>
           <Button icon={Redo2} disabled={!state.future.length} onClick={()=>restore(state.future[0],state.past.concat({model:state.model,commands:state.commands}),state.future.slice(1))}>重做</Button>
           <Button onClick={()=>perform({type:'merge'})}>合并单元格</Button><Button onClick={()=>perform({type:'unmerge'})}>取消合并</Button><Button onClick={()=>perform({type:'clear'})}>清空内容</Button>
         </div>
         <div className="quality-designer-toolbar">
-          <label>字体<select aria-label="字体" value={font.name||'微软雅黑'} onChange={e=>patch({font:{name:e.target.value}})}>{[...new Set(['微软雅黑','宋体','Arial','Calibri',font.name].filter(Boolean))].map(name=><option key={name}>{name}</option>)}</select></label>
-          <label>字号<input type="number" aria-label="字号" min={6} max={96} defaultValue={font.size||11} key={`${sheetName}-${address}-${font.size||11}`} onBlur={e=>{if(e.target.value&&Number(e.target.value)!==(font.size||11))patch({font:{size:Number(e.target.value)}});}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}}/></label>
+          <label>字体<Select aria-label="字体" value={font.name||'微软雅黑'} onChange={e=>patch({font:{name:e}})}>{[...new Set(['微软雅黑','宋体','Arial','Calibri',font.name].filter(Boolean))].map(name=><option key={name}>{name}</option>)}</Select></label>
+          <label>字号<AntInput type="number" aria-label="字号" min={6} max={96} defaultValue={font.size||11} key={`${sheetName}-${address}-${font.size||11}`} onBlur={e=>{if(e.target.value&&Number(e.target.value)!==(font.size||11))patch({font:{size:Number(e.target.value)}});}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur();}}/></label>
           <Button icon={Bold} aria-pressed={!!font.bold} onClick={()=>patch({font:{bold:!font.bold}})}>加粗</Button><Button icon={Italic} aria-pressed={!!font.italic} onClick={()=>patch({font:{italic:!font.italic}})}>斜体</Button>
-          <label>水平对齐<select aria-label="水平对齐" value={alignment.horizontal||'left'} onChange={e=>patch({alignment:{horizontal:e.target.value}})}>{[['left','左对齐'],['center','居中'],['right','右对齐']].map(([v,label])=><option key={v} value={v}>{label}</option>)}</select></label>
-          <label>垂直对齐<select aria-label="垂直对齐" value={alignment.vertical||'middle'} onChange={e=>patch({alignment:{vertical:e.target.value}})}>{[['top','顶部'],['middle','居中'],['bottom','底部']].map(([v,label])=><option key={v} value={v}>{label}</option>)}</select></label>
+          <label>水平对齐<Select aria-label="水平对齐" value={alignment.horizontal||'left'} onChange={e=>patch({alignment:{horizontal:e}})}>{[['left','左对齐'],['center','居中'],['right','右对齐']].map(([v,label])=><option key={v} value={v}>{label}</option>)}</Select></label>
+          <label>垂直对齐<Select aria-label="垂直对齐" value={alignment.vertical||'middle'} onChange={e=>patch({alignment:{vertical:e}})}>{[['top','顶部'],['middle','居中'],['bottom','底部']].map(([v,label])=><option key={v} value={v}>{label}</option>)}</Select></label>
           <Button aria-pressed={!!alignment.wrapText} onClick={()=>patch({alignment:{wrapText:!alignment.wrapText}})}>自动换行</Button>
-          <label>文字颜色<input type="color" aria-label="文字颜色" value={/^([A-F\d]{8})$/i.test(font.color?.argb||'')?`#${font.color.argb.slice(2)}`:'#24354b'} onChange={e=>patch({font:{color:{argb:`FF${e.target.value.slice(1).toUpperCase()}`}}})}/></label>
-          <label>背景色<input type="color" aria-label="背景色" value={/^([A-F\d]{8})$/i.test(format.fill?.fgColor?.argb||'')?`#${format.fill.fgColor.argb.slice(2)}`:'#ffffff'} onChange={e=>patch({fill:{type:'pattern',pattern:'solid',fgColor:{argb:`FF${e.target.value.slice(1).toUpperCase()}`}}})}/></label>
+          <label>文字颜色<ColorPicker aria-label="文字颜色" disabledAlpha value={/^([A-F\d]{8})$/i.test(font.color?.argb||'')?`#${font.color.argb.slice(2)}`:'#24354b'} onChange={color=>patch({font:{color:{argb:`FF${color.toHex().toUpperCase()}`}}})}/></label>
+          <label>背景色<ColorPicker aria-label="背景色" disabledAlpha value={/^([A-F\d]{8})$/i.test(format.fill?.fgColor?.argb||'')?`#${format.fill.fgColor.argb.slice(2)}`:'#ffffff'} onChange={color=>patch({fill:{type:'pattern',pattern:'solid',fgColor:{argb:`FF${color.toHex().toUpperCase()}`}}})}/></label>
           <Button onClick={()=>perform({type:'border',mode:'all'})}>全部边框</Button><Button onClick={()=>perform({type:'border',mode:'outer'})}>外边框</Button><Button onClick={()=>perform({type:'border',mode:'none'})}>无边框</Button>
         </div>
-        <div className="quality-designer-content"><label>单元格内容 · {address}<textarea ref={content} aria-label="单元格内容" maxLength={10000} rows={2} value={editableText} onChange={e=>perform({type:'text',region:address,text:e.target.value})}/></label><p className="muted">点击单元格输入文字，拖动或填写区域选择多个格子。Enter 编辑内容，Delete 清空所选内容。</p></div>
-      </fieldset>
+        <div className="quality-designer-content"><label>单元格内容 · {address}<AntInput.TextArea ref={content} aria-label="单元格内容" maxLength={10000} rows={2} value={editableText} onChange={e=>perform({type:'text',region:address,text:e.target.value})}/></label><p className="muted">点击单元格输入文字，拖动或填写区域选择多个格子。Enter 编辑内容，Delete 清空所选内容。</p></div>
+      </fieldset></AntConfigProvider>
       <div className="quality-designer-scroll"><table ref={table} className="quality-grid" tabIndex={busy?-1:0} aria-label="在线模板表格" style={{width:46+sheet.widths.reduce((sum,width)=>sum+width,0)}} onKeyDown={e=>{
         if(busy||e.target!==e.currentTarget)return;
         if(e.key==='Enter'){e.preventDefault();content.current?.focus();}
@@ -86,8 +89,8 @@ export function QualityTemplateDesigner({designer,name,busy,error,onApply,onClos
         }
       }}>
         <colgroup><col style={{width:46}}/>{sheet.widths.map((width,i)=><col key={i} style={{width}}/>)}</colgroup>
-        <thead><tr><th>行 / 列</th>{sheet.widths.map((_,i)=><th key={i}><button type="button" disabled={busy} onClick={()=>select(`${cellAddress(1,i+1)}:${cellAddress(sheet.rows,i+1)}`)}>{cellAddress(1,i+1).slice(0,-1)}</button></th>)}</tr></thead>
-        <tbody>{Array.from({length:sheet.rows},(_,i)=><tr key={i} style={{height:sheet.heights[i+1]||32}}><th className="quality-row-number"><button type="button" disabled={busy} onClick={()=>select(`A${i+1}:${cellAddress(i+1,sheet.cols)}`)}>{i+1}</button></th>{Array.from({length:sheet.cols},(_,j)=>{
+        <thead><tr><th>行 / 列</th>{sheet.widths.map((_,i)=><th key={i}><AntButton type="default" htmlType="button" disabled={busy} onClick={()=>select(`${cellAddress(1,i+1)}:${cellAddress(sheet.rows,i+1)}`)}>{cellAddress(1,i+1).slice(0,-1)}</AntButton></th>)}</tr></thead>
+        <tbody>{Array.from({length:sheet.rows},(_,i)=><tr key={i} style={{height:sheet.heights[i+1]||32}}><th className="quality-row-number"><AntButton type="default" htmlType="button" disabled={busy} onClick={()=>select(`A${i+1}:${cellAddress(i+1,sheet.cols)}`)}>{i+1}</AntButton></th>{Array.from({length:sheet.cols},(_,j)=>{
           const row=i+1,col=j+1,address=cellAddress(row,col),rect=merges.get(address)||{r1:row,c1:col,r2:row,c2:col};
           if(row!==rect.r1||col!==rect.c1)return null;
           const value=sheet.cells[address],selected=containsCell(selection,row,col);
@@ -96,12 +99,12 @@ export function QualityTemplateDesigner({designer,name,busy,error,onApply,onClos
           }} onPointerEnter={e=>{if(e.pointerType==='mouse'&&e.buttons===1)extend(rect);}} onDoubleClick={()=>{if(!busy)content.current?.focus();}}>{value?.text||''}</td>;
         })}</tr>)}</tbody>
       </table></div>
-      <fieldset className="quality-designer-controls quality-designer-dimensions" disabled={busy}>
-        <label>行高<input aria-label="行高" type="number" min={20} max={240} defaultValue={Math.round(sheet.heights[selection.r1]||32)} key={`row-${sheetName}-${selection.r1}-${sheet.heights[selection.r1]}`} onBlur={e=>{if(Number(e.target.value)!==Math.round(sheet.heights[selection.r1]||32))perform({type:'rowHeight',value:Number(e.target.value)});}}/></label>
-        <label>列宽<input aria-label="列宽" type="number" min={40} max={480} defaultValue={Math.round(sheet.widths[selection.c1-1])} key={`col-${sheetName}-${selection.c1}-${sheet.widths[selection.c1-1]}`} onBlur={e=>{if(Number(e.target.value)!==Math.round(sheet.widths[selection.c1-1]))perform({type:'columnWidth',value:Number(e.target.value)});}}/></label>
-        <label>行数<input aria-label="表格行数" type="number" value={size.rows} onChange={e=>setSize(v=>({...v,rows:Number(e.target.value)}))}/></label><label>列数<input aria-label="表格列数" type="number" value={size.cols} onChange={e=>setSize(v=>({...v,cols:Number(e.target.value)}))}/></label><Button onClick={()=>perform({type:'resize',...size})}>调整表格范围</Button>
-        <label>工作表名称<input aria-label="工作表名称" maxLength={31} value={sheetTitle} onChange={e=>setSheetTitle(e.target.value)}/></label><Button onClick={()=>perform({type:'rename',name:sheetTitle})}>重命名工作表</Button>
-      </fieldset>
+      <AntConfigProvider componentDisabled={busy}><fieldset className="quality-designer-controls quality-designer-dimensions" disabled={busy}>
+        <label>行高<AntInput aria-label="行高" type="number" min={20} max={240} defaultValue={Math.round(sheet.heights[selection.r1]||32)} key={`row-${sheetName}-${selection.r1}-${sheet.heights[selection.r1]}`} onBlur={e=>{if(Number(e.target.value)!==Math.round(sheet.heights[selection.r1]||32))perform({type:'rowHeight',value:Number(e.target.value)});}}/></label>
+        <label>列宽<AntInput aria-label="列宽" type="number" min={40} max={480} defaultValue={Math.round(sheet.widths[selection.c1-1])} key={`col-${sheetName}-${selection.c1}-${sheet.widths[selection.c1-1]}`} onBlur={e=>{if(Number(e.target.value)!==Math.round(sheet.widths[selection.c1-1]))perform({type:'columnWidth',value:Number(e.target.value)});}}/></label>
+        <label>行数<AntInput aria-label="表格行数" type="number" value={size.rows} onChange={e=>setSize(v=>({...v,rows:Number(e.target.value)}))}/></label><label>列数<AntInput aria-label="表格列数" type="number" value={size.cols} onChange={e=>setSize(v=>({...v,cols:Number(e.target.value)}))}/></label><Button onClick={()=>perform({type:'resize',...size})}>调整表格范围</Button>
+        <label>工作表名称<AntInput aria-label="工作表名称" maxLength={31} value={sheetTitle} onChange={e=>setSheetTitle(e.target.value)}/></label><Button onClick={()=>perform({type:'rename',name:sheetTitle})}>重命名工作表</Button>
+      </fieldset></AntConfigProvider>
     </section>
   </section>;
 }

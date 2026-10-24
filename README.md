@@ -1,6 +1,6 @@
 # 77 ERP · 轻量进销存
 
-中文、支持多仓库的本地进销存系统。React + Vite，Express + SQLite，Node.js 22.13 或更新版本。
+中文、支持多仓库的本地进销存系统。React + Vite + Ant Design 6，Express + SQLite，Node.js 22.13 或更新版本。
 
 ## 开发与维护重点
 

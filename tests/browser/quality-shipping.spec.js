@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { openSheetResults, closeSheetResults } from './quality-helpers.js';
 import {test,expect} from '@playwright/test';
 
@@ -17,7 +18,7 @@ test('shipping report template configuration can be imported, edited, published 
   await page.locator('.quality-meta').getByLabel('模板名称',{exact:true}).fill('航嘉报告稳定导入');
   await page.locator('.quality-field').filter({hasText:'最终判定'}).click();
   const editor=page.getByRole('complementary',{name:'字段独立编辑'});
-  await expect(editor.getByRole('combobox',{name:'标记位置',exact:true})).toHaveValue('文字后（合格■ 拒收□）');
+  await expect(selectedControl(editor.getByRole('combobox',{name:'标记位置',exact:true}))).toContainText('文字后（合格■ 拒收□）');
   await editor.getByRole('tab',{name:'解析预览'}).click();await expect(editor.locator('.quality-preview-result pre')).toHaveText('"合格"');
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();
   await page.locator('.quality-field').filter({hasText:'检验明细'}).click();

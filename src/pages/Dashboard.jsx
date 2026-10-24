@@ -1,3 +1,5 @@
+import { Button as AntButton } from 'antd';
+
 import { useState, useRef, useEffect, useId } from 'react';
 import { FullscreenChart } from '../components/FullscreenChart.jsx';
 import { InspectionPanel } from '../InspectionPanel.jsx';
@@ -340,18 +342,18 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           className="trend-panel"
           extra={
             <div className="segmented small">
-              <button
+              <AntButton type="text" htmlType="button"
                 className={days === 7 ? "active" : ""}
                 onClick={() => setDays(7)}
               >
                 近 7 天
-              </button>
-              <button
+              </AntButton>
+              <AntButton type="text" htmlType="button"
                 className={days === 30 ? "active" : ""}
                 onClick={() => setDays(30)}
               >
                 近 30 天
-              </button>
+              </AntButton>
             </div>
           }
         >
@@ -389,30 +391,30 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               </span>
             </div>
           </div>
-          <button
+          <AntButton type="text" htmlType="button"
             className="quick-scan-button"
             onClick={() => navigate("scanner")}
           >
             <ScanLine size={18} />
             打开扫码工作台
             <ArrowRight size={16} />
-          </button>
+          </AntButton>
           <div className="quick-action-row">
-            <button hidden={!can("purchase")} onClick={() => openOrder("in")}>
+            <AntButton type="default" htmlType="button" hidden={!can("purchase")} onClick={() => openOrder("in")}>
               <span className="quick-action-icon green">
                 <ArrowDownToLine size={17} />
               </span>
               采购入库
               <ChevronRight size={13} />
-            </button>
+            </AntButton>
             <i />
-            <button hidden={!can("sale")} onClick={() => openOrder("out")}>
+            <AntButton type="default" htmlType="button" hidden={!can("sale")} onClick={() => openOrder("out")}>
               <span className="quick-action-icon blue">
                 <ArrowUpFromLine size={17} />
               </span>
               销售出库
               <ChevronRight size={13} />
-            </button>
+            </AntButton>
           </div>
         </section>
       </div>
@@ -421,10 +423,10 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           title="最近单据"
           className="recent-panel"
           extra={
-            <button className="text-button" onClick={() => navigate("history")}>
+            <AntButton type="text" htmlType="button" className="text-button" onClick={() => navigate("history")}>
               查看全部
               <ArrowRight size={14} />
-            </button>
+            </AntButton>
           }
         >
           <div className="inline-tabs">
@@ -433,13 +435,13 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               ["in", "采购入库"],
               ["out", "销售出库"],
             ].map(([id, name]) => (
-              <button
+              <AntButton type="text" htmlType="button"
                 key={id}
                 className={orderTab === id ? "active" : ""}
                 onClick={() => setOrderTab(id)}
               >
                 {name}
-              </button>
+              </AntButton>
             ))}
           </div>
           <div className="table-scroll">
@@ -489,7 +491,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                       <Badge>已完成</Badge>
                     </td>
                     <td>
-                      <button
+                      <AntButton type="text" htmlType="button"
                         className="table-arrow"
                         aria-label={`查看 ${o.number}`}
                         onClick={(e) => {
@@ -498,7 +500,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                         }}
                       >
                         <ChevronRight size={15} />
-                      </button>
+                      </AntButton>
                     </td>
                   </tr>
                 ))}
@@ -536,13 +538,13 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                     </strong>
                     <span>{p.stock === 0 ? "已缺货" : "库存偏低"}</span>
                   </div>
-                  <button
+                  <AntButton type="text" htmlType="button"
                     className="restock-button"
                     hidden={!can("purchase")} onClick={() => openOrder("in", p)}
                     aria-label={`补货 ${p.name}`}
                   >
                     <Plus size={15} />
-                  </button>
+                  </AntButton>
                 </div>
               ))
             ) : (
@@ -552,13 +554,13 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               />
             )}
           </div>
-          <button
+          <AntButton type="text" htmlType="button"
             className="warning-all-button"
             onClick={() => navigate("inventory", "warning")}
           >
             查看库存预警
             <ArrowRight size={14} />
-          </button>
+          </AntButton>
           <div className="warning-bottom">
             <ShieldCheck size={13} />
             数据变更后会提示刷新

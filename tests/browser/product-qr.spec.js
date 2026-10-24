@@ -32,12 +32,19 @@ async function decodeSvg(page, svg) {
 }
 
 test('toggle and download a decodable QR label, retain barcode export and never mutate business data', async ({ page }) => {
+  const response = await page.request.post('/api/products', { data: {
+    name: '二维码标签测试物料', barcode: `QR-LABEL-${Date.now()}`, category: '二维码测试', unit: '件', cost: 1, price: 2, threshold: 0,
+  } });
+  expect(response.status()).toBe(201);
+  const created = await response.json();
   const before = await (await page.request.get('/api/data')).json();
-  const product = before.products.find(p => p.barcode === '6901234567001');
+  const product = before.products.find(item => item.id === created.id);
+  expect(product).toBeTruthy();
   const writes = [];
   page.on('request', req => { if (req.url().includes('/api/') && req.method() !== 'GET') writes.push(req.url()); });
   await page.goto('/#products');
-  await page.getByRole('button', { name: '查看 极简陶瓷马克杯 条码', exact: true }).click();
+  await page.getByRole('textbox', { name: '筛选物料', exact: true }).fill(product.barcode);
+  await page.getByRole('button', { name: `查看 ${product.name} 条码`, exact: true }).click();
   const switcher = page.getByRole('group', { name: '标签类型' });
   await expect(switcher.getByRole('button', { name: '条形码', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.barcode-detail .barcode')).toBeVisible();

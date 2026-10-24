@@ -1,3 +1,6 @@
+import { Button as AntButton, Form as AntForm, Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+import { FormField } from './../ui/FormField.jsx';
+
 import { useEffect, useMemo, useState } from 'react';
 import { Megaphone, Pin, Plus, RefreshCw } from 'lucide-react';
 import { api } from '../api.js';
@@ -28,8 +31,8 @@ export function Announcements({ data, openModal }) {
     </PageHeading>
     <div className="announcement-toolbar">
       <div className="segmented" role="group" aria-label="公告筛选">
-        <button type="button" aria-pressed={!unread} className={!unread ? 'active' : ''} onClick={() => { setUnread(false); setOffset(0); }}>全部公告</button>
-        <button type="button" aria-pressed={unread} className={unread ? 'active' : ''} onClick={() => { setUnread(true); setOffset(0); }}>只看未读{result ? `（${result.unread_count}）` : ''}</button>
+        <AntButton type="text" htmlType="button" aria-pressed={!unread} className={!unread ? 'active' : ''} onClick={() => { setUnread(false); setOffset(0); }}>全部公告</AntButton>
+        <AntButton type="text" htmlType="button" aria-pressed={unread} className={unread ? 'active' : ''} onClick={() => { setUnread(true); setOffset(0); }}>只看未读{result ? `（${result.unread_count}）` : ''}</AntButton>
       </div>
       <Button icon={RefreshCw} onClick={announcementsChanged} busy={query.loading}>刷新公告</Button>
     </div>
@@ -37,14 +40,14 @@ export function Announcements({ data, openModal }) {
     {query.loading && <LoadingStatus>正在读取公告…</LoadingStatus>}
     {result && <>
       <div className="announcement-list">
-        {result.announcements.map(item => <button type="button" key={item.id} className="announcement-card" onClick={() => openModal({ kind: 'announcementDetail', id: item.id })}>
+        {result.announcements.map(item => <AntButton type="text" htmlType="button" key={item.id} className="announcement-card" onClick={() => openModal({ kind: 'announcementDetail', id: item.id })}>
           <div className="announcement-card-heading">
             {!!item.pinned && <span className="announcement-tag"><Pin size={13} />置顶</span>}
             <strong>{item.title}</strong><span className={`announcement-state${item.unread ? ' unread' : ''}`}>{item.unread ? '未读' : '已读'}</span>
           </div>
           <p>{item.excerpt}</p>
           <span className="announcement-meta">{item.created_by_name} · {formatDate(item.created_at)}</span>
-        </button>)}
+        </AntButton>)}
       </div>
       {!result.announcements.length && <div className="announcement-empty"><Megaphone size={32} /><h2>{unread ? '暂无未读公告' : '暂无公告'}</h2><p>{unread ? '新的公告会在这里显示。' : user.role === 'admin' ? '发布第一条公告，让团队及时了解最新安排。' : '管理员发布公告后会在这里显示。'}</p></div>}
       {result.total > 0 && <div className="announcement-pagination"><span>共 {result.total} 条 · 第 {offset / 20 + 1} 页</span><Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>上一页</Button><Button disabled={!result.has_more} onClick={() => setOffset(offset + 20)}>下一页</Button></div>}
@@ -99,8 +102,8 @@ export function AnnouncementEditor({ item, onClose, onSaved }) {
   const [pinned, setPinned] = useState(!!item?.pinned);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const submit = async event => {
-    event.preventDefault();
+  const submit = async () => {
+
     if (busy) return;
     setBusy(true); setError('');
     try {
@@ -110,14 +113,14 @@ export function AnnouncementEditor({ item, onClose, onSaved }) {
     finally { setBusy(false); }
   };
   return <Modal title={item ? '编辑公告' : '发布公告'} subtitle="所有登录用户、所有仓库可见" onClose={busy ? () => {} : onClose}>
-    <form onSubmit={submit}>
+    <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
       <div className="form-body announcement-editor">
-        <label><span>公告标题</span><input value={title} onChange={event => setTitle(event.target.value)} maxLength={100} required disabled={busy} placeholder="例如：月末盘点安排" /></label>
-        <label><span>公告正文</span><textarea aria-label="公告正文" value={content} onChange={event => setContent(event.target.value)} maxLength={10000} required disabled={busy} rows={10} placeholder="填写需要告知团队的内容…" /><small>{content.length} / 10,000 字</small></label>
-        <label><input type="checkbox" checked={pinned} onChange={event => setPinned(event.target.checked)} disabled={busy} /><span>置顶公告</span></label>
+        <label><span>公告标题</span><FormField value={title} required maxLength={100}><AntInput value={title} onChange={event => setTitle(event.target.value)} maxLength={100}  disabled={busy} placeholder="例如：月末盘点安排" /></FormField></label>
+        <label><span>公告正文</span><FormField value={content} required maxLength={10000} label="公告正文"><AntInput.TextArea aria-label="公告正文" value={content} onChange={event => setContent(event.target.value)} maxLength={10000}  disabled={busy} rows={10} placeholder="填写需要告知团队的内容…" /></FormField><small>{content.length} / 10,000 字</small></label>
+        <AntCheckbox  checked={pinned} onChange={event => setPinned(event.target.checked)} disabled={busy}><span>置顶公告</span></AntCheckbox>
         <ErrorNotice>{error}</ErrorNotice>
       </div>
       <div className="modal-footer"><Button type="button" disabled={busy} onClick={onClose}>取消</Button><Button type="submit" kind="primary" busy={busy} disabled={!title.trim() || !content.trim()}>{item ? '保存修改' : '确认发布'}</Button></div>
-    </form>
+    </AntForm>
   </Modal>;
 }

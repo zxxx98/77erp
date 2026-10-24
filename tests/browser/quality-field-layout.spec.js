@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { test, expect } from '@playwright/test';
 import { createRequire } from 'node:module';
 const ExcelJS=createRequire(import.meta.url)('exceljs');
@@ -23,7 +24,7 @@ test('all field types expose their common settings and keep processing summaries
   for(const [,name] of types){
     await page.locator('.quality-field').filter({has:page.locator('small').filter({hasText:`${name} ·`})}).click();
     await expect(editor.getByRole('region',{name:'基本信息',exact:true}).getByRole('checkbox',{name:'必填',exact:true})).toBeVisible();
-    await expect(editor.getByRole('combobox',{name:'数据类型',exact:true})).toHaveValue(name);
+    await expect(selectedControl(editor.getByRole('combobox',{name:'数据类型',exact:true}))).toContainText(name);
     await expect(editor.locator('.quality-text-rules')).not.toHaveAttribute('open','');
     await expect(editor.getByRole('textbox',{name:'忽略内容',exact:true})).toHaveCount(0);
     if(['数字','日期','单选','多选','测量值列表'].includes(name))await expect(editor.getByRole('region',{name:'类型设置',exact:true})).toBeVisible();

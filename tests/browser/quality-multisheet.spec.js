@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
@@ -32,7 +33,7 @@ test('a single-sheet template parses multiple data sheets with different names i
   await openSheetResults(page,'二批到货');
   const issues=page.getByRole('region',{name:'解析问题'});await expect(issues).toContainText('必填值为空');await expect(page.getByRole('button',{name:'确认保存验收单'})).toBeDisabled();
   await issues.getByRole('button',{name:'二批到货!B11 · 定位'}).click();const modal=page.getByRole('dialog',{name:'上传文件单元格定位'});
-  await expect(modal.getByRole('combobox')).toHaveValue('二批到货');await expect(modal.locator('[data-address=B11]')).toHaveClass(/quality-source-error/);await modal.getByRole('button',{name:'关闭弹窗'}).click();await closeSheetResults(page);
+  await expect(selectedControl(modal.getByRole('combobox'))).toContainText('二批到货');await expect(modal.locator('[data-address=B11]')).toHaveClass(/quality-source-error/);await modal.getByRole('button',{name:'关闭弹窗'}).click();await closeSheetResults(page);
   await page.getByLabel('上传验收单 Excel').setInputFiles(fixture);await selectDataSheets(page,['一批到货','二批到货']);await expect(page.getByRole('status').filter({hasText:'解析通过'})).toBeVisible();
   const results=page.getByRole('region',{name:'验收解析结果'});await expect(results).toHaveCount(0);
   for(const [name,value] of [['一批到货','第一批供应商'],['二批到货','第二批供应商']]){

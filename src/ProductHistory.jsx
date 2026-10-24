@@ -1,3 +1,5 @@
+import { Button as AntButton } from 'antd';
+
 import { LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useState } from 'react';
 import { api } from './api.js';
@@ -32,17 +34,17 @@ export function ProductHistory({ product, onViewOrder }) {
     return () => { alive = false; };
   }, [product.id, opened, offset, attempt]);
   return <section className="product-history" aria-label="当前物料操作记录">
-    <button type="button" className="btn btn-secondary" aria-expanded={opened} onClick={() => {
+    <AntButton type="default" htmlType="button" className="btn btn-secondary" aria-expanded={opened} onClick={() => {
       if (!opened) { setOffset(0); setRecords([]); setHasMore(false); setLoading(true); }
       setOpened(value => !value);
-    }}>{opened ? '收起操作记录' : '查看操作记录'}</button>
+    }}>{opened ? '收起操作记录' : '查看操作记录'}</AntButton>
     {opened && <div className="product-history-body">
       <h4>当前物料操作记录</h4>
       <p className="muted">当前仓库的出入库、退货、作废记录，以及有权限查看的生产、盘点／报损／退料、改价记录，按时间倒序显示。</p>
       <ol className="product-history-list">{records.map(record => <li key={`${record.event}:${record.event_id}`}>
         <div className="product-history-title"><strong>{label(record)}</strong>{record.event !== 'price_change' && <span>{record.delta === null ? '期初已结转' : `${record.delta > 0 ? '+' : ''}${count(record.delta)} ${record.unit || product.unit}`}</span>}</div>
         <time dateTime={record.created_at}>{new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}</time>
-        {record.order_id && <div><button type="button" className="text-button" onClick={() => onViewOrder(record.order_id)}>{record.number}</button>{record.partner && <span> · {record.partner}</span>}</div>}
+        {record.order_id && <div><AntButton type="text" htmlType="button" className="text-button" onClick={() => onViewOrder(record.order_id)}>{record.number}</AntButton>{record.partner && <span> · {record.partner}</span>}</div>}
         {record.kind === 'production' && <p>{record.number}</p>}
         {record.before_stock !== null && <p>库存：{count(record.before_stock)} → {count(record.after_stock)} {product.unit}</p>}
         {record.event === 'price_change' && <>
@@ -53,9 +55,9 @@ export function ProductHistory({ product, onViewOrder }) {
         {record.note && <p>{record.note}</p>}
       </li>)}</ol>
       {loading && <p><LoadingStatus>正在读取操作记录…</LoadingStatus></p>}
-      {error && <div role="alert"><p className="form-error">{error}</p><button type="button" className="btn" onClick={() => setAttempt(value => value + 1)}>重新读取记录</button></div>}
+      {error && <div role="alert"><p className="form-error">{error}</p><AntButton type="default" htmlType="button" className="btn" onClick={() => setAttempt(value => value + 1)}>重新读取记录</AntButton></div>}
       {!loading && !error && !records.length && <p>当前物料暂无操作记录。</p>}
-      {hasMore && !error && <button type="button" className="btn" disabled={loading} onClick={() => setOffset(records.length)}>加载更多记录</button>}
+      {hasMore && !error && <AntButton type="default" htmlType="button" className="btn" disabled={loading} onClick={() => setOffset(records.length)}>加载更多记录</AntButton>}
     </div>}
   </section>;
 }

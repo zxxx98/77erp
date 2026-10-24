@@ -1,3 +1,5 @@
+import { ConfigProvider as AntConfigProvider, Input as AntInput, Radio as AntRadio, Button as AntButton, Checkbox as AntCheckbox } from 'antd';
+
 import { LoadingStatus } from './Loading.jsx';
 import React, { useRef, useState } from 'react';
 import { api, getWarehouseId } from './api.js';
@@ -36,24 +38,24 @@ export function WarehouseManager({ warehouses, onRefresh, onBusy }) {
     <h3>仓库管理</h3>
     {busy && <p><LoadingStatus>正在处理仓库…</LoadingStatus></p>}
     <p>新增仓库后可在页面顶部切换。分类、物料、库存、单据和模板按仓库独立管理。</p>
-    <label>新仓库名称<input maxLength={60} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
-    <fieldset className="warehouse-reuse" disabled={busy}>
+    <label>新仓库名称<AntInput maxLength={60} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
+    <AntConfigProvider componentDisabled={busy}><fieldset className="warehouse-reuse" disabled={busy}>
       <legend>是否复用当前仓库「{current?.name}」的物料分类和物料信息？</legend>
-      <label><input type="radio" name="warehouse-reuse" checked={!reuseCatalog} onChange={() => setReuseCatalog(false)} />不复用，创建空仓库</label>
-      <label><input type="radio" name="warehouse-reuse" checked={reuseCatalog} onChange={() => setReuseCatalog(true)} />复用分类和物料信息</label>
+      <AntRadio  name="warehouse-reuse" checked={!reuseCatalog} onChange={() => setReuseCatalog(false)}>不复用，创建空仓库</AntRadio>
+      <AntRadio  name="warehouse-reuse" checked={reuseCatalog} onChange={() => setReuseCatalog(true)}>复用分类和物料信息</AntRadio>
       <p>复用全部分类及物料档案（含停用状态），新仓库库存为 0，不复制单据、盘点记录、模板和出入库二维码。后续修改独立保存，可手动选择跨仓库同步。</p>
-    </fieldset>
-    <button type="button" className="btn btn-secondary" disabled={busy || !name.trim()} onClick={() => save(null, name)}>新增仓库</button>
+    </fieldset></AntConfigProvider>
+    <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy || !name.trim()} onClick={() => save(null, name)}>新增仓库</AntButton>
     <p>主仓库保留；其他仓库所有物料库存均为 0 时可删除，其档案、业务历史及配置会一并永久清除。</p>
     {warehouses.map(w => <div className="warehouse-row" key={w.id}>
       {editing?.id === w.id
-        ? <input aria-label={`修改${w.name}名称`} maxLength={60} value={editing.name} disabled={busy} onChange={e => setEditing({ ...editing, name: e.target.value })} />
+        ? <AntInput aria-label={`修改${w.name}名称`} maxLength={60} value={editing.name} disabled={busy} onChange={e => setEditing({ ...editing, name: e.target.value })} />
         : <strong>{w.name}</strong>}
       <div className="warehouse-row-actions">
         {editing?.id === w.id
-          ? <button type="button" className="btn" disabled={busy} onClick={() => save(w.id, editing.name)}>保存名称</button>
-          : <button type="button" className="btn" disabled={busy} onClick={() => setEditing({ ...w })}>改名</button>}
-        {w.id !== 1 && <button type="button" className="btn" disabled={busy} aria-label={`删除仓库 ${w.name}`} onClick={() => remove(w)}>删除仓库</button>}
+          ? <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => save(w.id, editing.name)}>保存名称</AntButton>
+          : <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => setEditing({ ...w })}>改名</AntButton>}
+        {w.id !== 1 && <AntButton type="default" htmlType="button" className="btn" disabled={busy} aria-label={`删除仓库 ${w.name}`} onClick={() => remove(w)}>删除仓库</AntButton>}
       </div>
     </div>)}
     {error && <p className="form-error" role="alert">{error}</p>}
@@ -63,9 +65,9 @@ export function WarehouseManager({ warehouses, onRefresh, onBusy }) {
 export function ProductSync({ warehouses, warehouseId, targets, setTargets, disabled }) {
   const others = warehouses.filter(w => w.id !== warehouseId);
   if (!others.length) return <div className="info-box">在系统设置中新增仓库后，可选择将物料同步到其他仓库。</div>;
-  return <fieldset className="product-sync" disabled={disabled}>
+  return <AntConfigProvider componentDisabled={disabled}><fieldset className="product-sync" disabled={disabled}>
     <legend>同步到其他仓库（选填）</legend>
     <p>本次保存同步物料档案和参考价格，并在目标仓库匹配或创建对应分类路径。目标仓库新物料库存为 0；已有物料保留各自库存和成本。未勾选的仓库保留原档案。</p>
-    {others.map(w => <label key={w.id}><input type="checkbox" checked={targets.includes(w.id)} onChange={e => setTargets(e.target.checked ? [...targets, w.id] : targets.filter(id => id !== w.id))} />{w.name}</label>)}
-  </fieldset>;
+    {others.map(w => <AntCheckbox key={w.id} checked={targets.includes(w.id)} onChange={e => setTargets(e.target.checked ? [...targets, w.id] : targets.filter(id => id !== w.id))}>{w.name}</AntCheckbox>)}
+  </fieldset></AntConfigProvider>;
 }

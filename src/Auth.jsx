@@ -1,3 +1,5 @@
+import { Spin, Button as AntButton, Form as AntForm, Select as AntSelect, Input as AntInput } from 'antd';
+
 import { LoadingIndicator } from './Loading.jsx';
 import { useEffect, useState } from "react";
 import { ArrowRight, Boxes, Eye, EyeOff, LockKeyhole, PackageCheck, ShieldCheck, TriangleAlert, UserRound, Warehouse } from "lucide-react";
@@ -40,7 +42,7 @@ export function AuthGate({ children }) {
     return (
       <main className="auth-loading" aria-live="polite">
         {error ? (
-          <><p role="alert">{error}</p><button className="btn btn-primary" onClick={refresh}>重新连接</button></>
+          <><p role="alert">{error}</p><AntButton type="primary" htmlType="button" className="btn btn-primary" onClick={refresh}>重新连接</AntButton></>
         ) : (
           <><LoadingIndicator size={64} /><p>正在连接工作空间…</p></>
         )}
@@ -60,22 +62,12 @@ export function AuthGate({ children }) {
 }
 
 function AuthPage({ setup, notice, onSuccess, onConflict }) {
-  const [username, setUsername] = useState("");
-  const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState("");
-  const [baseCurrency, setBaseCurrency] = useState("USD");
-  const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const submit = async (e) => {
-    e.preventDefault();
+  const submit = async ({ username, name, password, baseCurrency }) => {
+
     if (busy) return;
     setError("");
-    if (setup && password !== confirmation) {
-      setError("两次输入的密码不一致。");
-      return;
-    }
     setBusy(true);
     try {
       const state = await api(setup ? "/auth/setup" : "/auth/login", {
@@ -122,30 +114,36 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
             <h1>{setup ? "设置管理员" : "账号登录"}</h1>
             <p>{setup ? "首次使用，请创建管理员账号。" : "使用管理员分配的账号登录。"}</p>
           </div>
-          <form className="auth-form" onSubmit={submit}>
-            <label htmlFor="auth-username">{setup ? "管理员账号" : "账号"}</label>
-            <div className="auth-input">
-              <UserRound size={17} />
-              <input id="auth-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} required minLength={setup ? 3 : undefined} maxLength={32} pattern={setup ? "[A-Za-z0-9_.\\-]{3,32}" : undefined} placeholder={setup ? "设置管理员账号" : "请输入账号"} value={username} onChange={(e) => setUsername(e.target.value)} disabled={busy} />
-            </div>
-            {setup && <p className="auth-field-hint">3–32 位字母、数字或 ._-</p>}
-            {setup && <><label htmlFor="auth-name">管理员名称（选填）</label><div className="auth-input"><UserRound size={17} /><input id="auth-name" maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} /></div></>}
-            {setup && <><label htmlFor="auth-currency">基准币种</label><div className="auth-input auth-select"><Warehouse size={17} /><select id="auth-currency" value={baseCurrency} onChange={e => setBaseCurrency(e.target.value)} disabled={busy}><option value="USD">美元（USD）</option><option value="CNY">人民币（CNY）</option></select></div><p className="auth-field-hint">初始化后不可修改，业务数据将以该币种为准。</p></>}
-            <label htmlFor="auth-password">{setup ? "设置密码" : "密码"}</label>
-            <div className="auth-input">
-              <LockKeyhole size={17} />
-              <input id="auth-password" name="password" type={visible ? "text" : "password"} autoComplete={setup ? "new-password" : "current-password"} required minLength={setup ? 8 : undefined} maxLength={128} placeholder={setup ? "设置 8–128 位密码" : "请输入密码"} value={password} onChange={(e) => setPassword(e.target.value)} disabled={busy} />
-              <button type="button" aria-label={visible ? "隐藏密码" : "显示密码"} aria-pressed={visible} onClick={() => setVisible(!visible)} disabled={busy}>{visible ? <EyeOff size={17} /> : <Eye size={17} />}</button>
-            </div>
-            {setup && <>
-              <label htmlFor="auth-confirmation">确认密码</label>
-              <div className="auth-input"><LockKeyhole size={17} /><input id="auth-confirmation" name="confirmation" type="password" autoComplete="new-password" required minLength={8} maxLength={128} placeholder="再次输入密码" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} disabled={busy} /></div>
-            </>}
+          <AntForm noValidate layout="vertical" className="auth-form" onFinish={submit} disabled={busy}
+            initialValues={{ baseCurrency: 'USD' }} scrollToFirstError={{ focus: true }}>
+            <AntForm.Item name="username" label={setup ? '管理员账号' : '账号'} rules={[
+              { required: true, message: '请输入账号' },
+              ...(setup ? [{ pattern: /^[A-Za-z0-9_.\-]{3,32}$/, message: '账号须为 3–32 位字母、数字或 ._-' }] : []),
+            ]}>
+              <AntInput prefix={<UserRound size={17} />} autoComplete="username" autoCapitalize="none" spellCheck={false}
+                maxLength={32} placeholder={setup ? '设置管理员账号' : '请输入账号'} />
+            </AntForm.Item>
+            {setup && <AntForm.Item name="name" label="管理员名称（选填）"><AntInput prefix={<UserRound size={17} />} maxLength={60} /></AntForm.Item>}
+            {setup && <AntForm.Item name="baseCurrency" label="基准币种" extra="初始化后不可修改，业务数据将以该币种为准。">
+              <AntSelect options={[{ value: 'USD', label: '美元（USD）' }, { value: 'CNY', label: '人民币（CNY）' }]} />
+            </AntForm.Item>}
+            <AntForm.Item name="password" label={setup ? '设置密码' : '密码'} rules={[
+              { required: true, message: '请输入密码' }, ...(setup ? [{ min: 8, message: '密码至少需要 8 个字符' }] : []),
+            ]}>
+              <AntInput.Password prefix={<LockKeyhole size={17} />} autoComplete={setup ? 'new-password' : 'current-password'}
+                maxLength={128} placeholder={setup ? '设置 8–128 位密码' : '请输入密码'}
+                iconRender={visible => visible ? <EyeOff size={17} aria-label="隐藏密码" /> : <Eye size={17} aria-label="显示密码" />} />
+            </AntForm.Item>
+            {setup && <AntForm.Item name="confirmation" label="确认密码" dependencies={['password']} rules={[
+              { required: true, message: '请再次输入密码' },
+              ({ getFieldValue }) => ({ validator: (_, value) => !value || value === getFieldValue('password')
+                ? Promise.resolve() : Promise.reject(new Error('两次输入的密码不一致。')) }),
+            ]}><AntInput.Password prefix={<LockKeyhole size={17} />} autoComplete="new-password" maxLength={128} placeholder="再次输入密码" /></AntForm.Item>}
             {(error || notice) && <div className="form-error auth-error" role="alert"><TriangleAlert size={16} /><span>{error || notice}</span></div>}
-            <button className="btn btn-primary auth-submit" type="submit" disabled={busy}>
-              {busy ? <><LoadingIndicator size={20} />{setup ? "正在创建…" : "正在登录…"}</> : <>{setup ? "创建管理员并进入" : "登录"}<ArrowRight size={17} /></>}
-            </button>
-          </form>
+            <AntButton type="primary" className="auth-submit" htmlType="submit" loading={busy && { icon: <span aria-hidden="true"><Spin size="small" /></span> }} block>
+              {setup ? '创建管理员并进入' : '登录'}<ArrowRight size={17} />
+            </AntButton>
+          </AntForm>
           <p className="auth-form-note"><ShieldCheck size={15} />{setup ? "管理员可以在设置中添加员工账号。" : "登录后访问此工作空间。"}</p>
         </div>
         <span className="auth-form-footer">物料管理 · 扫码入出库 · 库存管理</span>

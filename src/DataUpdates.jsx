@@ -1,3 +1,5 @@
+import { Button as AntButton } from 'antd';
+
 import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { api } from './api.js';
@@ -45,9 +47,9 @@ export function useDataUpdates(data, userId) {
 export function DataUpdateNotice({ onRefresh, busy, disabled }) {
   return <div className="data-update-notice" role="status" aria-label="数据更新提示">
     <span>数据有变更，点击刷新查看最新数据。</span>
-    <button type="button" onClick={onRefresh} disabled={busy || disabled} aria-busy={busy}>
+    <AntButton type="default" htmlType="button" onClick={onRefresh} disabled={busy || disabled} aria-busy={busy}>
       {busy ? <LoadingIndicator size={18} /> : <RefreshCw size={18} />}刷新数据
-    </button>
+    </AntButton>
     {disabled && <small>请先完成并关闭当前操作。</small>}
   </div>;
 }

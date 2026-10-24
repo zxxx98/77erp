@@ -1,3 +1,5 @@
+import { Button as AntButton, Form as AntForm, Input as AntInput } from 'antd';
+
 import { usePermissions } from '../permissions.jsx';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api.js';
@@ -97,7 +99,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
               ["in", "扫码入库", ArrowDownToLine],
               ["out", "扫码出库", ArrowUpFromLine],
             ].map(([id, name, Icon]) => (
-              <button
+              <AntButton type="text" htmlType="button"
                 key={id}
                 hidden={id !== 'query' && !can(id === 'in' ? 'purchase' : 'sale')}
                 disabled={stockBusy}
@@ -108,7 +110,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
               >
                 <Icon size={17} />
                 {name}
-              </button>
+              </AntButton>
             ))}
           </div>
           <div className="scan-focus-area">
@@ -142,34 +144,34 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
               title={mode === 'query' ? '扫一扫 · 查找物料' : mode === 'in' ? '扫一扫 · 入库' : '扫一扫 · 出库'}
               note={mode === 'query' ? '识别后自动返回查看物料' : '识别后自动返回；免确认出入库二维码会直接更新库存。'}
               onManual={() => { setCamera(false); setManual(true); requestAnimationFrame(() => input.current?.focus()); }} />}
-            <button
+            <AntButton type="text" htmlType="button"
               className="manual-entry-toggle"
               onClick={() => setManual(!manual)}
             >
               {manual ? "收起手动输入" : "手动输入条码"}
               <ChevronDown size={14} className={manual ? "rotate" : ""} />
-            </button>
+            </AntButton>
             {manual && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
+              <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }}
+                onFinish={() => {
+
                   if (barcode) scan(barcode);
                 }}
                 className="scanner-input"
               >
                 <ScanLine size={21} />
-                <input
+                <AntInput
                   ref={input}
                   aria-label="物料条码"
                   placeholder="输入物料条码"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
-                <button type="submit" disabled={!barcode || stockBusy}>
+                <AntButton type="default" htmlType="submit" disabled={!barcode || stockBusy}>
                   识别
                   <ArrowRight size={16} />
-                </button>
-              </form>
+                </AntButton>
+              </AntForm>
             )}
             {error && (
               <div className="form-error">
@@ -275,14 +277,14 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             {recent.length ? (
               <div className="recent-scans">
                 {recent.map((p) => (
-                  <button key={p.id} onClick={() => scan(p.barcode)}>
+                  <AntButton type="default" htmlType="button" key={p.id} onClick={() => scan(p.barcode)}>
                     <ProductArt product={p} size="small" preview={false} />
                     <span>
                       <strong>{p.name}</strong>
                       <small>{p.barcode}</small>
                     </span>
                     <ChevronRight size={14} />
-                  </button>
+                  </AntButton>
                 ))}
               </div>
             ) : (

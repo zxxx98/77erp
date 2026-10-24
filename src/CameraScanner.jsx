@@ -1,3 +1,5 @@
+import { Button as AntButton } from 'antd';
+
 import { LoadingIndicator } from './Loading.jsx';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -159,7 +161,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
   return createPortal(<section ref={overlay} className="camera-scanner-immersive" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
     <video ref={video} muted playsInline className={ready ? 'camera-preview ready' : 'camera-preview'} />
     <header className="camera-overlay-header">
-      <button type="button" className="camera-back" aria-label="取消扫码" onClick={onClose}><ArrowLeft size={24} /></button>
+      <AntButton type="text" htmlType="button" className="camera-back" aria-label="取消扫码" onClick={onClose}><ArrowLeft size={24} /></AntButton>
       <h2 id={titleId}>{title}</h2>
     </header>
     {error ? <div className="camera-error" role="alert"><Camera size={38} /><h3>暂时无法扫码</h3><p>{error}</p></div> : <>
@@ -170,8 +172,8 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
       <p className="camera-overlay-instruction">将物料条码或二维码置于取景框内</p>
       <p className="camera-overlay-note">{note}</p>
       <div className="camera-overlay-actions">
-        {error && <button type="button" className="camera-action" onClick={() => { overlay.current?.focus({ preventScroll: true }); setAttempt(value => value + 1); }}><RefreshCw size={20} />重新开启扫码</button>}
-        {onManual && <button type="button" className="camera-action" onClick={onManual}><Keyboard size={20} />手动输入条码</button>}
+        {error && <AntButton type="text" htmlType="button" className="camera-action" onClick={() => { overlay.current?.focus({ preventScroll: true }); setAttempt(value => value + 1); }}><RefreshCw size={20} />重新开启扫码</AntButton>}
+        {onManual && <AntButton type="text" htmlType="button" className="camera-action" onClick={onManual}><Keyboard size={20} />手动输入条码</AntButton>}
       </div>
     </footer>
   </section>, document.body);

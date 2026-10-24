@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -34,7 +35,7 @@ test('suffix marker position survives editing, saving and reloading single and m
     await page.reload();
     await page.getByRole('row').filter({hasText:name}).getByRole('button',{name:'编辑',exact:true}).click();
     await page.locator('.quality-field').click();
-    await expect(editor.getByRole('combobox',{name:'标记位置',exact:true})).toHaveValue('文字后（合格■ 拒收□）');
+    await expect(selectedControl(editor.getByRole('combobox',{name:'标记位置',exact:true}))).toContainText('文字后（合格■ 拒收□）');
     await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
     await expect(editor.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(3);
     await expect(editor.locator('.quality-preview-result pre')).toHaveText(type==='单选'?'"正常检验"':'["正常检验"]');
@@ -644,7 +645,7 @@ test('cell text lines and ignored content update choice splits and persist after
   await page.getByLabel('模板名称',{exact:true}).fill('双语文字过滤');
   await page.locator('[data-address=A1]').click({button:'right'});await page.getByRole('menuitem',{name:/添加为 Key（右）/}).click();
   const editor=page.getByRole('complementary',{name:'字段独立编辑'});
-  await showTextRules(editor);await expect(editor.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('所有行');
+  await showTextRules(editor);await expect(selectedControl(editor.getByRole('combobox',{name:'解析行',exact:true}))).toContainText('所有行');
   await editor.getByRole('combobox',{name:'解析行',exact:true}).click();
   await expect(page.getByRole('option',{name:'第 2 行',exact:true})).toBeVisible();await expect(page.getByRole('option',{name:'第 3 行',exact:true})).toHaveCount(0);
   await page.getByRole('option',{name:'第 1 行',exact:true}).click();await showTextRules(editor);await editor.getByRole('textbox',{name:'忽略内容',exact:true}).fill('结果：');
@@ -654,7 +655,7 @@ test('cell text lines and ignored content update choice splits and persist after
   await expect(editor.locator('.quality-processed-text pre')).toHaveText('★合格 ☆不合格');await expect(editor.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(2);await expect(editor.locator('.quality-preview-result pre')).toHaveText('"合格"');
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();await page.getByRole('button',{name:'保存草稿',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'草稿已保存'})).toBeVisible();
   await page.reload();await page.getByRole('row').filter({hasText:'双语文字过滤'}).getByRole('button',{name:'编辑',exact:true}).click();await page.locator('.quality-field').click();
-  await showTextRules(editor);await expect(editor.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('第 1 行');await expect(editor.getByRole('textbox',{name:'忽略内容',exact:true})).toHaveValue('结果：');
+  await showTextRules(editor);await expect(selectedControl(editor.getByRole('combobox',{name:'解析行',exact:true}))).toContainText('第 1 行');await expect(editor.getByRole('textbox',{name:'忽略内容',exact:true})).toHaveValue('结果：');
   await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);await page.locator('.quality-editor').screenshot({path:'output/ui-preview/quality-text-processing.png'});
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();
 });
@@ -665,7 +666,7 @@ test('object property text line settings process bilingual cells and retain nume
   const editor=page.getByRole('complementary',{name:'字段独立编辑'});
   for(const [i,ignoreContent] of [[0,'名称：'],[1,'数量：\n台']]){
     const property=await editProperty(editor,i);
-    await showTextRules(property);await expect(property.getByRole('combobox',{name:'解析行',exact:true})).toHaveValue('所有行');await property.getByRole('combobox',{name:'解析行',exact:true}).click();await page.getByRole('option',{name:'第 1 行',exact:true}).click();await property.getByRole('textbox',{name:'忽略内容',exact:true}).fill(ignoreContent);
+    await showTextRules(property);await expect(selectedControl(property.getByRole('combobox',{name:'解析行',exact:true}))).toContainText('所有行');await property.getByRole('combobox',{name:'解析行',exact:true}).click();await page.getByRole('option',{name:'第 1 行',exact:true}).click();await property.getByRole('textbox',{name:'忽略内容',exact:true}).fill(ignoreContent);
     if(i===1){await property.getByRole('combobox').first().click();await page.getByRole('option',{name:'数字',exact:true}).click();}await editor.getByRole('button',{name:'返回属性列表',exact:true}).click();
   }
   await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);await expect(editor.locator('.form-error')).toHaveCount(0);
@@ -722,7 +723,7 @@ for(const platform of ['desktop','iPhone','Android PWA'])test(`${platform} confi
     await page.getByLabel('导入模板字段配置').setInputFiles({name:'配置.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({sheetName:'检查',fields}))});
     await page.locator('.quality-field').filter({hasText:'结论'}).click();
     const editor=page.getByRole('complementary',{name:'字段独立编辑'});
-    await expect(editor.getByRole('combobox',{name:'选项拆分方式',exact:true})).toHaveValue('整格文字精确匹配（plain）');
+    await expect(selectedControl(editor.getByRole('combobox',{name:'选项拆分方式',exact:true}))).toContainText('整格文字精确匹配（plain）');
     await expect(editor.getByLabel('勾选字符',{exact:true})).toHaveCount(0);
     await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await expect(editor.locator('.quality-preview-result pre')).toHaveText('"合格"');
     await editor.getByRole('tab',{name:'字段设置',exact:true}).click();

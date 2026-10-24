@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
@@ -145,7 +146,7 @@ test('QR drawer keeps its form submit outside scrolling content and guards retur
   await page.screenshot({ path: 'output/ui-preview/desktop-drawer-qr.png' });
   page.once('dialog', confirmation => confirmation.accept());
   await dialog.getByRole('button', { name: '取消编辑', exact: true }).click();
-  await expect(filter).toHaveValue('入库');
+  await expect(selectedControl(filter)).toContainText('入库');
   await expect(dialog).toHaveCount(1);
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toHaveCount(0);

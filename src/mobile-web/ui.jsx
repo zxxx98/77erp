@@ -1,3 +1,5 @@
+import { Spin, Button as AntButton, Input as AntInput, Checkbox as AntCheckbox, Tag, Empty as AntEmpty } from 'antd';
+
 import { stockStatus, stockTone, money as formatMoney, moneyBase as formatMoneyBase, price as formatPrice, currencySymbol, baseCurrencySymbol } from '../app/format.js';
 import { LoadingIndicator } from '../Loading.jsx';
 import React from 'react';
@@ -13,37 +15,36 @@ export const dateTime = value => new Date(value).toLocaleString('zh-CN', { month
 export const stockLabel = stockStatus;
 export const matchesProduct = (product, query) => [product.name, product.barcode, product.category, product.specification || '', product.note || ''].some(value => value.toLowerCase().includes(query.trim().toLowerCase()));
 
-export function MobileButton({ children, icon: Icon, primary = false, danger = false, permission, busy, ...props }) {
+export function MobileButton({ children, icon: Icon, primary = false, danger = false, permission, busy, type: htmlType = "button", ...props }) {
   const { can } = usePermissions();
   if (permission && !can(permission)) return null;
-  return <button type="button" className={`mw-button${primary ? ' mw-primary' : ''}${danger ? ' mw-danger' : ''}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
-    {busy ? <LoadingIndicator size={20} /> : Icon ? <Icon size={19} /> : null}{children}
-  </button>;
+  return <AntButton type={primary ? "primary" : "default"} danger={danger} loading={busy && { icon: <span aria-hidden="true"><Spin size="small" /></span> }} htmlType={htmlType} className={`mw-button${primary ? ' mw-primary' : ''}${danger ? ' mw-danger' : ''}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
+    {Icon ? <Icon size={19} /> : null}{children}
+  </AntButton>;
 }
 export function MobileIcon({ icon: Icon, label, ...props }) {
-  return <button type="button" className="mw-icon" aria-label={label} {...props}><Icon size={22} /></button>;
+  return <AntButton type="text" htmlType="button" className="mw-icon" aria-label={label} {...props}><Icon size={22} /></AntButton>;
 }
 export function Notice({ children }) {
   return children ? <div className="mw-error" role="alert"><TriangleAlert size={18} /><span>{children}</span></div> : null;
 }
 export function Chips({ value, options, onChange, label }) {
   return <div className="mw-chips" role="group" aria-label={label}>
-    {options.map(([id, text]) => <button type="button" key={id} className={`mw-chip${value === id ? ' selected' : ''}`} aria-pressed={value === id} onClick={() => onChange(id)}>{text}</button>)}
+    {options.map(([id, text]) => <AntButton type="text" htmlType="button" key={id} className={`mw-chip${value === id ? ' selected' : ''}`} aria-pressed={value === id} onClick={() => onChange(id)}>{text}</AntButton>)}
   </div>;
 }
 export function SearchField({ value, onChange, label = '搜索物料名称、条码或分类' }) {
-  return <div className="mw-search"><Search size={19} /><input type="search" aria-label={label} placeholder={label} value={value} onChange={e => onChange(e.target.value)} autoCapitalize="none" />
-    {value && <MobileIcon icon={X} label="清空搜索" onClick={() => onChange('')} />}
-  </div>;
+  return <div className="mw-search"><AntInput type="search" prefix={<Search size={19} />} allowClear
+    aria-label={label} placeholder={label} value={value} onChange={e => onChange(e.target.value)} autoCapitalize="none" /></div>;
 }
 export function StockBadge({ product }) {
-  return <span className={`mw-badge ${stockTone(product)}`}>{stockLabel(product)}</span>;
+  return <Tag color={{ green: 'success', orange: 'warning', red: 'error' }[stockTone(product)]}>{stockLabel(product)}</Tag>;
 }
 export function ProductRow({ product, onOpen, selectable = false, selected = false, onToggle }) {
   return <article className={`mw-product-row${selected ? ' mw-product-row-selected' : ''}`}>
     {selectable && (
-      <input
-        type="checkbox"
+      <AntCheckbox
+
         className="mw-product-checkbox"
         aria-label={`选择 ${product.name}`}
         checked={selected}
@@ -51,17 +52,17 @@ export function ProductRow({ product, onOpen, selectable = false, selected = fal
       />
     )}
     <div className="mw-product-icon">{product.image ? <ProductImage src={product.image} alt={product.name} thumbnailSize={100} className="mw-product-image" /> : <Box size={24} />}</div>
-    <button type="button" className="mw-product-copy" aria-label={`${product.name}，库存 ${count(product.stock)} ${product.unit}`} onClick={() => selectable ? onToggle(product) : onOpen(product)}>
+    <AntButton type="text" htmlType="button" className="mw-product-copy" aria-label={`${product.name}，库存 ${count(product.stock)} ${product.unit}`} onClick={() => selectable ? onToggle(product) : onOpen(product)}>
       <span className="mw-product-title"><strong>{product.name}{product.active === 0 ? '（已停用）' : ''}</strong><ChevronRight size={16} /></span>
       <span className="mw-muted">{product.barcode}</span>
       {product.specification && <span className="mw-muted">{product.specification}</span>}
       <span className="mw-product-state"><span className="mw-muted">{product.category}</span><StockBadge product={product} /></span>
       <span className="mw-product-facts"><span>库存 {count(product.stock)} {product.unit}</span><span>参考销售价 {price(product.price)}</span></span>
-    </button>
+    </AntButton>
   </article>;
 }
 export function Empty({ title = '暂无记录', children }) {
-  return <div className="mw-empty"><Box size={34} /><h2>{title}</h2>{children && <p className="mw-muted">{children}</p>}</div>;
+  return <AntEmpty description={<><h2>{title}</h2>{children && <p className="mw-muted">{children}</p>}</>} />;
 }
 export function DetailRow({ label, children }) {
   return <div className="mw-detail-row"><span className="mw-muted">{label}</span><strong>{children ?? '—'}</strong></div>;

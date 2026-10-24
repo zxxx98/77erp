@@ -44,7 +44,7 @@ test("warehouse transfers create linked legs, appear in both warehouses and stay
     await expect(dialog.getByRole("button", { name: "仓库调拨" })).toHaveAttribute("aria-pressed", "true");
     await expect(dialog.getByText(transfer.number)).toBeVisible();
     await expect(dialog.getByText("发往 分仓")).toBeVisible();
-    await expect(dialog.getByText("成本 ¥40.00")).toBeVisible();
+    await expect(dialog.getByText("成本 $40.00")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "撤销调拨" })).toBeVisible();
     // The product is now stocked here and in the destination warehouse.
     await expect(page.getByText("浏览器调拨物料").first()).toBeVisible();
@@ -94,8 +94,8 @@ test("warehouse transfers create linked legs, appear in both warehouses and stay
     await form.getByLabel("搜索要调拨的物料").fill("浏览器调拨物料2");
     await form.getByRole("button", { name: "添加" }).click();
     await form.getByLabel("浏览器调拨物料2 调拨数量").fill("2");
-    await form.getByRole("button", { name: "展开调入仓库列表" }).click();
-    await page.getByRole("listbox", { name: "调入仓库" }).getByRole("option", { name: "分仓" }).click();
+    await form.getByRole("combobox", { name: "调入仓库", exact: true }).click();
+    await page.getByRole('listbox').getByRole("option", { name: "分仓" }).click();
     page.once("dialog", (dialog) => dialog.accept());
     await form.getByRole("button", { name: "确认调拨" }).click();
     // Saving closes the modal and reports through the shared toast.

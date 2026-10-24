@@ -1,3 +1,4 @@
+import { selectedControl } from './dropdown-helpers.js';
 import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { qrSymbol } from '../../src/product-code.js';
@@ -227,7 +228,7 @@ test('back and manual entry leave the order intact; camera recognition adds exac
   await page.goBack();
   await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: '采购入库', exact: true })).toBeVisible();
-  await expect(page.getByRole('combobox', { name: /供应商/ })).toHaveValue('全屏扫码供应商');
+  await expect(selectedControl(page.getByRole('combobox', { name: /供应商/ }))).toContainText('全屏扫码供应商');
   expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
   await page.getByRole('button', { name: '扫码添加物料', exact: true }).click();
   await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);

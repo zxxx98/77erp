@@ -7,9 +7,9 @@
 .customer-parts-labels { font-size: 12px; color: var(--muted); }
 .customer-parts-row { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 10px; }
 .customer-parts-row .dropdown { min-width: 0; }
-.customer-parts-row input { min-width: 0; width: 100%; }
-.customer-parts-row > input { border: 1px solid #e3eaf3; border-radius: 8px; min-height: 42px; padding: 10px 12px; background: white; color: #304563; font-size: 13px; line-height: 1.5; }
-.customer-parts-row .dropdown-field > label { display: none; }
+:where(.customer-parts-row input) { min-width: 0; width: 100%; }
+:where(.customer-parts-row > input) { min-height: 42px; }
+:where(.customer-parts-row .dropdown-field > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: none; }
 .customer-parts-name, .customer-parts-number { overflow-wrap: anywhere; font-size: 13px; }
 .customer-parts-actions { display: flex; gap: 4px; }
 .customer-parts-actions .icon-button { width: 36px; height: 36px; flex: 0 0 36px; }
