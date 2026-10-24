@@ -1,0 +1,22 @@
+.production-stages { min-width: 0; }
+.stage-row, .stage-input { padding: 20px 0; border-top: 1px solid #e9ecf1; min-width: 0; }
+.stage-row:first-of-type { margin-top: 20px; }
+.stage-row-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.stage-row-heading > div { min-width: 0; }
+.stage-path { color: #647084; font-size: 13px; line-height: 1.7; margin: 6px 0; overflow-wrap: anywhere; }
+.stage-progress { display: flex; flex-wrap: wrap; gap: 16px 36px; margin: 16px 0; }
+.stage-progress dt { color: #647084; font-size: 12px; }
+.stage-progress dd { margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.stage-input-numbers { display: flex; flex-wrap: wrap; gap: 16px 32px; margin: 14px 0; font-size: 13px; }
+.stage-input-numbers strong { margin-left: 8px; font-variant-numeric: tabular-nums; }
+.stage-input > label { display: block; max-width: 640px; margin-top: 16px; }
+.production-stages summary { cursor: pointer; padding: 12px 0; }
+.production-stages .production-batch p { overflow-wrap: anywhere; }
+.stage-cumulative-input { font-size: 13px; padding: 10px 0; overflow-wrap: anywhere; }
+.stage-cumulative-input p { margin: 6px 0; }
+@media (max-width: 600px) {
+  .stage-progress { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .stage-progress dd, .stage-row-heading strong { overflow-wrap: anywhere; }
+  .production-stages .bom-actions { gap: 10px; }
+  .production-stages .bom-actions .btn { min-height: 44px; }
+}

@@ -3,6 +3,7 @@ import { allocate, moveInventory } from './commerce.js';
 import { addQuantity, validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { notifyStockChanges } from './notifications.js';
+import { stageDirectBatches } from './production-stages.js';
 
 export const productionMaterialTables = ['production_material_documents', 'production_material_document_items'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -58,13 +59,15 @@ export function materialBalances(order) {
       else { returned = addQuantity(returned, row.quantity); cost -= BigInt(row.cost_cents); }
     }
     let consumed = 0;
-    for (const batch of order.batches) if (batch.status === 'active') {
-      const row = batch.items.find(row => row.product_id === item.product_id);
-      if (row) { consumed = addQuantity(consumed, row.actual_quantity); cost -= BigInt(row.cost_cents); }
+    for (const batch of order.stage_workflow ? order.stage_direct_batches ?? [] : order.batches) if (batch.status === 'active') {
+      for (const row of batch.items.filter(row => row.product_id === item.product_id)) {
+        consumed = addQuantity(consumed, row.actual_quantity); cost -= BigInt(row.cost_cents);
+      }
     }
     // Lifetime turnover can exceed Number's exact range even when the remaining pool is small.
     if (cost < 0n || cost > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${item.name}材料余额成本不足或超出范围。`);
     return { ...item, issued_quantity: issued, returned_quantity: returned,
+      ...(order.stage_workflow ? { direct_consumed_quantity:consumed, direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
       available_quantity: addQuantity(addQuantity(issued, -returned), -consumed), available_cost_cents: Number(cost) };
   });
 }
@@ -222,6 +225,7 @@ export function validateProductionMaterialBackup(data) {
       if (doc.status !== 'cancelled' && (doc.items.length !== items.length || doc.items.some(row => row.quantity !== items.find(item => item.product_id === row.product_id)?.planned_quantity))) fail('备份首次领料数量与整单计划不一致。');
     }
     const balances = materialBalances({ ...order, items: data.production_items.filter(row => row.production_id === order.id), material_documents: documents,
+      stage_direct_batches:stageDirectBatches(data,order.id),
       batches: data.production_batches.filter(row => row.production_id === order.id).map(batch => ({ ...batch, items: data.production_batch_items.filter(row => row.batch_id === batch.id) })) });
     if (balances.some(item => !validStoredQuantity(item.issued_quantity) || !validStoredQuantity(item.returned_quantity) || !validStoredQuantity(item.available_quantity) || !money(item.available_cost_cents) ||
         item.available_quantity === 0 && item.available_cost_cents !== 0 || order.status === 'void' && item.available_quantity !== 0)) fail('备份生产材料余额或成本无效。');

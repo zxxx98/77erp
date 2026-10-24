@@ -11,6 +11,10 @@ async function fixture(page) {
   // Their future finished batches still require current warehouse approval.
   db.exec(`CREATE TRIGGER historical_bom_fixture AFTER UPDATE OF material_workflow ON production_orders
     WHEN NEW.material_workflow=1 BEGIN UPDATE production_orders SET material_workflow=0 WHERE id=NEW.id; END;`);
+  db.exec(`CREATE TRIGGER historical_bom_stage_fixture AFTER UPDATE OF stage_workflow ON production_orders
+    WHEN NEW.stage_workflow=1 AND NEW.material_workflow=0 BEGIN
+    DELETE FROM production_stages WHERE production_id=NEW.id;
+    UPDATE production_orders SET stage_workflow=0 WHERE id=NEW.id; END;`);
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = async (path, data) => {

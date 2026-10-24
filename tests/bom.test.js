@@ -269,7 +269,7 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 37);
+  assert.equal(backup.version, 38);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },
@@ -363,7 +363,7 @@ test('BOM deletion preserves parent links and production snapshots including voi
   const blocked = await remove(child);
   assert.equal(blocked.status, 409); assert.match(blocked.data.error, /上级BOM/);
   const plan = (await f.request(`/boms/${root.id}/calculate`, { production_quantity: 1, schema_version: 2 })).data;
-  const order = await f.command('/production-orders', { bom_id: root.id, bom_version: root.version, planned_quantity: 1, note: '', schema_version: 2, structure_token: plan.structure_token });
+  const order = await f.command('/production-orders', { bom_id: root.id, bom_version: root.version, planned_quantity: 1, note: '', schema_version: 2, stage_schema_version: 1, structure_token: plan.structure_token });
   assert.equal(order.status, 200);
   const edited = await f.command(`/boms/${root.id}`, f.definition({ version: root.version,
     items: [{ product_id: f.material, quantity: 1, unit: '个', note: '', usage_mode: 'stock', child_bom_id: null }] }));
@@ -373,7 +373,7 @@ test('BOM deletion preserves parent links and production snapshots including voi
     assert.equal(result.status, 409); assert.match(result.data.error, /生产单/);
     assert.deepEqual((await f.request(`/boms/${bom.id}`)).data, bom);
   }
-  const voided = await f.command(`/production-orders/${order.data.id}/void`, { version: order.data.version, schema_version: 2, reason: '取消生产' });
+  const voided = await f.command(`/production-orders/${order.data.id}/void`, { version: order.data.version, schema_version: 2, stage_schema_version: 1, reason: '取消生产' });
   assert.equal(voided.status, 200);
   assert.equal((await remove(child)).status, 409);
   assert.equal((await remove(edited.data)).status, 409);

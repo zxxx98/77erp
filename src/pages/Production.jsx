@@ -21,6 +21,7 @@ import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import { MaterialDocumentList } from '../features/ProductionMaterialDocuments.jsx';
 import { ProductionReceiptList } from '../features/ProductionReceipts.jsx';
 import { useProductionRegistration } from '../features/ProductionRegistration.jsx';
+import { ProductionStages, ProductionStageSummary } from '../features/ProductionStages.jsx';
 import { downloadProductionPdf } from '../production-pdf.js';
 import './bom.css';
 import './production.css';
@@ -117,8 +118,10 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   useEffect(() => { if (management) api('/production-groups').then(setGroups).catch(() => {}); }, [management]);
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState(null), [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [message, setMessage] = useState('');
+  const [stageActivity, setStageActivity] = useState(null);
+  const stageSession = useRef(0);
   const action = useBusiness();
-  const send = (path, body, options) => action.send(path, { schema_version: 2, ...body }, options);
+  const send = (path, body, options) => action.send(path, { schema_version: 2, stage_schema_version: 1, ...body }, options);
   const listData = useMemo(() => ({ ...data, productionRevision: revision }), [data, revision]);
   const list = useQuery(queryPath('/production-orders', { q, status, offset }), listData, 150);
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
@@ -141,7 +144,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
-  const begin = value => { setEditor(value); setBaseline(JSON.stringify(value)); setMessage(''); action.setError(''); };
+  const begin = value => { const next = value.kind === 'stages' ? { ...value, session: ++stageSession.current } : value; setEditor(next); setBaseline(JSON.stringify(next)); setMessage(''); action.setError(''); };
   const update = value => { setEditor(previous => ({ ...previous, ...value })); action.setError(''); };
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
@@ -187,13 +190,15 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     return { items, scraps };
   };
   const beginCompletion = () => action.run(async () => {
+    if (detail.stage_workflow) { begin({ kind: 'stages' }); return; }
     const remaining = Math.max(0, quantityUnits(detail.planned_quantity) - quantityUnits(detail.completed_quantity ?? 0)) / QUANTITY_SCALE;
     const quantity = remaining || 1;
     begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity) });
   });
-  const registration = useProductionRegistration({ data, onSwitchWarehouse, navigationState: editor, navigationBusy: action.busy, onError: action.setError, onOrder: order => {
+  const registration = useProductionRegistration({ data, onSwitchWarehouse, navigationState: stageActivity || editor, navigationBusy: action.busy || !!stageActivity?.busy, onError: action.setError, onOrder: order => {
     setDetail(order); setAssignment(order.production_group_id ?? ''); setEditor(null); setMessage(''); action.setError('');
     if (order.status === 'in_progress' || !order.material_workflow && order.status === 'draft') {
+      if (order.stage_workflow) { begin({ kind: 'stages' }); return; }
       const quantity = Math.max(0, quantityUnits(order.planned_quantity) - quantityUnits(order.completed_quantity ?? 0)) / QUANTITY_SCALE || 1;
       begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity, order) });
     } else {
@@ -254,6 +259,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{label}</Button>
   </PageHeading>;
   const notices = <>{registration.scanner}{registration.busy && <p role="status">正在读取生产单…</p>}{message && <p className="bom-success" role="status">{message}</p>}{action.error && !registration.scanner && <p className="form-error" role="alert">{action.error}</p>}</>;
+
+  if (editor?.kind === 'stages') return <div className="bom-page production-page">
+    <ProductionStages key={`${detail.id}:${editor.session}`} order={detail} data={listData} canRegister={detail.status === 'in_progress'} canVoid={management && can('corrections')} canReceive={can('purchase')} management={management}
+      busy={action.busy} onActivity={setStageActivity} onSaved={(order, text) => saved(order, text, true)} onBack={back} />{notices}
+  </div>;
 
   if (editor?.kind === 'material_request') {
     const returning = editor.type === 'in', label = returning ? '退料' : '补料';
@@ -398,7 +408,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.status === 'completed' && detail.items.some(item => item.available_quantity > 0) && <p className="bom-warning">本单还有未用材料，请核对并申请退料，由仓库确认退回。</p>}
       <p className="bom-hint">已领可用 = 已出库领料 − 有效登记耗料 − 已确认退料。待批准申请尚未变动库存。</p>
       {detail.items.map(item => <div className="production-batch" key={item.product_id}><strong>{item.name}</strong><div className="material-balance">
-        <div><small>已领</small><span>{count(item.issued_quantity)} {item.unit}</span></div><div><small>已耗</small><span>{count(item.actual_quantity ?? 0)} {item.unit}</span></div>
+        <div><small>已领</small><span>{count(item.issued_quantity)} {item.unit}</span></div><div><small>已耗</small><span>{count(detail.stage_workflow ? item.direct_consumed_quantity : item.actual_quantity ?? 0)} {item.unit}</span></div>
         <div><small>已退</small><span>{count(item.returned_quantity)} {item.unit}</span></div><div><small>已领可用</small><span>{count(item.available_quantity)} {item.unit}</span></div>
         {management && can('finance') && <div><small>剩余材料成本</small><span>{money(item.available_cost_cents)}</span></div>}
       </div></div>)}
@@ -411,10 +421,22 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.material_documents?.some(doc => doc.status === 'pending') && <p className="bom-hint">已有待批准材料单，请先由仓库确认或取消后再提交补料、退料申请。</p>}
       <MaterialDocumentList documents={detail.material_documents || []} busy={action.busy} onCancel={management && detail.status !== 'void' ? cancelMaterialRequest : undefined} />
     </section>}
+    {!!detail.stage_workflow && <ProductionStageSummary order={detail} disabled={action.busy} onOpen={() => begin({ kind: 'stages' })} />}
+    {!!detail.stage_workflow && management && can('finance') && <section className="panel bom-section"><h2>分层材料成本</h2>
+      <div className="material-balance"><div><small>已投入各层的原料成本</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>单内剩余半成品成本</small><span>{money(detail.work_in_progress_cost_cents)}</span></div></div>
+      <p className="bom-hint">成品成本只包含已转入根层完工批次的投入，剩余半成品成本保留在本单。</p>
+    </section>}
+    {!detail.stage_workflow && detail.snapshot_format === 2 && <section className="panel bom-section">
+      <p className="bom-hint">此单沿用整单登记流程，没有历史半成品进度。</p>
+      {management && detail.material_workflow && detail.status === 'draft' && !detail.batches.length && !detail.material_documents.length && !detail.receipt_documents.length && <Button disabled={action.busy} onClick={() => action.run(async () => {
+        if (!window.confirm('按本单保存的配方启用分层登记？以后须先登记半成品，再供上层使用。')) return;
+        await saved(await send(`/production-orders/${detail.id}/stages/enable`, { version: detail.version }, { warehouseId: data.warehouse_id }), '已启用分层登记。');
+      })}>启用分层登记</Button>}
+    </section>}
     {detail.snapshot_format === 2 && <section className="panel bom-section"><h2>配方结构快照</h2>
       <BomStructure nodes={detail.nodes} quantity={detail.planned_quantity} />
     </section>}
-    <ProductionBatches key={detail.id} order={detail} costs={management && can('finance')} canVoid={management && can('corrections')} canReceive={can('purchase')} disabled={action.busy}
+    <ProductionBatches key={detail.id} order={detail} costs={management && can('finance')} canVoid={management && can('corrections') && !detail.stage_workflow} canReceive={can('purchase')} disabled={action.busy}
       onVoid={batch => begin({ kind: 'void_batch', batchId: batch.id, reason: '' })} />
     {!!detail.receipt_documents?.length && <section className="panel bom-section" aria-label="生产成品入库单"><h2>生产成品入库单</h2>
       <p className="bom-hint">每批单独批准。待入库不增加仓库库存，结束生产后仍可入库；更正请作废对应批次。</p>
@@ -426,6 +448,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">本单已作废，以上废料记录保留，已入库数量已扣回。</p>}
     </section>}
     <section className="panel bom-section"><h2>{detail.completed_at ? '耗料记录' : '计划备料'}</h2>
+      {!!detail.stage_workflow && <p className="bom-hint">此处实际耗料按最终成品批次归属统计；各层已经投入的原材料及剩余数量见「领料与退料」，半成品进度见「分层生产」。</p>}
       {detail.completed_at && <p className="bom-hint">标准耗料按本单净用量、标准损耗率快照及实际合格产量计算，已含标准损耗；差异 = 实际耗料 − 标准耗料，差异率 = 差异 ÷ 标准耗料。各材料分别比较，不跨单位合计，也不从实际耗料中再次扣除废料。</p>}
       <Materials rows={detail.items} issued={!!detail.material_workflow && ['in_progress', 'completed'].includes(detail.status)} showActual={!!detail.completed_at} costs={management && can('finance')} />
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">以上保留原完工记录；本单已作废，相关库存和成本已回退。</p>}

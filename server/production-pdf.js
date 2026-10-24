@@ -24,7 +24,7 @@ export async function renderProductionPdf({order,warehouseName,registrationUrl,e
  text(`BOM 快照：${display(order.bom_name)} / 版本 ${display(order.bom_version)} / 基准 ${display(order.base_quantity)} ${display(order.unit)}`);
  y+=8;reserve(127+lines(`访问地址：${new URL(registrationUrl).origin}`,width).length*16);
  const qrTop=y;doc.image(qr,left,qrTop,{width:113.4,height:113.4});
- doc.fontSize(11).text('扫码打开生产登记',left+130,qrTop+8,{width:width-130});
+ doc.fontSize(11).text(order.stage_workflow ? '扫码后选择成品或半成品登记' : '扫码打开生产登记',left+130,qrTop+8,{width:width-130});
  doc.fontSize(9).text('请使用有权限的账号登录，核对生产单后登记。\n手机必须能访问生成此任务单的服务器地址。\n扫码仅打开表单，不会自动提交。',left+130,qrTop+32,{width:width-130,lineGap:6});
  y=qrTop+127;doc.fontSize(10);text(`访问地址：${new URL(registrationUrl).origin}`,9);
  y+=6;reserve(63);text('计划用料（保存时的 BOM 快照）',12);

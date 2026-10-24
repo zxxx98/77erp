@@ -200,7 +200,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 37);
+  assert.equal(backup.version, 38);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -285,6 +285,10 @@ const routeRoles = new Map(Object.entries({
   'post /api/production-orders/:id/finish': 'production', 'post /api/production-orders/:id/batches/:batchId/void': 'production',
   'post /api/production-orders/:id/start': 'production', 'post /api/production-orders/:id/material-requests': 'production',
   'post /api/production-orders/:id/assign': 'production',
+  'post /api/production-orders/:id/stages/enable': 'production',
+  'get /api/production-orders/:id/stages/batches': 'production',
+  'post /api/production-orders/:id/stages/complete': 'production',
+  'post /api/production-orders/:id/stages/batches/:batchId/void': 'production',
   'get /api/production-material-documents': 'purchase', 'post /api/production-material-documents/:id/confirm': 'sale',
   'post /api/production-material-documents/:id/cancel': 'sale',
   'get /api/production-receipts': 'purchase', 'post /api/production-receipts/:id/confirm': 'purchase',

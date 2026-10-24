@@ -16,9 +16,10 @@ import { validateProductionPlan, validateProductionCompletion, productionItemQua
 import { productionBatchSummary } from '../shared/production-batches.js';
 import { productionRegistrationUrl } from '../shared/production-link.js';
 import { renderProductionPdf } from './production-pdf.js';
+import { migrateProductionStages, productionStageTables, saveProductionStages, readProductionStages, populateStageBalances, installProductionStages, assertStagesFinished, deleteProductionStages, deriveProductionStages } from './production-stages.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
-export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables];
+export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables, ...productionStageTables];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
@@ -33,7 +34,7 @@ function snapshot(db, fn) {
 export function productionWithoutCosts(value) {
   if (Array.isArray(value)) return value.map(productionWithoutCosts);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-    .filter(([key]) => !['total_cost_cents', 'cost_cents', 'available_cost_cents'].includes(key)).map(([key, child]) => [key, productionWithoutCosts(child)]));
+    .filter(([key]) => !/(?:^|_)(?:cost|price)(?:_|$)/.test(key)).map(([key, child]) => [key, productionWithoutCosts(child)]));
   return value;
 }
 
@@ -117,9 +118,10 @@ export function migrateProduction(db) {
     CREATE TRIGGER IF NOT EXISTS production_version_update AFTER UPDATE OF planned_quantity,note,status,updated_at ON production_orders BEGIN ${advance} END;`);
   migrateProductionMaterials(db);
   migrateProductionReceipts(db);
+  migrateProductionStages(db);
 }
 
-export function clearProduction(db) { db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { deleteProductionStages(db); db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 // Preserve the legacy SQLite status constraint. A posted, open order is exposed
 // as in_progress; draft without any currently posted output remains draft.
@@ -201,7 +203,10 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
       return {...batch, receipt_status: doc?.status ?? (batch.status === 'void' ? 'void' : 'confirmed'), ...(doc ? {receipt_id: doc.id} : {})};
     });
     order.material_documents = materialDocuments(db, id, warehouseId);
+    readProductionStages(db, order);
     if (order.material_workflow) order.items = materialBalances(order);
+    populateStageBalances(order);
+    delete order.stage_direct_batches;
     const counted = summaryBatches(order);
     if (order.batches.length) {
       const totals = productionBatchSummary(order.items, order.scraps, counted);
@@ -238,8 +243,8 @@ export function installProduction(app, db) {
       // Every production operation rechecks current access before idempotent replay.
       const path = req.path.toLowerCase().replace(/\/+$/, '');
       if (path.startsWith('/api/production-orders')) {
-        const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+)?$/.test(path);
-        const register = req.method === 'POST' && /^\/api\/production-orders\/\d+\/complete$/.test(path);
+        const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches)?)?$/.test(path);
+        const register = req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
         if (!hasPermission(req.user, 'production')) {
           if (!isGroupProductionWorker(req.user) || (!read && !register)) fail('需要生产管理权限。', 403);
           if (req.params.id) {
@@ -249,6 +254,10 @@ export function installProduction(app, db) {
           }
           if (register && req.body.finish_order !== false) fail('生产登记必须保留生产单，不能结束生产。', 403);
         }
+      }
+      if (write && req.params.id && path.startsWith('/api/production-orders/')) {
+        const stored = db.prepare('SELECT stage_workflow,warehouse_id FROM production_orders WHERE id=?').get(Number(req.params.id));
+        if (stored?.warehouse_id === req.warehouse.id && stored.stage_workflow && req.body.stage_schema_version !== 1) fail('此生产单使用分层生产，请刷新页面后操作。', 409);
       }
       if (authorize) authorize(req);
       if (write) db.exec('BEGIN IMMEDIATE');
@@ -270,6 +279,7 @@ export function installProduction(app, db) {
   };
   const current = req => getProductionOrder(db, req.warehouse.id, Number(req.params.id), true);
   const version = (req, order) => {
+    if (order.stage_workflow && req.body.stage_schema_version !== 1) fail('此生产单使用分层生产，请刷新页面后操作。', 409);
     if (order.snapshot_format === 2 && req.body.schema_version !== 2) fail('此生产单使用多层配方，请刷新页面后操作。', 409);
     if (!isId(req.body.version) || req.body.version !== order.version) fail('生产单已变化，请重新读取后核对。当前填写内容已保留。', 409);
   };
@@ -328,6 +338,10 @@ export function installProduction(app, db) {
     const insertScrap = db.prepare(`INSERT INTO production_scraps(production_id,product_id,name,barcode,specification,unit,method,source_product_id,quantity,quantity_fraction,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     plan.scraps.forEach((row, index) => insertScrap.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.method, row.source_product_id, row.quantity, row.quantity_fraction, row.planned_quantity, row.note, index));
     for (const row of plan.scraps) db.prepare('UPDATE production_scraps SET unit_round_up=? WHERE production_id=? AND product_id=?').run(row.product.unit_round_up, id, row.product_id);
+    if (plan.multi_level) {
+      if (req.body.stage_schema_version !== 1) fail('新多层生产单使用分层生产，请刷新页面后建单。', 409);
+      saveProductionStages(db, { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), nodes: plan.nodes });
+    }
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id/assign', route(req => {
@@ -355,6 +369,8 @@ export function installProduction(app, db) {
       .run(scrapExpectedQuantity(row, req.body.planned_quantity, order.base_quantity, plannedMaterials, order.quantity_decimals), row.id);
     db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
       .run(req.body.planned_quantity, req.body.note.trim(), actor(req), new Date().toISOString(), order.id);
+    if (order.stage_workflow) for (const stage of deriveProductionStages({...order,planned_quantity:req.body.planned_quantity}))
+      db.prepare('UPDATE production_stages SET planned_quantity=? WHERE production_id=? AND path=?').run(stage.planned_quantity,order.id,stage.path);
     return current(req);
   }, true));
   const checkOpen = (req, order) => {
@@ -381,6 +397,7 @@ export function installProduction(app, db) {
   };
   app.post('/api/production-orders/:id/complete', route(req => {
     const order = current(req); checkOpen(req, order); units(order);
+    if (order.stage_workflow) fail('分层生产请按指定层登记，不能通过旧登记入口完成。',409);
     if (req.body.finish_order !== false) assertNoPendingMaterials(db, order);
     validateProductionCompletion(req.body, order.items);
     req.body.completed_quantity = materialQuantity(req.body.completed_quantity, order);
@@ -424,6 +441,7 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/finish', route(req => {
     const order = current(req); checkOpen(req, order);
     assertNoPendingMaterials(db, order);
+    if (order.stage_workflow) assertStagesFinished(order);
     if (!order.batch_count) fail('请先登记至少一个有效完工批次。');
     db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?")
       .run(actor(req), new Date().toISOString(), order.id);
@@ -431,6 +449,7 @@ export function installProduction(app, db) {
   }, true));
   app.post('/api/production-orders/:id/batches/:batchId/void', route(req => {
     const order = current(req); version(req, order);
+    if (order.stage_workflow) fail('分层生产请从层级批次入口作废。',409);
     if (order.status === 'void') fail('生产单已经作废。', 409);
     const batchId = Number(req.params.batchId);
     const batch = order.batches.find(batch => batch.id === batchId);
@@ -454,6 +473,7 @@ export function installProduction(app, db) {
     if (order.status === 'void') fail('生产单已经作废。', 409);
     if (order.material_workflow) {
       assertNoPendingMaterials(db, order);
+      if (order.stage_workflow && order.stages.some(s=>s.completed_quantity!==0)) fail('请先自上而下作废所有有效层级批次。',409);
       if (order.batch_count || order.items.some(item => item.available_quantity !== 0)) fail('请先作废所有有效批次，并通过仓库退回全部剩余材料，再作废生产单。', 409);
     }
     const why = reason(req), before = order.completed_at ? stockBefore(order) : [];
@@ -483,6 +503,7 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/delete', route(req => {
     const order = current(req); version(req, order);
     if (order.status !== 'void') fail('仅已作废的生产单可以删除，请先作废。', 409);
+    deleteProductionStages(db, order.id);
     db.prepare('DELETE FROM production_receipt_items WHERE document_id IN (SELECT id FROM production_receipts WHERE production_id=?)').run(order.id);
     db.prepare('DELETE FROM production_receipts WHERE production_id=?').run(order.id);
     db.prepare('DELETE FROM production_material_document_items WHERE document_id IN (SELECT id FROM production_material_documents WHERE production_id=?)').run(order.id);
@@ -494,6 +515,7 @@ export function installProduction(app, db) {
     db.prepare('DELETE FROM production_orders WHERE id=?').run(order.id);
     return { ok: true };
   }, true));
+  installProductionStages(app,db,{route,current,version,units,updateBatchTotals,reverseBatch,stockBefore,notifyStockChanges});
 }
 
 export function validateProductionBackup(data) {
@@ -572,10 +594,10 @@ export function validateProductionBackup(data) {
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) || !text(row.variance_reason, 500) || (!completed && row.variance_reason !== '') ||
           !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= (expanded ? 500 : 100) || (!expanded && !validQuantity(row.base_quantity, true)) ||
           row.planned_quantity !== (expanded ? expanded.rows.find(item => item.product_id === row.product_id)?.required : productionItemQuantity(row, order.planned_quantity, order)) ||
-          (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))
+          (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || !order.stage_workflow && row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))
         fail('备份生产材料数量、成本或快照无效。');
     }
-    if (completed && (!rows.some(row => row.actual_quantity > 0) || rows.reduce((sum, row) => sum + row.cost_cents, 0) !== order.total_cost_cents))
+    if (completed && (!order.stage_workflow && !rows.some(row => row.actual_quantity > 0) || rows.reduce((sum, row) => sum + row.cost_cents, 0) !== order.total_cost_cents))
       fail('备份生产材料与成品成本不一致。');
     if (batches.length) {
       const counted = summaryBatches({ ...order, batches }), latest = counted.at(-1);
@@ -613,14 +635,18 @@ function validateBatchBackup(data, orders, itemGroups, scrapGroups) {
         (batch.status === 'void' ? !date(batch.voided_at) || !batch.void_reason.trim() || !batch.voided_by_name.trim() : batch.voided_at !== null || batch.void_reason !== '' || batch.voided_by_name !== '' || batch.voided_with_order !== 0) ||
         (batch.voided_with_order === 1 && (order.status !== 'void' || batch.voided_at !== order.voided_at || batch.void_reason !== order.void_reason || batch.voided_by_name !== order.voided_by_name)))
       fail('备份完工批次字段或状态无效。');
-    validateProductionCompletion({ completed_quantity: batch.completed_quantity, items: rows.map(row => ({ ...row, quantity: row.actual_quantity })) }, materials, true);
-    if (rows.some(row => !money(row.cost_cents) || row.actual_quantity === 0 && row.cost_cents !== 0 || !text(row.variance_reason, 500)) ||
+    if(order.stage_workflow) {
+      if(rows.length!==materials.length||new Set(rows.map(r=>r.product_id)).size!==rows.length||rows.some(r=>!materials.some(m=>m.product_id===r.product_id)||!validStoredQuantity(r.actual_quantity)))fail('备份分层根批次原料投影无效。');
+    } else validateProductionCompletion({ completed_quantity: batch.completed_quantity, items: rows.map(row => ({ ...row, quantity: row.actual_quantity })) }, materials, true);
+    if (rows.some(row => !money(row.cost_cents) || !order.stage_workflow && row.actual_quantity === 0 && row.cost_cents !== 0 || !text(row.variance_reason, 500)) ||
         rows.reduce((sum, row) => sum + row.cost_cents, 0) !== batch.total_cost_cents)
       fail('备份完工批次材料成本或差异原因无效。');
     validateScrapActuals(outputs.map(row => ({ ...row, quantity: row.actual_quantity })), rules, true);
     for (const row of outputs) {
       const rule = rules.find(rule => rule.product_id === row.product_id);
-      if (row.expected_quantity !== scrapExpectedQuantity(rule, batch.completed_quantity, order.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.actual_quantity })), order.quantity_decimals))
+      const stageBatch = order.stage_workflow && (data.production_stage_batches || []).find(b=>b.root_batch_id===batch.id);
+      const scrapInputs = stageBatch ? (data.production_stage_inputs || []).filter(i=>i.batch_id===stageBatch.id&&i.usage_mode==='stock').map(i=>({product_id:i.product_id,quantity:i.quantity})) : rows.map(item => ({ product_id: item.product_id, quantity: item.actual_quantity }));
+      if (row.expected_quantity !== scrapExpectedQuantity(rule, batch.completed_quantity, order.base_quantity, scrapInputs, order.quantity_decimals))
         fail('备份完工批次预计废料与规则不一致。');
     }
     const list = grouped.get(order.id) || [];
