@@ -19,3 +19,31 @@ input[hidden] { display: none !important; }
 .page-heading { flex-wrap: wrap; }
 .heading-actions { min-width: 0; max-width: 100%; flex-wrap: wrap; }
 .quality-limit-field { display: grid; gap: 8px; }
+
+/* Ant 6 rewrites the entire border on hover/active. Business text controls
+   remove it at rest, so keep its width zero in every library state too. */
+.ant-btn.ant-btn:is(.ant-btn-variant-text, .ant-btn-variant-link) {
+  --ant-btn-border-width: 0px;
+}
+/* Inline actions keep their authored spacing and use color for feedback. */
+.ant-btn.ant-btn:is(.text-button, .icon-button, .product-name-link, .image-viewer-close, .product-image-button),
+.product-grid-actions .ant-btn.ant-btn,
+.ant-btn.ant-btn[role="tab"],
+.inline-tabs .ant-btn.ant-btn,
+.ant-btn.ant-btn.btn:is(.ant-btn-variant-text, .ant-btn-variant-link) {
+  --ant-btn-bg-color-hover: transparent;
+  --ant-btn-bg-color-active: transparent;
+}
+.ant-btn.ant-btn[role="tab"] {
+  --ant-btn-text-color-hover: var(--accent);
+  --ant-btn-text-color-active: var(--accent);
+}
+.ant-btn.ant-btn.image-viewer-close {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #fff;
+}
+.ant-btn.ant-btn.image-viewer-close:not(:disabled):not(.ant-btn-disabled):is(:hover, :active) {
+  color: #dbeafe;
+}

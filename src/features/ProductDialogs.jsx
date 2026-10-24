@@ -68,8 +68,8 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
   return (
     <Modal title="物料条码" subtitle="打印或下载物料标签" onClose={onClose} className="product-code-modal" headerActions={
       <div className="code-format-switch" role="group" aria-label="标签类型">
-        <AntButton type="default" htmlType="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>条形码</AntButton>
-        <AntButton type="default" htmlType="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>二维码</AntButton>
+        <AntButton type="text" htmlType="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>条形码</AntButton>
+        <AntButton type="text" htmlType="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>二维码</AntButton>
       </div>
     }>
       <div className="barcode-detail">
@@ -142,7 +142,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
         <ProductArt product={product} size="large" />
         <h3>{product.name}</h3>
       </div>
-      {showQuality&&<div className="product-quality-tabs" role="tablist" aria-label="物料详情视图">{[['details','物料信息'],['quality','品质图表']].map(([id,label])=><AntButton type="default" key={id} htmlType="button" role="tab" id={`product-tab-${id}`} aria-controls={`product-panel-${id}`} aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</AntButton>)}</div>}
+      {showQuality&&<div className="product-quality-tabs" role="tablist" aria-label="物料详情视图">{[['details','物料信息'],['quality','品质图表']].map(([id,label])=><AntButton type="text" key={id} htmlType="button" role="tab" id={`product-tab-${id}`} aria-controls={`product-panel-${id}`} aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</AntButton>)}</div>}
       {showQuality&&tab==='quality'?<div id="product-panel-quality" role="tabpanel" aria-labelledby="product-tab-quality"><ProductQualityCharts key={product.id} product={product} data={data}/></div>:<div id="product-panel-details" role={showQuality?'tabpanel':undefined} aria-labelledby={showQuality?'product-tab-details':undefined}>
       <dl className="product-detail-fields">
         {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}

@@ -124,7 +124,7 @@ function QualityPieChart({result,title,onSources}) {
           </svg>
           <ul className="quality-pie-legend" aria-label={`${name}图例`}>{slices.map(slice=>{
             const content=<><i style={{background:color(slice.x)}} aria-hidden="true"/><span>{String(slice.x)}</span><strong>{chartNumber(slice.value,result.unit)}</strong><span>{percent(slice.share)}</span></>;
-            return <li key={String(slice.x)}>{onSources?<AntButton type="default" htmlType="button" onClick={()=>onSources(slice)} aria-label={`查看来源 ${slice.x} · ${slice.seriesLabel}：${chartNumber(slice.value,result.unit)} · 占比 ${percent(slice.share)}`}>{content}</AntButton>:<div>{content}</div>}</li>;
+            return <li key={String(slice.x)}>{onSources?<AntButton type="text" htmlType="button" onClick={()=>onSources(slice)} aria-label={`查看来源 ${slice.x} · ${slice.seriesLabel}：${chartNumber(slice.value,result.unit)} · 占比 ${percent(slice.share)}`}>{content}</AntButton>:<div>{content}</div>}</li>;
           })}</ul>
         </>}
       </section>;

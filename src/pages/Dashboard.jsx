@@ -400,7 +400,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             <ArrowRight size={16} />
           </AntButton>
           <div className="quick-action-row">
-            <AntButton type="default" htmlType="button" hidden={!can("purchase")} onClick={() => openOrder("in")}>
+            <AntButton type="text" htmlType="button" hidden={!can("purchase")} onClick={() => openOrder("in")}>
               <span className="quick-action-icon green">
                 <ArrowDownToLine size={17} />
               </span>
@@ -408,7 +408,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               <ChevronRight size={13} />
             </AntButton>
             <i />
-            <AntButton type="default" htmlType="button" hidden={!can("sale")} onClick={() => openOrder("out")}>
+            <AntButton type="text" htmlType="button" hidden={!can("sale")} onClick={() => openOrder("out")}>
               <span className="quick-action-icon blue">
                 <ArrowUpFromLine size={17} />
               </span>

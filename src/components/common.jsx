@@ -23,7 +23,7 @@ function Button({
   const { can } = usePermissions();
   if (permission && !can(permission)) return null;
   return (
-    <AntButton type={kind === "primary" ? "primary" : "default"} danger={kind === "danger"} htmlType={htmlType} loading={busy && { icon: <span aria-hidden="true"><Spin size="small" /></span> }} className={`btn btn-${kind} ${className}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
+    <AntButton type={kind === "primary" ? "primary" : (!children && Icon) ? "text" : "default"} danger={kind === "danger"} htmlType={htmlType} loading={busy && { icon: <span aria-hidden="true"><Spin size="small" /></span> }} className={`btn btn-${kind} ${className}`} {...props} disabled={props.disabled || busy} aria-busy={busy || undefined}>
       {Icon && <Icon size={16} strokeWidth={1.8} />}
       {children}
     </AntButton>

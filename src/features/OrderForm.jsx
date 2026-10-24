@@ -224,7 +224,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               <div className="picker-results">
                 {matches.length ? (
                   matches.map((p) => (
-                    <AntButton type="default" key={p.id} htmlType="button" onClick={() => add(p)}>
+                    <AntButton type="text" key={p.id} htmlType="button" onClick={() => add(p)}>
                       <ProductArt product={p} size="small" preview={false} />
                       <span>
                         <strong>{p.name}{p.active === 0 ? "（已停用）" : ""}</strong>
@@ -267,7 +267,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               <tbody>
                 {items.map((i) => {
                   const p = data.products.find((p) => p.id === i.product_id);
-                  if (!p) return <tr key={i.product_id}><td colSpan={4}>正在核对物料 #{i.product_id}；若物料已删除，请移除后重新选择。</td><td><AntButton type="default" htmlType="button" aria-label={`移除物料 #${i.product_id}`} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></AntButton></td></tr>;
+                  if (!p) return <tr key={i.product_id}><td colSpan={4}>正在核对物料 #{i.product_id}；若物料已删除，请移除后重新选择。</td><td><AntButton type="text" htmlType="button" aria-label={`移除物料 #${i.product_id}`} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></AntButton></td></tr>;
                   return (
                     <tr key={i.product_id}>
                       <td>

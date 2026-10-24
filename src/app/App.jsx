@@ -398,7 +398,7 @@ function App({ admin, onLogout }) {
             </span>
             <strong>扫码管理</strong>
             <p>使用手机摄像头识别物料条码。</p>
-            <AntButton type="default" htmlType="button" onClick={() => navigate("scanner")}>
+            <AntButton type="text" htmlType="button" onClick={() => navigate("scanner")}>
               打开扫码工作台 <ArrowRight size={13} />
             </AntButton>
           </div>}
@@ -469,7 +469,7 @@ function App({ admin, onLogout }) {
                   </div>
                   {low.length ? (
                     low.map((p) => (
-                      <AntButton type="default" htmlType="button"
+                      <AntButton type="text" htmlType="button"
                         key={p.id}
                         onClick={() => navigate("inventory", "warning")}
                       >
@@ -744,7 +744,7 @@ function App({ admin, onLogout }) {
             <TriangleAlert size={19} />
           )}
           <span>{toast.message}</span>
-          <AntButton type="default" htmlType="button" aria-label="关闭通知" onClick={() => setToast(null)}>
+          <AntButton type="text" htmlType="button" aria-label="关闭通知" onClick={() => setToast(null)}>
             <X size={14} />
           </AntButton>
         </div>

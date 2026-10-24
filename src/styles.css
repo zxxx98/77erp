@@ -26,6 +26,14 @@
 * {
   box-sizing: border-box;
 }
+html {
+  /* Keep page width stable when dialogs, drawers or previews lock scrolling. */
+  scrollbar-gutter: stable;
+}
+/* Full-screen layers cover the reserved gutter as well as the page content. */
+.modal-backdrop, .image-viewer, .camera-scanner-immersive, .warehouse-switch-loading {
+  width: 100vw;
+}
 body {
   margin: 0;
 }
@@ -503,7 +511,7 @@ table {
   gap: 11px;
   padding: 16px 18px;
   border: 0;
-  border-bottom: 1px solid #f1f3f6;
+  box-shadow: inset 0 -1px #f1f3f6;
   background: white;
   text-align: left;
 }
@@ -1168,7 +1176,8 @@ table {
 }
 .inline-tabs > button {
   border: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
   background: none;
   font-size: 10px;
   color: #a1a9b6;
@@ -1176,7 +1185,7 @@ table {
 }
 .inline-tabs > button.active {
   color: #4c81da;
-  border-color: #4c81da;
+  box-shadow: inset 0 -2px #4c81da;
 }
 .table-scroll {
   width: 100%;
@@ -2792,10 +2801,10 @@ table {
   background: none;
   padding: 13px 0;
   text-align: left;
-  border-bottom: 1px solid #edf2f7;
+  box-shadow: inset 0 -1px #edf2f7;
 }
 .recent-scans > button:last-child {
-  border-bottom: 0;
+  box-shadow: none;
 }
 .recent-scans > button > span:nth-child(2) {
   flex: 1;
@@ -4629,8 +4638,8 @@ table {
 .product-image-thumbnail { border: 0; border-radius: 8px; flex-shrink: 0; }
 .image-viewer { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 24px; background: #000a; color: #fff; }
 .image-viewer-image { width: min(640px, 100%); height: min(480px, 70vh); height: min(480px, 70dvh); object-fit: contain; user-select: none; }
-.image-viewer-close { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #0006; color: #fff; cursor: pointer; }
-.image-viewer-close:hover { background: #0009; }
+.image-viewer-close { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 0; background: transparent; color: #fff; cursor: pointer; }
+.image-viewer-close:hover { color: #dbeafe; }
 .image-viewer-close:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
 
 .warehouse-select { width: 160px; max-width: 160px; min-width: 90px; }
@@ -4789,8 +4798,8 @@ html:not(.mobile-device) .modal-drawer .stock-qr-line > div:last-child { flex-sh
 }
 
 .product-quality-tabs { display: flex; gap: 20px; margin: 20px 0; border-bottom: 1px solid var(--border); }
-.product-quality-tabs button { padding: 10px 0; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; }
-.product-quality-tabs button[aria-selected=true] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.product-quality-tabs button { border-radius: 0; box-shadow: none; padding: 10px 0; background: none; border: 0; color: var(--muted); cursor: pointer; }
+.product-quality-tabs button[aria-selected=true] { color: var(--accent); box-shadow: inset 0 -2px var(--accent); font-weight: 600; }
 
 .product-toolbar-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .batch-select-all { display: inline-flex; align-items: center; gap: 6px; user-select: none; }

@@ -90,8 +90,8 @@ export function QualityTemplateDesigner({designer,name,busy,error,onApply,onClos
         }
       }}>
         <colgroup><col style={{width:46}}/>{sheet.widths.map((width,i)=><col key={i} style={{width}}/>)}</colgroup>
-        <thead><tr><th>行 / 列</th>{sheet.widths.map((_,i)=><th key={i}><AntButton type="default" htmlType="button" disabled={busy} onClick={()=>select(`${cellAddress(1,i+1)}:${cellAddress(sheet.rows,i+1)}`)}>{cellAddress(1,i+1).slice(0,-1)}</AntButton></th>)}</tr></thead>
-        <tbody>{Array.from({length:sheet.rows},(_,i)=><tr key={i} style={{height:sheet.heights[i+1]||32}}><th className="quality-row-number"><AntButton type="default" htmlType="button" disabled={busy} onClick={()=>select(`A${i+1}:${cellAddress(i+1,sheet.cols)}`)}>{i+1}</AntButton></th>{Array.from({length:sheet.cols},(_,j)=>{
+        <thead><tr><th>行 / 列</th>{sheet.widths.map((_,i)=><th key={i}><AntButton type="text" htmlType="button" disabled={busy} onClick={()=>select(`${cellAddress(1,i+1)}:${cellAddress(sheet.rows,i+1)}`)}>{cellAddress(1,i+1).slice(0,-1)}</AntButton></th>)}</tr></thead>
+        <tbody>{Array.from({length:sheet.rows},(_,i)=><tr key={i} style={{height:sheet.heights[i+1]||32}}><th className="quality-row-number"><AntButton type="text" htmlType="button" disabled={busy} onClick={()=>select(`A${i+1}:${cellAddress(i+1,sheet.cols)}`)}>{i+1}</AntButton></th>{Array.from({length:sheet.cols},(_,j)=>{
           const row=i+1,col=j+1,address=cellAddress(row,col),rect=merges.get(address)||{r1:row,c1:col,r2:row,c2:col};
           if(row!==rect.r1||col!==rect.c1)return null;
           const value=sheet.cells[address],selected=containsCell(selection,row,col);

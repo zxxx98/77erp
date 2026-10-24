@@ -551,11 +551,11 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                     </span>
                   </div>
                   <div className="product-grid-actions">
-                    <AntButton type="default" htmlType="button" onClick={() => barcode(p)}>
+                    <AntButton type="text" htmlType="button" onClick={() => barcode(p)}>
                       <ScanLine size={15} />
                       物料条码
                     </AntButton>
-                    <AntButton type="default" htmlType="button" hidden={!can("products")} onClick={() => edit(p)}>
+                    <AntButton type="text" htmlType="button" hidden={!can("products")} onClick={() => edit(p)}>
                       编辑
                       <ChevronRight size={13} />
                     </AntButton>
