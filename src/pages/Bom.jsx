@@ -2,7 +2,7 @@ import { Form as AntForm } from 'antd';
 import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 import { FormField } from './../ui/FormField.jsx';
 
-import { BomStructure } from '../features/BomStructure.jsx';
+import { BomResultViews } from '../features/BomResultViews.jsx';
 import { ChildBomPicker } from '../features/ChildBomPicker.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Calculator, Camera, Copy, Download, Plus, Save, Trash2 } from 'lucide-react';
@@ -129,18 +129,19 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
         </div>
       </div>
       {snapshot.multi_level && <p className="bom-warning">按毛需求展开；中间半成品库存未抵扣。最终领料按各层选定配方计算。</p>}
-      <BomStructure nodes={snapshot.nodes} quantity={snapshot.production_quantity} />
-      <p className="bom-result-summary" role="status">共 {snapshot.rows.length} 种材料，{snapshot.rows.filter(row => row.shortage > 0).length} 种缺料。</p>
       {stale && <p className="bom-warning">配方或物料信息已变化，请重新测算后创建生产单；当前结果与导出仍保留原快照。</p>}
       {onCreateProduction && <Button disabled={stale} onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>按本次数量新建生产单</Button>}
+      <BomResultViews nodes={snapshot.nodes} quantity={snapshot.production_quantity}>{showSources => <>
+      <p className="bom-result-summary" role="status">共 {snapshot.rows.length} 种材料，{snapshot.rows.filter(row => row.shortage > 0).length} 种缺料。</p>
       <div className="bom-result-table"><table><thead><tr><th>材料</th><th>基准净用量</th><th>本次需求（含损耗）</th><th>账面库存</th><th>缺料数量</th><th>备注</th></tr></thead>
         <tbody>{snapshot.rows.map(row => <tr key={row.product_id}>
           <td><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small></td>
-          <td data-label="基准净用量">{row.quantity === null ? <span>查看结构来源：{row.sources.join('、')}</span> : <>{row.quantity_fraction || count(row.quantity)} {row.unit}<small>标准损耗率 {count(row.loss_rate)}%</small></>}</td><td data-label="本次需求（含损耗）">{count(row.required)} {row.unit}</td><td data-label="账面库存">{count(row.stock)} {row.unit}</td>
+          <td data-label="基准净用量">{row.quantity === null ? <button type="button" className="bom-tree-action" onClick={() => showSources(row)}>查看 {row.sources.length} 条来源</button> : <>{row.quantity_fraction || count(row.quantity)} {row.unit}<small>标准损耗率 {count(row.loss_rate)}%</small></>}</td><td data-label="本次需求（含损耗）">{count(row.required)} {row.unit}</td><td data-label="账面库存">{count(row.stock)} {row.unit}</td>
           <td data-label="缺料数量" className={row.shortage > 0 ? 'bom-shortage' : ''}>{count(row.shortage)} {row.unit}</td><td data-label="备注">{row.note || '—'}</td>
         </tr>)}</tbody></table></div>
       <ScrapOutputs rows={snapshot.scraps || []} materials={snapshot.rows} />
       <p className="bom-hint">结果与导出保留本次读取的账面库存，未预留或扣减库存。库存变化后请重新测算。</p>
+      </>}</BomResultViews>
     </section>}
   </>;
 }

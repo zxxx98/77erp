@@ -7,6 +7,10 @@ import { parseCSV } from '../../src/data-files.js';
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 async function fixture(page) {
   const { app, db } = createApp(':memory:');
+  // These end-to-end recipe scenarios also cover historical production orders.
+  // Their future finished batches still require current warehouse approval.
+  db.exec(`CREATE TRIGGER historical_bom_fixture AFTER UPDATE OF material_workflow ON production_orders
+    WHEN NEW.material_workflow=1 BEGIN UPDATE production_orders SET material_workflow=0 WHERE id=NEW.id; END;`);
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const post = async (path, data) => {
@@ -25,6 +29,16 @@ async function fixture(page) {
   const definition = { name: '桌子配方', product_id: products[0].id, base_quantity: 1, base_unit: '张', note: '', enabled: 1,
     items: products.slice(2).map((product, i) => ({ product_id: product.id, quantity: [1, 4, 16][i], unit: product.unit, note: '' })) };
   return { base, db, post, products, definition, close: async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); } };
+}
+
+async function approveReceipts(page, f) {
+  const response = await page.request.get(`${f.base}/api/production-receipts?status=pending`);
+  expect(response.ok()).toBe(true);
+  const { documents } = await response.json();
+  expect(documents.length).toBeGreaterThan(0);
+  for (const receipt of documents) await f.post(`/production-receipts/${receipt.id}/confirm`, { version: receipt.version });
+  await page.getByRole('button', { name: '刷新单据与库存', exact: true }).click();
+  await expect(page.getByRole('region', { name: '生产入库进度' })).toContainText('待入库0');
 }
 
 for (const mobile of [false, true]) {
@@ -241,12 +255,13 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await page.getByLabel('计划产量', { exact: true }).fill('6');
     await expect(page.locator('.production-material').nth(1)).toContainText('计划用量2 米');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
-    await page.getByRole('button', { name: '登记完工', exact: true }).click();
+    await page.getByRole('button', { name: '登记', exact: true }).click();
     await expect(page.getByLabel('包装纸箱实际耗料', { exact: true })).toHaveValue('0.15');
     await expect(page.getByLabel('分摊辅料实际耗料', { exact: true })).toHaveValue('2');
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
-    await expect(page.locator('.bom-success')).toContainText('合格成品已入库');
+    await page.getByRole('button', { name: '本批登记并结束生产', exact: true }).click();
+    await expect(page.locator('.bom-success')).toContainText('待仓库批准入库');
+    await approveReceipts(page, f);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[1].id).stock).toBe(9.85);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[2].id).stock).toBe(8);
     expect(errors).toEqual([]);
@@ -331,9 +346,11 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) {
       await expect(page.locator('.bom-result-summary')).toHaveText('共 1 种材料，0 种缺料。');
       await expect(page.locator('.bom-result-table tbody tr')).toContainText('6 颗');
       await expect(page.locator('.bom-warning')).toContainText('中间半成品库存未抵扣');
-      await page.getByText('结构与各层需求', { exact: true }).click();
-      await page.locator('.bom-structure-list > li > details > summary').click();
-      await expect(page.locator('.bom-structure')).toContainText(`桌面替代配方 #${alternate.id}`);
+      await page.getByRole('tab', { name: '配方结构', exact: true }).click();
+      await page.getByRole('button', { name: '进入分支 桌面材料', exact: true }).click();
+      await page.getByRole('button', { name: '查看详情 螺丝材料', exact: true }).click();
+      await expect(page.getByRole('region', { name: '节点详情' })).toContainText(`桌面替代配方 #${alternate.id}`);
+      await page.getByRole('button', { name: '关闭节点详情', exact: true }).click();
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: '导出结构明细', exact: true }).click();
       const exported = await readFile(await (await download).path(), 'utf8');
@@ -344,16 +361,18 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) {
       await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
       await expect(page.getByRole('heading', { name: '生产单详情', exact: true })).toBeVisible();
       await f.post(`/boms/${alternate.id}`, { ...childBody, name: alternate.name, version: alternate.version, items: [{ ...childBody.items[0], quantity: 9 }] });
-      await page.getByRole('button', { name: '登记完工', exact: true }).click();
+      await page.getByRole('button', { name: '登记', exact: true }).click();
       await expect(page.getByLabel('螺丝材料实际耗料', { exact: true })).toHaveValue('6');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       page.once('dialog', dialog => dialog.accept());
-      await page.getByRole('button', { name: '本批入库并继续生产', exact: true }).click();
+      await page.getByRole('button', { name: '本批登记并继续生产', exact: true }).click();
       await expect(page.locator('.bom-success')).toContainText('继续生产');
-      await page.getByRole('button', { name: '登记完工', exact: true }).click();
+      await approveReceipts(page, f);
+      await page.getByRole('button', { name: '登记', exact: true }).click();
       await expect(page.getByLabel('螺丝材料实际耗料', { exact: true })).toHaveValue('2');
       page.once('dialog', dialog => dialog.accept());
-      await page.getByRole('button', { name: '本批入库并结束生产', exact: true }).click();
+      await page.getByRole('button', { name: '本批登记并结束生产', exact: true }).click();
+      await approveReceipts(page, f);
       await expect(page.locator('.production-summary')).toContainText('4 张');
       const stock = f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[2].id).stock;
       expect(stock).toBe(8);
