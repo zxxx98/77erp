@@ -31,7 +31,7 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
   await page.getByPlaceholder("扫描或输入条码，可留空").fill("TEST-UI-001");
   await page.getByRole("spinbutton", { name: /参考采购价/ }).fill("10");
   await page.getByRole("spinbutton", { name: /参考销售价/ }).fill("20");
-  await page.getByRole("spinbutton", { name: /安全库存/ }).fill("0.123456");
+  await page.getByRole("spinbutton", { name: /安全库存/ }).fill("0.1234");
   await page.getByRole("button", { name: "保存物料" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("link", { name: "扫码工作台", exact: true }).click();
@@ -48,7 +48,7 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
   await expect(page.locator(".scan-result-stock strong")).toContainText("0");
   await page
     .locator(".scan-result-actions")
-    .getByRole("button", { name: "采购入库" })
+    .getByRole("button", { name: "入库" })
     .click();
   await chooseContact(page, "自动化测试供应商");
   await page
@@ -59,7 +59,7 @@ test("product → barcode lookup → inbound → stock guard → outbound → pe
   await expect(page.locator(".scan-result-stock strong")).toContainText("10.25");
   await page
     .locator(".scan-result-actions")
-    .getByRole("button", { name: "销售出库" })
+    .getByRole("button", { name: "出库" })
     .click();
   await page
     .getByRole("spinbutton", { name: "浏览器测试物料 数量" })
@@ -165,8 +165,8 @@ test("camera failure has a useful fallback, mobile pages have no document overfl
   for (const [id, title] of [
     ["overview", "工作台"],
     ["products", "物料管理"],
-    ["purchases", "采购入库"],
-    ["sales", "销售出库"],
+    ["purchases", "入库"],
+    ["sales", "出库"],
     ["inventory", "库存管理"],
     ["scanner", "扫码工作台"],
   ]) {

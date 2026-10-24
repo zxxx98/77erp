@@ -196,7 +196,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const matches = query.trim() ? selection.matches : [];
 
   return <>
-    <Modal title={internal ? (type === 'in' ? '内部入库' : '内部出库') : type === 'in' ? '采购入库' : '销售出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
+    <Modal title={internal ? (type === 'in' ? '内部入库' : '内部出库') : type === 'in' ? '入库' : '出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={confirm} className="mw-order-form">
         <div ref={bodyRef} className="form-body mw-stack mw-order-body">
           <Notice>{error.message || selection.error || contacts.error}</Notice><Notice>{storageError}</Notice>
@@ -232,7 +232,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
         <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料 · 总量 {count(totalQuantity)}</span><h2>{moneyBase(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
       </AntForm>
     </Modal>
-    {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认采购入库？' : '确认销售出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {moneyBase(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
+    {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认入库？' : '确认出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {moneyBase(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
     {closing && <Modal title={pending ? '保存待核对单据？' : '保存本地草稿？'} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? '提交结果尚未确认，请保留草稿，联网后核对原提交。' : '保存后可从“更多 → 本地草稿”继续编辑。'}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>保存草稿并关闭</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>放弃草稿</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>继续编辑</Button></div></Modal>}
   </>;
 }

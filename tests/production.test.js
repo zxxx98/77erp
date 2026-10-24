@@ -20,7 +20,14 @@ async function fixture(t) {
         ...(options.cookie === null ? {} : { Cookie: options.cookie || cookie }) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+    const data = await response.json();
+    // These regressions deliberately retain historical direct-stock production semantics.
+    // Only test fixtures tag persisted rows; API requests cannot opt out of the new workflow.
+    if (path === '/production-orders' && body !== undefined && response.status === 200) {
+      db.prepare('UPDATE production_orders SET material_workflow=0 WHERE id=?').run(data.id);
+      data.material_workflow = 0;
+    }
+    return { status: response.status, data, cookie: response.headers.get('set-cookie')?.split(';')[0] };
   };
   const ok = result => { assert.equal(result.status, 200, JSON.stringify(result.data)); return result.data; };
   cookie = (await request('/auth/setup', { username: 'productionadmin', password: 'Test-admin-123' })).cookie;
@@ -141,7 +148,7 @@ test('loss snapshots drive plans and actual-output variance without double-count
     scraps: [{ product_id: scrap, quantity: 2, disposition: 'stock' }, { product_id: outputScrap, quantity: 1.5, disposition: 'discard' }] }));
   assert.equal(done.items[0].standard_quantity, 30); assert.equal(done.items[0].variance_quantity, 3); assert.equal(done.items[0].variance_rate, 10);
   assert.deepEqual(done.scraps.map(row => row.expected_quantity), [1.98, 1.5], 'completion uses actual input, not a second loss multiplier');
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 33);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 34);
   for (const change of [
     data => { data.bom_items[0].loss_rate = 100; },
     data => { data.production_items.at(-1).loss_rate = 25; },
@@ -479,7 +486,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 33); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 34); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -629,7 +636,7 @@ test('scrap backup validates rule relations and completion state, restores quant
   const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
   const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
-  assert.equal(backup.version, 33);
+  assert.equal(backup.version, 34);
   for (const tamper of [
     data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
     data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
@@ -746,7 +753,7 @@ test('variance reasons survive backup and void, reject malformed drafts, and for
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
     { product_id: f.material, quantity: 16, variance_reason: '调机\n材料偏差' }, { product_id: f.second, quantity: 1.5, variance_reason: '字'.repeat(500) },
   ] })));
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 33);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 34);
   assert.ok(backup.data.production_items.every(item => !('standard_quantity' in item)));
   for (const change of [
     data => { data.production_items[0].variance_reason = '草稿不得提前记完工原因'; },

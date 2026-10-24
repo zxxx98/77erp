@@ -53,7 +53,7 @@ for (const width of [1440, 390]) {
       }
       await page.goto(f.base);
       for (const type of ["in", "out"]) {
-        await page.getByRole("link", { name: type === "in" ? "采购入库" : "销售出库", exact: true }).click();
+        await page.getByRole("link", { name: type === "in" ? "入库" : "出库", exact: true }).click();
         await page.getByRole("button", { name: type === "in" ? "新建入库" : "新建出库", exact: true }).click();
         const label = type === "in" ? "供应商" : "客户 / 往来单位";
         const input = page.getByRole("combobox", { name: label });
@@ -114,7 +114,7 @@ test("contact selection, reusable template, payment bookkeeping and margin repor
     await contacts.click();
     await expect(page.getByRole("option").filter({ hasText: "常用供应商" })).toBeVisible();
     await page.getByRole("button", { name: "取消", exact: true }).click();
-    await page.getByRole("link", { name: "采购入库", exact: true }).click();
+    await page.getByRole("link", { name: "入库", exact: true }).click();
     await page.getByRole("button", { name: "新建入库", exact: true }).click();
     await chooseContact(page, "常用供应商");
     await page.getByRole("textbox", { name: "查找并添加物料" }).fill("商务");
@@ -271,7 +271,7 @@ test("template picker filters by order type, preserves canceled edits and fits a
       data: { name: "销售常用组合", request_id: "picker-out", type: "out", partner: "销售模板客户", note: "", items: [{ product_id: f.id, quantity: 1, price: 10 }] },
     });
     await page.goto(f.base);
-    await page.getByRole("link", { name: "采购入库", exact: true }).click();
+    await page.getByRole("link", { name: "入库", exact: true }).click();
     await page.getByRole("button", { name: "新建入库", exact: true }).click();
     const picker = page.getByRole("button", { name: "选择单据模板", exact: true });
     await expect(picker).toHaveAttribute("aria-expanded", "false");
@@ -319,7 +319,7 @@ test("one template can create multiple independent orders, with explicit update 
       data: { name: "每周采购", request_id: "repeat-template", type: "in", partner: "常用供应商", note: "", items: [{ product_id: f.id, quantity: 2, price: 10 }] },
     })).json();
     await page.goto(f.base);
-    await page.getByRole("link", { name: "采购入库", exact: true }).click();
+    await page.getByRole("link", { name: "入库", exact: true }).click();
     for (const quantity of [3, 4]) {
       await page.getByRole("button", { name: "新建入库", exact: true }).click();
       await page.getByRole("button", { name: "选择单据模板", exact: true }).click();

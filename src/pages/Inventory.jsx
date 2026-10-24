@@ -63,7 +63,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           icon={ArrowDownToLine}
           onClick={() => openOrder("in")}
         >
-          采购入库
+          入库
         </Button>
       </PageHeading>
       <div className="inventory-stats">

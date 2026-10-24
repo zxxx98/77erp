@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createApp } from '../server/app.js';
 import { inspectionToday, nextInspectionDate } from '../shared/inspection.js';
 
-async function fixture(t, dbPath = ':memory:') {
+async function fixture(t, dbPath = ':memory:', historicalProduction = true) {
   const calls = [], replies = [];
   const { app, db } = createApp(dbPath, { aiEncryptionKey: 'ab'.repeat(32), qualityStorage:{async put(){},async head(){},async get(){return Buffer.alloc(0);},async remove(){}}, aiFetch: async (url, options) => {
     calls.push({ url, body: JSON.parse(options.body) });
@@ -20,7 +20,13 @@ async function fixture(t, dbPath = ':memory:') {
   t.after(async () => { server.closeAllConnections(); await new Promise(r => server.close(r)); db.close(); });
   const request = async (cookie, path, body, method = body === undefined ? 'GET' : 'POST', warehouseId=1) => {
     const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { ...(body instanceof FormData?{}:{'Content-Type': 'application/json'}), 'X-Warehouse-ID':String(warehouseId), ...(cookie ? { Cookie: cookie } : {}) }, body: body === undefined ? undefined : body instanceof FormData?body:JSON.stringify(body) });
-    return { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    const data = await res.json();
+    // Existing production regressions exercise historical stock posting explicitly.
+    if (historicalProduction && path === '/production-orders' && body !== undefined && res.status === 200) {
+      db.prepare('UPDATE production_orders SET material_workflow=0 WHERE id=?').run(data.id);
+      data.material_workflow = 0;
+    }
+    return { status: res.status, data, cookie: res.headers.get('set-cookie')?.split(';')[0] };
   };
   const admin = (await request(null, '/auth/setup', { username: 'owner', password: 'Strong-password-123' })).cookie;
   const id = (await request(admin, '/users', { username: 'staff', password: 'Strong-password-123' })).data.id;
@@ -377,7 +383,6 @@ test('a second upload in the same conversation uses the new table and drops the 
 
 test('older completed imports recover their original turns after upload context replacement and restart', async t => {
   const directory = mkdtempSync(join(tmpdir(), '77erp-ai-turns-'));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
   const dbPath = join(directory, 'app.sqlite'), f = await fixture(t, dbPath);
   // This conversation has a text-only turn before either action.
   const start = await f.chat(f.admin, { message: '准备导入物料' }), cid = start.data.conversation_id;
@@ -395,6 +400,8 @@ test('older completed imports recover their original turns after upload context 
   f.db.exec('ALTER TABLE ai_actions DROP COLUMN turn_index');
   const { db: reopened } = createApp(dbPath);
   t.after(() => reopened.close());
+  // Windows keeps SQLite files locked until both handles close; hooks run in registration order.
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
   const recovered = await f.request(f.admin, `/ai/conversations/${cid}`);
   assert.deepEqual(recovered.data.actions.map(action => action.turn_index), [1, 2]);
   assert.ok(recovered.data.actions[0].result);
@@ -911,6 +918,27 @@ test('AI charts expose datetime and false boolean fields and preview percent val
   assert.deepEqual(fields.find(field=>field.ref.fieldId==='rate').samples,['95']);assert.ok(data.recommendations.some(chart=>chart.config.x.fieldId==='date'));
   f.use('preview_quality_chart',{...f.chart,config:{...f.chart.config,groupBy:{fieldId:'company'}}});
   const preview=await f.chat(f.admin);assert.equal(preview.status,200);assert.deepEqual(preview.data.actions[0].preview.rows.map(row=>[row.x,row.series,row.value]),[['2026-10-20','false',95]]);
+});
+
+test('AI reads awaiting warehouse approval and issued material balances without costs or production writes', async t => {
+  const f = await fixture(t, ':memory:', false);
+  const [parent, material] = f.db.prepare('SELECT * FROM products ORDER BY id LIMIT 2').all();
+  const post = async (path, body) => { const response = await f.request(f.admin, path, { request_id: randomUUID(), ...body }); assert.equal(response.status, 200, JSON.stringify(response.data)); return response.data; };
+  const bom = await post('/boms', { product_id: parent.id, name: '领料配方', base_quantity: 1, base_unit: parent.unit, note: '', enabled: 1, items: [{ product_id: material.id, quantity: 1, unit: material.unit, note: '' }] });
+  let order = await post('/production-orders', { bom_id: bom.id, bom_version: bom.version, planned_quantity: 2, note: '' });
+  order = await post(`/production-orders/${order.id}/start`, { version: order.version });
+  await f.permissions(['ai', 'production', 'finance']);
+  f.use('search_production_orders', { status: 'awaiting_materials' }); await f.chat(f.staff);
+  const call = f.calls.at(-1).body;
+  assert.ok(call.tools.find(tool => tool.function.name === 'search_production_orders').function.parameters.properties.status.enum.includes('awaiting_materials'));
+  assert.equal(JSON.parse(call.messages.find(message => message.role === 'tool').content).orders[0].status, 'awaiting_materials');
+  assert.match(call.messages.find(message => message.role === 'system').content, /领料.*扣.*库存/);
+  await post(`/production-material-documents/${order.material_documents[0].id}/confirm`, { version: order.material_documents[0].version });
+  f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
+  const result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(result.items[0].issued_quantity, 2); assert.equal(result.items[0].available_quantity, 2);
+  assert.equal(/cost_cents|inventory_value|price/.test(JSON.stringify(result)), false);
+  assert.ok(!call.tools.some(tool => /(?:confirm|start|complete|request).*production|production.*(?:confirm|start|complete|request)/.test(tool.function.name)));
 });
 
 test('AI distinguishes partial production, reports active batch facts and hides all nested batch costs', async t => {

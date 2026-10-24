@@ -1,0 +1,31 @@
+.material-queue { padding: 24px; margin-bottom: 20px; min-width: 0; }
+.material-queue h2 { font-size: 16px; margin: 0; }
+.material-document-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.material-document-heading > div { min-width: 0; }
+.material-document { padding: 20px 0; border-top: 1px solid #e9ecf1; font-size: 13px; min-width: 0; }
+.material-document p { margin: 8px 0; line-height: 1.65; }
+.material-document strong, .material-document p, .material-document small { overflow-wrap: anywhere; }
+.material-muted { color: #536175; font-size: 13px; line-height: 1.65; }
+.material-success { color: #11785e; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.material-note { white-space: pre-wrap; }
+.material-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+.material-filters { display: flex; gap: 12px; margin: 18px 0; }
+.material-filters > :first-child { flex: 1; min-width: 0; }
+.material-filters > :last-child { min-width: 140px; }
+.material-document-lines { list-style: none; padding: 0; margin: 18px 0 0; }
+.material-document-lines li { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; padding: 12px 0; border-top: 1px solid #e9ecf1; }
+.material-document-lines li > div { flex: 1; min-width: 160px; }
+.material-document-lines small { display: block; color: #536175; margin-top: 4px; }
+.material-document-lines span { font-variant-numeric: tabular-nums; }
+.material-cancel { margin-top: 18px; }
+.material-cancel label { display: flex; flex-direction: column; gap: 8px; }
+.material-balance { display: flex; flex-wrap: wrap; gap: 14px 28px; margin-top: 12px; }
+.material-balance > div { min-width: 100px; }
+.material-balance span { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .material-queue { padding: 16px; }
+  .material-filters { flex-direction: column; }
+  .material-document-lines li { gap: 10px; }
+  .material-document-lines li > div { flex-basis: 100%; }
+  .material-actions > .btn { min-height: 44px; }
+}

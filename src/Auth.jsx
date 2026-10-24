@@ -97,11 +97,11 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
           <div className="auth-workflow" aria-hidden="true">
             <div className="auth-workflow-heading"><Warehouse size={20} /><span>库存工作空间</span><span className="auth-workflow-dot" /></div>
             <div className="auth-workflow-steps">
-              <span><PackageCheck size={25} /><small>采购入库</small></span>
+              <span><PackageCheck size={25} /><small>入库</small></span>
               <ArrowRight size={18} />
               <span className="auth-workflow-stock"><Boxes size={30} /><small>库存管理</small></span>
               <ArrowRight size={18} />
-              <span><PackageCheck size={25} /><small>销售出库</small></span>
+              <span><PackageCheck size={25} /><small>出库</small></span>
             </div>
             <div className="auth-workflow-footer"><ShieldCheck size={15} />账号登录后访问</div>
           </div>

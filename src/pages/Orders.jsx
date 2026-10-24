@@ -11,6 +11,7 @@ import { useQuery, queryPath } from '../queries.js';
 import { QueryStatus, PageHeading, Button, Badge, Empty, Pagination } from '../components/common.jsx';
 import { Download, Plus, PackageCheck, Search, ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Select } from '../Dropdown.jsx';
+import { ProductionMaterialDocuments } from '../features/ProductionMaterialDocuments.jsx';
 
 async function exportOrders(orders, notify) {
   try {
@@ -62,7 +63,7 @@ async function exportOrders(orders, notify) {
   } catch (error) { notify(error.message); }
 }
 
-function Orders({ page, data, openOrder, showDetail, notify }) {
+function Orders({ page, data, openOrder, showDetail, notify, onChanged }) {
   const { can } = usePermissions();
   const type = page === "purchases" ? "in" : page === "sales" ? "out" : null;
   const [query, setQuery] = useState(""),
@@ -85,8 +86,8 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
   const aggregate = list.result?.aggregate;
   useEffect(() => { if (list.result) setPageNum(p => Math.min(p, Math.max(1, Math.ceil(total / 8)))); }, [list.result, total]);
   const titles = {
-    purchases: ["PURCHASES", "采购入库", "采购入库"],
-    sales: ["SALES", "销售出库", "销售出库"],
+    purchases: ["PURCHASES", "入库", "入库"],
+    sales: ["SALES", "出库", "出库"],
     history: ["ACTIVITY", "操作记录", "操作记录"],
   };
   const [eyebrow, title, label] = titles[page];
@@ -118,6 +119,7 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
           </Button>
         )}
       </PageHeading>
+      {type && <ProductionMaterialDocuments key={type} data={data} type={type} onChanged={onChanged} />}
       <div className="order-summary">
         <div>
           <span>
@@ -160,8 +162,8 @@ function Orders({ page, data, openOrder, showDetail, notify }) {
               ? [[type, `全部${label}单`]]
               : [
                   ["all", "全部操作"],
-                  ["in", "采购入库"],
-                  ["out", "销售出库"],
+                  ["in", "入库"],
+                  ["out", "出库"],
                   ["transfer", "仓库调拨"],
                   ["internal", "内部流转"],
                 ]

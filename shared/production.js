@@ -2,7 +2,7 @@ import { calculateBomNodes } from './bom-expansion.js';
 import { validQuantity, quantityUnits, QUANTITY_SCALE, validStoredQuantity } from './quantity.js';
 import { bomRequiredQuantity } from './bom.js';
 
-export const productionStatusLabels = { draft: '待生产', in_progress: '生产中', completed: '已完工', void: '已作废' };
+export const productionStatusLabels = { draft: '待生产', awaiting_materials: '待领料', in_progress: '生产中', completed: '已完工', void: '已作废' };
 export const productionPlannedQuantity = bomRequiredQuantity;
 export function productionItemQuantity(item, quantity, order, standards) {
   if (order.snapshot_format === 2 || order.multi_level) {

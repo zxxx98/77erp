@@ -404,7 +404,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               <span className="quick-action-icon green">
                 <ArrowDownToLine size={17} />
               </span>
-              采购入库
+              入库
               <ChevronRight size={13} />
             </AntButton>
             <i />
@@ -412,7 +412,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               <span className="quick-action-icon blue">
                 <ArrowUpFromLine size={17} />
               </span>
-              销售出库
+              出库
               <ChevronRight size={13} />
             </AntButton>
           </div>
@@ -432,8 +432,8 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           <div className="inline-tabs">
             {[
               ["all", "全部单据"],
-              ["in", "采购入库"],
-              ["out", "销售出库"],
+              ["in", "入库"],
+              ["out", "出库"],
             ].map(([id, name]) => (
               <AntButton type="text" htmlType="button"
                 key={id}

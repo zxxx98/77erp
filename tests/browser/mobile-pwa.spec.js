@@ -65,18 +65,18 @@ test('mobile purchase and sale preserve quantity precision and the confirmation 
   const product = await fixtureProduct(context);
   await ensureContact(context.request, 'PWA采购供应商');
   await page.reload();
-  await page.getByRole('button', { name: '采购入库', exact: true }).click();
+  await page.getByRole('button', { name: '入库', exact: true }).click();
   await chooseContact(page, 'PWA采购供应商');
   await addItem(page, product);
   await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('10.1234');
   await page.getByRole('button', { name: '确认入库', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '确认采购入库？' })).toBeVisible();
-  const confirmation = await page.getByRole('dialog', { name: '确认采购入库？' }).boundingBox();
+  await expect(page.getByRole('dialog', { name: '确认入库？' })).toBeVisible();
+  const confirmation = await page.getByRole('dialog', { name: '确认入库？' }).boundingBox();
   const viewport = page.viewportSize();
   expect(confirmation.width).toBe(viewport.width);
   expect(confirmation.height).toBeLessThan(viewport.height / 2);
   await expect.poll(async () => {
-    const bounds = await page.getByRole('dialog', { name: '确认采购入库？' }).boundingBox();
+    const bounds = await page.getByRole('dialog', { name: '确认入库？' }).boundingBox();
     return Math.abs(bounds.y + bounds.height - viewport.height);
   }).toBeLessThan(2);
   await page.getByRole('button', { name: '继续编辑', exact: true }).click();
@@ -84,7 +84,7 @@ test('mobile purchase and sale preserve quantity precision and the confirmation 
   await page.getByRole('button', { name: '确认入库', exact: true }).click();
   await page.getByRole('button', { name: '确认提交', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: '销售出库', exact: true }).click();
+  await page.getByRole('button', { name: '出库', exact: true }).click();
   await addItem(page, product);
   await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('99');
   await page.getByRole('button', { name: '确认出库', exact: true }).click();
@@ -103,7 +103,7 @@ test('drafts survive reload and offline editing, are isolated by warehouse and c
   const { context, page } = await mobile(browser);
   const product = await fixtureProduct(context, 8);
   await page.reload();
-  await page.getByRole('button', { name: '销售出库', exact: true }).click();
+  await page.getByRole('button', { name: '出库', exact: true }).click();
   await addItem(page, product);
   await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('2.125');
   await expect.poll(async () => (await savedDrafts(page))[0]?.items[0]?.quantity).toBe('2.125');
@@ -142,7 +142,7 @@ test('a lost committed response is recovered across reload using the same reques
   const { context, page } = await mobile(browser);
   const product = await fixtureProduct(context, 10);
   await page.reload();
-  await page.getByRole('button', { name: '销售出库', exact: true }).click();
+  await page.getByRole('button', { name: '出库', exact: true }).click();
   await addItem(page, product);
   await page.getByRole('spinbutton', { name: `${product.name} 数量` }).fill('2');
   let committedRequest;
@@ -249,7 +249,7 @@ test('session replacement isolates drafts by account and hides read-only employe
   const product = await fixtureProduct(context, 2);
   await ensureContact(context.request, '仅管理员可见的草稿');
   await page.reload();
-  await page.getByRole('button', { name: '采购入库', exact: true }).click();
+  await page.getByRole('button', { name: '入库', exact: true }).click();
   await chooseContact(page, '仅管理员可见的草稿');
   // Background immediately, before the debounced autosave, including drafts without items.
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
@@ -257,8 +257,8 @@ test('session replacement isolates drafts by account and hides read-only employe
   // Replacing the session models another account after expiry; explicit logout would delete drafts.
   expect((await context.request.post('/api/auth/login', { data: { username, password: 'Reader-password-123' } })).ok()).toBe(true);
   await page.reload();
-  await expect(page.getByRole('button', { name: '采购入库', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '销售出库', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '入库', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '出库', exact: true })).toHaveCount(0);
   await expect(page.locator('.mw-stat').filter({ hasText: '库存成本' })).toContainText('—');
   await page.locator('.mw-tabs').getByRole('button', { name: '物料', exact: true }).click();
   await expect(page.getByRole('button', { name: '新增物料', exact: true })).toHaveCount(0);
@@ -282,11 +282,11 @@ test('browser back closes nested confirmations and preserves a dirty mobile orde
   const { context, page } = await mobile(browser);
   const product = await fixtureProduct(context, 5);
   await page.reload();
-  await page.getByRole('button', { name: '销售出库', exact: true }).click();
+  await page.getByRole('button', { name: '出库', exact: true }).click();
   await addItem(page, product);
   await page.getByRole('button', { name: '确认出库', exact: true }).click();
   await page.goBack();
-  await expect(page.getByRole('dialog', { name: '确认销售出库？' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '确认出库？' })).toHaveCount(0);
   await expect(page.getByRole('spinbutton', { name: `${product.name} 数量` })).toHaveValue('1');
   await page.goBack();
   await expect(page.getByRole('dialog', { name: '保存本地草稿？' })).toBeVisible();
@@ -308,7 +308,7 @@ test('a session changed in another tab cannot reassign an open draft to the new 
   expect((await context.request.post('/api/users', { data: { username, password: 'Second-password-123', role: 'admin' } })).status()).toBe(201);
   await ensureContact(context.request, '原账号正在编辑');
   await page.reload();
-  await page.getByRole('button', { name: '采购入库', exact: true }).click();
+  await page.getByRole('button', { name: '入库', exact: true }).click();
   await chooseContact(page, '原账号正在编辑');
   await expect.poll(async () => (await savedDrafts(page))[0]?.partner).toBe('原账号正在编辑');
   await context.request.post('/api/auth/login', { data: { username, password: 'Second-password-123' } });
@@ -356,7 +356,7 @@ test('leaving the foreground stops the scanner stream and preserves manual entry
       return stream;
     };
   });
-  await page.getByRole('button', { name: '采购入库', exact: true }).click();
+  await page.getByRole('button', { name: '入库', exact: true }).click();
   await page.getByRole('button', { name: '扫码添加物料', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.scannerTestStream?.getVideoTracks()[0]?.readyState)).toBe('live');
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));

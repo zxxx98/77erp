@@ -33,9 +33,9 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
       const orders = [];
       for (const type of ['out', 'in']) {
         await page.goto('/#overview');
-        if (device) await page.getByRole('button', { name: type === 'in' ? '采购入库' : '销售出库', exact: true }).click();
+        if (device) await page.getByRole('button', { name: type === 'in' ? '入库' : '出库', exact: true }).click();
         else {
-          await page.getByRole('link', { name: type === 'in' ? '采购入库' : '销售出库', exact: true }).click();
+          await page.getByRole('link', { name: type === 'in' ? '入库' : '出库', exact: true }).click();
           await page.getByRole('button', { name: type === 'in' ? '新建入库' : '新建出库', exact: true }).click();
         }
         await chooseContact(page, name, type === 'in' ? '供应商' : '客户 / 往来单位');

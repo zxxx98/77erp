@@ -287,7 +287,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   app.use('/api/quality', express.json({ limit: '2mb' }));
   app.use(['/api/boms', '/api/production-orders'], express.json({ limit: '2mb' }));
   app.use(express.json({ limit: "100kb" }));
-  const { sessionUser } = installAuth(app, db, options);
+  let sessionUser;
+  try { ({ sessionUser } = installAuth(app, db, options)); }
+  catch (error) { db.close(); throw error; }
   installCurrency(app, db);
   installAnnouncements(app, db);
   migrateProductChanges(db);

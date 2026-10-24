@@ -25,7 +25,7 @@ for (const device of ['desktop', 'mobile']) test(`${device} edits whole-unit mat
     expect(product.unit_round_up).toBe(1);
     await ensureContact(context.request, name + '供应商');
     await page.goto('/#overview');
-    await page.getByRole('button', { name: '采购入库', exact: true }).first().click();
+    await page.getByRole('button', { name: '入库', exact: true }).first().click();
     await chooseContact(page, name + '供应商');
     const order = page.getByRole('dialog').first();
     const search = device === 'mobile' ? page.getByRole('searchbox', { name: '搜索要添加的物料或条码' }) : order.getByPlaceholder('或搜索物料名称，点击添加');

@@ -224,14 +224,14 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                   icon={ArrowDownToLine}
                   onClick={() => openOrder("in", product)}
                 >
-                  采购入库
+                  入库
                 </Button>
                 <Button permission="sale"
                   kind="primary"
                   icon={ArrowUpFromLine}
                   onClick={() => openOrder("out", product)}
                 >
-                  销售出库
+                  出库
                 </Button>
               </div>
             </div>

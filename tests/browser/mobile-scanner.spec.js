@@ -221,13 +221,13 @@ test('back and manual entry leave the order intact; camera recognition adds exac
   await ensureContact(context.request, '全屏扫码供应商');
   await page.reload();
   await mockCamera(page);
-  await page.getByRole('button', { name: '采购入库', exact: true }).click();
+  await page.getByRole('button', { name: '入库', exact: true }).click();
   await chooseContact(page, '全屏扫码供应商');
   await page.getByRole('button', { name: '扫码添加物料', exact: true }).click();
   await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
   await page.goBack();
   await expect(page.locator('.camera-scanner-immersive')).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: '采购入库', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '入库', exact: true })).toBeVisible();
   await expect(selectedControl(page.getByRole('combobox', { name: /供应商/ }))).toContainText('全屏扫码供应商');
   expect(await page.evaluate(() => window.cameraStreams[0].getVideoTracks()[0].readyState)).toBe('ended');
   await page.getByRole('button', { name: '扫码添加物料', exact: true }).click();

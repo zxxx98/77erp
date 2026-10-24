@@ -43,7 +43,7 @@ export function installProductHistory(app, db) {
       SELECT 'production_out',i.id,NULL,o.number,'out','production',o.status,
         o.completed_at,'',o.note,o.completed_by_name,i.actual_quantity,-i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
       FROM production_items i JOIN production_orders o ON o.id=i.production_id
-      WHERE i.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND i.actual_quantity>0 AND NOT EXISTS (SELECT 1 FROM production_batches b WHERE b.production_id=o.id) AND ?
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.material_workflow=0 AND o.completed_at IS NOT NULL AND i.actual_quantity>0 AND NOT EXISTS (SELECT 1 FROM production_batches b WHERE b.production_id=o.id) AND ?
       UNION ALL
       SELECT 'production_void_out',o.id,NULL,o.number,'out','production',o.status,
         o.voided_at,'',o.void_reason,o.voided_by_name,o.completed_quantity,-o.completed_quantity,NULL,NULL,NULL,NULL,NULL,NULL,o.unit
@@ -52,7 +52,7 @@ export function installProductHistory(app, db) {
       SELECT 'production_void_in',i.id,NULL,o.number,'in','production',o.status,
         o.voided_at,'',o.void_reason,o.voided_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
       FROM production_items i JOIN production_orders o ON o.id=i.production_id
-      WHERE i.product_id=? AND o.warehouse_id=? AND o.completed_at IS NOT NULL AND o.status='void' AND i.actual_quantity>0 AND NOT EXISTS (SELECT 1 FROM production_batches b WHERE b.production_id=o.id) AND ?
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.material_workflow=0 AND o.completed_at IS NOT NULL AND o.status='void' AND i.actual_quantity>0 AND NOT EXISTS (SELECT 1 FROM production_batches b WHERE b.production_id=o.id) AND ?
       UNION ALL
       SELECT 'production_scrap_in',i.id,NULL,o.number,'in','production',o.status,
         o.completed_at,'',i.note,o.completed_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
@@ -72,7 +72,7 @@ export function installProductHistory(app, db) {
       SELECT 'production_out','batch:' || i.id,NULL,o.number,'out','production',b.status,
         b.created_at,'','第 ' || b.batch_number || ' 批 · ' || b.note,b.created_by_name,i.actual_quantity,-i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
       FROM production_batches b JOIN production_orders o ON o.id=b.production_id JOIN production_batch_items i ON i.batch_id=b.id JOIN production_items r ON r.production_id=o.id AND r.product_id=i.product_id
-      WHERE i.product_id=? AND o.warehouse_id=? AND i.actual_quantity>0 AND ?
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.material_workflow=0 AND i.actual_quantity>0 AND ?
       UNION ALL
       SELECT 'production_void_out','batch:' || b.id,NULL,o.number,'out','production',b.status,
         b.voided_at,'','第 ' || b.batch_number || ' 批 · ' || b.void_reason,b.voided_by_name,b.completed_quantity,-b.completed_quantity,NULL,NULL,NULL,NULL,NULL,NULL,o.unit
@@ -82,7 +82,7 @@ export function installProductHistory(app, db) {
       SELECT 'production_void_in','batch:' || i.id,NULL,o.number,'in','production',b.status,
         b.voided_at,'','第 ' || b.batch_number || ' 批 · ' || b.void_reason,b.voided_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
       FROM production_batches b JOIN production_orders o ON o.id=b.production_id JOIN production_batch_items i ON i.batch_id=b.id JOIN production_items r ON r.production_id=o.id AND r.product_id=i.product_id
-      WHERE i.product_id=? AND o.warehouse_id=? AND b.status='void' AND i.actual_quantity>0 AND ?
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.material_workflow=0 AND b.status='void' AND i.actual_quantity>0 AND ?
       UNION ALL
       SELECT 'production_scrap_in','batch:' || i.id,NULL,o.number,'in','production',b.status,
         b.created_at,'','第 ' || b.batch_number || ' 批 · ' || b.note,b.created_by_name,i.actual_quantity,i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
@@ -93,11 +93,18 @@ export function installProductHistory(app, db) {
         b.voided_at,'','第 ' || b.batch_number || ' 批 · ' || b.void_reason,b.voided_by_name,i.actual_quantity,-i.actual_quantity,NULL,NULL,NULL,NULL,NULL,NULL,r.unit
       FROM production_batches b JOIN production_orders o ON o.id=b.production_id JOIN production_batch_scraps i ON i.batch_id=b.id JOIN production_scraps r ON r.production_id=o.id AND r.product_id=i.product_id
       WHERE i.product_id=? AND o.warehouse_id=? AND b.status='void' AND i.actual_quantity>0 AND i.disposition='stock' AND ?
+      UNION ALL
+      SELECT CASE WHEN d.type='out' THEN 'production_material_out' ELSE 'production_material_in' END,
+        'material:' || i.id,NULL,d.number,d.type,'production',d.status,d.confirmed_at,'',d.production_number || ' · ' || d.note,d.confirmed_by_name,
+        i.quantity,CASE WHEN d.type='out' THEN -i.quantity ELSE i.quantity END,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
+      FROM production_material_document_items i JOIN production_material_documents d ON d.id=i.document_id
+      WHERE i.product_id=? AND d.warehouse_id=? AND d.status='confirmed' AND (? OR d.type='out' AND ? OR d.type='in' AND ?)
     ) ORDER BY created_at DESC,event_id DESC,event DESC LIMIT ? OFFSET ?`)
       .all(product.id, req.warehouse.id, product.id, req.warehouse.id,
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'stocktake')),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'finance')),
-        ...Array.from({ length: 12 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(), limit + 1, offset);
+        ...Array.from({ length: 12 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(),
+        product.id, req.warehouse.id, Number(hasPermission(req.user, 'production')), Number(hasPermission(req.user, 'sale')), Number(hasPermission(req.user, 'purchase')), limit + 1, offset);
     const records = rows.slice(0, limit).map(row => {
       if (row.event === 'price_change') return row;
       const { before_cost, after_cost, before_price, after_price, ...record } = row;

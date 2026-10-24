@@ -3,7 +3,8 @@ import { BOM_NODE_COLUMNS, validateSnapshotNodes, validateExpansionScraps, calcu
 import { randomUUID } from 'node:crypto';
 import { getBom, listBoms, calculateBom } from './bom.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
-import { moveInventory } from './commerce.js';
+import { moveInventory, allocate } from './commerce.js';
+import { migrateProductionMaterials, productionMaterialTables, materialDocuments, materialBalances, installProductionMaterials, assertNoPendingMaterials } from './production-materials.js';
 import { notifyStockChanges } from './notifications.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
@@ -13,7 +14,7 @@ import { validateProductionPlan, validateProductionCompletion, productionItemQua
 import { productionBatchSummary } from '../shared/production-batches.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
-export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables];
+export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
@@ -28,7 +29,7 @@ function snapshot(db, fn) {
 export function productionWithoutCosts(value) {
   if (Array.isArray(value)) return value.map(productionWithoutCosts);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-    .filter(([key]) => !['total_cost_cents', 'cost_cents'].includes(key)).map(([key, child]) => [key, productionWithoutCosts(child)]));
+    .filter(([key]) => !['total_cost_cents', 'cost_cents', 'available_cost_cents'].includes(key)).map(([key, child]) => [key, productionWithoutCosts(child)]));
   return value;
 }
 
@@ -110,13 +111,14 @@ export function migrateProduction(db) {
     UPDATE production_orders SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='production_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
     CREATE TRIGGER IF NOT EXISTS production_version_update AFTER UPDATE OF planned_quantity,note,status,updated_at ON production_orders BEGIN ${advance} END;`);
+  migrateProductionMaterials(db);
 }
 
-export function clearProduction(db) { db.exec('DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { db.exec('DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 // Preserve the legacy SQLite status constraint. A posted, open order is exposed
 // as in_progress; draft without any currently posted output remains draft.
-const publicStatus = order => order.status === 'draft' && order.completed_at ? 'in_progress' : order.status;
+const publicStatus = order => order.status === 'draft' ? order.material_workflow ? order.material_phase : order.completed_at ? 'in_progress' : 'draft' : order.status;
 const summaryBatches = order => order.batches.filter(batch => batch.status === 'active' || order.status === 'void' && batch.voided_with_order === 1);
 
 function readBatches(db, productionId) {
@@ -139,14 +141,15 @@ function updateBatchTotals(db, order, status, owner, at) {
 
 export function listProductionOrders(db, warehouseId, query = {}, costs = false) {
   const { q = '', status = 'all', offset = '0', limit = '30' } = query;
-  if (typeof q !== 'string' || q.length > 100 || !['all', 'draft', 'in_progress', 'completed', 'void'].includes(status) ||
+  if (typeof q !== 'string' || q.length > 100 || !['all', 'draft', 'awaiting_materials', 'in_progress', 'completed', 'void'].includes(status) ||
       typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
       typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100)
     fail('生产单筛选或分页参数无效。');
   return snapshot(db, () => {
     const clauses = ['warehouse_id=?'], params = [warehouseId];
-    if (status === 'in_progress') clauses.push("status='draft' AND completed_at IS NOT NULL");
-    else if (status === 'draft') clauses.push("status='draft' AND completed_at IS NULL");
+    if (status === 'in_progress') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='in_progress') OR (material_workflow=0 AND completed_at IS NOT NULL))");
+    else if (status === 'draft') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='draft') OR (material_workflow=0 AND completed_at IS NULL))");
+    else if (status === 'awaiting_materials') clauses.push("status='draft' AND material_workflow=1 AND material_phase='awaiting_materials'");
     else if (status !== 'all') { clauses.push('status=?'); params.push(status); }
     if (q.trim()) { clauses.push("(number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR bom_name LIKE ? ESCAPE '\\')"); params.push(...Array(4).fill(pattern(q.trim()))); }
     const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) AS n FROM production_orders WHERE ${where}`).get(...params).n;
@@ -179,6 +182,8 @@ export function getProductionOrder(db, warehouseId, id, costs = false) {
       return standardCache.get(quantity);
     };
     order.batches = readBatches(db, id);
+    order.material_documents = materialDocuments(db, id, warehouseId);
+    if (order.material_workflow) order.items = materialBalances(order);
     const counted = summaryBatches(order);
     if (order.batches.length) {
       const totals = productionBatchSummary(order.items, order.scraps, counted);
@@ -210,8 +215,9 @@ function prepareProduction(db, req) {
 }
 
 export function installProduction(app, db) {
-  const route = (fn, write = false) => (req, res) => {
+  const route = (fn, write = false, authorize) => (req, res) => {
     try {
+      if (authorize) authorize(req);
       if (write) db.exec('BEGIN IMMEDIATE');
       const request = write ? operationRequest(db, req) : null;
       const result = request?.previous || fn(req);
@@ -238,6 +244,7 @@ export function installProduction(app, db) {
       if (active && !row.product.active) fail(`${row.name}已停用，请先核对物料。`);
     }
   };
+  installProductionMaterials(app, db, { route, current, version, units });
   app.get('/api/production-orders', route(req => listProductionOrders(db, req.warehouse.id, req.query, true)));
   app.get('/api/production-orders/boms', route(req => listBoms(db, req.warehouse.id, { ...req.query, status: 'enabled' })));
   app.post('/api/production-orders/prepare', route(req => prepareProduction(db, req)));
@@ -252,7 +259,7 @@ export function installProduction(app, db) {
       created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
       .run(number, req.warehouse.id, bom.id, bom.version, bom.name, bom.product_id, bom.product.name, bom.product.barcode,
         bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, bom.loss_method, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
-    db.prepare('UPDATE production_orders SET quantity_decimals=4,snapshot_format=?,unit_round_up=? WHERE id=?').run(plan.multi_level ? 2 : 1, bom.product.unit_round_up, id);
+    db.prepare('UPDATE production_orders SET material_workflow=1,quantity_decimals=4,snapshot_format=?,unit_round_up=? WHERE id=?').run(plan.multi_level ? 2 : 1, bom.product.unit_round_up, id);
     if (plan.multi_level) {
       const insertNode = db.prepare(`INSERT INTO production_bom_nodes(production_id,${BOM_NODE_COLUMNS.join(',')}) VALUES (${Array(BOM_NODE_COLUMNS.length + 1).fill('?').join(',')})`);
       for (const node of plan.nodes) insertNode.run(id, ...BOM_NODE_COLUMNS.map(key => node[key]));
@@ -281,6 +288,7 @@ export function installProduction(app, db) {
   }, true));
   const checkOpen = (req, order) => {
     version(req, order);
+    if (order.material_workflow && order.status !== 'in_progress') fail('请先开始生产并由仓库批准领料后登记。', 409);
     if (!['draft', 'in_progress'].includes(order.status)) fail('仅待生产或生产中的单据可以登记完工。', 409);
   };
   const reason = req => {
@@ -296,11 +304,12 @@ export function installProduction(app, db) {
         moveInventory(db, row.product_id, -row.actual_quantity, 0);
       }
       moveInventory(db, order.product_id, -batch.completed_quantity, batch.total_cost_cents);
-      for (const item of batch.items) if (item.actual_quantity) moveInventory(db, item.product_id, item.actual_quantity, item.cost_cents);
+      if (!order.material_workflow) for (const item of batch.items) if (item.actual_quantity) moveInventory(db, item.product_id, item.actual_quantity, item.cost_cents);
     } catch (error) { fail(`无法回退库存和原成本：${error.message} 请先核对后续业务。`); }
   };
   app.post('/api/production-orders/:id/complete', route(req => {
     const order = current(req); checkOpen(req, order); units(order);
+    if (req.body.finish_order !== false) assertNoPendingMaterials(db, order);
     validateProductionCompletion(req.body, order.items);
     req.body.completed_quantity = materialQuantity(req.body.completed_quantity, order);
     for (const item of req.body.items) item.quantity = materialQuantity(item.quantity, order.items.find(row => row.product_id === item.product_id));
@@ -315,8 +324,9 @@ export function installProduction(app, db) {
     let total = 0;
     for (const item of order.items) {
       const actual = actuals.get(item.product_id), quantity = actual.quantity;
-      if (quantity > item.product.stock) fail(`${item.name}库存不足（当前 ${item.product.stock} ${item.unit}）。请补料或核对实际耗料。`);
-      const cost = quantity ? moveInventory(db, item.product_id, -quantity) : 0;
+      const available = order.material_workflow ? item.available_quantity : item.product.stock;
+      if (quantity > available) fail(`${item.name}${order.material_workflow ? '已领未耗余额' : '库存'}不足（当前 ${available} ${item.unit}）。请补料或核对实际耗料。`);
+      const cost = quantity ? order.material_workflow ? allocate(item.available_cost_cents, quantity, available) : moveInventory(db, item.product_id, -quantity) : 0;
       total += cost;
       if (!Number.isSafeInteger(total)) fail('本次材料成本超出范围，请拆分生产单。');
       db.prepare('INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?)')
@@ -341,6 +351,7 @@ export function installProduction(app, db) {
   }, true));
   app.post('/api/production-orders/:id/finish', route(req => {
     const order = current(req); checkOpen(req, order);
+    assertNoPendingMaterials(db, order);
     if (!order.batch_count) fail('请先登记至少一个有效完工批次。');
     db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?")
       .run(actor(req), new Date().toISOString(), order.id);
@@ -365,9 +376,13 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/void', route(req => {
     const order = current(req); version(req, order);
     if (order.status === 'void') fail('生产单已经作废。', 409);
+    if (order.material_workflow) {
+      assertNoPendingMaterials(db, order);
+      if (order.batch_count || order.items.some(item => item.available_quantity !== 0)) fail('请先作废所有有效批次，并通过仓库退回全部剩余材料，再作废生产单。', 409);
+    }
     const why = reason(req), before = order.completed_at ? stockBefore(order) : [];
     const at = new Date().toISOString(), owner = actor(req);
-    if (order.completed_at) {
+    if (order.completed_at && !order.material_workflow) {
       units(order, false);
       if (order.batches.length) {
         for (const batch of [...order.batches].reverse().filter(batch => batch.status === 'active')) {
@@ -385,6 +400,8 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/delete', route(req => {
     const order = current(req); version(req, order);
     if (order.status !== 'void') fail('仅已作废的生产单可以删除，请先作废。', 409);
+    db.prepare('DELETE FROM production_material_document_items WHERE document_id IN (SELECT id FROM production_material_documents WHERE production_id=?)').run(order.id);
+    db.prepare('DELETE FROM production_material_documents WHERE production_id=?').run(order.id);
     for (const table of ['production_batch_scraps', 'production_batch_items'])
       db.prepare(`DELETE FROM ${table} WHERE batch_id IN (SELECT id FROM production_batches WHERE production_id=?)`).run(order.id);
     for (const table of ['production_batches', 'production_bom_nodes', 'production_scraps', 'production_items'])

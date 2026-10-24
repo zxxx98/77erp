@@ -3,8 +3,8 @@ import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, Scan
 export const navItems = [
   { id: 'overview', name: '工作台', icon: LayoutDashboard, mode: 'warehouse', group: 'main', mobile: '工作台' },
   { id: 'products', name: '物料管理', icon: Box, mode: 'warehouse', group: 'main', mobile: '物料' },
-  { id: 'purchases', name: '采购入库', icon: ArrowDownToLine, mode: 'warehouse', group: 'main' },
-  { id: 'sales', name: '销售出库', icon: ArrowUpFromLine, mode: 'warehouse', group: 'main' },
+  { id: 'purchases', name: '入库', icon: ArrowDownToLine, mode: 'warehouse', group: 'main' },
+  { id: 'sales', name: '出库', icon: ArrowUpFromLine, mode: 'warehouse', group: 'main' },
   { id: 'inventory', name: '库存管理', icon: Warehouse, mode: 'warehouse', group: 'main', mobile: '库存' },
   { id: 'scanner', name: '扫码工作台', icon: ScanLine, mode: 'warehouse', group: 'tools' },
   { id: 'history', name: '操作记录', icon: History, mode: 'warehouse', group: 'tools', mobile: '单据' },

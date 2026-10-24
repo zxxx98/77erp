@@ -444,7 +444,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           {!product && (
             <div className="info-box">
               <Package size={17} />
-              <p>新物料初始库存为 0，创建后通过「采购入库」增加库存。</p>
+              <p>新物料初始库存为 0，创建后通过「入库」增加库存。</p>
             </div>
           )}
           {error && (

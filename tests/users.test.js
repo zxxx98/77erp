@@ -168,7 +168,6 @@ test('regular orders deduplicate retries by user, reject changed payloads, and k
 
 test('legacy administrator migrates with the same password and data, invalidates old sessions, and migration is restart-safe', async t => {
   const dir = mkdtempSync(join(tmpdir(), '77erp-users-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, 'erp.sqlite');
   const original = { db: new DatabaseSync(path) };
   const stock = 7;
@@ -182,6 +181,8 @@ test('legacy administrator migrates with the same password and data, invalidates
   original.db.prepare('INSERT INTO auth_sessions VALUES (?,1,?)').run('legacy-token', Date.now() + 100000);
   original.db.close();
   const f = await fixture(t, path);
+  // Close the fixture's SQLite handle before removing its files on Windows.
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.equal(f.db.prepare('SELECT password_hash FROM users WHERE id=1').get().password_hash, hash);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, stock);
   assert.equal(f.db.prepare("SELECT 1 FROM sqlite_master WHERE name='administrator'").get(), undefined);
@@ -198,7 +199,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 33);
+  assert.equal(backup.version, 34);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -277,6 +278,9 @@ const routeRoles = new Map(Object.entries({
   'post /api/production-orders/:id/complete': 'production', 'post /api/production-orders/:id/void': 'production',
   'post /api/production-orders/:id/delete': 'production',
   'post /api/production-orders/:id/finish': 'production', 'post /api/production-orders/:id/batches/:batchId/void': 'production',
+  'post /api/production-orders/:id/start': 'production', 'post /api/production-orders/:id/material-requests': 'production',
+  'get /api/production-material-documents': 'purchase', 'post /api/production-material-documents/:id/confirm': 'sale',
+  'post /api/production-material-documents/:id/cancel': 'sale',
 }));
 
 test('every API route declares its role, and employee access matches that declaration', async t => {

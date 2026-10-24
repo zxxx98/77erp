@@ -52,7 +52,7 @@ for (const mobile of [false, true]) {
       await page.route('**/assets/Commerce-*.js', async route => { await gate; await route.continue(); });
       await page.goto('/');
       await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible();
-      await page.getByRole('button', { name: mobile ? '采购入库' : '新建入库', exact: true }).first().click();
+      await page.getByRole('button', { name: mobile ? '入库' : '新建入库', exact: true }).first().click();
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole('status').filter({ hasText: '正在加载…' }).first()).toBeVisible();

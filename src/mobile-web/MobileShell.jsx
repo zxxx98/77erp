@@ -23,6 +23,7 @@ import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, Product
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
 import { ProductBatchDialog } from '../pages/Products.jsx';
+import { ProductionMaterialDocuments } from '../features/ProductionMaterialDocuments.jsx';
 
 export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProduction, announcementCount, updateNotice }) {
   const { can } = usePermissions();
@@ -77,7 +78,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
         {ready && <>
           {page === 'overview' && <Dashboard data={data} openOrder={openOrder} onScan={() => navigate('scanner')} showProduct={showProduct} showOrder={showOrder} history={() => navigate('history')} />}
           {['products', 'inventory'].includes(page) && <Products key={`${data.warehouse_id}:${page}`} data={data} inventory={page === 'inventory'} showProduct={showProduct} openModal={openModal} onSaved={onSaved || reload} />}
-          {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} />}
+          {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} onChanged={reload} />}
           {page === 'more' && <More mode={mode} user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'quality' && renderQuality()}
           {page === 'bom' && renderBom()}
@@ -112,7 +113,7 @@ function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history })
     <Notice>{error}</Notice>
     <div className="mw-stats">{stats.map(([label, value, Icon]) => <section className="mw-stat" key={label}><div><span className="mw-muted">{label}</span><Icon size={18} /></div><strong>{value}</strong></section>)}</div>
     <InspectionPanel key={data.warehouse_id} data={data} />
-    <section className="mw-card mw-stack"><h2>快速操作</h2><Button primary icon={ScanLine} onClick={onScan}>扫描物料条码</Button><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>采购入库</Button><Button permission="sale" icon={ArrowUpFromLine} onClick={() => openOrder('out')}>销售出库</Button></div></section>
+    <section className="mw-card mw-stack"><h2>快速操作</h2><Button primary icon={ScanLine} onClick={onScan}>扫描物料条码</Button><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>入库</Button><Button permission="sale" icon={ArrowUpFromLine} onClick={() => openOrder('out')}>出库</Button></div></section>
     <section className="mw-card mw-stack"><div className="mw-between"><h2>库存预警</h2><span className="mw-warning">{summary ? `${summary.products.low_stock + summary.products.out_of_stock} 件物料` : '—'}</span></div>{low.length ? low.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">所有物料库存充足。</p>}</section>
     <section className="mw-card mw-stack"><h2>最近单据</h2>{recent.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{summary && !recent.length && <p className="mw-muted">暂无单据，创建第一张入库单开始记录库存。</p>}<Button onClick={history}>查看全部单据</Button></section>
   </div>;
@@ -259,7 +260,7 @@ function OrderSummary({ order, onOpen }) {
   </AntButton>;
 }
 
-function Orders({ data, initial, openOrder, showOrder }) {
+function Orders({ data, initial, openOrder, showOrder, onChanged }) {
   const { can } = usePermissions();
   const { online } = usePwa();
   const [query, setQuery] = useState('');
@@ -284,10 +285,12 @@ function Orders({ data, initial, openOrder, showOrder }) {
     finally { setExporting(false); }
   };
   return <div className="mw-stack">
-    <h1>操作记录</h1><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>新建入库</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>新建出库</Button></div>
+    <h1>{initial === 'in' ? '入库' : initial === 'out' ? '出库' : '操作记录'}</h1><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>新建入库</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>新建出库</Button></div>
     <SearchField value={query} onChange={setQuery} label="搜索单据号、往来单位或物料" />
-    <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '采购入库'], ['out', '销售出库'], ['transfer', '仓库调拨'], ['internal', '内部流转']] } />
+    <Chips label="单据类型" value={type} onChange={setType} options={ [['all', '全部单据'], ['in', '入库'], ['out', '出库'], ['transfer', '仓库调拨'], ['internal', '内部流转']] } />
     <Chips label="单据时间" value={period} onChange={setPeriod} options={ [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天']] } />
+    {['all', 'out'].includes(type) && <ProductionMaterialDocuments data={data} type="out" onChanged={onChanged} />}
+    {['all', 'in'].includes(type) && <ProductionMaterialDocuments data={data} type="in" onChanged={onChanged} />}
     <p className="mw-muted">共 {result ? result.total : '—'} 张单据 · 已加载 {orders.length} 张</p>
     <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>重新加载</Button>}{loading && <LoadingStatus>正在读取单据…</LoadingStatus>}
     {orders.map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}
@@ -329,7 +332,7 @@ export function DraftList({ data, userId, onOpen, onClose, Modal }) {
   useEffect(() => { load(); }, [userId, data.warehouse_id, data.instance_id]);
   return <Modal title="本地草稿" subtitle={data.settings.warehouse_name} onClose={onClose}><div className="form-body mw-stack"><p className="mw-muted">草稿仅保存在当前浏览器，普通草稿保留 7 天；提交结果待确认的草稿保留到核对完成。</p><Notice>{error}</Notice>
     {!drafts && !error && <p><LoadingStatus>正在读取草稿…</LoadingStatus></p>}{drafts?.length === 0 && <Empty title="暂无草稿">编辑入出库单据时自动保存。</Empty>}
-    {drafts?.map(draft => <section key={draft.id} className="mw-card mw-stack"><h2>{draft.type === 'in' ? '采购入库' : '销售出库'}{draft.pending ? ' · 结果待确认' : ''}</h2><p>{draft.partner || '未填写往来单位'}</p><p className="mw-muted">{draft.items.length} 种物料 · {dateTime(draft.updatedAt)}</p><Button primary disabled={!can(draft.type === 'in' ? 'purchase' : 'sale')} onClick={() => onOpen(draft)}>继续{draft.pending ? '核对' : '编辑'}</Button>{!draft.pending && <Button danger onClick={async () => { if (!window.confirm('删除这份本地草稿？')) return; try { await removeDraft(scope, draft.id); await load(); } catch (e) { setError(e.message); } }}>删除草稿</Button>}</section>)}
+    {drafts?.map(draft => <section key={draft.id} className="mw-card mw-stack"><h2>{draft.type === 'in' ? '入库' : '出库'}{draft.pending ? ' · 结果待确认' : ''}</h2><p>{draft.partner || '未填写往来单位'}</p><p className="mw-muted">{draft.items.length} 种物料 · {dateTime(draft.updatedAt)}</p><Button primary disabled={!can(draft.type === 'in' ? 'purchase' : 'sale')} onClick={() => onOpen(draft)}>继续{draft.pending ? '核对' : '编辑'}</Button>{!draft.pending && <Button danger onClick={async () => { if (!window.confirm('删除这份本地草稿？')) return; try { await removeDraft(scope, draft.id); await load(); } catch (e) { setError(e.message); } }}>删除草稿</Button>}</section>)}
   </div></Modal>;
 }
 
@@ -377,5 +380,5 @@ export function MobileProductDetail({ product, data, Modal, openOrder, openModal
     {can('stocktake') && <Button disabled={busy || !online} onClick={() => openModal({ kind: 'increase', product })}>增加库存（退料）</Button>}
     {can('stocktake') && <Button disabled={busy || !online || product.stock <= 0} onClick={() => openModal({ kind: 'reduce', product })}>减少库存（报损）</Button>}
     {manage('products') && <><Button busy={busy} disabled={!online} onClick={() => lifecycle(false)}>{product.active === 0 ? '启用物料' : '停用物料'}</Button><Button danger disabled={busy || !online} onClick={() => lifecycle(true)}>删除物料</Button></>}
-  </div><div className="modal-footer mw-columns"><Button permission="purchase" disabled={busy} onClick={() => openOrder('in', product)}>采购入库</Button><Button primary permission="sale" disabled={busy || product.stock <= 0} onClick={() => openOrder('out', product)}>销售出库</Button></div></Modal>;
+  </div><div className="modal-footer mw-columns"><Button permission="purchase" disabled={busy} onClick={() => openOrder('in', product)}>入库</Button><Button primary permission="sale" disabled={busy || product.stock <= 0} onClick={() => openOrder('out', product)}>出库</Button></div></Modal>;
 }

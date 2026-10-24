@@ -84,7 +84,7 @@ test('employee sees shared business data and own templates, opens orders with an
     await expect(page.getByText('管理员模板')).toHaveCount(0);
     await expect(page.getByText('暂无模板')).toBeVisible();
     await page.getByRole('button', { name: '关闭弹窗', exact: true }).click();
-    await page.getByRole('link', { name: '采购入库', exact: true }).click();
+    await page.getByRole('link', { name: '入库', exact: true }).click();
     await page.getByRole('button', { name: '新建入库', exact: true }).click();
     await chooseContact(page, '员工供应商');
     await page.getByRole('textbox', { name: '查找并添加物料' }).fill('马克杯');
@@ -168,14 +168,14 @@ test('administrator configures employee modules including AI and changes take ef
     await employeePage.reload();
     await expect(employeePage.getByRole('button', { name: '新增物料', exact: true })).toBeVisible();
     await expect(employeePage.getByRole('button', { name: '管理分类', exact: true })).toBeVisible();
-    await employeePage.getByRole('link', { name: '采购入库', exact: true }).click();
+    await employeePage.getByRole('link', { name: '入库', exact: true }).click();
     await expect(employeePage.getByRole('button', { name: '新建入库', exact: true })).toHaveCount(0);
     await expect(employeePage.getByRole('button', { name: '导出单据', exact: true })).toHaveCount(0);
 
     await row.getByRole('button', { name: '权限配置' }).click();
     dialog = page.getByRole('dialog', { name: 'staff 的权限配置', exact: true });
     await dialog.getByRole('checkbox', { name: /^物料管理/ }).uncheck();
-    for (const name of ['采购入库', '业务资料管理', '库存盘点', '财务管理', '数据导入导出'])
+    for (const name of ['入库', '业务资料管理', '库存盘点', '财务管理', '数据导入导出'])
       await dialog.getByRole('checkbox', { name: new RegExp('^' + name) }).check();
     await dialog.getByRole('button', { name: '保存权限' }).click();
     await expect(dialog).toHaveCount(0);

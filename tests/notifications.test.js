@@ -218,7 +218,7 @@ test('QR orders share notifications and replaying a preview does not duplicate t
 });
 
 test('delivery retries keep event IDs, recover after restart, stop after five attempts and allow manual retry', async t => {
-  const directory = mkdtempSync(join(tmpdir(), '77erp-notify-')); t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const directory = mkdtempSync(join(tmpdir(), '77erp-notify-'));
   const path = join(directory, 'test.sqlite');
   const attempts = [];
   const fail = async (_, event) => { attempts.push(event.id); throw new Error('secret-url-token must not appear'); };
@@ -229,6 +229,7 @@ test('delivery retries keep event IDs, recover after restart, stop after five at
   f.db.exec("UPDATE notification_deliveries SET status='sending',next_at=0");
   await f.close();
   const g = await fixture(t, { webhookSend: fail }, path);
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
   for (let i = 0; i < 4; i++) { g.db.exec('UPDATE notification_deliveries SET next_at=0'); await g.notifications.tick(); }
   assert.equal(g.events()[0].status, 'failed'); assert.equal(g.events()[0].attempts, 5);
   assert.deepEqual([...new Set(attempts)], [eventId]); assert.ok(!g.events()[0].last_error.includes('secret-url-token'));

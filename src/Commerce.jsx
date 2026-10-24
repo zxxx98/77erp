@@ -211,7 +211,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
           {visibleTemplates.map((d) => (
             <article className={`template-card${d.id === activeId ? " is-active" : ""}`} key={d.id}>
               <div className="template-card-top">
-                <span className={`template-type template-type-${d.type}`}>{d.type === "in" ? "采购入库" : "销售出库"}</span>
+                <span className={`template-type template-type-${d.type}`}>{d.type === "in" ? "入库" : "出库"}</span>
                 <span className="template-number">#{d.id}</span>
                 {d.id === activeId && <span className="template-active">本次已套用</span>}
               </div>

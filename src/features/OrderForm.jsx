@@ -140,7 +140,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   const matches = selection.matches.slice(0, 6);
   return (
     <Modal
-      title={internal ? (type === "in" ? "新建内部入库" : "新建内部出库") : type === "in" ? "新建采购入库" : "新建销售出库"}
+      title={internal ? (type === "in" ? "新建内部入库" : "新建内部出库") : type === "in" ? "新建入库" : "新建出库"}
       subtitle={`确认后将${type === "in" ? "增加" : "扣减"}库存，并生成可追溯的${type === "in" ? "入库" : "出库"}单据`}
       onClose={busy || templateAction.busy ? () => {} : onClose}
       wide

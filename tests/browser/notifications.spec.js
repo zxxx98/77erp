@@ -28,7 +28,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} notif
     await section.getByLabel('启用 Webhook 通知').check();
     await chooseOption(section.getByLabel('通知格式'), 'wecom');
     await section.getByLabel('Webhook 地址', { exact: true }).fill('https://hooks.77erp.test/send?key=browser-secret');
-    await section.getByRole('checkbox', { name: /^采购入库/ }).check();
+    await section.getByRole('checkbox', { name: /^入库/ }).check();
     await section.getByRole('checkbox', { name: /^低库存预警/ }).check();
     await section.getByRole('button', { name: '保存通知设置', exact: true }).click();
     await expect(section.getByText('通知设置已保存。')).toBeVisible();
@@ -48,8 +48,8 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} notif
       await expect(section.locator(`[data-delivery-id="${id}"]`)).toContainText('已发送', { timeout: 12000 });
     }
     await open();
-    await expect(section.getByRole('checkbox', { name: /^采购入库/ })).toBeChecked();
-    await expect(section.getByRole('checkbox', { name: /^销售出库/ })).not.toBeChecked();
+    await expect(section.getByRole('checkbox', { name: /^入库/ })).toBeChecked();
+    await expect(section.getByRole('checkbox', { name: /^出库/ })).not.toBeChecked();
     const product = await (await context.request.post('/api/products', { data: { name: '通知验证物料', category: '通知验证', unit: '个', cost: 10, price: 20, threshold: 2 } })).json();
     expect((await context.request.post('/api/orders', { data: { type: 'in', partner: '通知验证供应商', items: [{ product_id: product.id, quantity: 5, price: 10 }] } })).ok()).toBe(true);
     const delivery = (await (await context.request.get('/api/settings/notifications/deliveries')).json()).find(row => row.event === 'purchase_in');
@@ -57,7 +57,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} notif
     await expect(section.locator(`[data-delivery-id="${delivery.id}"]`)).toHaveCount(0);
     await section.getByRole('button', { name: '刷新记录', exact: true }).click();
     await expect(section.locator(`[data-delivery-id="${delivery.id}"]`)).toContainText('已发送', { timeout: 12000 });
-    await section.getByRole('checkbox', { name: /^采购入库/ }).uncheck();
+    await section.getByRole('checkbox', { name: /^入库/ }).uncheck();
     await section.getByRole('button', { name: '保存通知设置', exact: true }).click();
     await expect(section.getByText('通知设置已保存。')).toBeVisible();
     const count = (await (await context.request.get('/api/settings/notifications/deliveries')).json()).length;

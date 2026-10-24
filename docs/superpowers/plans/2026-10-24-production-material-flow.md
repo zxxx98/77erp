@@ -23,17 +23,17 @@ Files: create server/production-materials.js and tests/production-materials.test
 
 Interfaces: implement the exact API and response fields in the design, send parent any required deviations before implementation. The parent owns all src files, shared/permissions.js and browser tests. Avoid ordinary orders table changes; queue is independently queried by UI.
 
-- [ ] Write a real API test creating BOM and order; assert start produces awaiting_materials and unchanged stock; warehouse confirm decreases stock once; complete consumes issued pool without decreasing stock again.
+- [x] Write a real API test creating BOM and order; assert start produces awaiting_materials and unchanged stock; warehouse confirm decreases stock once; complete consumes issued pool without decreasing stock again.
   ```js
   assert.equal(started.status, 'awaiting_materials');
   assert.equal(stockAfterStart, initialStock);
   assert.equal(stockAfterConfirmation, initialStock - issued);
   assert.equal(stockAfterRegistration, stockAfterConfirmation);
   ```
-- [ ] Run `node --test tests/production-materials.test.js` and record expected missing-endpoint/behavior failure.
-- [ ] Implement migrations, material documents, production balance/cost allocation and API guards. Costs are allocated from available quantity/value with existing allocate helper; reversals restore original batch cost to pool.
-- [ ] Add and run negative, permissions, retry, pool-cost, return, cancellation, migration, old workflow and backup tests. Preserve old tests as explicit historical fixtures where necessary; never add a request option to bypass new workflow.
-- [ ] Update AI read schema/prompt and backup validation; run affected Node tests and record exact output in task-1-report.md. Do not commit while parent has parallel edits; parent will stage exact files after review.
+- [x] Run `node --test tests/production-materials.test.js` and record expected missing-endpoint/behavior failure.
+- [x] Implement migrations, material documents, production balance/cost allocation and API guards. Costs are allocated from available quantity/value with existing allocate helper; reversals restore original batch cost to pool.
+- [x] Add and run negative, permissions, retry, pool-cost, return, cancellation, migration, old workflow and backup tests. Preserve old tests as explicit historical fixtures where necessary; never add a request option to bypass new workflow.
+- [x] Update AI read schema/prompt and backup validation; run affected Node tests and record exact output in task-1-report.md. Do not commit while parent has parallel edits; parent will stage exact files after review.
 
 ### Task 2: Warehouse and production UI
 
@@ -41,17 +41,17 @@ Files: src/pages/Production.jsx, src/features/ProductionMaterialDocuments.jsx, s
 
 Interfaces: consume production detail material_workflow/material_documents/item balances and material document APIs from task 1. useBusiness provides request IDs and retry handling; useQuery provides scoped refresh.
 
-- [ ] Add Playwright flow for desktop and mobile with API fixtures and user clicks. Run it to observe absence of Start Production and queue.
-- [ ] Add start, request supplements/returns, refresh status and document displays. Gate registration by actual state; use pool balance instead of warehouse stock to show shortages for new workflow.
-- [ ] Add warehouse material queue with status/search/pagination, inline details, confirmation/cancellation, contextual stock/cost permissions and clear empty/loading/error states.
-- [ ] Rename warehouse navigation and entry labels consistently; reuse existing components/styles with responsive layouts.
-- [ ] Run focused browser tests and `npm run build`; update old browser tests to explicitly exercise historical orders when testing old stock semantics.
+- [x] Add Playwright flow for desktop and mobile with API fixtures and user clicks. Run it to observe absence of Start Production and queue.
+- [x] Add start, request supplements/returns, refresh status and document displays. Gate registration by actual state; use pool balance instead of warehouse stock to show shortages for new workflow.
+- [x] Add warehouse material queue with status/search/pagination, inline details, confirmation/cancellation, contextual stock/cost permissions and clear empty/loading/error states.
+- [x] Rename warehouse navigation and entry labels consistently; reuse existing components/styles with responsive layouts.
+- [x] Run focused browser tests and `npm run build`; update old browser tests to explicitly exercise historical orders when testing old stock semantics.
 
 ### Task 3: Cross-cutting review and delivery
 
 Files: docs/production.md, review fixes and this progress checklist.
 
-- [ ] Run `npm test`, `npm run build`, relevant Playwright desktop/mobile suites. Resolve failures based on evidence.
-- [ ] Request independent code review with the complete diff and API/browser test evidence; address correctness and integration findings.
-- [ ] Review AI synchronization, backup safety, stock/cost invariants and legacy data behavior.
-- [ ] Commit scoped changes on main and push origin/main. Report tests and any actual limitations.
+- [x] Run `npm test`, `npm run build`, relevant Playwright desktop/mobile suites. Resolve failures based on evidence.
+- [x] Request independent code review with the complete diff and API/browser test evidence; address correctness and integration findings.
+- [x] Review AI synchronization, backup safety, stock/cost invariants and legacy data behavior.
+- Delivery: commit scoped changes on main and push origin/main; report the verified commit and push result in the final response.
