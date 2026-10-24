@@ -1,4 +1,5 @@
 import { parseQuantity, materialQuantity } from "../shared/quantity.js";
+import { productionTypeValue } from '../shared/product-production-type.js';
 
 export const importHeaders = [
   "物料名称",
@@ -10,11 +11,12 @@ export const importHeaders = [
   "安全库存",
   "期初库存",
   "单位是否取整",
+  "生产类型",
 ];
 export const importTemplate =
   "\ufeff" +
   importHeaders.join(",") +
-  "\r\n示例电线,TEST-001,电线,米,10.00,15.00,5,20,否\r\n";
+  "\r\n示例电线,TEST-001,电线,米,10.00,15.00,5,20,否,原料\r\n";
 export function parseCSV(input) {
   const rows = [];
   let row = [],
@@ -65,7 +67,7 @@ export function rowsToProducts(table) {
   const header = rows.shift();
   if (
     !header ||
-    ![8, importHeaders.length].includes(header.length) ||
+    ![8, 9, importHeaders.length].includes(header.length) ||
     header.some((c, i) => String(c).trim() !== importHeaders[i])
   )
     throw new Error("表头不匹配，请使用导入模板，保持列顺序。");
@@ -86,12 +88,16 @@ export function rowsToProducts(table) {
   return rows.map((cells, i) => {
     if (cells.length > header.length || !cells[0])
       throw new Error(`第 ${i + 2} 行：物料名称为空或列数错误。`);
-    const [name, barcode, category, unit, cost, price, threshold, stock, roundUp] =
+    const [name, barcode, category, unit, cost, price, threshold, stock, roundUp, productionType] =
       cells;
     const flag = String(roundUp ?? '').trim().toLowerCase();
     if (!['', '是', '否', 'true', 'false', '1', '0', 'yes', 'no'].includes(flag))
       throw new Error(`第 ${i + 2} 行：单位是否取整需填写是/否、true/false 或 1/0。`);
+    let production_type;
+    try { production_type = productionTypeValue(String(productionType ?? '').trim()); }
+    catch (error) { throw new Error(`第 ${i + 2} 行：${error.message}`); }
     return {
+      production_type,
       unit_round_up: ['是', 'true', '1', 'yes'].includes(flag) ? 1 : 0,
       name: String(name).trim(),
       barcode: barcode == null ? "" : String(barcode).trim(),

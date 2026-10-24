@@ -25,13 +25,14 @@ import { parseQuantity, materialQuantity } from '../../shared/quantity.js';
 import { mobileDevice } from '../device.js';
 import { inspectionCycleLabel, inspectionUnits } from '../../shared/inspection.js';
 import { CustomerPartNumbersEditor, CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
+import { productionTypes } from '../../shared/product-production-type.js';
 
 function ProductFormSection({ title, children }) {
   return mobileDevice ? <>{children}</> : <section className="drawer-form-section"><h3>{title}</h3>{children}</section>;
 }
 
 const productSnapshot = (form, targets) => JSON.stringify([
-  ...['name', 'barcode', 'category', 'category_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'is_fixed_asset', 'unit_round_up', 'inspection_date', 'inspection_interval', 'inspection_unit']
+  ...['name', 'barcode', 'category', 'category_id', 'production_type', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'is_fixed_asset', 'unit_round_up', 'inspection_date', 'inspection_interval', 'inspection_unit']
     .map(key => ['category_id', 'cost', 'price', 'threshold', 'inspection_interval'].includes(key) && form[key] !== '' && form[key] != null
       ? Number(form[key]) : ['is_fixed_asset', 'unit_round_up'].includes(key) ? (form[key] ? 1 : 0) : String(form[key] ?? '')),
   [...targets].sort((a, b) => a - b),
@@ -133,6 +134,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
     ["使用状态", product.active === 0 ? "已停用" : "已启用"],
     ["单位是否取整", product.unit_round_up ? "是" : "否"],
     ["固定资产", product.is_fixed_asset ? "是" : "否"],
+    ["生产类型", product.production_type || "未设置"],
     ["下次校验日期", product.inspection_date || '未配置'],
     ["校验周期", inspectionCycleLabel(product)],
     ["上次校验", product.last_inspected_on || '暂无记录'],
@@ -199,6 +201,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       threshold: 20,
       is_fixed_asset: 0,
       unit_round_up: 0,
+      production_type: '',
       inspection_date: '', inspection_interval: 0, inspection_unit: 'month',
     },
   );
@@ -360,6 +363,13 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               </label>
               {mobileDevice && priceFields}
             </div>
+            <label>
+              生产类型
+              <Select aria-label="生产类型" value={form.production_type || ''} onChange={value => change('production_type', value)}>
+                <option value="">未设置</option>
+                {productionTypes.map(type => <option key={type} value={type}>{type}</option>)}
+              </Select>
+            </label>
             <AntCheckbox className="product-fixed-asset" checked={!!form.unit_round_up} onChange={e => change('unit_round_up', e.target.checked ? 1 : 0)}>
               单位是否取整
               <small>勾选后数量向上取整，例如 4.1 个按 5 个计算；BOM 配方单耗仍可填写小数或分数。</small>

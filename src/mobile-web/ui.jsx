@@ -59,6 +59,7 @@ export function ProductRow({ product, onOpen, selectable = false, selected = fal
     <AntButton type="text" htmlType="button" className="mw-product-copy" aria-label={`${product.name}，库存 ${count(product.stock)} ${product.unit}`} onClick={() => selectable ? onToggle(product) : onOpen(product)}>
       <span className="mw-product-title"><strong>{product.name}{product.active === 0 ? '（已停用）' : ''}</strong><ChevronRight size={16} /></span>
       <span className="mw-muted">{product.barcode}</span>
+      {product.production_type && <span className="mw-muted">生产类型：{product.production_type}</span>}
       {product.specification && <span className="mw-muted">{product.specification}</span>}
       <span className="mw-product-state"><span className="mw-muted">{product.category}</span><StockBadge product={product} /></span>
       <span className="mw-product-facts"><span>库存 {count(product.stock)} {product.unit}</span><span>参考销售价 {price(product.price)}</span></span>

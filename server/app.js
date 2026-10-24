@@ -346,7 +346,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     const fixedOnly = req.query.fixed === "1" || req.query.fixed === "true";
     const products = db
       .prepare(
-        `SELECT name,barcode,category,unit,cost,price,stock,threshold,specification,note,active,is_fixed_asset,unit_round_up FROM products WHERE warehouse_id=? AND active!=0${fixedOnly ? " AND is_fixed_asset=1" : ""} ORDER BY category,name,id`,
+        `SELECT name,barcode,category,unit,cost,price,stock,threshold,specification,note,active,is_fixed_asset,unit_round_up,production_type FROM products WHERE warehouse_id=? AND active!=0${fixedOnly ? " AND is_fixed_asset=1" : ""} ORDER BY category,name,id`,
       )
       .all(req.warehouse.id)
       .map((p) => {
@@ -443,7 +443,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       if (!v[1]) v[1] = generateBarcode(req.warehouse.id);
       const result = db
         .prepare(
-          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,unit_round_up,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,unit_round_up,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,production_type,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
       syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids, req.user);
@@ -491,7 +491,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       v[2] = catalog.path;
       if (!v[1]) v[1] = existing.barcode;
       db.prepare(
-        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,unit_round_up=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=? WHERE id=? AND version=?",
+        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,unit_round_up=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=?,production_type=? WHERE id=? AND version=?",
       ).run(...v, ...catalog.values, req.params.id, existing.version);
       recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
       syncProduct(db, existing.id, req.body.sync_warehouse_ids, req.user);

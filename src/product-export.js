@@ -12,6 +12,7 @@ export const productExportHeaders = [
   "固定资产",
   "状态",
   "单位是否取整",
+  "生产类型",
 ];
 
 // Excel sheet names are capped at 31 characters and forbid : \ / ? * [ ]
@@ -44,6 +45,7 @@ export function warehouseSheet(warehouse, products) {
     p.is_fixed_asset ? "是" : "否",
     p.active === 0 ? "停用" : "启用",
     p.unit_round_up ? "是" : "否",
+    String(p.production_type ?? ""),
   ]);
   return {
     data: [productExportHeaders, ...rows],

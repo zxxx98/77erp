@@ -83,8 +83,8 @@ const tools = [
   tool('replace_import_table', '把模型整理好的规范表格写回当前对话，作为后续导入使用的数据，绝不直接写入库存。rows为二维数组，第一行必须是表头，最多1000行×40列，每个单元格最多1000字。用于把上传文档中的正确数据筛选、重排、改名后生成规范表格，之后再调用preview_import映射列。会替换此前的表格，但不影响其他对话。', {
     rows: { type: 'array', items: { type: 'array', items: { type: ['string', 'number', 'null'] } }, minItems: 1 },
   }),
-  tool('preview_import', '把当前对话上传的Excel/CSV新增为物料档案。只映射列，不生成或改写数据。mapping的值为从0开始的列号；缺失可省略的列会明确按默认值展示。name和unit必须映射。category列优先匹配当前仓库已有分类（含“父 / 子”完整路径或同级唯一名称），匹配不到且名称有效时新建为一级分类。default_category_id用于指定所有未映射分类列的行使用的已有分类编号，先用categories工具查询编号。缺少分类且未指定默认分类时使用未分类，缺少数值时使用0；必须提醒用户核对默认值。数量列含义不明确时先询问是否是期初库存。is_fixed_asset为固定资产列，可识别是/否、true/false、1/0等，未映射时默认为否。unit_round_up为单位是否取整列，识别是/否、true/false、1/0，默认为否；启用后实际数量向上取整。不会覆盖已有物料。表格含干扰数据时先用read_import_table读取并用replace_import_table生成规范表格。', {
-    warehouse_id: integer, default_category_id: integer, mapping: object(Object.fromEntries(['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note', 'is_fixed_asset', 'unit_round_up'].map(k => [k, integer]))),
+  tool('preview_import', '把当前对话上传的Excel/CSV新增为物料档案。只映射列，不生成或改写数据。mapping的值为从0开始的列号；缺失可省略的列会明确按默认值展示。name和unit必须映射。category列优先匹配当前仓库已有分类（含“父 / 子”完整路径或同级唯一名称），匹配不到且名称有效时新建为一级分类。default_category_id用于指定所有未映射分类列的行使用的已有分类编号，先用categories工具查询编号。缺少分类且未指定默认分类时使用未分类，缺少数值时使用0；必须提醒用户核对默认值。数量列含义不明确时先询问是否是期初库存。is_fixed_asset为固定资产列，可识别是/否、true/false、1/0等，未映射时默认为否。unit_round_up为单位是否取整列，识别是/否、true/false、1/0，默认为否；启用后实际数量向上取整。production_type为生产类型列，仅允许成品、半成品、原料或空白，未映射时保持未设置，不得根据名称猜测。不会覆盖已有物料。表格含干扰数据时先用read_import_table读取并用replace_import_table生成规范表格。', {
+    warehouse_id: integer, default_category_id: integer, mapping: object(Object.fromEntries(['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note', 'is_fixed_asset', 'unit_round_up', 'production_type'].map(k => [k, integer]))),
   }),
 ];
 
@@ -272,7 +272,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (name === 'search_products') {
       warehouse(args.warehouse_id);
       if (typeof args.query !== 'string' || args.query.length > 100) fail('物料查询条件无效。');
-      const products = db.prepare(`SELECT id,warehouse_id,name,barcode,specification,unit,stock,active,customer_part_numbers FROM products WHERE warehouse_id=? AND (instr(name,?)>0 OR barcode=? OR instr(specification,?)>0 OR EXISTS (SELECT 1 FROM json_each(products.customer_part_numbers) cp WHERE instr(json_extract(cp.value,'$.part_number'),?)>0)) ORDER BY id LIMIT 50`).all(args.warehouse_id, args.query, args.query, args.query, args.query);
+      const products = db.prepare(`SELECT id,warehouse_id,name,barcode,specification,production_type,unit,stock,active,customer_part_numbers FROM products WHERE warehouse_id=? AND (instr(name,?)>0 OR barcode=? OR instr(specification,?)>0 OR EXISTS (SELECT 1 FROM json_each(products.customer_part_numbers) cp WHERE instr(json_extract(cp.value,'$.part_number'),?)>0)) ORDER BY id LIMIT 50`).all(args.warehouse_id, args.query, args.query, args.query, args.query);
       return withCustomerPartNumbers(db, products);
     }
     if (name === 'compare_stock') {
@@ -424,7 +424,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
       const c = conversation(req, cid), table = c.attachment && JSON.parse(c.attachment);
       if (!table) fail('请先上传 Excel 或 CSV 文件。');
       const mapping = args.mapping;
-      const fields = ['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note', 'is_fixed_asset', 'unit_round_up'];
+      const fields = ['name', 'barcode', 'category', 'unit', 'cost', 'price', 'threshold', 'stock', 'specification', 'note', 'is_fixed_asset', 'unit_round_up', 'production_type'];
       if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping) || !Number.isInteger(mapping.name) || !Number.isInteger(mapping.unit) || Object.entries(mapping).some(([k,v]) => !fields.includes(k) || !Number.isInteger(v) || v < 0 || v >= table[0].length)) fail('列映射无效；必须指定物料名称和单位。');
       const target = warehouse(args.warehouse_id);
       const paths = categoryPaths(db.prepare('SELECT * FROM categories WHERE warehouse_id=?').all(target.id));

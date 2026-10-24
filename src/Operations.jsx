@@ -421,6 +421,7 @@ export function ProductImport({ onSaved }) {
                 <th>安全库存</th>
                 <th>期初库存</th>
                 <th>单位是否取整</th>
+                <th>生产类型</th>
               </tr>
             </thead>
             <tbody>
@@ -435,6 +436,7 @@ export function ProductImport({ onSaved }) {
                   <td>{r.threshold}</td>
                   <td>{r.stock}</td>
                   <td>{r.unit_round_up ? '是' : '否'}</td>
+                  <td>{r.production_type || '未设置'}</td>
                 </tr>
               ))}
             </tbody>

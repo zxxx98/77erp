@@ -435,6 +435,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                     )}
                     <th>物料信息</th>
                     <th>分类</th>
+                    <th>生产类型</th>
                     <th className="number-cell">参考采购价 / 参考销售价</th>
                     <th className="number-cell">当前库存</th>
                     <th>库存状态</th>
@@ -469,6 +470,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       <td>
                         <span className="category-tag">{p.category}</span>
                       </td>
+                      <td>{p.production_type || '未设置'}</td>
                       <td className="number-cell">
                         <div className="price-pair">
                           <strong>{currencySymbol()} {price(p.price)}</strong>
@@ -542,6 +544,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                   <h3><ProductName product={p} onView={showProduct} /> {p.active === 0 && <Badge tone="orange">已停用</Badge>}</h3>
                   <p>{p.barcode}</p>
                   <p>{p.category}</p>
+                  <p>生产类型：{p.production_type || '未设置'}</p>
                   {p.specification && <p className="product-spec">{p.specification}</p>}
                   {p.note && <p className="product-note" title={p.note}>{p.note}</p>}
                   <div className="product-grid-stats">

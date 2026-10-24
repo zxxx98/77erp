@@ -1017,6 +1017,29 @@ test('AI queries explicit alternate and multilevel recipes, exposes snapshot sou
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
 });
 
+test('AI production type mapping previews, confirms and rejects invalid import types', async t => {
+  const f = await fixture(t);
+  const mapping = { name: 0, unit: 1, production_type: 2 };
+  const table = [['名称', '单位', '生产类型'], ['AI成品', '个', '成品'], ['AI半成品', '个', '半成品'], ['AI原料', '个', '原料'], ['AI未设置', '个', '']];
+  f.use('preview_import', { warehouse_id: 1, mapping });
+  const result = await f.chat(f.admin, { table });
+  assert.equal(result.status, 200);
+  const action = result.data.actions[0];
+  assert.deepEqual(action.preview.rows.map(row => row.production_type), ['成品', '半成品', '原料', '']);
+  assert.equal(action.preview.mapping.production_type, '生产类型');
+  assert.ok(f.calls.at(-1).body.tools.find(tool => tool.function.name === 'preview_import').function.parameters.properties.mapping.properties.production_type);
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: action.id })).status, 200);
+  for (const [name, , type] of table.slice(1)) assert.equal(f.db.prepare('SELECT production_type FROM products WHERE name=?').get(name).production_type, type);
+  f.use('preview_import', { warehouse_id: 1, mapping });
+  const invalid = await f.chat(f.admin, { table: [table[0], ['AI非法类型', '个', '其他']] });
+  assert.deepEqual(invalid.data.actions, []);
+  assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content, /生产类型/);
+  f.use('preview_import', { warehouse_id: 1, mapping: { name: 0, unit: 1 } });
+  const omitted = await f.chat(f.admin, { table: [['名称', '单位'], ['AI旧表格', '个']] });
+  assert.ok(omitted.data.actions[0].preview.defaults.includes('production_type'));
+  assert.equal(omitted.data.actions[0].preview.rows[0].production_type, '');
+});
+
 test('AI unit rounding import and order previews show the exact quantities that confirmation posts', async t => {
   const f = await fixture(t);
   const table = [['名称', '单位', '单位是否取整', '期初数量'], ['纸箱整件', '个', '是', '4.1']];
