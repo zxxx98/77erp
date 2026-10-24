@@ -178,14 +178,14 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
     load().catch((e) => setError(e.message));
   }, [refreshKey]);
   const visibleTemplates = templates.filter((d) => !type || d.type === type);
-  const header = <>
+  const header = <span className="template-heading-main">
     <span className="template-heading-icon"><FilePenLine size={20} aria-hidden="true" /></span>
     <span className="template-heading-copy">
       <strong>{collapsible ? "选择单据模板" : "单据模板"}</strong>
       <span>{collapsible ? "套用常用物料组合，快速开单" : "保存常用开单内容，可反复套用"}</span>
     </span>
     {!loading && !error && <span className="template-count">{visibleTemplates.length} 份</span>}
-  </>;
+  </span>;
   return (
     <section className={`template-panel${collapsible ? " template-picker" : ""}`}>
       {collapsible ? <AntButton type="text"
