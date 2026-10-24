@@ -16,11 +16,11 @@ export function ChildBomPicker({ item, data, disabled, onChange }) {
         <input type="search" aria-label={`${item.product.name}搜索下级配方`} maxLength={100} placeholder="搜索配方名称" value={q} disabled={disabled}
           onChange={e => { setQ(e.target.value); setOffset(0); }} />
         <QueryStatus query={list} />
-        {list.result?.boms.map(bom => <div className="bom-search-product" key={bom.id}>
+        {!!list.result?.boms.length && <div className="bom-child-results">{list.result.boms.map(bom => <div className="bom-search-product" key={bom.id}>
           <div><strong>{bom.name} #{bom.id}</strong><small>基准产量 {bom.base_quantity} {bom.base_unit} · 修订 {bom.version}{!bom.enabled && ' · 已停用'}</small></div>
           <Button type="button" disabled={disabled || !bom.enabled || !bom.product_active} aria-label={`选择下级配方 ${bom.name} #${bom.id}`}
             onClick={() => { onChange({ child_bom_id: bom.id, child_bom: bom }); setPreview(null); }}>选择</Button>
-        </div>)}
+        </div>)}</div>}
         {list.result && !list.result.boms.length && <p className="bom-warning">没有对应配方，请先为此物料创建下级 BOM，或改为领用本物料。</p>}
         {(offset > 0 || list.result?.has_more) && <div className="bom-actions">
           <Button type="button" disabled={disabled || offset === 0} onClick={() => setOffset(n => n - 10)}>上一页下级配方</Button>

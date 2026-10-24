@@ -111,11 +111,13 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
       <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。标准损耗采用{bomLossMethodLabels[bom.loss_method]}：{bomLossMethodFormulas[bom.loss_method]}，再按生产数量 ÷ 基准产量折算，最终向上保留 6 位小数。</p>
       {action.error && <p className="form-error" role="alert">{action.error}</p>}
     </section>
-    {snapshot && <section className="panel bom-section">
+    {snapshot && <section className="panel bom-section bom-calculation-result">
       <div className="bom-section-heading"><div><h2>备料结果</h2><p className="bom-hint">{snapshot.warehouse.name} · 库存读取于 {new Date(snapshot.captured_at).toLocaleString('zh-CN', { hour12: false })}</p></div>
-        <Button icon={Download} onClick={() => downloadFile(bomCSV(snapshot), `备料表-${snapshot.product.barcode}-${snapshot.captured_at.slice(0, 10)}.csv`, 'text/csv;charset=utf-8')}>导出备料表</Button>
+        <div className="bom-actions">
+          <Button icon={Download} onClick={() => downloadFile(bomCSV(snapshot), `备料表-${snapshot.product.barcode}-${snapshot.captured_at.slice(0, 10)}.csv`, 'text/csv;charset=utf-8')}>导出备料表</Button>
+          <Button icon={Download} onClick={() => downloadFile(bomStructureCSV(snapshot), `BOM结构-${snapshot.bom_id}.csv`, 'text/csv;charset=utf-8')}>导出结构明细</Button>
+        </div>
       </div>
-      <Button icon={Download} onClick={() => downloadFile(bomStructureCSV(snapshot), `BOM结构-${snapshot.bom_id}.csv`, 'text/csv;charset=utf-8')}>导出结构明细</Button>
       {snapshot.multi_level && <p className="bom-warning">按毛需求展开；中间半成品库存未抵扣。最终领料按各层选定配方计算。</p>}
       <BomStructure nodes={snapshot.nodes} quantity={snapshot.production_quantity} />
       <p className="bom-result-summary" role="status">共 {snapshot.rows.length} 种材料，{snapshot.rows.filter(row => row.shortage > 0).length} 种缺料。</p>
