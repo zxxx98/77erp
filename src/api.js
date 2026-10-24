@@ -4,7 +4,7 @@ export function setWarehouseId(id) {
   warehouseId = id;
   localStorage.setItem('77erp-warehouse', String(id));
   const url = new URL(location.href);
-  if (url.searchParams.has('warehouse_id')) {
+  if (url.searchParams.has('warehouse_id') && !(url.hash.startsWith('#production?') && new URLSearchParams(url.hash.split('?')[1]).has('register'))) {
     url.searchParams.delete('warehouse_id');
     history.replaceState(null, '', url.pathname + url.search + url.hash);
   }

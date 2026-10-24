@@ -14,6 +14,8 @@ import { validQuantity, validStoredQuantity, materialQuantity } from '../shared/
 import { validateBomLossRate, validateBomLossMethod } from '../shared/bom.js';
 import { validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionMaterialAnalysis } from '../shared/production.js';
 import { productionBatchSummary } from '../shared/production-batches.js';
+import { productionRegistrationUrl } from '../shared/production-link.js';
+import { renderProductionPdf } from './production-pdf.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
 export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables];
@@ -288,6 +290,21 @@ export function installProduction(app, db) {
   app.get('/api/production-orders/boms', route(req => listBoms(db, req.warehouse.id, { ...req.query, status: 'enabled' })));
   app.post('/api/production-orders/prepare', route(req => prepareProduction(db, req)));
   app.get('/api/production-orders/:id', route(req => getProductionOrder(db, req.warehouse.id, Number(req.params.id), true, req.user)));
+  app.get('/api/production-orders/:id/pdf', async (req, res) => {
+    try {
+      const order = getProductionOrder(db, req.warehouse.id, Number(req.params.id), false, req.user);
+      const origin = req.query.origin;
+      const sourceId = db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
+      const registrationUrl = productionRegistrationUrl({ origin, warehouseId: req.warehouse.id, orderId: order.id, number: order.number, sourceId });
+      const allowedOrigins = new Set([`${req.protocol}://${req.get('host')}`]);
+      for (const header of [req.get('Origin'), req.get('Referer')]) {
+        if (header) { try { allowedOrigins.add(new URL(header).origin); } catch { /* Invalid request metadata cannot authorize another origin. */ } }
+      }
+      if (!allowedOrigins.has(new URL(registrationUrl).origin)) fail('生产登记地址与当前访问地址不一致。');
+      const bytes = await renderProductionPdf({ order, warehouseName: req.warehouse.name, registrationUrl });
+      res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="production-${order.id}.pdf"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }).send(bytes);
+    } catch (error) { res.status(error.status || 400).json({ error: error.message }); }
+  });
   app.post('/api/production-orders', route(req => {
     validateProductionPlan(req.body);
     const group = productionGroup(req.body.production_group_id);

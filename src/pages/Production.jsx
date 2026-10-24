@@ -20,6 +20,8 @@ import { MaterialVariance } from '../features/MaterialVariance.jsx';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import { MaterialDocumentList } from '../features/ProductionMaterialDocuments.jsx';
 import { ProductionReceiptList } from '../features/ProductionReceipts.jsx';
+import { useProductionRegistration } from '../features/ProductionRegistration.jsx';
+import { downloadProductionPdf } from '../production-pdf.js';
 import './bom.css';
 import './production.css';
 import { money as formatMoney, currencySymbol } from '../app/format.js';
@@ -108,7 +110,7 @@ function ProductionBatches({ order, costs, canVoid, canReceive, disabled, onVoid
   </section>;
 }
 
-export function Production({ data, initialBom, onChanged, onNavigate }) {
+export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWarehouse }) {
   const { can, user } = usePermissions();
   const management = can('production');
   const [groups, setGroups] = useState([]), [assignment, setAssignment] = useState('');
@@ -176,12 +178,12 @@ export function Production({ data, initialBom, onChanged, onNavigate }) {
       setRevision(n => n + 1); setMessage('生产单已删除。');
     });
   };
-  const batchDefaults = quantity => {
-    const standards = detail.snapshot_format === 2 ? new Map(calculateBomNodes(detail.nodes, quantity, detail.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
-    const items = detail.items.map(item => ({ product_id: item.product_id,
-      quantity: String(productionItemQuantity(item, quantity, detail, standards)), variance_reason: '' }));
-    const scraps = (detail.scraps || []).map(row => ({ product_id: row.product_id,
-      quantity: String(scrapExpectedQuantity(row, quantity, detail.base_quantity, items.map(item => ({ ...item, quantity: Number(item.quantity) })))), disposition: 'stock' }));
+  const batchDefaults = (quantity, order = detail) => {
+    const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
+    const items = order.items.map(item => ({ product_id: item.product_id,
+      quantity: String(productionItemQuantity(item, quantity, order, standards)), variance_reason: '' }));
+    const scraps = (order.scraps || []).map(row => ({ product_id: row.product_id,
+      quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity, items.map(item => ({ ...item, quantity: Number(item.quantity) })))), disposition: 'stock' }));
     return { items, scraps };
   };
   const beginCompletion = () => action.run(async () => {
@@ -189,6 +191,15 @@ export function Production({ data, initialBom, onChanged, onNavigate }) {
     const quantity = remaining || 1;
     begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity) });
   });
+  const registration = useProductionRegistration({ data, onSwitchWarehouse, navigationState: editor, navigationBusy: action.busy, onError: action.setError, onOrder: order => {
+    setDetail(order); setAssignment(order.production_group_id ?? ''); setEditor(null); setMessage(''); action.setError('');
+    if (order.status === 'in_progress' || !order.material_workflow && order.status === 'draft') {
+      const quantity = Math.max(0, quantityUnits(order.planned_quantity) - quantityUnits(order.completed_quantity ?? 0)) / QUANTITY_SCALE || 1;
+      begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity, order) });
+    } else {
+      setMessage(({ draft: '本单尚未开始生产，请联系生产主管开工，并由仓库确认领料。', awaiting_materials: '本单正在等待仓库确认领料，确认后才能登记。', completed: '本单已结束生产，不能继续登记。', void: '本单已作废，不能登记。' })[order.status] || '当前状态不能登记，请核对单据。');
+    }
+  } });
   const startProduction = () => action.run(async () => {
     if (!window.confirm('确认开始生产？将按本单计划用量生成待批准领料出库单，仓库确认出库后才能登记。')) return;
     await saved(await send(`/production-orders/${detail.id}/start`, { version: detail.version }, { warehouseId: data.warehouse_id }), '领料申请已生成，请前往仓库领料。', true);
@@ -242,7 +253,7 @@ export function Production({ data, initialBom, onChanged, onNavigate }) {
   const heading = (title, description, label = '返回生产单') => <PageHeading title={title} description={description}>
     <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{label}</Button>
   </PageHeading>;
-  const notices = <>{message && <p className="bom-success" role="status">{message}</p>}{action.error && <p className="form-error" role="alert">{action.error}</p>}</>;
+  const notices = <>{registration.scanner}{registration.busy && <p role="status">正在读取生产单…</p>}{message && <p className="bom-success" role="status">{message}</p>}{action.error && !registration.scanner && <p className="form-error" role="alert">{action.error}</p>}</>;
 
   if (editor?.kind === 'material_request') {
     const returning = editor.type === 'in', label = returning ? '退料' : '补料';
@@ -350,6 +361,8 @@ export function Production({ data, initialBom, onChanged, onNavigate }) {
 
   if (detail) return <div className="bom-page production-page">
     {heading('生产单详情', detail.number)}{notices}
+    <div className="bom-actions"><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id))}>导出 PDF</Button></div>
+    <p className="bom-hint">PDF 二维码使用当前访问地址。手机须能访问 {location.origin}，并登录有权限的账号后登记。</p>
     <section className="panel bom-section"><div className="bom-section-heading"><div><h2>{detail.product_name}</h2><small>{detail.barcode}{detail.specification && ` · ${detail.specification}`}</small></div>{statusBadge(detail.status)}</div>
       <section className="production-summary" aria-label="生产入库进度"><div><small>计划产量</small><strong>{count(detail.planned_quantity)} {detail.unit}</strong></div>
         <div><small>累计生产</small><strong>{count(detail.completed_quantity ?? 0)} {detail.unit}</strong></div>
@@ -422,6 +435,7 @@ export function Production({ data, initialBom, onChanged, onNavigate }) {
 
   return <div className="bom-page production-page">
     <PageHeading title="生产单" description={management ? '按配方安排生产，仓库领料后登记实际耗料和合格成品，再由仓库逐批批准入库。' : '查看派给本组的生产单，登记本批合格产量和实际耗料。'}>
+      <Button disabled={action.busy || registration.busy} onClick={registration.openScanner}>扫码登记</Button>
       {management && <Button kind="primary" icon={Plus} disabled={action.busy} onClick={() => begin({ kind: 'new', note: '', planned_quantity: '1', plan: null })}>新建生产单</Button>}
     </PageHeading>{notices}
     <section className="panel bom-section"><div className="bom-list-filters">

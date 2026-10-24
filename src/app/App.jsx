@@ -261,9 +261,9 @@ function StandardApp({ admin, onLogout }) {
     notify(message);
     await reload();
   };
-  const switchWarehouse = async (id) => {
+  const switchWarehouse = async (id, skipGuard = false) => {
     if (switching || modal && modal.kind !== 'warehousePicker' || id === getWarehouseId()) return;
-    if (!window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return;
+    if (!skipGuard && !window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return;
     const generation = ++loadGeneration.current;
     setSwitching(true);
     try {
@@ -279,6 +279,7 @@ function StandardApp({ admin, onLogout }) {
       setCurrencySettings(workspace.settings);
       setData({ ...workspace, products: [], orders: [] });
       setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
+      return true;
     } catch (e) { notify(e.message, 'error'); }
     finally { setSwitching(false); setRefreshing(false); }
   };
@@ -325,7 +326,7 @@ function StandardApp({ admin, onLogout }) {
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">没有品质管理权限，请联系管理员。</div>}
         renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有BOM权限，请联系管理员。</div>}
-        renderProduction={() => canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>}
+        renderProduction={() => canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>
@@ -562,7 +563,7 @@ function StandardApp({ admin, onLogout }) {
               {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
               {page === 'quality' && !can('quality') && <div className="info-box">没有品质管理权限，请联系管理员。</div>}
               {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有BOM权限，请联系管理员。</div>)}
-              {page === 'production' && (canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>)}
+              {page === 'production' && (canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>)}
               {page === "products" && (
                 <Products
                   data={data}
