@@ -337,8 +337,10 @@ function Panel({
   );
 }
 
-function QueryStatus({ query }) {
-  if (query.loading) return <p role="status"><LoadingStatus>正在读取数据…</LoadingStatus></p>;
+function QueryStatus({ query, block = false }) {
+  if (query.loading) return block
+    ? <LoadingStatus block>正在读取数据…</LoadingStatus>
+    : <p><LoadingStatus>正在读取数据…</LoadingStatus></p>;
   if (query.error) return <div role="alert" className="info-box">{query.error}<Button onClick={query.retry}>重新加载</Button></div>;
   return null;
 }

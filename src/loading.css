@@ -10,3 +10,20 @@
   align-items: center;
   gap: 8px;
 }
+
+.loading-status-block {
+  display: flex;
+  justify-content: center;
+  min-height: 192px;
+  padding: 32px 24px;
+  box-sizing: border-box;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .loading-status-block {
+    min-height: 144px;
+    padding: 24px 16px;
+  }
+}

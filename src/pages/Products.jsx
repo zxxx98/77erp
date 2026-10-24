@@ -415,7 +415,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
             </div>
           </div>
         </div>
-        <QueryStatus query={list} />
+        <QueryStatus query={list} block />
         {filtered.length ? (
           view === "list" ? (
             <div className="table-scroll">

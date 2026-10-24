@@ -220,7 +220,7 @@ function Products({ data, inventory, showProduct, openModal, onSaved }) {
         <span className="mw-muted">已选 {selectedList.length} 项</span>
       </div>
     )}
-    {loading && !products.length && <p className="mw-muted"><LoadingStatus>正在读取物料…</LoadingStatus></p>}
+    {loading && !products.length && <LoadingStatus block>正在读取物料…</LoadingStatus>}
     <div className="mw-product-list" aria-busy={loading}>{products.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} selectable={batchSelecting} selected={selectedMap.has(p.id)} onToggle={toggleSelect} />)}</div>
     {!loading && !products.length && !error && <Empty title="未找到物料">尝试调整筛选条件，或新增物料档案。</Empty>}
     {result?.has_more && <Button busy={loading} onClick={loadMore}>加载更多物料</Button>}
