@@ -5,11 +5,13 @@
 .user-table td { vertical-align: middle; }
 .user-table td strong { color: var(--text-strong, #1c2433); font-size: 12px; }
 .user-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.user-table td:first-child > .btn { margin-top: 8px; }
+.user-table .btn { white-space: nowrap; }
 .user-table td:nth-child(3), .user-table td:last-child { width: 1%; }
 .user-table td:nth-child(3) .dropdown { width: 132px; }
-.user-actions { display: grid; grid-template-columns: 56px 88px 88px; align-items: center; gap: 8px; }
-:where(.user-actions > .btn) { margin: 0; white-space: nowrap; }
-.user-actions > .muted { text-align: center; }
+.user-actions { display: grid; grid-template-columns: minmax(64px, max-content) minmax(88px, max-content) max-content; align-items: center; gap: 8px; }
+.user-actions > .btn { margin: 0; }
+.user-actions > .muted { min-width: 88px; text-align: center; white-space: nowrap; }
 /* Adapt to the available settings panel width, including narrow desktop dialogs. */
 @container (max-width: 640px) {
   .user-table thead { display: none; }
@@ -22,7 +24,8 @@
   .user-table td:nth-child(3) { display: flex; align-items: center; gap: 12px; }
   .user-table td:nth-child(3)::before { content: '角色'; flex-shrink: 0; }
   .user-table td:nth-child(3) .dropdown { width: 160px; }
-  .user-actions { grid-template-columns: 56px repeat(2, minmax(0, 1fr)); }
+  .user-actions { display: flex; flex-wrap: wrap; }
+  .user-actions > .btn { flex: 0 0 auto; min-width: 64px; }
 }
 
 .permission-dialog { width: min(620px, 100%); max-height: 90dvh; overflow-y: auto; border-radius: 12px; padding: 24px; background: white; box-shadow: 0 20px 60px rgba(15, 23, 42, .2); }
