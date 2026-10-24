@@ -39,6 +39,9 @@
 
 .user-login { display: block; margin-top: 6px; color: var(--muted); overflow-wrap: anywhere; }
 .position-manager, .position-list, .effective-permissions { min-width: 0; }
+.position-overview { display: flex; flex-direction: column; gap: 20px; }
+.position-overview > .btn { align-self: flex-start; }
+.position-overview > .position-list, .position-overview > p { margin: 0; }
 .position-table { width: 100%; border-collapse: collapse; }
 .position-table td { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
 .position-table th:nth-child(3), .position-table td:nth-child(3) { white-space: nowrap; }

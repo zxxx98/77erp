@@ -50,7 +50,7 @@ export function PositionManager({ Modal, onChanged }) {
       setEditor(null);
     }, '岗位已保存，关联员工权限立即生效');
   };
-  return <section aria-label="岗位配置" className="position-manager">
+  return <section aria-label="岗位配置" className="position-manager position-overview">
     <div className="settings-section-heading"><h3>岗位配置</h3><p>每名员工选择一个岗位。调整岗位权限会同时影响该岗位的全部员工，包含已停用账号。</p></div>
     <Button type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => open(null)}>新增岗位</Button>
     {busy && <p><LoadingStatus>正在更新岗位…</LoadingStatus></p>}
