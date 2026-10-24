@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -22,11 +23,10 @@ async function fixture(t) {
   };
   const admin = (await request(null, '/auth/setup', 'POST', { username: 'owner', password: 'Test-password-123' })).cookie;
   await request(admin, '/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
-  const staffId = (await request(admin, '/users', 'POST', { username: 'staff', password: 'Test-password-123' })).data.id;
+  const staffId = (await request(admin, '/users', 'POST', { position_id: readonlyPositionId(db), username: 'staff', password: 'Test-password-123' })).data.id;
   const staff = (await request(null, '/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' })).cookie;
   const grant = async (permissions) => {
-    const user = (await request(admin, '/users')).data.find((item) => item.id === staffId);
-    const result = await request(admin, `/users/${staffId}/permissions`, 'PUT', { permissions, version: user.permissions_version });
+    const result = await grantPosition(db, (path, body, method) => request(admin, path, method, body), staffId, permissions);
     assert.equal(result.status, 200);
   };
   const command = (cookie, path, body, warehouse = 1) => request(cookie, path, 'POST', { request_id: randomUUID(), ...body }, warehouse);
@@ -84,8 +84,11 @@ test('update checks are read-only, warehouse-scoped and ignore sessions and roll
 test('update checks include team announcements and only the current user permissions and read receipts', async (t) => {
   const f = await fixture(t);
   const revision = async cookie => (await f.request(cookie, '/updates')).data.revision;
+  const position = await f.request(f.admin, '/positions', 'POST', { name: 'Warehouse', description: '', permissions: ['purchase'] });
+  assert.equal(position.status, 201);
+  const staff = (await f.request(f.admin, '/users')).data.find(user => user.username === 'staff');
   const adminBefore = await revision(f.admin), staffBefore = await revision(f.staff);
-  await f.grant(['purchase']);
+  assert.equal((await f.request(f.admin, `/users/${staff.id}/position`, 'PUT', { position_id: position.data.id, version: staff.permissions_version })).status, 200);
   assert.equal(await revision(f.admin), adminBefore);
   assert.notEqual(await revision(f.staff), staffBefore);
   const staffGranted = await revision(f.staff);

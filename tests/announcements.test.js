@@ -1,3 +1,4 @@
+import { readonlyPositionId } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../server/app.js';
@@ -16,9 +17,9 @@ async function fixture(t) {
   };
   const credentials = { username: 'owner', password: 'Strong-password-123' };
   const admin = (await request('/auth/setup', { method: 'POST', body: credentials })).cookie;
-  const employee = (await request('/users', { method: 'POST', cookie: admin, body: { username: 'reader', password: credentials.password, permissions: [] } })).data;
+  const employee = (await request('/users', { method: 'POST', cookie: admin, body: { position_id: readonlyPositionId(db), username: 'reader', password: credentials.password } })).data;
   assert.ok(employee.id);
-  const reader = (await request('/auth/login', { method: 'POST', body: { username: 'reader', password: credentials.password } })).cookie;
+  const reader = (await request('/auth/login', { method: 'POST', body: { position_id: readonlyPositionId(db), username: 'reader', password: credentials.password } })).cookie;
   // Isolate team-announcement counts from the built-in release notice.
   const initial = await request('/announcements', { cookie: admin });
   for (const item of initial.data.announcements) {

@@ -1,3 +1,4 @@
+import { browserPosition } from './position-helpers.js';
 import { test, expect } from '@playwright/test';
 
 test('delist, filter, explicitly choose for clearance, relist, and delete an unused product', async ({ page }) => {
@@ -155,7 +156,7 @@ test('desktop and mobile batch deactivate and delete with cross-page selection, 
 
   // Create read-only employee to verify checkboxes and batch controls are hidden without manage('products')
   expect((await page.request.post('/api/users', {
-    data: { username: 'viewer_emp', password: 'Test-staff-123', role: 'employee' },
+    data: { position_id: await browserPosition(page.request), username: 'viewer_emp', password: 'Test-staff-123', role: 'employee' },
   })).status()).toBe(201);
   await context.close();
 

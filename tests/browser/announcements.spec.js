@@ -1,3 +1,4 @@
+import { browserPosition } from './position-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
@@ -20,7 +21,7 @@ test('built-in release notice is readable on desktop, Android and iPhone with sh
   const owner = await session(browser);
   const credentials = { username: `release-${Date.now()}`, password: 'Test-reader-123' };
   try {
-    expect((await owner.context.request.post('/api/users', { data: { ...credentials, permissions: [] } })).status()).toBe(201);
+    expect((await owner.context.request.post('/api/users', { data: { ...credentials, position_id: await browserPosition(owner.context.request) } })).status()).toBe(201);
     for (const device of [null, 'Pixel 7', 'iPhone 13']) {
       const { context, page } = await session(browser, device, credentials);
       try {
@@ -122,7 +123,7 @@ test('employee reading on mobile is reflected on desktop, with no management con
   const owner = await session(browser);
   const username = `reader-${Date.now()}`;
   const credentials = { username, password: 'Test-reader-123' };
-  expect((await owner.context.request.post('/api/users', { data: { ...credentials, permissions: [] } })).status()).toBe(201);
+  expect((await owner.context.request.post('/api/users', { data: { ...credentials, position_id: await browserPosition(owner.context.request) } })).status()).toBe(201);
   const published = await owner.context.request.post('/api/announcements', { data: { title: `跨设备公告-${username}`, content: '请查阅今日工作安排。', pinned: true } });
   const item = await published.json();
   const desktop = await session(browser, null, credentials);

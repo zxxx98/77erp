@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -68,14 +69,14 @@ test('price audit captures actual before/after values and actor atomically, incl
 
 test('price history is restricted to finance permission and records the authenticated employee', async t => {
   const f = await fixture(t);
-  const staff = (await f.request('/users', { username: 'editor', password: 'Test-staff-123' })).data.id;
-  assert.equal((await f.request(`/users/${staff}/permissions`, { permissions: ['products'], version: 1 }, 'PUT')).status, 200);
+  const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'editor', password: 'Test-staff-123' })).data.id;
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['products'])).status, 200);
   const auth = (await f.request('/auth/login', { username: 'editor', password: 'Test-staff-123' }, 'POST', 1, null)).cookie;
   const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
   assert.equal((await f.request(`/products/${f.product}`, { ...product, price: 0, created_by_name: 'forged' }, 'PUT', 1, auth)).status, 200);
   const path = `/products/${f.product}/history`;
   assert.deepEqual((await f.request(path, undefined, 'GET', 1, auth)).data.records, []);
-  assert.equal((await f.request(`/users/${staff}/permissions`, { permissions: ['products', 'finance'], version: 2 }, 'PUT')).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['products', 'finance'])).status, 200);
   const record = (await f.request(path, undefined, 'GET', 1, auth)).data.records[0];
   assert.equal(record.operator, 'editor');
   assert.equal(record.before_price, 20);
@@ -160,13 +161,13 @@ test('history requires login, keeps stocktake permissions and omits financial fi
   const f = await fixture(t);
   await f.order('in', 1);
   await f.command('/stocktakes', { reason: '盘点权限', items: [{ product_id: f.product, expected_stock: 1, counted: 1 }] });
-  const staff = (await f.request('/users', { username: 'reader', password: 'Test-staff-123' })).data.id;
+  const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'reader', password: 'Test-staff-123' })).data.id;
   const cookie = (await f.request('/auth/login', { username: 'reader', password: 'Test-staff-123' }, 'POST', 1, null)).cookie;
   const path = `/products/${f.product}/history`;
   assert.equal((await f.request(path, undefined, 'GET', 1, null)).status, 401);
   const history = (await f.request(path, undefined, 'GET', 1, cookie)).data.records;
   assert.equal(history.length, 1);
   for (const key of ['price', 'cost_cents', 'total', 'amount_cents', 'inventory_value_cents']) assert.equal(Object.hasOwn(history[0], key), false);
-  assert.equal((await f.request(`/users/${staff}/permissions`, { permissions: ['stocktake'], version: 1 }, 'PUT')).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['stocktake'])).status, 200);
   assert.equal((await f.request(path, undefined, 'GET', 1, cookie)).data.records.length, 2);
 });

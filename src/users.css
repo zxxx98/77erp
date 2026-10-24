@@ -38,3 +38,39 @@
 @media (max-width: 640px) { .permission-options { grid-template-columns: 1fr; } .permission-dialog { padding: 18px; } }
 
 .user-login { display: block; margin-top: 6px; color: var(--muted); overflow-wrap: anywhere; }
+.position-manager, .position-list, .effective-permissions { min-width: 0; }
+.position-table { width: 100%; border-collapse: collapse; }
+.position-table td { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+.position-table th:nth-child(3), .position-table td:nth-child(3) { white-space: nowrap; }
+.position-table td:first-child { width: 22%; }
+.position-table td:last-child { width: 1%; }
+.position-actions, .permission-dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.position-actions { flex-wrap: nowrap; }
+.position-actions > .btn { flex: 0 0 auto; min-width: 64px; }
+.position-actions .btn, .position-manager > .btn, .permission-dialog-actions .btn { white-space: nowrap; }
+.position-description, .position-delete-hint, .position-legacy { display: block; margin-top: 6px; line-height: 1.6; }
+.position-description, .position-delete-hint { color: var(--muted); }
+.position-legacy { color: var(--text-strong); }
+.position-legacy-notice { margin: 16px 0; }
+.position-legacy-notice p { line-height: 1.7; }
+.effective-permissions ul { display: grid; gap: 12px; margin: 16px 0; padding-left: 20px; }
+.effective-permissions li { overflow-wrap: anywhere; }
+.effective-permissions small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.6; }
+.user-table td:nth-child(3) .dropdown { display: block; width: 160px; margin: 6px 0; }
+@container (max-width: 640px) {
+  .position-table thead { display: none; }
+  .position-table tbody { display: block; }
+  .position-table .position-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 16px 12px; border-bottom: 1px solid var(--border); }
+  .position-table .position-row:last-child { border-bottom: 0; }
+  .position-table td { display: block; min-width: 0; border: 0; padding: 0; width: auto; }
+  .position-table td:nth-child(2), .position-table td:last-child { grid-column: 1 / -1; }
+  .position-table td:nth-child(3) { grid-column: 2; grid-row: 1; }
+  .position-table td:first-child, .position-table td:last-child { width: auto; }
+  .user-table td:nth-child(3) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .user-table td:nth-child(3)::before { content: '角色与岗位'; color: var(--muted); }
+  .user-table td:nth-child(3) .dropdown { width: 100%; margin: 0; max-width: 260px; }
+}
+@media (max-width: 640px) {
+  .permission-dialog-actions { justify-content: stretch; }
+  .permission-dialog-actions > .btn { flex: 1 1 auto; }
+}

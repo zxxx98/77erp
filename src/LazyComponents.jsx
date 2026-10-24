@@ -52,3 +52,5 @@ export const UserManager = deferred(() => import('./Users.jsx'), 'UserManager');
 export const ImagebedSettings = deferred(() => import('./ImagebedSettings.jsx'), 'ImagebedSettings');
 export const NotificationSettings = deferred(() => import('./NotificationSettings.jsx'), 'NotificationSettings');
 export const R2BackupSettings = deferred(() => import('./R2BackupSettings.jsx'), 'R2BackupSettings');
+
+export const PositionManager = deferred(() => import('./Positions.jsx'), 'PositionManager');

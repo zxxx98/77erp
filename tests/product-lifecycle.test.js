@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition, legacyPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -74,7 +75,7 @@ test('deletion rejects stock, valuation, stock adjustments and template referenc
 test('employees cannot change listing state or delete products', async t => {
   const f = await fixture(t);
   const id = (await f.request('/products', 'POST', product)).data.id;
-  assert.equal((await f.request('/users', 'POST', {username: 'staff', password: 'Test-staff-123'})).status, 201);
+  assert.equal((await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db),username: 'staff', password: 'Test-staff-123'})).status, 201);
   const login = await f.request('/auth/login', 'POST', {username: 'staff', password: 'Test-staff-123'});
   assert.equal(login.status, 200);
   assert.equal((await f.request(`/products/${id}/status`, 'POST', {active: 0}, 1, true, login.cookie)).status, 403);
@@ -131,10 +132,10 @@ test('batch status and delete endpoints validate inputs, enforce permissions and
   }
 
   // Permissions: legacy employee is forbidden, configured employee without products is forbidden, with products is allowed
-  const createdEmp = await f.request('/users', 'POST', { username: 'legacy_emp', password: 'Test-staff-123' });
+  const createdEmp = await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'legacy_emp', password: 'Test-staff-123' });
   assert.equal(createdEmp.status, 201);
   const empId = createdEmp.data.id;
-  f.db.prepare('UPDATE users SET permissions=NULL WHERE id=?').run(empId);
+  legacyPosition(f.db, empId);
   const legacyLogin = await f.request('/auth/login', 'POST', { username: 'legacy_emp', password: 'Test-staff-123' }, 1, false);
   assert.equal(legacyLogin.status, 200);
   for (const [p, body] of [
@@ -145,9 +146,9 @@ test('batch status and delete endpoints validate inputs, enforce permissions and
     assert.equal((await f.request(p, 'POST', body, 1, true, legacyLogin.cookie)).status, 403);
   }
   const emp = (await f.request('/users')).data.find(u => u.id === empId);
-  assert.equal((await f.request(`/users/${emp.id}/permissions`, 'PUT', { permissions: ['purchase'], version: emp.permissions_version })).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, method, body), emp.id, ['purchase'])).status, 200);
   assert.equal((await f.request('/products/batch/status', 'POST', { ids: [id1], active: 0 }, 1, true, legacyLogin.cookie)).status, 403);
-  assert.equal((await f.request(`/users/${emp.id}/permissions`, 'PUT', { permissions: ['products'], version: emp.permissions_version + 1 })).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, method, body), emp.id, ['products'])).status, 200);
 
   // Batch status with deduplication, already-inactive skip, and cross-warehouse skip
   await f.request(`/products/${id2}/status`, 'POST', { active: 0 });

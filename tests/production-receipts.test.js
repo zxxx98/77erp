@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -112,8 +113,8 @@ test('receipt history only starts at confirmation and survives reversal', async 
 test('purchase-only approval redacts costs; production-only users cannot approve; permission revocation blocks replay', async t=>{
   const f=await fixture(t);
   const user=async(username,permissions)=>{
-    const created=await f.request('/users',{username,password:'Test-staff-123'}); assert.equal(created.status,201);
-    f.ok(await f.request(`/users/${created.data.id}/permissions`,{version:1,permissions},{method:'PUT'}));
+    const created=await f.request('/users',{ position_id: readonlyPositionId(f.db),username,password:'Test-staff-123'}); assert.equal(created.status,201);
+    f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), created.data.id, permissions));
     return {id:created.data.id,cookie:(await f.request('/auth/login',{username,password:'Test-staff-123'},{cookie:null})).cookie};
   };
   const producer=await user('producer',['production','corrections']), receiver=await user('receiver',['purchase']);
@@ -127,7 +128,7 @@ test('purchase-only approval redacts costs; production-only users cannot approve
   order=await f.get(order.id);
   assert.equal((await f.command(`/production-orders/${order.id}/batches/${order.batches[0].id}/void`,{version:order.version,reason:'纠正'},producer)).status,403);
   assert.equal((await f.request(`/production-orders/${order.id}`,undefined,receiver)).status,403);
-  f.ok(await f.request(`/users/${receiver.id}/permissions`,{version:2,permissions:['production']},{method:'PUT'}));
+  f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), receiver.id, ['production']));
   assert.equal((await f.request(path,body,receiver)).status,403);
 });
 test('approval guards stock/value limits, units, enabled flags, stale versions and warehouse boundary atomically',async t=>{
@@ -173,8 +174,8 @@ test('version 34 migration leaves historical batches posted; future registration
 });
 test('pending void needs no inbound permission and delete/reset remove linked receipt rows',async t=>{
   const f=await fixture(t); let order=await f.start(await f.create()); await f.confirm(order.material_documents[0]);order=f.ok(await f.complete(await f.get(order.id)));
-  const created=await f.request('/users',{username:'corrector',password:'Test-staff-123'});assert.equal(created.status,201);
-  f.ok(await f.request(`/users/${created.data.id}/permissions`,{version:1,permissions:['production','corrections']},{method:'PUT'}));
+  const created=await f.request('/users',{ position_id: readonlyPositionId(f.db),username:'corrector',password:'Test-staff-123'});assert.equal(created.status,201);
+  f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), created.data.id, ['production','corrections']));
   const options={cookie:(await f.request('/auth/login',{username:'corrector',password:'Test-staff-123'},{cookie:null})).cookie};
   order=f.ok(await f.command(`/production-orders/${order.id}/batches/${order.batches[0].id}/void`,{version:order.version,reason:'未入库纠正'},options));assert.equal(order.receipt_documents[0].status,'void');
   const backup=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup}));

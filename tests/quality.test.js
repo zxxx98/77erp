@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -273,11 +274,11 @@ test('online spreadsheet edits save file, metadata and validated fields together
 });
 test('permission and warehouse checks protect all quality endpoints, including raw files',async t=>{
   const f=await fixture(t);await f.configure(credentials);const row=(await f.request('/quality/templates',f.upload())).data;
-  const id=(await f.request('/users',{username:'worker',password:'Test-worker-123'})).data.id;
+  const id=(await f.request('/users',{ position_id: readonlyPositionId(f.db),username:'worker',password:'Test-worker-123'})).data.id;
   const employee=(await f.request('/auth/login',{username:'worker',password:'Test-worker-123'},'POST',1,'')).cookie;
   assert.equal((await f.request('/quality/templates',undefined,'GET',1,employee)).status,403);
   const user=(await f.request('/users')).data.find(u=>u.id===id);
-  await f.request(`/users/${id}/permissions`,{version:user.permissions_version,permissions:['quality']},'PUT');
+  await grantPosition(f.db, (path, body, method) => f.request(path, body, method), id, ['quality']);
   assert.equal((await f.request('/quality/templates',undefined,'GET',1,employee)).status,200);
   const warehouse=(await f.request('/warehouses',{name:'品质分仓'})).data.id;
   assert.equal((await f.request(`/quality/templates/${row.id}`,undefined,'GET',warehouse,employee)).status,404);
@@ -430,8 +431,8 @@ test('quality material search is warehouse scoped, paginated and exposes no fina
   const f=await fixture(t),product=await material(f,{name:'分页-可搜索物料',barcode:'SEARCH-001'});
   for(let i=0;i<23;i++)await material(f,{name:`分页-${i}`});
   const warehouse=(await f.request('/warehouses',{name:'其他物料仓'})).data.id;await material(f,{name:'其他仓物料'},warehouse);
-  const id=(await f.request('/users',{username:'binder',password:'Test-worker-123'})).data.id,user=(await f.request('/users')).data.find(user=>user.id===id);
-  await f.request(`/users/${id}/permissions`,{version:user.permissions_version,permissions:['quality']},'PUT');
+  const id=(await f.request('/users',{ position_id: readonlyPositionId(f.db),username:'binder',password:'Test-worker-123'})).data.id,user=(await f.request('/users')).data.find(user=>user.id===id);
+  await grantPosition(f.db, (path, body, method) => f.request(path, body, method), id, ['quality']);
   const cookie=(await f.request('/auth/login',{username:'binder',password:'Test-worker-123'},'POST',1,'')).cookie;
   const search=await f.request('/quality/products?q=SEARCH',undefined,'GET',1,cookie);assert.equal(search.status,200);assert.equal(search.data.products[0].id,product.id);
   assert.deepEqual(Object.keys(search.data.products[0]).sort(),['barcode','id','name','specification','unit']);
@@ -509,9 +510,9 @@ test('acceptance confirmations bind file, actor, warehouse, active revision and 
   const f=await publishedAcceptanceFixture(t);let p=(await f.preview()).data;
   assert.equal((await f.save({...p,preview_token:'fake'})).status,409);
   const other=await filledWorkbook(sheet=>{sheet.getCell('C18').value=99;});assert.equal((await f.save(p,other)).status,409);
-  const userId=(await f.request('/users',{username:'quality-worker',password:'Test-worker-123'})).data.id;
+  const userId=(await f.request('/users',{ position_id: readonlyPositionId(f.db),username:'quality-worker',password:'Test-worker-123'})).data.id;
   const user=(await f.request('/users')).data.find(u=>u.id===userId);
-  await f.request(`/users/${userId}/permissions`,{version:user.permissions_version,permissions:['quality']},'PUT');
+  await grantPosition(f.db, (path, body, method) => f.request(path, body, method), userId, ['quality']);
   const employee=(await f.request('/auth/login',{username:'quality-worker',password:'Test-worker-123'},'POST',1,'')).cookie;
   const employeeBody=f.body(sample,{name:'越权确认',preview_token:p.preview_token,request_id:randomUUID()});
   assert.equal((await f.request('/quality/acceptances',employeeBody,'POST',1,employee)).status,409);
@@ -691,11 +692,11 @@ test('chart routes enforce warehouse and permissions; backup v22 roundtrips char
   const other=(await f.request('/warehouses',{name:'图表另仓'})).data.id;
   assert.equal((await f.request(`/quality/charts/${chart.id}`,undefined,'GET',other)).status,404);
   assert.equal((await f.request('/quality/charts',{...payload,request_id:randomUUID()},'POST',other)).status,404);
-  const uid=(await f.request('/users',{username:'chart-worker',password:'Test-worker-123'})).data.id;
+  const uid=(await f.request('/users',{ position_id: readonlyPositionId(f.db),username:'chart-worker',password:'Test-worker-123'})).data.id;
   const cookie=(await f.request('/auth/login',{username:'chart-worker',password:'Test-worker-123'},'POST',1,'')).cookie;
   assert.equal((await f.request('/quality/charts',undefined,'GET',1,cookie)).status,403);
   const user=(await f.request('/users')).data.find(user=>user.id===uid);
-  await f.request(`/users/${uid}/permissions`,{version:user.permissions_version,permissions:['quality']},'PUT');
+  await grantPosition(f.db, (path, body, method) => f.request(path, body, method), uid, ['quality']);
   assert.equal((await f.request('/quality/charts',undefined,'GET',1,cookie)).status,200);
   const backup=(await f.request('/backup')).data;assert.equal(backup.version, 36);assert.equal(backup.data.quality_charts.length,1);
   for(const mutate of [r=>{r.revision_id=999999;},r=>{r.warehouse_id=other;},r=>{const c=JSON.parse(r.config);c.metric.value.fieldId='missing';r.config=JSON.stringify(c);}]){
@@ -1115,11 +1116,11 @@ test('acceptance deletion is permission and warehouse scoped, excludes chart dat
   const warehouse=(await f.request('/warehouses',{name:'删除隔离仓'})).data.id;
   assert.equal((await f.request(path,{},'DELETE',warehouse)).status,404);
   assert.equal((await f.request(path,{},'DELETE',1,'')).status,401);
-  const id=(await f.request('/users',{username:'delete-worker',password:'Test-worker-123'})).data.id;
+  const id=(await f.request('/users',{ position_id: readonlyPositionId(f.db),username:'delete-worker',password:'Test-worker-123'})).data.id;
   const employee=(await f.request('/auth/login',{username:'delete-worker',password:'Test-worker-123'},'POST',1,'')).cookie;
   assert.equal((await f.request(path,{},'DELETE',1,employee)).status,403);
   const user=(await f.request('/users')).data.find(user=>user.id===id);
-  await f.request(`/users/${id}/permissions`,{version:user.permissions_version,permissions:['quality']},'PUT');
+  await grantPosition(f.db, (path, body, method) => f.request(path, body, method), id, ['quality']);
   const backup=(await f.request('/backup')).data,objects=f.objects.size;
   assert.equal((await f.request(path,{},'DELETE',1,employee)).status,200);
   assert.equal((await f.request(path)).status,404);

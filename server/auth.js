@@ -1,8 +1,9 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 
-import { permissionKeys, legacyPermissions, hasPermission } from '../shared/permissions.js';
+import { permissionKeys, hasPermission } from '../shared/permissions.js';
 import { queueNotification } from './notifications.js';
+import { migratePositions, positionAuthorization, requirePosition, installPositions, recordPositionChange } from './positions.js';
 
 const deriveKey = promisify(scrypt);
 const cookieName = "77erp_session";
@@ -42,6 +43,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
     token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL
   );`);
+  migratePositions(db);
   // installAuth runs after the business migrations, so orders and templates already exist here.
   for (const table of ['orders', 'templates']) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -51,8 +53,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   }
   const initialized = () => !!db.prepare("SELECT 1 FROM users LIMIT 1").get();
   const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, role: user.role,
-    permissions: user.role === 'admin' ? permissionKeys : user.permissions == null ? legacyPermissions : JSON.parse(user.permissions),
-    legacy_permissions: user.role === 'employee' && user.permissions == null,
+    ...(user.role === 'admin' ? { permissions: permissionKeys, legacy_permissions: false, position_id: null, position_name: null } : positionAuthorization(db, user)),
     permissions_version: user.permissions_version ?? 1 });
   const validUsername = (value) => typeof value === 'string' && /^[A-Za-z0-9_.-]{3,32}$/.test(value.trim());
   const validName = (value) => typeof value === 'string' && value.length <= 60;
@@ -80,7 +81,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   };
   const sessionUser = (req) => {
     const token = sessionToken(req);
-    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.permissions,u.permissions_version FROM auth_sessions s
+    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.position_id,u.permissions_version FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`)
       .get(digest(token), Date.now()) : undefined;
     return user ? publicUser(user) : undefined;
@@ -297,41 +298,34 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     }
     return res.status(403).json({ error: '没有此操作的权限，请联系管理员。' });
   });
-  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,name,role,active,created_at,permissions,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
+  installPositions(app, db);
+  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,name,role,active,created_at,position_id,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
   app.post('/api/users', async (req, res) => {
     const { username, password, role = 'employee', name = '' } = req.body || {};
     if (!validUsername(username) || !validPassword(password) || !validName(name) || !['admin','employee'].includes(role))
       return res.status(400).json({ error: '请填写有效账号、8–128 位密码、角色及最多 60 个字的名称。' });
+    try { if (role === 'employee') requirePosition(db, req.body.position_id); }
+    catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
     const [salt, hash] = await passwordFields(password);
     if (sessionUser(req)?.role !== 'admin') return res.status(401).json({ error: '登录或权限已变化，请重新登录。' });
+    db.exec('BEGIN IMMEDIATE');
     try {
-      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,permissions) VALUES (?,?,?,?,?,?,'[]')")
-        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim());
+      // Password hashing yields: the selected position may have been removed meanwhile.
+      const position = role === 'employee' ? requirePosition(db, req.body.position_id) : null;
+      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,permissions,position_id) VALUES (?,?,?,?,?,?,'[]',?)")
+        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), position?.id ?? null);
+      if (position) recordPositionChange(db, req, '新员工分配岗位', position.id, Number(result.lastInsertRowid), null, {position_id: position.id});
+      db.exec('COMMIT');
       res.status(201).json({ id: Number(result.lastInsertRowid) });
     } catch (error) {
+      db.exec('ROLLBACK');
+      if (error.status) return res.status(error.status).json({ error: error.message });
       if (!error.message.includes('UNIQUE')) throw error;
       res.status(409).json({ error: '该账号已存在。' });
     }
   });
   app.put('/api/users/:id/permissions', (req, res) => {
-    const { permissions, version } = req.body || {};
-    if (!Array.isArray(permissions) || permissions.some(key => !permissionKeys.includes(key)) ||
-        new Set(permissions).size !== permissions.length || !Number.isSafeInteger(version))
-      return res.status(400).json({ error: '请选择有效权限，并提交当前配置版本。' });
-    const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
-    if (!user) return res.status(404).json({ error: '账号不存在。' });
-    if (user.role !== 'employee') return res.status(400).json({ error: '管理员拥有全部权限，无需配置。' });
-    if (user.permissions_version !== version) return res.status(409).json({ error: '权限配置已被修改，请重新打开配置。' });
-    const value = JSON.stringify(permissionKeys.filter(key => permissions.includes(key)));
-    db.exec('BEGIN IMMEDIATE');
-    try {
-      db.prepare('UPDATE users SET permissions=?,permissions_version=permissions_version+1 WHERE id=?').run(value, user.id);
-      db.prepare('INSERT INTO user_permission_changes(user_id,changed_by,before_permissions,after_permissions,created_at) VALUES (?,?,?,?,?)')
-        .run(user.id, req.user.id, user.permissions, value, new Date().toISOString());
-      if (user.permissions !== value) queueNotification(db, req, 'admin_action', { action: '修改员工权限', target_user: user.username, before_permissions: user.permissions === null ? null : JSON.parse(user.permissions), after_permissions: JSON.parse(value) }, { global: true });
-      db.exec('COMMIT');
-      res.json({ ok: true });
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    res.status(409).json({ error: '员工权限已改为岗位授权，请刷新页面，在岗位配置中修改权限或为员工调整岗位。' });
   });
   app.put('/api/users/:id', (req, res) => {
     const { role, active } = req.body || {};
@@ -347,12 +341,19 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
           db.prepare("SELECT COUNT(*) AS n FROM users WHERE active=1 AND role='admin'").get().n <= 1) {
         db.exec('ROLLBACK'); return res.status(409).json({ error: '不能停用或降级最后一个管理员。' });
       }
-      db.prepare('UPDATE users SET role=?,active=?,name=? WHERE id=?').run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), user.id);
+      const positionId = role === 'admin' ? null : user.role === 'admin'
+        ? requirePosition(db, req.body.position_id).id : user.position_id;
+      if (user.role === 'employee' && role === 'employee' && req.body.position_id !== undefined && req.body.position_id !== user.position_id) {
+        db.exec('ROLLBACK'); return res.status(409).json({error:'请通过调整岗位操作提交当前权限版本。'});
+      }
+      db.prepare('UPDATE users SET role=?,active=?,name=?,position_id=?,permissions_version=permissions_version+? WHERE id=?')
+        .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), positionId, role !== user.role ? 1 : 0, user.id);
+      if (positionId !== user.position_id) recordPositionChange(db, req, '账号类型变更岗位', positionId, user.id, {position_id:user.position_id}, {position_id:positionId});
       if (!active || role !== user.role) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(user.id);
       if (role !== user.role || active !== user.active) queueNotification(db, req, 'admin_action', { action: '修改账号角色／状态', target_user: user.username, before_role: user.role, role, before_active: user.active, active }, { global: true });
       db.exec('COMMIT');
       res.json({ ok: true });
-    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    } catch (error) { db.exec('ROLLBACK'); if (error.status) return res.status(error.status).json({error:error.message}); throw error; }
   });
   app.post('/api/users/:id/password', async (req, res) => {
     if (!validPassword(req.body?.password)) return res.status(400).json({ error: '密码需为 8–128 位字符。' });

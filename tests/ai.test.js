@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import ExcelJS from 'exceljs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,11 +30,10 @@ async function fixture(t, dbPath = ':memory:', historicalProduction = true) {
     return { status: res.status, data, cookie: res.headers.get('set-cookie')?.split(';')[0] };
   };
   const admin = (await request(null, '/auth/setup', { username: 'owner', password: 'Strong-password-123' })).cookie;
-  const id = (await request(admin, '/users', { username: 'staff', password: 'Strong-password-123' })).data.id;
+  const id = (await request(admin, '/users', { position_id: readonlyPositionId(db), username: 'staff', password: 'Strong-password-123' })).data.id;
   const staff = (await request(null, '/auth/login', { username: 'staff', password: 'Strong-password-123' })).cookie;
   const permissions = async values => {
-    const version = db.prepare('SELECT permissions_version FROM users WHERE id=?').get(id).permissions_version;
-    assert.equal((await request(admin, `/users/${id}/permissions`, { permissions: values, version }, 'PUT')).status, 200);
+    assert.equal((await grantPosition(db, (path, body, method) => request(admin, path, body, method), id, values)).status, 200);
   };
   const settings = { enabled: true, writes: true, base_url: 'https://model.example/v1', model: 'test-model', secret: 'secret-test-key', daily_limit: 100 };
   assert.equal((await request(admin, '/settings/ai', settings, 'PUT')).status, 200);
@@ -1058,4 +1058,26 @@ test('AI unit rounding import and order previews show the exact quantities that 
   assert.equal(orderAction.preview.orders[0].items[0].after_stock, 3);
   assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: orderAction.id })).status, 200);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(product.id).stock, 3);
+});
+
+for (const change of ['same-permission position switch', 'position permission edit']) test(`AI invalidates conversation and pending action after ${change}`, async t => {
+  const f = await fixture(t);
+  await f.permissions(['ai', 'purchase']);
+  f.use('preview_orders', { orders: [f.order()] });
+  const preview = await f.chat(f.staff);
+  assert.equal(preview.status, 200);
+  assert.equal(preview.data.actions.length, 1);
+  const action = preview.data.actions[0];
+  const count = f.db.prepare('SELECT COUNT(*) AS n FROM orders').get().n;
+  if (change === 'same-permission position switch') {
+    await f.permissions(['ai', 'purchase']);
+  } else {
+    const user = (await f.request(f.admin, '/users')).data.find(user => user.id === f.id);
+    const position = (await f.request(f.admin, '/positions')).data.find(position => position.id === user.position_id);
+    assert.equal((await f.request(f.admin, `/positions/${position.id}`, { name: position.name, description: position.description, permissions: ['ai'], version: position.version }, 'PUT')).status, 200);
+  }
+  assert.equal((await f.request(f.staff, `/ai/conversations/${preview.data.conversation_id}`)).status, 403);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: action.id })).status, 403);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, count);
+  assert.deepEqual((await f.request(f.staff, '/ai/conversations')).data, []);
 });

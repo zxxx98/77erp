@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, createHmac } from 'node:crypto';
@@ -71,7 +72,7 @@ test('notification settings are admin-only, versioned, validated, redact credent
   const f = await fixture(t);
   const initial = (await f.request('/settings/notifications')).data;
   assert.equal(initial.enabled, false); assert.deepEqual(initial.events, []);
-  await f.request('/users', 'POST', { username: 'employee', password: 'Test-employee-123', role: 'employee' });
+  await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'employee', password: 'Test-employee-123', role: 'employee' });
   const employee = (await f.request('/auth/login', 'POST', { username: 'employee', password: 'Test-employee-123' }, 1, '')).cookie;
   for (const [path, method] of [['', 'GET'], ['', 'PUT'], ['/test', 'POST'], ['/deliveries', 'GET'], ['/deliveries/a/retry', 'POST']]) {
     assert.equal((await f.request(`/settings/notifications${path}`, method, method === 'GET' ? undefined : {}, 1, employee)).status, 403);
@@ -195,8 +196,8 @@ test('returns, voids, stocktakes, damage, payments and permission changes produc
   assert.equal(f.events().at(-1).event, 'stock_adjustment');
   await f.command('/stock/reduce/', { product_id: id, quantity: 1, reason: '破损' });
   assert.equal(f.events().at(-1).payload.data.action, '报损／减少库存');
-  const employee = (await f.request('/users', 'POST', { username: 'operator', password: 'Test-operator-123', role: 'employee' })).data.id;
-  assert.equal((await f.request(`/users/${employee}/permissions`, 'PUT', { permissions: ['purchase'], version: 1 })).status, 200);
+  const employee = (await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'operator', password: 'Test-operator-123', role: 'employee' })).data.id;
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, method, body), employee, ['purchase'])).status, 200);
   assert.equal(f.events().at(-1).payload.data.target_user, 'operator');
   assert.equal((await f.request(`/users/${employee}`, 'PUT', { role: 'employee', active: 0 })).status, 200);
   assert.equal(f.events().at(-1).payload.data.action, '修改账号角色／状态');

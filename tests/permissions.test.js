@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition, legacyPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -18,11 +19,10 @@ async function fixture(t) {
     return { status: result.status, data: await result.json(), cookie: result.headers.get('set-cookie')?.split(';')[0] };
   };
   const admin = (await request(null, '/auth/setup', { username: 'owner', password })).cookie;
-  const id = (await request(admin, '/users', { username: 'staff', password })).data.id;
+  const id = (await request(admin, '/users', { position_id: readonlyPositionId(db), username: 'staff', password })).data.id;
   const cookie = (await request(null, '/auth/login', { username: 'staff', password })).cookie;
   const set = async permissions => {
-    const user = (await request(admin, '/users')).data.find(user => user.id === id);
-    const result = await request(admin, `/users/${id}/permissions`, { permissions, version: user.permissions_version }, 'PUT');
+    const result = await grantPosition(db, (path, body, method) => request(admin, path, body, method), id, permissions);
     assert.equal(result.status, 200, JSON.stringify(result.data));
   };
   const command = (session, path, body) => request(session, path, { ...body, request_id: randomUUID() });
@@ -57,13 +57,16 @@ test('new employees are read-only, keep password access, and only admins can con
   assert.equal(data.orders[0].items[0].cost_cents, undefined);
   assert.equal(data.orders[0].payment_status, undefined);
   assert.equal((await f.request(f.cookie, `/users/${f.id}/permissions`, { permissions: permissionKeys, version: 1 }, 'PUT')).status, 403);
-  assert.equal((await f.request(f.admin, '/users/1/permissions', { permissions: [], version: 1 }, 'PUT')).status, 400);
+  assert.equal((await f.request(f.admin, '/users/1/permissions', { permissions: [], version: 1 }, 'PUT')).status, 409);
   for (const permissions of [['unknown'], ['products', 'products'], {}, null])
-    assert.equal((await f.request(f.admin, `/users/${f.id}/permissions`, { permissions, version: 1 }, 'PUT')).status, 400);
+    assert.equal((await f.request(f.admin, '/positions', { name: 'Invalid', description: '', permissions })).status, 400);
+  const before = f.db.prepare('SELECT permissions_version FROM users WHERE id=?').get(f.id).permissions_version;
+  const auditBefore = f.db.prepare('SELECT COUNT(*) AS n FROM position_changes WHERE user_id=?').get(f.id).n;
   await f.set(['sale']);
   assert.deepEqual((await f.request(f.cookie, '/data')).data.user.permissions, ['sale']);
-  assert.equal((await f.request(f.admin, `/users/${f.id}/permissions`, { permissions: ['purchase'], version: 1 }, 'PUT')).status, 409);
-  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM user_permission_changes').get().n, 1);
+  assert.equal((await f.request(f.admin, `/users/${f.id}/position`, { position_id: readonlyPositionId(f.db), version: before }, 'PUT')).status, 409);
+  assert.equal((await f.request(f.admin, `/users/${f.id}/permissions`, { permissions: ['purchase'], version: before }, 'PUT')).status, 409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM position_changes WHERE user_id=?').get(f.id).n, auditBefore + 1);
   assert.equal((await f.request(f.cookie, '/auth/password', { current_password: password, password: 'Changed-password-456' })).status, 200);
   assert.equal((await f.request(f.cookie, '/data')).status, 401);
 });
@@ -118,7 +121,7 @@ test('permissions affect existing sessions immediately and cannot be bypassed by
 
 test('legacy employees keep their former capabilities until configuration is saved; business reset and backup restore preserve authorization', async t => {
   const f = await fixture(t);
-  f.db.prepare('UPDATE users SET permissions=NULL WHERE id=?').run(f.id);
+  legacyPosition(f.db, f.id);
   const legacy = (await f.request(f.cookie, '/data')).data;
   assert.equal(legacy.user.legacy_permissions, true);
   assert.notEqual((await f.request(f.cookie, '/products', {})).status, 403);
@@ -132,10 +135,13 @@ test('legacy employees keep their former capabilities until configuration is sav
   assert.equal(category.status, 200);
   const backup = (await f.request(f.admin, '/backup')).data;
   assert.equal(backup.data.user_permission_changes, undefined);
-  const before = f.db.prepare('SELECT permissions,permissions_version FROM users WHERE id=?').get(f.id);
+  const before = f.db.prepare('SELECT position_id,permissions_version FROM users WHERE id=?').get(f.id);
+  const positionsBefore = f.db.prepare('SELECT * FROM positions ORDER BY id').all();
   const preview = (await f.request(f.admin, '/backup/preview', { backup })).data;
   assert.equal((await f.command(f.admin, '/backup/restore', { backup, token: preview.token, current_token: preview.current_token, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
-  assert.deepEqual(f.db.prepare('SELECT permissions,permissions_version FROM users WHERE id=?').get(f.id), before);
+  assert.deepEqual(f.db.prepare('SELECT position_id,permissions_version FROM users WHERE id=?').get(f.id), before);
+  assert.deepEqual(f.db.prepare('SELECT * FROM positions ORDER BY id').all(), positionsBefore);
   assert.equal((await f.request(f.admin, '/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' })).status, 200);
-  assert.deepEqual(f.db.prepare('SELECT permissions,permissions_version FROM users WHERE id=?').get(f.id), before);
+  assert.deepEqual(f.db.prepare('SELECT position_id,permissions_version FROM users WHERE id=?').get(f.id), before);
+  assert.deepEqual(f.db.prepare('SELECT * FROM positions ORDER BY id').all(), positionsBefore);
 });

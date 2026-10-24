@@ -1,3 +1,4 @@
+import { readonlyPositionId } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -36,7 +37,7 @@ test('settings enforce authorization, validation, versioning and secret redactio
   assert.equal((await f.configure({ secret_key: '' })).data.has_secret_key, true);
   assert.equal((await f.request('/settings/r2-backup', 'PUT', config)).status, 409);
   for (const changes of [{ enabled: true, clear_secret_key: true }, { cron: 'invalid' }, { timezone: 'invalid' }, { account_id: 'localhost' }, { prefix: '../escape' }]) assert.equal((await f.configure(changes)).status, 400);
-  const user = await f.request('/users', 'POST', { username: 'worker', password: 'Test-worker-123', role: 'employee' });
+  const user = await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'worker', password: 'Test-worker-123', role: 'employee' });
   assert.equal(user.status, 201);
   const employee = (await f.request('/auth/login', 'POST', { username: 'worker', password: 'Test-worker-123' })).cookie;
   assert.equal((await f.request('/settings/r2-backup', 'GET', undefined, employee)).status, 403);

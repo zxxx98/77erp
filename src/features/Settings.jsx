@@ -14,6 +14,7 @@ import { version as appVersion } from '../../package.json';
 import { CURRENCY_LABELS, CURRENCY_SYMBOLS } from '../currency.js';
 import {
   UserManager,
+  PositionManager,
   ChangePassword,
   AiSettings,
   ImagebedSettings,
@@ -137,7 +138,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => { if (section === "general") void submit(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["ai", "AI 助手", Settings, "模型连接与操作范围"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["ai", "AI 助手", Settings, "模型连接与操作范围"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["positions", "岗位配置", ShieldCheck, "岗位权限与关联员工"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
               <AntButton type="text" key={id} htmlType="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); setVisited(current => new Set([...current, id])); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </AntButton>
@@ -235,6 +236,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           </div>
           <div className="info-box"><ShieldCheck size={17} /><p>物料和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
+          {section === "positions" && <div className="settings-section"><PositionManager Modal={Modal} onChanged={onRefresh} /></div>}
           {section === "users" && <div className="settings-section"><UserManager Modal={Modal} onChanged={onRefresh} /><ChangePassword onChanged={onPasswordChanged} /></div>}
           {section === 'ai' && <div className="settings-section"><AiSettings onBusy={setBusy} /></div>}
           <div hidden={section !== 'imagebed'} className="settings-section">{visited.has('imagebed') && <ImagebedSettings active={section === 'imagebed'} onBusy={setBusy} />}</div>

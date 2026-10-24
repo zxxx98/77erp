@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -33,8 +34,8 @@ async function fixture(t) {
 
 test('two users saving the same version produce one success and one actionable conflict without partial writes', async t => {
   const f = await fixture(t);
-  await f.request('/users', 'POST', { username: 'staff', password: 'Test-password-123', role: 'employee' });
-  f.db.prepare("UPDATE users SET permissions='[\"products\"]' WHERE username='staff'").run();
+  await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'staff', password: 'Test-password-123', role: 'employee' });
+  await grantPosition(f.db, (path, body, method) => f.request(path, method, body), f.db.prepare('SELECT id FROM users WHERE username=?').get('staff').id, ['products']);
   const employee = (await f.request('/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' }, 1, null)).cookie;
   const original = f.current();
   assert.equal((await f.request('/data')).data.products[0].version, original.version);

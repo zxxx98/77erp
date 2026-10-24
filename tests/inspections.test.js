@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -106,12 +107,11 @@ test('one-off inspection requires a manually entered future date; permissions an
   }
   const warehouse = (await f.request('/warehouses', 'POST', { name: '其他仓库' })).data.id;
   assert.equal((await f.request(`/products/${p.id}/inspect`, 'POST', { version: p.version, next_date: '2099-01-01' }, warehouse)).status, 400);
-  const employee = await f.request('/users', 'POST', { username: 'staff', password: 'Test-password-123', role: 'employee' });
-  f.db.prepare("UPDATE users SET permissions='[]' WHERE id=?").run(employee.data.id);
-  const session = (await f.request('/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' })).cookie;
+  const employee = await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'staff', password: 'Test-password-123', role: 'employee' });
+  const session = (await f.request('/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' }, 1, null)).cookie;
   const body = { version: p.version, next_date: '2099-01-01' };
   assert.equal((await f.request(`/products/${p.id}/inspect`, 'POST', body, 1, session)).status, 403);
-  f.db.prepare('UPDATE users SET permissions=? WHERE id=?').run(JSON.stringify(['products']), employee.data.id);
+  await grantPosition(f.db, (path, body, method) => f.request(path, method, body), employee.data.id, ['products']);
   assert.equal((await f.request(`/products/${p.id}/inspect`, 'POST', body, 1, session)).status, 200);
   assert.equal(f.current(p.id).inspection_date, body.next_date);
   assert.equal(f.current(p.id).last_inspected_on, inspectionToday());

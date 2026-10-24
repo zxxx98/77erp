@@ -33,7 +33,7 @@ export function AiSettings({ onBusy = () => {} }) {
     finally { lock.current = false; setBusy(false); onBusy(false); }
   };
   return <section className="ai-settings">
-    <h3>AI 助手</h3><p>支持工具调用的兼容 Chat Completions 接口。请求由服务器发送，员工需分配 AI 助手权限；写操作仍需对应业务权限并逐批确认。</p>
+    <h3>AI 助手</h3><p>支持工具调用的兼容 Chat Completions 接口。请求由服务器发送，员工需通过岗位获得 AI 助手权限；写操作仍需对应业务权限并逐批确认。</p>
     {form && <div className="ai-fields">
       {!form.encryption_ready && <p className="form-error">服务器尚未配置 AI_ENCRYPTION_KEY，请先由部署人员配置加密密钥。</p>}
       <AntCheckbox  checked={form.enabled} disabled={busy} onChange={e => setForm({ ...form, enabled: e.target.checked })}>启用 AI 助手</AntCheckbox>

@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -458,11 +459,12 @@ test("employee can execute but cannot manage, reuse another user preview, or byp
     q = await f.create({ require_confirmation: false }),
     p = (await f.preview(q)).data;
   await f.request("/users", "POST", {
+    position_id: readonlyPositionId(f.db), position_id: readonlyPositionId(f.db),
     username: "worker",
     password: "Test-worker-123",
     role: "employee",
   });
-  f.db.prepare('UPDATE users SET permissions=? WHERE username=?').run(JSON.stringify(["purchase", "sale"]), "worker");
+  await grantPosition(f.db, (path, body, method) => f.request(path, method, body), f.db.prepare('SELECT id FROM users WHERE username=?').get('worker').id, ['purchase', 'sale']);
   const cookie = (
     await f.request("/auth/login", "POST", {
       username: "worker",

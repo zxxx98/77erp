@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseBomQuantity, bomRequiredQuantity, validateBomLossRate } from '../shared/bom.js';
@@ -309,12 +310,12 @@ test('BOM backup restores all relations, rejects tampering, refreshes edit versi
 test('BOM permission independently gates all endpoints without granting inventory writes or revealing financial values', async t => {
   const f = await fixture(t), bom = await f.create();
   assert.equal((await f.request('/boms', undefined, { cookie: null })).status, 401);
-  const user = (await f.request('/users', { username: 'bomstaff', password: 'Test-staff-123' })).data.id;
+  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'bomstaff', password: 'Test-staff-123' })).data.id;
   const staff = (await f.request('/auth/login', { username: 'bomstaff', password: 'Test-staff-123' }, { cookie: null })).cookie;
   assert.equal((await f.request('/boms', undefined, { cookie: staff })).status, 403);
   assert.equal((await f.command(`/boms/${bom.id}/delete`, { version: bom.version }, { cookie: staff })).status, 403);
   const version = f.db.prepare('SELECT permissions_version FROM users WHERE id=?').get(user).permissions_version;
-  assert.equal((await f.request(`/users/${user}/permissions`, { version, permissions: ['bom'] }, { method: 'PUT' })).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), user, ['bom'])).status, 200);
   const options = { cookie: staff };
   const detail = await f.request(`/boms/${bom.id}`, undefined, options);
   assert.equal(detail.status, 200); assert.equal(Object.hasOwn(detail.data.product, 'inventory_value_cents'), false);

@@ -1,3 +1,4 @@
+import { browserPosition } from './position-helpers.js';
 import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 
@@ -245,7 +246,7 @@ test('canceling installation does not report success and changing to an app wind
 test('session replacement isolates drafts by account and hides read-only employee actions and costs', async ({ browser }) => {
   const { context, page } = await mobile(browser);
   const username = `pwa-reader-${Date.now()}`;
-  expect((await context.request.post('/api/users', { data: { username, password: 'Reader-password-123', role: 'employee', permissions: [] } })).status()).toBe(201);
+  expect((await context.request.post('/api/users', { data: { position_id: await browserPosition(context.request), username, password: 'Reader-password-123', role: 'employee' } })).status()).toBe(201);
   const product = await fixtureProduct(context, 2);
   await ensureContact(context.request, '仅管理员可见的草稿');
   await page.reload();

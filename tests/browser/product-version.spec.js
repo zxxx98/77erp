@@ -1,3 +1,4 @@
+import { browserPosition } from './position-helpers.js';
 import { test, expect } from '@playwright/test';
 import { createApp } from '../../server/app.js';
 
@@ -9,8 +10,7 @@ test('two users keep conflicting edits, compare the latest product and explicitl
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   try {
     expect((await page.request.post(base + '/api/auth/setup', { data: { username: 'owner', password: 'Test-password-123' } })).status()).toBe(201);
-    expect((await page.request.post(base + '/api/users', { data: { username: 'staff', password: 'Test-password-123', role: 'employee' } })).status()).toBe(201);
-    db.prepare("UPDATE users SET permissions='[\"products\"]' WHERE username='staff'").run();
+    expect((await page.request.post(base + '/api/users', { data: { position_id: await browserPosition(page.request, ['products'], base), username: 'staff', password: 'Test-password-123', role: 'employee' } })).status()).toBe(201);
     const created = await page.request.post(base + '/api/products', { data: {
       name: '并发编辑物料', barcode: 'BROWSER-VERSION-001', category: '日用', unit: '件', cost: 10, price: 20, threshold: 5,
     } });

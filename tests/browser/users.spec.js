@@ -1,3 +1,4 @@
+import { readonlyPositionId, legacyPosition } from '../helpers/positions.js';
 import { ensureContact, chooseContact } from './contact-helpers.js';
 import { test, expect } from '@playwright/test';
 import { permissionOptions } from '../../shared/permissions.js';
@@ -40,6 +41,8 @@ test('administrator creates accounts, protects the last administrator, resets pa
     await expect(page.getByRole('alert')).toContainText('最后一个管理员');
     await page.getByLabel('新账号', { exact: true }).fill('staff');
     await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
+    await page.getByRole('combobox', { name: '新账号岗位', exact: true }).click();
+    await page.getByRole('option', { name: '只读员工', exact: true }).click();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const employee = page.locator('.user-row').filter({ hasText: 'staff' });
     await expect(employee).toBeVisible();
@@ -68,9 +71,9 @@ test('employee sees shared business data and own templates, opens orders with an
   page.on('pageerror', e => errors.push(e.message));
   try {
     await ensureContact(page.request, '员工供应商', { base: f.base });
-    await f.adminRequest('/users', { username: 'staff', password: 'Employee-password-123' });
+    await f.adminRequest('/users', { position_id: readonlyPositionId(f.db), username: 'staff', password: 'Employee-password-123' });
     // Existing employees keep their former product, order and own-template access.
-    f.db.prepare("UPDATE users SET permissions=NULL WHERE username='staff'").run();
+    legacyPosition(f.db, f.db.prepare("SELECT id FROM users WHERE username='staff'").get().id);
     await f.adminRequest('/templates', { name: '管理员模板', request_id: 'admin-template', type: 'in', partner: '管理员模板', note: '', items: [{product_id: 1, quantity: 1, price: 10}] });
     await page.goto(f.base);
     await page.getByRole('button', { name: '退出登录', exact: true }).click();
@@ -119,7 +122,7 @@ test('employee sees shared business data and own templates, opens orders with an
   } finally { await f.close(); }
 });
 
-test('administrator configures employee modules including AI and changes take effect in an existing employee session', async ({ page, browser }) => {
+test('administrator configures position modules including AI and changes take effect in an existing employee session', async ({ page, browser }) => {
   const f = await fixture(page);
   const context = await browser.newContext();
   const employeePage = await context.newPage();
@@ -141,6 +144,8 @@ test('administrator configures employee modules including AI and changes take ef
     await page.getByRole('button', { name: /用户管理/ }).click();
     await page.getByLabel('新账号', { exact: true }).fill('staff');
     await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
+    await page.getByRole('combobox', { name: '新账号岗位', exact: true }).click();
+    await page.getByRole('option', { name: '只读员工', exact: true }).click();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const row = page.locator('.user-row').filter({ hasText: 'staff' });
     await expect(row).toBeVisible();
@@ -156,15 +161,21 @@ test('administrator configures employee modules including AI and changes take ef
       await expect(employeePage.getByRole('button', { name, exact: true })).toHaveCount(0);
     await employeePage.getByRole('button', { name: '关闭弹窗', exact: true }).click();
 
-    await row.getByRole('button', { name: '权限配置' }).click();
-    let dialog = page.getByRole('dialog', { name: 'staff 的权限配置', exact: true });
+    await row.getByRole('button', { name: '查看权限', exact: true }).click();
+    const effective = page.getByRole('dialog', { name: 'staff 的有效权限', exact: true });
+    await expect(effective.getByRole('checkbox')).toHaveCount(0);
+    await expect(effective.locator('.effective-permissions')).toBeVisible();
+    await effective.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+    await page.getByRole('button', { name: /岗位配置/ }).click();
+    const positionRow = page.locator('.position-row').filter({ hasText: '只读员工' });
+    await positionRow.getByRole('button', { name: '编辑', exact: true }).click();
+    let dialog = page.getByRole('dialog', { name: '编辑岗位：只读员工', exact: true });
     await expect(dialog.getByRole('checkbox')).toHaveCount(permissionOptions.length);
     await expect(dialog.getByRole('checkbox', { name: /^AI 助手/ })).not.toBeChecked();
     await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(0);
     await dialog.getByRole('checkbox', { name: /^物料管理/ }).check();
-    await dialog.getByRole('button', { name: '保存权限' }).click();
+    await dialog.getByRole('button', { name: '保存岗位', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByRole('status')).toContainText('立即生效');
     await employeePage.reload();
     await expect(employeePage.getByRole('button', { name: '新增物料', exact: true })).toBeVisible();
     await expect(employeePage.getByRole('button', { name: '管理分类', exact: true })).toBeVisible();
@@ -172,12 +183,12 @@ test('administrator configures employee modules including AI and changes take ef
     await expect(employeePage.getByRole('button', { name: '新建入库', exact: true })).toHaveCount(0);
     await expect(employeePage.getByRole('button', { name: '导出单据', exact: true })).toHaveCount(0);
 
-    await row.getByRole('button', { name: '权限配置' }).click();
-    dialog = page.getByRole('dialog', { name: 'staff 的权限配置', exact: true });
+    await positionRow.getByRole('button', { name: '编辑', exact: true }).click();
+    dialog = page.getByRole('dialog', { name: '编辑岗位：只读员工', exact: true });
     await dialog.getByRole('checkbox', { name: /^物料管理/ }).uncheck();
     for (const name of ['入库', '业务资料管理', '库存盘点', '财务管理', '数据导入导出'])
       await dialog.getByRole('checkbox', { name: new RegExp('^' + name) }).check();
-    await dialog.getByRole('button', { name: '保存权限' }).click();
+    await dialog.getByRole('button', { name: '保存岗位' }).click();
     await expect(dialog).toHaveCount(0);
     await employeePage.reload();
     await expect(employeePage.getByRole('button', { name: '新建入库', exact: true })).toBeVisible();

@@ -1,3 +1,4 @@
+import { browserPosition } from './position-helpers.js';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
@@ -254,8 +255,7 @@ test('concurrent changes preserve completion input and production-only employees
   const f = await fixture(page);
   try {
     const order = await f.post('/production-orders', { bom_id: f.bom.id, bom_version: f.bom.version, planned_quantity: 10, note: '' });
-    const user = await f.post('/users', { username: 'producer', password: 'Test-staff-123' });
-    expect((await page.request.put(f.base + `/api/users/${user.id}/permissions`, { data: { version: 1, permissions: ['production'] } })).ok()).toBe(true);
+    const user = await f.post('/users', { position_id: await browserPosition(page.request, ['production'], f.base), username: 'producer', password: 'Test-staff-123' });
     await f.post('/auth/login', { username: 'producer', password: 'Test-staff-123' });
     await page.goto(f.base + '/#production');
     await page.getByRole('button', { name: '查看生产单', exact: false }).click();

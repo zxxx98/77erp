@@ -1,3 +1,4 @@
+import { readonlyPositionId, grantPosition, legacyPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes, scryptSync } from 'node:crypto';
@@ -24,10 +25,10 @@ async function fixture(t, path = ':memory:') {
   // Existing database fixtures have already initialized the owner.
   if (!admin) admin = (await request(null, '/auth/login', { username: 'owner', password })).cookie;
   const user = async (username, role = 'employee') => {
-    const created = await request(admin, '/users', { username, password, role });
+    const created = await request(admin, '/users', { position_id: readonlyPositionId(db), username, password, role });
     assert.equal(created.status, 201);
     // Exercise upgraded employees with their original capabilities in the legacy regression cases.
-    db.prepare('UPDATE users SET permissions=NULL WHERE id=?').run(created.data.id);
+    if (role === 'employee') legacyPosition(db, created.data.id);
     const login = await request(null, '/auth/login', { username, password });
     assert.equal(login.status, 200);
     return { id: created.data.id, cookie: login.cookie, username };
@@ -99,10 +100,10 @@ test('account management hides secrets, revokes sessions, protects the last acti
   const list = await f.request(f.admin, '/users');
   assert.equal(list.data.length, 2);
   assert.equal(list.data[0].password_hash, undefined);
-  assert.equal((await f.request(f.admin, '/users', { username: 'staff', password })).status, 409);
-  assert.equal((await f.request(f.admin, '/users', { username: 'bad space', password })).status, 400);
-  assert.equal((await f.request(f.admin, '/users', { username: 'another', password: 'short' })).status, 400);
-  assert.equal((await f.request(f.admin, '/users/1', { role: 'employee', active: 1 }, 'PUT')).status, 409);
+  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'staff', password })).status, 409);
+  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'bad space', password })).status, 400);
+  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'another', password: 'short' })).status, 400);
+  assert.equal((await f.request(f.admin, '/users/1', { role: 'employee', active: 1, position_id: readonlyPositionId(f.db) }, 'PUT')).status, 409);
   assert.equal((await f.request(f.admin, '/users/1', { role: 'admin', active: 0 }, 'PUT')).status, 409);
   assert.equal((await f.request(f.admin, `/users/${employee.id}`, { role: 'employee', active: 0 }, 'PUT')).status, 200);
   assert.equal((await f.request(employee.cookie, '/data')).status, 401);
@@ -116,8 +117,8 @@ test('account management hides secrets, revokes sessions, protects the last acti
   assert.equal((await f.request(promoted.cookie, '/users')).status, 200);
   // Concurrent requests still cannot remove all active administrators.
   const changes = await Promise.all([
-    f.request(f.admin, '/users/1', { role: 'employee', active: 1 }, 'PUT'),
-    f.request(promoted.cookie, `/users/${employee.id}`, { role: 'employee', active: 1 }, 'PUT'),
+    f.request(f.admin, '/users/1', { role: 'employee', active: 1, position_id: readonlyPositionId(f.db) }, 'PUT'),
+    f.request(promoted.cookie, `/users/${employee.id}`, { role: 'employee', active: 1, position_id: readonlyPositionId(f.db) }, 'PUT'),
   ]);
   assert.deepEqual(changes.map(r => r.status).sort(), [200, 409]);
   const adminCookie = changes[0].status === 200 ? promoted.cookie : f.admin;
@@ -234,7 +235,8 @@ const routeRoles = new Map(Object.entries({
   'get /api/announcements': 'employee', 'get /api/announcements/unread-count': 'employee',
   'get /api/announcements/:announcementId': 'employee', 'post /api/announcements/:announcementId/read': 'employee',
   'post /api/announcements': 'admin', 'put /api/announcements/:announcementId': 'admin', 'delete /api/announcements/:announcementId': 'admin',
-  'get /api/users': 'admin', 'post /api/users': 'admin', 'put /api/users/:id': 'admin', 'post /api/users/:id/password': 'admin', 'put /api/users/:id/permissions': 'admin',
+  'get /api/users': 'admin', 'post /api/users': 'admin', 'put /api/users/:id': 'admin', 'post /api/users/:id/password': 'admin', 'put /api/users/:id/permissions': 'admin', 'put /api/users/:id/position': 'admin',
+  'get /api/positions': 'admin', 'post /api/positions': 'admin', 'put /api/positions/:id': 'admin', 'delete /api/positions/:id': 'admin',
   'get /api/warehouses': 'employee', 'post /api/warehouses': 'admin', 'put /api/warehouses/:id': 'admin', 'delete /api/warehouses/:id': 'admin',
   'get /api/categories': 'employee', 'post /api/categories': 'admin', 'put /api/categories/:id': 'admin', 'post /api/categories/:id/delete': 'admin',
   'get /api/data': 'employee', 'get /api/style': 'employee', 'get /api/products/barcode/:barcode': 'employee', 'get /api/products/:id/other-warehouses': 'employee', 'get /api/products/:id/history': 'employee',
@@ -354,13 +356,13 @@ test('a conflicting account upgrade fails loudly and leaves the legacy administr
 test('account names are optional, validated, reflected in active sessions and snapshotted in business records', async t => {
   const f = await fixture(t);
   const name = '张'.repeat(60);
-  const created = await f.request(f.admin, '/users', { username: 'named', password, name });
+  const created = await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'named', password, name });
   assert.equal(created.status, 201);
   const login = await f.request(null, '/auth/login', { username: 'named', password });
   assert.equal(login.data.name, name);
   assert.equal(login.data.username, 'named');
   const user = (await f.request(f.admin, '/users')).data.find(u => u.id === created.data.id);
-  await f.request(f.admin, `/users/${user.id}/permissions`, { permissions: ['purchase', 'business'], version: user.permissions_version }, 'PUT');
+  await grantPosition(f.db, (path, body, method) => f.request(f.admin, path, body, method), user.id, ['purchase', 'business']);
   const order = await f.command(login.cookie, '/orders', { type: 'in', partner: '名称测试供应商', items: [{ product_id: 1, quantity: 1, price: 10 }] });
   assert.equal(order.status, 201);
   assert.equal(f.db.prepare('SELECT created_by_name FROM orders WHERE id=?').get(order.data.id).created_by_name, name);
