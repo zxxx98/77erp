@@ -1,5 +1,6 @@
 import { UiProvider } from './ui/provider.jsx';
 import './styles.css';
+import './mobile-web/mobile.css';
 import { App } from './app/App.jsx';
 import { createRoot } from 'react-dom/client';
 import { PwaProvider } from './pwa/Pwa.jsx';

@@ -1,4 +1,4 @@
-import { Input as AntInput } from 'antd';
+import { Input as AntInput } from '../ui/controls.jsx';
 
 const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
 const rate = value => value !== 0 && Math.abs(value) < 0.000001

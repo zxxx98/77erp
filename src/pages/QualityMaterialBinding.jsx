@@ -1,4 +1,4 @@
-import { Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 
 import { useState } from 'react';
 import { Button, Modal } from '../components/common.jsx';

@@ -1,4 +1,5 @@
-import { ConfigProvider as AntConfigProvider, Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from 'antd';
+import { ConfigProvider as AntConfigProvider } from 'antd';
+import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from './ui/controls.jsx';
 
 import { LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';

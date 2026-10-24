@@ -1,4 +1,4 @@
-import { Button as AntButton } from 'antd';
+import { Button as AntButton } from './ui/controls.jsx';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';

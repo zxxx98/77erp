@@ -1,4 +1,5 @@
-import { ConfigProvider as AntConfigProvider, Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+import { ConfigProvider as AntConfigProvider } from 'antd';
+import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 
 import { Button } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';

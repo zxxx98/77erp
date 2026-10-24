@@ -12,7 +12,7 @@ async function expectReadable(control, minimum = 90) {
     context.font = style.font;
     return {
       available: input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-      text: context.measureText(input.value).width,
+      text: context.measureText(input.value || input.textContent?.trim() || '').width,
     };
   });
   expect(metrics.available).toBeGreaterThanOrEqual(Math.min(minimum, metrics.text));

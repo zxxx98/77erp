@@ -1,4 +1,4 @@
-import { Button as AntButton } from 'antd';
+import { Button as AntButton } from './ui/controls.jsx';
 
 import { LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useState } from 'react';

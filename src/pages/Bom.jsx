@@ -1,4 +1,5 @@
-import { Input as AntInput, Form as AntForm, Checkbox as AntCheckbox } from 'antd';
+import { Form as AntForm } from 'antd';
+import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 import { FormField } from './../ui/FormField.jsx';
 
 import { BomStructure } from '../features/BomStructure.jsx';

@@ -1,5 +1,5 @@
 import { FormField } from './ui/FormField.jsx';
-import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from 'antd';
+import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from './ui/controls.jsx';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';

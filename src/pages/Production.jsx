@@ -1,4 +1,5 @@
-import { Input as AntInput, Form as AntForm } from 'antd';
+import { Form as AntForm } from 'antd';
+import { Input as AntInput } from '../ui/controls.jsx';
 import { FormField } from './../ui/FormField.jsx';
 
 import { calculateBomNodes } from '../../shared/bom-expansion.js';

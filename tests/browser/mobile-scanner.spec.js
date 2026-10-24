@@ -87,7 +87,7 @@ test('mobile camera fills the viewport and real QR recognition returns once and 
   const toast = page.locator('.toast');
   await expect(toast).toContainText(`已识别：${item.name}`);
   const toastBounds = await toast.boundingBox();
-  const messageBounds = await toast.locator('span').boundingBox();
+  const messageBounds = await toast.locator(':scope > span').boundingBox();
   expect(toastBounds.x).toBeGreaterThanOrEqual(0);
   expect(toastBounds.x + toastBounds.width).toBeLessThanOrEqual(390);
   expect(messageBounds.x).toBeGreaterThanOrEqual(0);

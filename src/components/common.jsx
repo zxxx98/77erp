@@ -1,4 +1,6 @@
-import { Spin, Button as AntButton, Tag, Empty as AntEmpty, Pagination as AntPagination } from 'antd';
+import { Pagination as AntPagination } from 'antd';
+import { Spin, Button as AntButton, Tag, Empty as AntEmpty } from '../ui/controls.jsx';
+import { Popup } from 'antd-mobile';
 
 import { usePermissions } from '../permissions.jsx';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
@@ -256,9 +258,7 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
       }
     };
   }, []);
-  return (
-    <div className={`modal-backdrop${drawer ? ' drawer-backdrop' : ''}`}>
-      <section
+  const content = <section
         ref={ref}
         className={`modal ${wide ? "modal-wide" : ""} ${drawer ? `modal-drawer drawer-${drawerSize}` : ''} ${className}`}
         role="dialog"
@@ -287,9 +287,13 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
         </div>
         {children}
         {drawer && footer}
-      </section>
-    </div>
-  );
+      </section>;
+  if (mobileDevice) return <Popup visible forceRender position="bottom" closeOnMaskClick={false}
+    disableBodyScroll={false} onClose={onClose} className="erp-mobile-popup"
+    bodyClassName="erp-mobile-popup-body" maskClassName="erp-mobile-popup-mask">
+    <div className="modal-backdrop erp-mobile-popup-layout">{content}</div>
+  </Popup>;
+  return <div className={`modal-backdrop${drawer ? ' drawer-backdrop' : ''}`}>{content}</div>;
 }
 
 function Empty({ title = '暂无记录', description = '新的记录会出现在这里。', action }) {

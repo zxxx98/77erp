@@ -1,4 +1,4 @@
-import { Button as AntButton } from 'antd';
+import { Button as AntButton } from '../ui/controls.jsx';
 
 export function ModeSwitch({ mode, onChange, disabled }) {
   return <div className="mode-switch" role="group" aria-label="业务模式">

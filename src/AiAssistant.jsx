@@ -1,5 +1,6 @@
 import { FormField } from './ui/FormField.jsx';
-import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton, Form as AntForm } from 'antd';
+import { Form as AntForm } from 'antd';
+import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from './ui/controls.jsx';
 
 import { chartTypeLabels, metricLabels } from '../shared/quality-charts.js';
 import { orderLabel } from './order-utils.js';

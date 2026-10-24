@@ -1,4 +1,4 @@
-import { Button as AntButton, Input as AntInput } from 'antd';
+import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import { downloadFile } from '../app/download.js';
 import { api } from '../api.js';

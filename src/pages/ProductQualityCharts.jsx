@@ -1,4 +1,4 @@
-import { Button as AntButton } from 'antd';
+import { Button as AntButton } from '../ui/controls.jsx';
 
 import { useState } from 'react';
 import { Button } from '../components/common.jsx';

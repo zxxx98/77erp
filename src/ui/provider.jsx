@@ -1,5 +1,7 @@
 import { App, ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+import { ConfigProvider as MobileConfigProvider } from 'antd-mobile';
+import mobileZhCN from 'antd-mobile/es/locales/zh-CN';
 import { mobileDevice } from '../device.js';
 import './ui.css';
 
@@ -14,5 +16,5 @@ export function UiProvider({ children }) {
       zIndexPopupBase: 1200,
     },
     components: { Select: { optionHeight: mobileDevice ? 44 : 36 } },
-  }}><App>{children}</App></ConfigProvider>;
+  }}><MobileConfigProvider locale={mobileZhCN}><App>{children}</App></MobileConfigProvider></ConfigProvider>;
 }

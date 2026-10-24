@@ -1,4 +1,4 @@
-import { Button as AntButton, Checkbox as AntCheckbox, Input as AntInput } from 'antd';
+import { Button as AntButton, Checkbox as AntCheckbox, Input as AntInput } from './ui/controls.jsx';
 
 import { LoadingIndicator, LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';

@@ -1,4 +1,4 @@
-import { Button as AntButton, Checkbox as AntCheckbox, Input as AntInput } from 'antd';
+import { Button as AntButton, Checkbox as AntCheckbox, Input as AntInput } from '../ui/controls.jsx';
 
 import { usePermissions } from '../permissions.jsx';
 import { useState, useRef, useEffect } from 'react';

@@ -1,4 +1,5 @@
-import { ConfigProvider as AntConfigProvider, Input as AntInput } from 'antd';
+import { ConfigProvider as AntConfigProvider } from 'antd';
+import { Input as AntInput } from '../ui/controls.jsx';
 
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Plus, Save } from 'lucide-react';

@@ -1,4 +1,5 @@
-import { ColorPicker, ConfigProvider as AntConfigProvider, Input as AntInput, Checkbox as AntCheckbox, Button as AntButton } from 'antd';
+import { ColorPicker, ConfigProvider as AntConfigProvider } from 'antd';
+import { Input as AntInput, Checkbox as AntCheckbox, Button as AntButton } from '../ui/controls.jsx';
 
 import { Select } from './../Dropdown.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';

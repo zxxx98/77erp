@@ -1,4 +1,4 @@
-import { Button as AntButton, Input as AntInput } from 'antd';
+import { Button as AntButton, Input as AntInput } from './ui/controls.jsx';
 
 import { useEffect, useState } from 'react';
 import { Check, Pencil, Plus, Trash2 } from 'lucide-react';

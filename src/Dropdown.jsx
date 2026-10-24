@@ -1,8 +1,11 @@
-import { AutoComplete, Input, Select as AntSelect, Spin } from 'antd';
+import { AutoComplete, Select as AntSelect } from 'antd';
+import { Input, Spin } from './ui/controls.jsx';
 import { Children, useId, useState } from 'react';
 import { FormField } from './ui/FormField.jsx';
 import { contactRoleLabels } from '../shared/contacts.js';
 import './dropdown.css';
+import { mobileDevice } from './device.js';
+import { MobileDropdown } from './ui/MobileDropdown.jsx';
 
 // Business option rendering only; filtering, keyboard navigation and popups are Ant Design's.
 export function Dropdown({ options, value, displayValue, onSelect, onChange, label,
@@ -10,6 +13,9 @@ export function Dropdown({ options, value, displayValue, onSelect, onChange, lab
   className = '', id, emptyText = '暂无可选项', noMatchesText, loadingText = '正在加载…', ...props }) {
   const generatedId = useId();
   const inputId = id || generatedId;
+  if (mobileDevice) return <MobileDropdown {...props} id={inputId} options={options} value={value} displayValue={displayValue}
+    onSelect={onSelect} onChange={onChange} label={label} listLabel={listLabel} placeholder={placeholder} searchable={searchable}
+    loading={loading} disabled={disabled} required={required} className={className} emptyText={emptyText} noMatchesText={noMatchesText} loadingText={loadingText} />;
   const selected = options.find(option => String(option.value) === String(value));
   const editable = searchable && !!onChange;
   const items = options.map(option => ({ ...option, value: String(option.value),

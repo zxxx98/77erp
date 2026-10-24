@@ -1,4 +1,4 @@
-import { Button as AntButton } from 'antd';
+import { Button as AntButton } from './ui/controls.jsx';
 
 import { LoadingIndicator } from './Loading.jsx';
 import React, { useEffect, useId, useRef, useState } from 'react';
@@ -114,10 +114,12 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
     if (!mobileDevice) return;
     const previousFocus = document.activeElement;
     const overflow = document.body.style.overflow;
-    const root = document.getElementById('root');
-    const inert = root?.inert;
+    // Mobile sheets are portaled beside #root by Ant Design Mobile.
+    const backgrounds = [...document.body.children]
+      .filter(element => element instanceof HTMLElement && element !== overlay.current && !element.matches('script, style, link'))
+      .map(element => [element, element.inert]);
     document.body.style.overflow = 'hidden';
-    if (root) root.inert = true;
+    for (const [element] of backgrounds) element.inert = true;
     overlay.current?.focus({ preventScroll: true });
     window.dispatchEvent(new CustomEvent('erp:camera-active', { detail: true }));
     const close = event => {
@@ -143,7 +145,7 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
       document.removeEventListener('keydown', key, true);
       window.removeEventListener('erp:back-modal', close, true);
       document.body.style.overflow = overflow;
-      if (root) root.inert = inert;
+      for (const [element, inert] of backgrounds) element.inert = inert;
       previousFocus?.focus({ preventScroll: true });
       window.dispatchEvent(new CustomEvent('erp:camera-active', { detail: false }));
     };

@@ -1,10 +1,10 @@
 .notification-fields { display: grid; gap: 16px; }
-:where(.notification-fields > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper):not(.notification-choice)), :where(.notification-schedule > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
+:where(.notification-fields > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio):not(.notification-choice)), :where(.notification-schedule > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
 .notification-fields small, .notification-help, .notification-logs small { color: #647084; font-size: 12px; line-height: 1.6; font-weight: 400; }
 .notification-fields fieldset { min-width: 0; padding: 16px; border: 1px solid #e9ecf1; border-radius: 10px; }
 .notification-fields legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
 .notification-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 12px 0; }
-:where(.form-body .notification-settings label:not(.ant-checkbox-wrapper, .ant-radio-wrapper).notification-choice) { display: flex; align-items: flex-start; gap: 10px; margin: 0; cursor: pointer; line-height: 1.5; }
+:where(.form-body .notification-settings label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio).notification-choice) { display: flex; align-items: flex-start; gap: 10px; margin: 0; cursor: pointer; line-height: 1.5; }
 :where(.notification-settings .notification-choice input) { flex: 0 0 18px; width: 18px; height: 18px; margin: 2px 0 0; accent-color: #2563eb; }
 .notification-settings .notification-choice > span { min-width: 0; color: #17243c; font-size: 13px; overflow-wrap: anywhere; }
 .notification-choice strong { display: block; font-size: 13px; font-weight: 600; }

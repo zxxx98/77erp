@@ -11,7 +11,7 @@
 .production-batch-material { padding: 16px 0; font-size: 13px; }
 .production-batch-material > p { line-height: 1.7; }
 .production-material { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(100px, 1fr)); gap: 20px; align-items: center; padding: 20px 0; border-top: 1px solid #e9ecf1; font-size: 13px; }
-.production-material > div, :where(.production-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { min-width: 0; }
+.production-material > div, :where(.production-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { min-width: 0; }
 .production-material span { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .production-material .bom-shortage { display: block; margin-top: 6px; font-size: 12px; }
 .production-bom-options { max-height: 420px; overflow-y: auto; }
@@ -21,7 +21,7 @@
 }
 @media (max-width: 600px) {
   .production-material { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  :where(.production-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { grid-column: 1 / -1; }
+  :where(.production-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { grid-column: 1 / -1; }
   .production-output { max-width: none; }
   .production-summary { gap: 20px; justify-content: space-between; }
   .production-summary strong { font-size: 20px; }

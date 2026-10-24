@@ -1,5 +1,5 @@
 import { FormField } from './../ui/FormField.jsx';
-import { Input as AntInput } from 'antd';
+import { Input as AntInput } from '../ui/controls.jsx';
 
 import { Button } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';

@@ -1,4 +1,5 @@
-import { Button as AntButton, Checkbox as AntCheckbox } from 'antd';
+import { Button as AntButton, Checkbox as AntCheckbox } from '../ui/controls.jsx';
+import { TabBar } from 'antd-mobile';
 
 import { Select } from './../Dropdown.jsx';
 import { modeItems } from '../app/navigation.js';
@@ -19,7 +20,6 @@ import { CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
 import { ProductHistory } from '../ProductHistory.jsx';
 import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
 import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, price, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
-import './mobile.css';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 import { inspectionCycleLabel } from '../../shared/inspection.js';
 import { ProductBatchDialog } from '../pages/Products.jsx';
@@ -89,7 +89,9 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
       </>}
     </main>
     {page !== 'scanner' && <nav className="mw-tabs" aria-label="移动端主导航" inert={switching}>
-      {tabs.map(({id, mobile: label, icon: Icon}) => <button type="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></button>)}
+      <TabBar safeArea activeKey={['purchases', 'sales'].includes(page) ? 'history' : page} onChange={navigate}>
+        {tabs.map(({ id, mobile: label, icon: Icon }) => <TabBar.Item key={id} title={active => <button type="button" aria-current={active ? 'page' : undefined} aria-label={label}><Icon size={23} /><span>{label}</span></button>} />)}
+      </TabBar>
     </nav>}
   </div>;
 }

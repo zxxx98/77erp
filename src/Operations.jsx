@@ -1,5 +1,6 @@
 import { currencySymbol, money as formatMoney } from './app/format.js';
-import { ConfigProvider as AntConfigProvider, Input as AntInput, Button as AntButton, Checkbox as AntCheckbox } from 'antd';
+import { ConfigProvider as AntConfigProvider } from 'antd';
+import { Input as AntInput, Button as AntButton, Checkbox as AntCheckbox } from './ui/controls.jsx';
 import { FormField } from './ui/FormField.jsx';
 
 import { orderLabel } from './order-utils.js';

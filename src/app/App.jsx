@@ -1,4 +1,5 @@
-import { Button as AntButton, Form as AntForm, Input as AntInput } from 'antd';
+import { Form as AntForm } from 'antd';
+import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import {
   Box,

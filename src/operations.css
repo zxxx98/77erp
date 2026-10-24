@@ -14,7 +14,7 @@
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
-:where(.operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+:where(.operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
   display: grid;
   gap: 6px;
   margin: 10px 0;
@@ -45,7 +45,7 @@
 }
 
 .stocktake-row { display: flex; align-items: center; gap: 20px; padding: 12px 0; }
-:where(.stocktake-row > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper):first-child) { flex: 1; min-width: 0; }
+:where(.stocktake-row > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio):first-child) { flex: 1; min-width: 0; }
 .stocktake-product { min-width: 0; overflow-wrap: anywhere; }
 .stocktake-product strong { display: block; font-size: 13px; color: #334155; font-weight: 500; }
 .stocktake-product small { display: block; margin-top: 5px; font-size: 12px; color: #647084; }
@@ -54,7 +54,7 @@
   .stocktake-row { gap: 12px; }
   .stocktake-count { width: 80px; }
 }
-:where(.settings-content .stocktake-row > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { margin: 0; }
+:where(.settings-content .stocktake-row > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { margin: 0; }
 .settings-content .stocktake-count { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 10px; width: 155px; }
 :where(.settings-content .stocktake-count input) { margin-top: 0; }
 @media (max-width: 480px) {

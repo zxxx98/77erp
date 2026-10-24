@@ -1,4 +1,6 @@
-import { Spin, Button as AntButton, Form as AntForm, Select as AntSelect, Input as AntInput } from 'antd';
+import { Form as AntForm } from 'antd';
+import { Select } from './Dropdown.jsx';
+import { Spin, Button as AntButton, Input as AntInput } from './ui/controls.jsx';
 
 import { LoadingIndicator } from './Loading.jsx';
 import { useEffect, useState } from "react";
@@ -125,7 +127,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
             </AntForm.Item>
             {setup && <AntForm.Item name="name" label="管理员名称（选填）"><AntInput prefix={<UserRound size={17} />} maxLength={60} /></AntForm.Item>}
             {setup && <AntForm.Item name="baseCurrency" label="基准币种" extra="初始化后不可修改，业务数据将以该币种为准。">
-              <AntSelect options={[{ value: 'USD', label: '美元（USD）' }, { value: 'CNY', label: '人民币（CNY）' }]} />
+              <Select><option value="USD">美元（USD）</option><option value="CNY">人民币（CNY）</option></Select>
             </AntForm.Item>}
             <AntForm.Item name="password" label={setup ? '设置密码' : '密码'} rules={[
               { required: true, message: '请输入密码' }, ...(setup ? [{ min: 8, message: '密码至少需要 8 个字符' }] : []),

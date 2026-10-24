@@ -1,4 +1,4 @@
-import { Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 
 import { acceptanceSheetResults } from '../../shared/quality-bindings.js';
 import { parseQualityFile } from '../quality-local.js';

@@ -5,12 +5,12 @@
   display: grid;
   gap: 14px;
 }
-:where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+:where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
   display: grid;
   gap: 7px;
   font-weight: 500;
 }
-:where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > input), :where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > select), :where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > textarea), :where(.stock-qr-actions > input), :where(.stock-qr-actions > select) {
+:where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > input), :where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > select), :where(.stock-qr-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > textarea), :where(.stock-qr-actions > input), :where(.stock-qr-actions > select) {
   min-height: 42px;
   min-width: 0;
   max-width: 100%;

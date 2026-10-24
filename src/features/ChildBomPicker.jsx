@@ -1,4 +1,4 @@
-import { Input as AntInput } from 'antd';
+import { Input as AntInput } from '../ui/controls.jsx';
 
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';

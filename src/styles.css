@@ -2109,24 +2109,24 @@ table {
   flex-direction: column;
   gap: 17px;
 }
-:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
   font-size: 11px;
   color: #7189aa;
   font-weight: 500;
   display: block;
 }
-:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > span) {
+:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > span) {
   color: #d9828d;
   font-size: 11px;
 }
-:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > small) {
+:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > small) {
   color: #a6b4c8;
   font-size: 9px;
   display: block;
   margin-top: 7px;
   font-weight: 400;
 }
-:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > input:not(:where([type="checkbox"], [type="radio"]))), :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > select), :where(.form-body textarea) {
+:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > input:not(:where([type="checkbox"], [type="radio"]))), :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > select), :where(.form-body textarea) {
   min-height: 42px;
   width: 100%;
   display: block;
@@ -4158,7 +4158,7 @@ table {
   .form-body {
     padding: 18px;
   }
-  :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+  :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
     font-size: 10px;
   }
   .order-items-title {
@@ -4307,13 +4307,13 @@ table {
     font-size: 10px;
   }
 }
-:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
   color: #647a99;
 }
-:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > small) {
+:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > small) {
   color: #879ab5;
 }
-:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+:where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
   font-size: 12px;
 }
 .modal-header p {
@@ -4389,7 +4389,7 @@ table {
   .chart-wrap {
     margin-top: 26px;
   }
-  :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+  :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
     font-size: 11px;
   }
   .modal-header p {
@@ -4410,7 +4410,7 @@ table {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) {
+  :where(.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
     font-size: 10px;
   }
 }
@@ -4555,7 +4555,7 @@ table {
 :where(.unit-manager > .btn) { justify-self: start; }
 .unit-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
 .unit-row { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
-:where(.unit-row label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { flex: 1; min-width: 0; }
+:where(.unit-row label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { flex: 1; min-width: 0; }
 :where(.unit-row > .btn) { flex-shrink: 0; height: 44px; }
 .currency-settings { display: grid; gap: 16px; }
 .currency-rate-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -4565,7 +4565,7 @@ table {
 .settings-content .operation-panel { padding: 0; border: 0; gap: 18px; }
 .settings-content .operation-tabs { border-bottom: 1px solid #e9ecf1; padding-bottom: 14px; }
 .settings-content .operation-panel button { margin: 0; }
-:where(.settings-content .operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { margin: 14px 0; }
+:where(.settings-content .operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { margin: 14px 0; }
 .settings-content .operation-scroll { max-height: none; overflow: visible; }
 .settings-content .info-box p { font-size: 12px; color: #647084; }
 .settings-content .info-box > svg { flex-shrink: 0; }
@@ -4639,15 +4639,15 @@ table {
 .warehouse-row-actions { display: grid; grid-template-columns: 88px 96px; align-items: center; gap: 8px; }
 .warehouse-reuse { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
 .warehouse-reuse legend { font-size: 13px; }
-:where(.warehouse-reuse label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+:where(.warehouse-reuse label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .warehouse-reuse p { margin-bottom: 0; font-size: 12px; }
 .product-sync { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 0; }
 .product-sync legend { font-weight: 600; }
 .product-sync p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 10px; }
-:where(.product-sync label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { margin: 4px 12px 4px 0; }
+:where(.product-sync label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { margin: 4px 12px 4px 0; }
 .export-warehouses { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 0 0 12px; }
 .export-warehouses legend { font-weight: 600; }
-:where(.export-warehouses label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: inline-flex; align-items: center; gap: 6px; margin: 4px 16px 4px 0; }
+:where(.export-warehouses label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: inline-flex; align-items: center; gap: 6px; margin: 4px 16px 4px 0; }
 @media (max-width: 600px) {
   .warehouse-select { max-width: 110px; }
   .warehouse-row { grid-template-columns: minmax(0, 1fr); }
@@ -4756,8 +4756,8 @@ html:not(.mobile-device) .modal-drawer .modal-footer {
 }
 :where(html:not(.mobile-device) .modal-drawer .modal-footer .btn) { white-space: normal; }
 html:not(.mobile-device) .modal-drawer .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-:where(html:not(.mobile-device) .modal-drawer .form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { font-size: 13px; }
-:where(html:not(.mobile-device) .modal-drawer .form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > small) { font-size: 12px; line-height: 1.6; }
+:where(html:not(.mobile-device) .modal-drawer .form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { font-size: 13px; }
+:where(html:not(.mobile-device) .modal-drawer .form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > small) { font-size: 12px; line-height: 1.6; }
 html:not(.mobile-device) .modal-drawer .table-scroll { flex-shrink: 0; max-width: 100%; }
 html:not(.mobile-device) .modal-drawer .detail-table { min-width: 650px; }
 html:not(.mobile-device) .modal-drawer .detail-table td:first-child { white-space: normal; min-width: 150px; overflow-wrap: anywhere; }

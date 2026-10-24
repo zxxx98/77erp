@@ -1,4 +1,5 @@
-import { ConfigProvider as AntConfigProvider, Form as AntForm, Input as AntInput } from 'antd';
+import { ConfigProvider as AntConfigProvider, Form as AntForm } from 'antd';
+import { Input as AntInput } from '../ui/controls.jsx';
 
 import { FormField } from './../ui/FormField.jsx';
 

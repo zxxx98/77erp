@@ -1,4 +1,4 @@
-import { Button as AntButton } from 'antd';
+import { Button as AntButton } from '../ui/controls.jsx';
 
 import { useState, useRef, useEffect, useId } from 'react';
 import { FullscreenChart } from '../components/FullscreenChart.jsx';

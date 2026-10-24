@@ -1,9 +1,9 @@
-import { Spin, Button as AntButton, Input as AntInput, Checkbox as AntCheckbox, Tag, Empty as AntEmpty } from 'antd';
+import { Spin, Button as AntButton, Checkbox as AntCheckbox, Tag, Empty as AntEmpty } from '../ui/controls.jsx';
 
 import { stockStatus, stockTone, money as formatMoney, moneyBase as formatMoneyBase, price as formatPrice, currencySymbol, baseCurrencySymbol } from '../app/format.js';
-import { LoadingIndicator } from '../Loading.jsx';
-import React from 'react';
-import { Box, ChevronRight, Search, TriangleAlert, X } from 'lucide-react';
+import React, { useLayoutEffect, useRef } from 'react';
+import { SearchBar } from 'antd-mobile';
+import { Box, ChevronRight, Search, TriangleAlert } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
 import { ProductImage } from '../ProductImage.jsx';
 
@@ -34,8 +34,12 @@ export function Chips({ value, options, onChange, label }) {
   </div>;
 }
 export function SearchField({ value, onChange, label = '搜索物料名称、条码或分类' }) {
-  return <div className="mw-search"><AntInput type="search" prefix={<Search size={19} />} allowClear
-    aria-label={label} placeholder={label} value={value} onChange={e => onChange(e.target.value)} autoCapitalize="none" /></div>;
+  const input = useRef(null);
+  useLayoutEffect(() => {
+    input.current?.nativeElement?.setAttribute('aria-label', label);
+    input.current?.nativeElement?.setAttribute('autoCapitalize', 'none');
+  }, [label]);
+  return <SearchBar ref={input} className="mw-search" searchIcon={<Search size={19} />} clearable placeholder={label} value={value} onChange={onChange} />;
 }
 export function StockBadge({ product }) {
   return <Tag color={{ green: 'success', orange: 'warning', red: 'error' }[stockTone(product)]}>{stockLabel(product)}</Tag>;

@@ -16,6 +16,7 @@
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "antd": "^6.6.7",
+    "antd-mobile": "^5.43.0",
     "cron-parser": "^5.10.2",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",

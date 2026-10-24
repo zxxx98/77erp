@@ -1,6 +1,6 @@
 .dropdown, .select-field { position: relative; min-width: 0; max-width: 100%; }
-:where(.dropdown-field) > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) { display: block; margin: 0 0 8px; color: #304563; font-size: 13px; font-weight: 500; }
-:where(.dropdown-field) > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > span { color: var(--red); }
+:where(.dropdown-field) > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) { display: block; margin: 0 0 8px; color: #304563; font-size: 13px; font-weight: 500; }
+:where(.dropdown-field) > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > span { color: var(--red); }
 .dropdown .ant-select { width: 100%; }
 .dropdown-error { margin: 6px 0 0; color: var(--red); font-size: 12px; }
 .dropdown-option-content { display: flex; align-items: center; gap: 10px; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -14,5 +14,5 @@
 .dropdown-contact-copy > span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .operation-panel .dropdown-field { margin: 14px 0; }
 .form-grid .dropdown-field, .stock-qr-manager .dropdown-field { margin: 0; }
-.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper) > .inspection-unit-select { margin-top: 8px; }
+.form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > .inspection-unit-select { margin-top: 8px; }
 .user-table .dropdown { min-width: 110px; }

@@ -1,6 +1,6 @@
 import { currencySymbol, money as formatMoney } from './app/format.js';
 import { FormField } from './ui/FormField.jsx';
-import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from './ui/controls.jsx';
 
 import { useBusiness } from './business-api.js';
 export { useBusiness } from './business-api.js';

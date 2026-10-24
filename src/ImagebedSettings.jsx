@@ -1,4 +1,4 @@
-import { Input as AntInput, Checkbox as AntCheckbox, Button as AntButton } from 'antd';
+import { Input as AntInput, Checkbox as AntCheckbox, Button as AntButton } from './ui/controls.jsx';
 
 import { LoadingStatus } from './Loading.jsx';
 import { Select } from "./Dropdown.jsx";

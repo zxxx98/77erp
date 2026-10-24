@@ -1,4 +1,4 @@
-:where(.account-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper).imagebed-clear-secret) {
+:where(.account-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio).imagebed-clear-secret) {
   margin: 0;
   line-height: 1.5;
 }

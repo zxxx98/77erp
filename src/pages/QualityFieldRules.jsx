@@ -1,5 +1,5 @@
 import { FormField } from './../ui/FormField.jsx';
-import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from 'antd';
+import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from '../ui/controls.jsx';
 
 import { useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight } from 'lucide-react';

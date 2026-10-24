@@ -1,4 +1,5 @@
-import { Button as AntButton, Form as AntForm, Input as AntInput, Checkbox as AntCheckbox } from 'antd';
+import { Form as AntForm } from 'antd';
+import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 import { FormField } from './../ui/FormField.jsx';
 
 import { useEffect, useMemo, useState } from 'react';

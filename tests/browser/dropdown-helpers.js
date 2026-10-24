@@ -4,7 +4,7 @@ export async function chooseOption(control, value) {
   await control.page().locator(`[id="${listId}"]`).locator(`[role="option"][data-value="${value}"]`).click();
 }
 
-// Ant Select displays its value beside the search input rather than in its value.
+// Desktop Select and mobile sheet pickers both display a label beside the control.
 export function selectedControl(control) {
-  return control.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-select ")][1]');
+  return control.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-select ") or contains(concat(" ", normalize-space(@class), " "), " erp-mobile-select ")][1]');
 }

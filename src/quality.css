@@ -3,7 +3,7 @@
 .quality-page h2 { font-size: 16px; }
 .quality-page h3 { font-size: 14px; }
 :where(.quality-page input:not([type=checkbox])), :where(.quality-page textarea) { width: 100%; min-width: 0; }
-:where(.quality-page label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: grid; gap: 7px; font-weight: 500; }
+:where(.quality-page label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 7px; font-weight: 500; }
 .quality-page small { color: var(--muted); font-weight: 400; }
 .quality-toolbar, .quality-actions, .quality-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 :where(.quality-toolbar > input) { max-width: 240px; }
@@ -173,7 +173,7 @@
 .quality-material-binding-action p { flex: 1; }
 .quality-binding-pending { color: #97551d; }
 .quality-material-picker { display: grid; gap: 20px; }
-:where(.quality-material-picker > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: grid; gap: 8px; }
+:where(.quality-material-picker > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; }
 .quality-sheet-summaries { overflow: hidden; }
 .quality-sheet-summary { display: flex; align-items: center; gap: 20px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
 .quality-sheet-summary:last-child { border-bottom: 0; }
@@ -193,8 +193,8 @@
 .quality-chart-config, .quality-chart-preview { padding: 22px; display: grid; gap: 20px; min-width: 0; }
 .quality-chart-config fieldset { display: grid; gap: 18px; border: 0; padding: 0; min-width: 0; }
 .quality-chart-preview fieldset { display: grid; gap: 18px; border: 0; padding: 0; min-width: 0; }
-:where(.quality-chart-preview fieldset label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
-:where(.quality-chart-config label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)), :where(.quality-chart-preview > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)), :where(.quality-chart-filters label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
+:where(.quality-chart-preview fieldset label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
+:where(.quality-chart-config label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)), :where(.quality-chart-preview > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)), :where(.quality-chart-filters label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
 :where(.quality-chart-config input), :where(.quality-chart-preview input), :where(.quality-chart-filters input) { width: 100%; }
 .quality-chart-config .muted, .quality-chart-preview .muted { font-size: 13px; line-height: 1.7; }
 .quality-chart-empty { padding: 36px 18px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; }
@@ -235,7 +235,7 @@
 .quality-product-chart-heading > span:last-child { flex-shrink: 0; color: var(--accent); font-size: 12px; }
 .quality-product-chart > .quality-chart-data { padding: 16px; border-top: 1px solid var(--border); }
 .quality-header-options { display: flex; align-items: end; gap: 18px; flex-wrap: wrap; padding: 16px; margin-bottom: 14px; }
-:where(.quality-header-options > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { min-width: 260px; }
+:where(.quality-header-options > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { min-width: 260px; }
 .quality-header-options > p { width: 100%; font-size: 13px; line-height: 1.7; }
 .quality-header-path { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 340px; font-size: 12px; color: var(--muted); line-height: 1.6; }
 
@@ -269,10 +269,10 @@
 .quality-checks-editor > summary, .quality-check-rule > summary { cursor: pointer; font-weight: 600; }
 .quality-checks-editor fieldset { border: 0; padding: 12px 0 0; min-width: 0; display: grid; gap: 14px; }
 .quality-check-rule { border: 1px solid var(--border); padding: 14px; border-radius: 8px; }
-:where(.quality-check-rule label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)), .quality-check-reference { display: grid; gap: 8px; margin: 12px 0; }
+:where(.quality-check-rule label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)), .quality-check-reference { display: grid; gap: 8px; margin: 12px 0; }
 :where(.quality-check-rule input:not([type=checkbox])), :where(.quality-check-rule textarea) { width: 100%; }
 .quality-check-bound { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
-:where(.quality-check-bound label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { flex: 1; min-width: 180px; }
+:where(.quality-check-bound label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { flex: 1; min-width: 180px; }
 .quality-check-results { padding: 20px; display: grid; gap: 16px; }
 .quality-check-result { padding: 14px; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 10px; }
 .quality-check-fail { border-color: #d88a83; background: #fff5f3; }
@@ -280,7 +280,7 @@
 .quality-review-confirm { display: flex; align-items: center; gap: 10px; padding: 18px; margin-top: 16px; border: 1px solid var(--border); border-radius: 8px; }
 
 .quality-source-correction { display: grid; gap: 12px; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
-:where(.quality-source-correction label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { display: grid; gap: 8px; min-width: 0; }
+:where(.quality-source-correction label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; min-width: 0; }
 .quality-source-correction pre, .quality-correction-history pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 :where(.quality-source-correction textarea) { width: 100%; box-sizing: border-box; resize: vertical; }
 .quality-source-selected { outline: 2px solid var(--primary, #2563eb); outline-offset: -2px; }
@@ -328,11 +328,11 @@
 .mobile-device .quality-page .quality-acceptance-footer > .muted { display: none; }
 .quality-designer { min-width: 0; overflow: hidden; }
 .quality-designer-meta { display: flex; gap: 16px; padding: 16px; margin-bottom: 16px; align-items: end; flex-wrap: wrap; }
-:where(.quality-designer-meta > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper):first-child) { flex: 1; min-width: 180px; }
+:where(.quality-designer-meta > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio):first-child) { flex: 1; min-width: 180px; }
 :where(.quality-designer-meta select), :where(.quality-designer-controls select) { min-height: 38px; max-width: 100%; }
 .quality-designer-controls { border: 0; padding: 14px; min-width: 0; margin: 0; display: grid; gap: 14px; }
 .quality-designer-toolbar, .quality-designer-dimensions { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
-:where(.quality-designer-controls label:not(.ant-checkbox-wrapper, .ant-radio-wrapper)) { font-size: 12px; font-weight: 400; min-width: 0; }
+:where(.quality-designer-controls label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { font-size: 12px; font-weight: 400; min-width: 0; }
 :where(.quality-designer-controls input:not([type=checkbox])) { width: 95px; }
 :where(.quality-designer-controls input[type=color]) { width: 42px; height: 38px; }
 :where(.quality-designer-toolbar .btn) { min-height: 38px; }
@@ -350,7 +350,7 @@
 @media (max-width: 700px) {
   .quality-list-toolbar .quality-list-filters { width: 100%; grid-template-columns: minmax(0,1fr) 140px; }
   .quality-designer-content { grid-template-columns: minmax(0,1fr); gap: 4px; }
-  :where(.quality-designer-meta > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper):first-child) { min-width: 0; flex-basis: 100%; }
+  :where(.quality-designer-meta > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio):first-child) { min-width: 0; flex-basis: 100%; }
   .quality-designer-controls { padding: 10px; }
   .quality-online-field-list { grid-template-columns: minmax(0,1fr); }
   .quality-online-fields { padding: 16px; }

@@ -1,4 +1,4 @@
-import { Input as AntInput, Button as AntButton, Checkbox as AntCheckbox } from 'antd';
+import { Input as AntInput, Button as AntButton, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 
 import { parseQualityFile, designQualityFile } from '../quality-local.js';
 import { QualityChecksEditor } from './QualityChecksEditor.jsx';
