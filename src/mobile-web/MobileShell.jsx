@@ -89,7 +89,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
       </>}
     </main>
     {page !== 'scanner' && <nav className="mw-tabs" aria-label="移动端主导航" inert={switching}>
-      {tabs.map(({id, mobile: label, icon: Icon}) => <AntButton type="default" htmlType="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></AntButton>)}
+      {tabs.map(({id, mobile: label, icon: Icon}) => <button type="button" key={id} aria-current={page === id || id === 'history' && ['purchases', 'sales'].includes(page) ? 'page' : undefined} onClick={() => navigate(id)}><Icon size={23} /><span>{label}</span></button>)}
     </nav>}
   </div>;
 }
