@@ -136,7 +136,7 @@ test('prefilled online entry protects unsaved work and detects newly published v
 });
 
 for(const platform of ['Android PWA','iPhone'])test(`${platform} opens from workspace and fills, validates and submits online`,async({browser})=>{
-  const context=await browser.newContext({...devices[platform==='iPhone'?'iPhone 13':'Pixel 7'],baseURL:'http://127.0.0.1:3199',serviceWorkers:platform==='Android PWA'?'allow':'block'});
+  const context=await browser.newContext({ locale: 'zh-CN',...devices[platform==='iPhone'?'iPhone 13':'Pixel 7'],baseURL:'http://127.0.0.1:3199',serviceWorkers:platform==='Android PWA'?'allow':'block'});
   try{
     if(platform==='Android PWA')await context.addInitScript(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
     const name=`${platform}在线模板`;await prepare(context.request,name);

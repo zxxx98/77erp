@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Pagination as AntPagination } from 'antd';
 import { Spin, Button as AntButton, Tag, Empty as AntEmpty } from '../ui/controls.jsx';
 import { Popup } from 'antd-mobile';
@@ -21,6 +23,7 @@ function Button({
   type: htmlType = "button",
   ...props
 }) {
+  useLocale();
   const { can } = usePermissions();
   if (permission && !can(permission)) return null;
   return (
@@ -32,11 +35,13 @@ function Button({
 }
 
 function Badge({ children, tone = 'green' }) {
+  useLocale();
   const colors = { green: 'success', orange: 'warning', red: 'error', blue: 'processing', gray: 'default' };
   return <Tag color={colors[tone] || tone}>{children}</Tag>;
 }
 
 function ProductArt({ product, size = "normal", preview = true }) {
+  useLocale();
   if (product.image) return <ProductImage src={product.image} alt={product.name} preview={preview} thumbnailSize={size === 'large' ? 200 : 100} className={`product-art art-${size}`} />;
   const n = product.name;
   const type = /杯/.test(n)
@@ -187,8 +192,9 @@ function ProductArt({ product, size = "normal", preview = true }) {
   );
 }
 
-function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions, closeLabel = '关闭弹窗',
+function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions, closeLabel = translate("system.close.dialog"),
   presentation = 'dialog', drawerSize = 'standard', headerNavigation, footer }) {
+  useLocale();
   const drawer = presentation === 'drawer' && !mobileDevice;
   const { preferences } = usePreferences();
   const closeOnBackdrop = mobileDevice || drawer ? preferences.closeDrawerOnBackdrop : preferences.closeModalOnBackdrop;
@@ -316,11 +322,13 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
   return <div className={`modal-backdrop${drawer ? ' drawer-backdrop' : ''}`} {...backdropEvents}>{content}</div>;
 }
 
-function Empty({ title = '暂无记录', description = '新的记录会出现在这里。', action }) {
+function Empty({ title = translate("system.no.records"), description = translate("system.new.records.will.appear.here"), action }) {
+  useLocale();
   return <AntEmpty description={<><h3>{title}</h3><p>{description}</p></>}>{action}</AntEmpty>;
 }
 
 function PageHeading({ eyebrow, title, description, children }) {
+  useLocale();
   return (
     <div className="page-heading">
       <div>
@@ -341,6 +349,7 @@ function Panel({
   className = "",
   subtitle,
 }) {
+  useLocale();
   return (
     <section className={`panel ${className}`}>
       <div className="panel-heading">
@@ -358,19 +367,21 @@ function Panel({
 }
 
 function QueryStatus({ query, block = false }) {
+  useLocale();
   if (query.loading) return block
-    ? <LoadingStatus block>正在读取数据…</LoadingStatus>
-    : <p><LoadingStatus>正在读取数据…</LoadingStatus></p>;
-  if (query.error) return <div role="alert" className="info-box">{query.error}<Button onClick={query.retry}>重新加载</Button></div>;
+    ? <LoadingStatus block>{translate("system.reading.data")}</LoadingStatus>
+    : <p><LoadingStatus>{translate("system.reading.data")}</LoadingStatus></p>;
+  if (query.error) return <div role="alert" className="info-box">{query.error}<Button onClick={query.retry}>{translate("system.reload")}</Button></div>;
   return null;
 }
 
 function Pagination({ total, page, setPage }) {
+  useLocale();
   return <div className="pagination">
-    <span>共 <strong>{total}</strong> 条记录{total > 0 && `，显示 ${(page - 1) * 8 + 1}–${Math.min(page * 8, total)} 条`}</span>
+    <span>{translate("system.total.2")}{" "}<strong>{total}</strong>{" "}{translate("system.records.2")}{total > 0 && translate("system.showing.items", { v0: (page - 1) * 8 + 1, v1: Math.min(page * 8, total) })}</span>
     <AntPagination current={page} total={total} pageSize={8} onChange={setPage} showSizeChanger={false} responsive
       itemRender={(number, type, original) => type === 'prev' || type === 'next'
-        ? <AntButton type="text" aria-label={type === 'prev' ? '上一页' : '下一页'}
+        ? <AntButton type="text" aria-label={type === 'prev' ? translate("system.previous.page") : translate("system.next.page")}
             disabled={type === 'prev' ? page <= 1 : page >= Math.ceil(total / 8)}
             icon={type === 'prev' ? <ChevronLeft size={16} /> : <ChevronRight size={16} />} />
         : original} />
@@ -378,6 +389,7 @@ function Pagination({ total, page, setPage }) {
 }
 
 function CategoryTree({ categories, counts = [], active = false, selected, onSelect }) {
+  useLocale();
   const [collapsed, setCollapsed] = useState(new Set());
   const render = (parent = null, depth = 0) => categories.filter(c => c.parent_id === parent).map(c => {
     const children = categories.some(child => child.parent_id === c.id);
@@ -385,21 +397,22 @@ function CategoryTree({ categories, counts = [], active = false, selected, onSel
     const total = counts.filter(row => branch.has(row.category_id)).reduce((sum, row) => sum + (active ? row.active : row.total), 0);
     return <li key={c.id}>
       <div className="category-tree-row" style={{ paddingLeft: depth * 14 }}>
-        {children ? <AntButton type="text" htmlType="button" className="category-expand" aria-label={`${collapsed.has(c.id) ? '展开' : '折叠'} ${c.name}`} aria-expanded={!collapsed.has(c.id)} onClick={() => setCollapsed(current => { const next = new Set(current); next.has(c.id) ? next.delete(c.id) : next.add(c.id); return next; })}>{collapsed.has(c.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</AntButton> : <span className="category-expand" />}
+        {children ? <AntButton type="text" htmlType="button" className="category-expand" aria-label={`${collapsed.has(c.id) ? translate("system.expand") : translate("system.fold")} ${c.name}`} aria-expanded={!collapsed.has(c.id)} onClick={() => setCollapsed(current => { const next = new Set(current); next.has(c.id) ? next.delete(c.id) : next.add(c.id); return next; })}>{collapsed.has(c.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</AntButton> : <span className="category-expand" />}
         <AntButton type="text" htmlType="button" className={`category-select ${selected === c.id ? 'active' : ''}`} aria-pressed={selected === c.id} onClick={() => onSelect(c.id)}><span>{c.name}</span><small>{total}</small></AntButton>
       </div>
       {children && !collapsed.has(c.id) && <ul>{render(c.id, depth + 1)}</ul>}
     </li>;
   });
-  return <nav aria-label="物料分类树" className="category-tree">
-    <AntButton type="text" htmlType="button" className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>全部物料</span><small>{counts.reduce((sum, row) => sum + (active ? row.active : row.total), 0)}</small></AntButton>
+  return <nav aria-label={translate("system.material.classification.tree")} className="category-tree">
+    <AntButton type="text" htmlType="button" className={`category-select ${selected === null ? 'active' : ''}`} aria-pressed={selected === null} onClick={() => onSelect(null)}><span>{translate("system.all.materials")}</span><small>{counts.reduce((sum, row) => sum + (active ? row.active : row.total), 0)}</small></AntButton>
     <ul>{render()}</ul>
-    {!categories.length && <p className="muted">暂无分类，请添加分类。</p>}
+    {!categories.length && <p className="muted">{translate("system.there.is.no.category.yet.please.add.a.category")}</p>}
   </nav>;
 }
 
 function ProductName({ product, onView }) {
-  return <AntButton type="text" htmlType="button" className="product-name-link" aria-label={`查看 ${product.name} 物料详情`} onClick={() => onView(product)}>{product.name}</AntButton>;
+  useLocale();
+  return <AntButton type="text" htmlType="button" className="product-name-link" aria-label={translate("system.view.material.details", { v0: product.name })} onClick={() => onView(product)}>{product.name}</AntButton>;
 }
 
 export { Button, Badge, ProductArt, Modal, Empty, PageHeading, Panel, QueryStatus, Pagination, CategoryTree, ProductName };

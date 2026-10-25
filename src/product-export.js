@@ -1,3 +1,4 @@
+import { t, getLocale } from './i18n/index.js';
 export const productExportHeaders = [
   "物料名称",
   "条码",
@@ -15,6 +16,9 @@ export const productExportHeaders = [
   "生产类型",
 ];
 
+const exportHeaderKeys = ["warehouse.material.name","warehouse.barcode","warehouse.classification","warehouse.unit","warehouse.reference.purchase.price","warehouse.reference.sales.price","warehouse.safety.stock","warehouse.current.inventory","warehouse.specifications.and.models","warehouse.remarks","warehouse.fixed.asset","warehouse.status","warehouse.round.quantities.to.whole.units","warehouse.production.type"];
+export const getProductExportHeaders = (language = getLocale()) => exportHeaderKeys.map(key => t(key, { lng: language }));
+
 // Excel sheet names are capped at 31 characters and forbid : \ / ? * [ ]
 export function sheetName(name, used) {
   const base = String(name || "仓库").replace(/[:\\/?*[\]]/g, " ").trim().slice(0, 31) || "仓库";
@@ -30,7 +34,7 @@ export function sheetName(name, used) {
 
 const number = (value) => (Number.isFinite(Number(value)) ? Number(value) : "");
 
-export function warehouseSheet(warehouse, products) {
+export function warehouseSheet(warehouse, products, language = getLocale()) {
   const rows = products.map((p) => [
     String(p.name ?? ""),
     String(p.barcode ?? ""),
@@ -42,23 +46,23 @@ export function warehouseSheet(warehouse, products) {
     number(p.stock),
     String(p.specification ?? ""),
     String(p.note ?? ""),
-    p.is_fixed_asset ? "是" : "否",
-    p.active === 0 ? "停用" : "启用",
-    p.unit_round_up ? "是" : "否",
+    p.is_fixed_asset ? t("warehouse.yes", { lng: language }) : t("warehouse.no", { lng: language }),
+    t(p.active === 0 ? 'warehouse.export.inactive' : 'warehouse.export.active', { lng: language }),
+    p.unit_round_up ? t("warehouse.yes", { lng: language }) : t("warehouse.no", { lng: language }),
     String(p.production_type ?? ""),
   ]);
   return {
-    data: [productExportHeaders, ...rows],
+    data: [getProductExportHeaders(language), ...rows],
     sheet: warehouse.name,
     stickyRowsCount: 1,
   };
 }
 
-export function exportFileName(now = new Date()) {
+export function exportFileName(now = new Date(), language = getLocale()) {
   const stamp = [
     now.getFullYear(),
     String(now.getMonth() + 1).padStart(2, "0"),
     String(now.getDate()).padStart(2, "0"),
   ].join("");
-  return `77ERP-物料导出-${stamp}.xlsx`;
+  return t('warehouse.export.filename', { stamp, lng: language });
 }

@@ -1,3 +1,7 @@
+import { productionMessage } from '../i18n/production-errors.js';
+import { bomLossMethodLabels, bomLossMethodFormulas } from '../i18n/production-display.js';
+import { t as pt, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Form as AntForm } from 'antd';
 import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 import { FormField } from './../ui/FormField.jsx';
@@ -16,18 +20,18 @@ import { Select } from '../Dropdown.jsx';
 import { downloadFile } from '../app/download.js';
 import { bomStructureCSV, bomCSV } from '../bom-csv.js';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
-import { BOM_MAX_ITEMS, parseBomQuantity, validateBom, bomRequiredQuantity, bomLossMethodLabels, bomLossMethodFormulas, validateBomLossRate } from '../../shared/bom.js';
+import { BOM_MAX_ITEMS, parseBomQuantity, validateBom, bomRequiredQuantity, validateBomLossRate } from '../../shared/bom.js';
 import { validateScrapRules } from '../../shared/scrap.js';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import './bom.css';
 
 const parseLossRate = value => {
   const rate = Number(value);
-  if (!/^\d+(\.\d{1,6})?$/.test(String(value).trim())) throw new Error('标准损耗率最多 6 位小数。');
+  if (!/^\d+(\.\d{1,6})?$/.test(String(value).trim())) throw new Error(pt("production.standardLossRateSupportsAtMost6Decimal"));
   validateBomLossRate(rate);
   return rate;
 };
-const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
+const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const editable = bom => ({ ...bom, items: bom.items.map(item => ({ ...item, quantity: item.quantity_fraction || item.quantity })),
   scraps: (bom.scraps || []).map(row => ({ ...row, quantity: row.quantity_fraction || row.quantity })) });
 const newBom = product => ({ name: product ? `${product.name}BOM`.slice(0, 100) : '', product: product || null,
@@ -43,55 +47,59 @@ function incrementUsage(value) {
 }
 
 function UsagePreview({ value, unit, lossRate, lossMethod }) {
+  useLocale();
   try {
     const parsed = parseBomQuantity(value);
     const rate = parseLossRate(lossRate), gross = bomRequiredQuantity(parsed.quantity, 1, 1, parsed.quantity_fraction, rate, lossMethod);
-    return <small className="bom-hint bom-usage-preview">{parsed.quantity_fraction && <>折合约 {count(parsed.quantity)} {unit}，按原分数测算。 </>}含损耗标准投入 {count(gross)} {unit}（对应基准产量）。</small>;
+    return <small className="bom-hint bom-usage-preview">{parsed.quantity_fraction && <>{pt("production.approximately")} {count(parsed.quantity)} {unit}{pt("production.calculatedUsingTheOriginalFraction")} </>}{pt("production.standardInputIncludingLoss")} {count(gross)} {unit}{pt("production.forTheBaseOutput")}</small>;
   } catch { return null; }
 }
 
 function ProductPicker({ data, material = false, scrap = false, onSelect, disabled }) {
+  useLocale();
   const [q, setQ] = useState(''), [offset, setOffset] = useState(0), [camera, setCamera] = useState(false);
   const action = useBusiness();
   const query = useQuery(q.trim() ? queryPath('/products', { q: q.trim(), status: 'active', limit: 20, offset }) : null, data, 200);
-  const label = scrap ? '废料' : material ? '材料' : '成品';
-  const selectLabel = scrap ? '添加废料' : material ? '添加材料' : '选择成品';
+  const label = scrap ? pt("production.scrap") : material ? pt("production.material") : pt("production.finishedProduct");
+  const selectLabel = scrap ? pt("production.addScrap") : material ? pt("production.addMaterial") : pt("production.selectFinishedProduct");
   const choose = product => { onSelect(product); setQ(''); setOffset(0); };
   const scan = raw => {
     setCamera(false);
     action.run(async () => {
       const product = await lookupProductCode(raw, data);
-      if (!product) throw new Error('未找到该编码的物料，请先建立物料档案。');
-      if (!product.active) throw new Error('该物料已停用，请选择已启用物料。');
+      if (!product) throw new Error(pt("production.noMaterialFoundForThisCodeCreateIts"));
+      if (!product.active) throw new Error(pt("production.thisMaterialIsDisabledSelectAnActiveMaterial"));
       choose(product);
     });
   };
   return <div className="bom-picker">
     <div className="bom-search-row">
-      <AntInput type="search" aria-label={`搜索${label}`} placeholder={`搜索${label}名称、编码或规格`} maxLength={100} value={q}
+      <AntInput type="search" aria-label={pt("production.search", { v0: label })} placeholder={pt("production.searchByNameCodeOrSpecification", { v0: label })} maxLength={100} value={q}
         disabled={disabled || action.busy} onChange={e => { setQ(e.target.value); setOffset(0); action.setError(''); }}
         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (q.trim()) scan(q.trim()); } }} />
-      <Button type="button" disabled={disabled || action.busy || !q.trim()} onClick={() => scan(q.trim())}>按条码{scrap ? '添加废料' : material ? '添加' : '选择'}</Button>
-      <Button type="button" icon={Camera} disabled={disabled || action.busy} onClick={() => setCamera(true)} aria-label={`扫码${selectLabel}`}>扫码</Button>
+      <Button type="button" disabled={disabled || action.busy || !q.trim()} onClick={() => scan(q.trim())}>{pt("production.byBarcode")}{scrap ? pt("production.addScrap") : material ? pt("production.add") : pt("production.select")}</Button>
+      <Button type="button" icon={Camera} disabled={disabled || action.busy} onClick={() => setCamera(true)} aria-label={pt("production.scan", { v0: selectLabel })}>{pt("production.scan2")}</Button>
     </div>
-    {action.error && <p className="form-error" role="alert">{action.error}</p>}
+    {productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
     {q.trim() && <div className="bom-search-results">
       <QueryStatus query={query} />
       {query.result?.products.map(product => <div className="bom-search-product" key={product.id}>
-        <div><strong>{product.name}</strong><small>{product.barcode} · {product.specification || '无规格'} · {product.unit}</small></div>
-        <Button type="button" disabled={disabled} onClick={() => choose(product)} aria-label={`${selectLabel} ${product.name}`}>{material || scrap ? '添加' : '选择'}</Button>
+        <div><strong>{product.name}</strong><small>{product.barcode} · {product.specification || pt("production.noSpecification")} · {product.unit}</small></div>
+        <Button type="button" disabled={disabled} onClick={() => choose(product)} aria-label={`${selectLabel} ${product.name}`}>{material || scrap ? pt("production.add") : pt("production.select")}</Button>
       </div>)}
-      {query.result && !query.result.products.length && <p className="bom-empty">没有匹配的已启用物料。</p>}
+      {query.result && !query.result.products.length && <p className="bom-empty">{pt("production.noMatchingActiveMaterials")}</p>}
       {(offset > 0 || query.result?.has_more) && <div className="bom-actions">
-        <Button type="button" disabled={!offset || query.loading} onClick={() => setOffset(n => n - 20)}>上一页物料</Button>
-        <Button type="button" disabled={!query.result?.has_more || query.loading} onClick={() => setOffset(n => n + 20)}>下一页物料</Button>
+        <Button type="button" disabled={!offset || query.loading} onClick={() => setOffset(n => n - 20)}>{pt("production.previousMaterials")}</Button>
+        <Button type="button" disabled={!query.result?.has_more || query.loading} onClick={() => setOffset(n => n + 20)}>{pt("production.nextMaterials")}</Button>
       </div>}
     </div>}
-    {camera && <CameraScanner title={`扫码${selectLabel}`} onResult={scan} onClose={() => setCamera(false)} onManual={() => setCamera(false)} />}
+    {camera && <CameraScanner title={pt("production.scan", { v0: selectLabel })} onResult={scan} onClose={() => setCamera(false)} onManual={() => setCamera(false)} />}
   </div>;
 }
 
 function BomCalculation({ bom, data, onBack, onCreateProduction }) {
+  const { locale } = useLocale();
+  const [outputLanguage, setOutputLanguage] = useState(null);
   const [quantity, setQuantity] = useState(String(bom.base_quantity)), [snapshot, setSnapshot] = useState(null), [stale, setStale] = useState(false);
   const snapshotData = useRef(data);
   useEffect(() => {
@@ -105,48 +113,50 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
   }, [data, snapshot, bom.id]);
   const action = useBusiness();
   return <>
-    <PageHeading title="备料测算" description={`${bom.name} #${bom.id} · ${bom.product.name} · ${bom.product.barcode}`}>
-      <Button icon={ArrowLeft} disabled={action.busy} onClick={onBack}>返回BOM</Button>
+    <PageHeading title={pt("production.materialPlanning")} description={`${bom.name} #${bom.id} · ${bom.product.name} · ${bom.product.barcode}`}>
+      <Button icon={ArrowLeft} disabled={action.busy} onClick={onBack}>{pt("production.backToBom")}</Button>
     </PageHeading>
     <section className="panel bom-section">
-      <div className="bom-calculate-form"><label>生产数量（{bom.product.unit}）<AntInput aria-label="生产数量" inputMode="decimal" value={quantity} disabled={action.busy}
+      <div className="bom-calculate-form"><label>{pt("production.productionQuantity")}{bom.product.unit}）<AntInput aria-label={pt("production.productionQuantity2")} inputMode="decimal" value={quantity} disabled={action.busy}
         onChange={e => { setQuantity(e.target.value); setSnapshot(null); action.setError(''); }} /></label>
         <Button kind="primary" icon={Calculator} busy={action.busy} onClick={() => action.run(async () => {
           const production_quantity = parseQuantity(quantity, true);
           const result = await api(`/boms/${bom.id}/calculate`, { method: 'POST', warehouseId: data.warehouse_id,
             body: { production_quantity, version: bom.version, schema_version: 2 } });
           snapshotData.current = data; setStale(false); setSnapshot(result);
-        })}>{snapshot ? '重新测算' : '开始测算'}</Button>
+        })}>{snapshot ? pt("production.recalculate") : pt("production.calculate")}</Button>
       </div>
-      <p className="bom-hint">基准产量 {count(bom.base_quantity)} {bom.base_unit}。标准损耗采用{bomLossMethodLabels[bom.loss_method]}：{bomLossMethodFormulas[bom.loss_method]}，再按生产数量 ÷ 基准产量折算，最终向上保留 4 位小数。</p>
-      {action.error && <p className="form-error" role="alert">{action.error}</p>}
+      <p className="bom-hint">{pt("production.baseOutput")} {count(bom.base_quantity)} {bom.base_unit}{pt("production.standardLossUses")}{bomLossMethodLabels[bom.loss_method]}：{bomLossMethodFormulas[bom.loss_method]}{pt("production.thenScalesByProductionQuantityBaseOutputRounded")}</p>
+      {productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
     </section>
     {snapshot && <section className="panel bom-section bom-calculation-result">
-      <div className="bom-section-heading"><div><h2>备料结果</h2><p className="bom-hint">{snapshot.warehouse.name} · 库存读取于 {new Date(snapshot.captured_at).toLocaleString('zh-CN', { hour12: false })}</p></div>
+      <div className="bom-section-heading"><div><h2>{pt("production.materialRequirements")}</h2><p className="bom-hint">{snapshot.warehouse.name} {pt("production.stockReadAt")} {new Date(snapshot.captured_at).toLocaleString(getFormatLocale(), { hour12: false })}</p></div>
         <div className="bom-actions">
-          <Button icon={Download} onClick={() => downloadFile(bomCSV(snapshot), `备料表-${snapshot.product.barcode}-${snapshot.captured_at.slice(0, 10)}.csv`, 'text/csv;charset=utf-8')}>导出备料表</Button>
-          <Button icon={Download} onClick={() => downloadFile(bomStructureCSV(snapshot), `BOM结构-${snapshot.bom_id}.csv`, 'text/csv;charset=utf-8')}>导出结构明细</Button>
+          <Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select>
+          <Button icon={Download} onClick={() => downloadFile(bomCSV(snapshot, outputLanguage || locale), pt("production.materialPlanCsv", { v0: snapshot.product.barcode, v1: snapshot.captured_at.slice(0, 10) }), 'text/csv;charset=utf-8')}>{pt("production.exportMaterialPlan")}</Button>
+          <Button icon={Download} onClick={() => downloadFile(bomStructureCSV(snapshot, outputLanguage || locale), pt("production.bomStructureCsv", { v0: snapshot.bom_id }), 'text/csv;charset=utf-8')}>{pt("production.exportStructureDetails")}</Button>
         </div>
       </div>
-      {snapshot.multi_level && <p className="bom-warning">按毛需求展开；中间半成品库存未抵扣。最终领料按各层选定配方计算。</p>}
-      {stale && <p className="bom-warning">配方或物料信息已变化，请重新测算后创建生产单；当前结果与导出仍保留原快照。</p>}
-      {onCreateProduction && <Button disabled={stale} onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>按本次数量新建生产单</Button>}
+      {snapshot.multi_level && <p className="bom-warning">{pt("production.expandedByGrossRequirementsIntermediateStockIsNot")}</p>}
+      {stale && <p className="bom-warning">{pt("production.recipeOrMaterialInformationChangedRecalculateBeforeCreating")}</p>}
+      {onCreateProduction && <Button disabled={stale} onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>{pt("production.createProductionOrderForThisQuantity")}</Button>}
       <BomResultViews nodes={snapshot.nodes} quantity={snapshot.production_quantity}>{showSources => <>
-      <p className="bom-result-summary" role="status">共 {snapshot.rows.length} 种材料，{snapshot.rows.filter(row => row.shortage > 0).length} 种缺料。</p>
-      <div className="bom-result-table"><table><thead><tr><th>材料</th><th>基准净用量</th><th>本次需求（含损耗）</th><th>账面库存</th><th>缺料数量</th><th>备注</th></tr></thead>
+      <p className="bom-result-summary" role="status">{pt("production.total")} {snapshot.rows.length} {pt("production.materials")}{snapshot.rows.filter(row => row.shortage > 0).length} {pt("production.shortages")}</p>
+      <div className="bom-result-table"><table><thead><tr><th>{pt("production.material")}</th><th>{pt("production.baseNetUsage")}</th><th>{pt("production.requiredQuantityIncludingLoss")}</th><th>{pt("production.bookStock")}</th><th>{pt("production.shortageQuantity")}</th><th>{pt("production.note")}</th></tr></thead>
         <tbody>{snapshot.rows.map(row => <tr key={row.product_id}>
           <td><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small></td>
-          <td data-label="基准净用量">{row.quantity === null ? <button type="button" className="bom-tree-action" onClick={() => showSources(row)}>查看 {row.sources.length} 条来源</button> : <>{row.quantity_fraction || count(row.quantity)} {row.unit}<small>标准损耗率 {count(row.loss_rate)}%</small></>}</td><td data-label="本次需求（含损耗）">{count(row.required)} {row.unit}</td><td data-label="账面库存">{count(row.stock)} {row.unit}</td>
-          <td data-label="缺料数量" className={row.shortage > 0 ? 'bom-shortage' : ''}>{count(row.shortage)} {row.unit}</td><td data-label="备注">{row.note || '—'}</td>
+          <td data-label={pt("production.baseNetUsage")}>{row.quantity === null ? <button type="button" className="bom-tree-action" onClick={() => showSources(row)}>{pt("production.view")} {row.sources.length} {pt("production.sources")}</button> : <>{row.quantity_fraction || count(row.quantity)} {row.unit}<small>{pt("production.standardLossRate")} {count(row.loss_rate)}%</small></>}</td><td data-label={pt("production.requiredQuantityIncludingLoss")}>{count(row.required)} {row.unit}</td><td data-label={pt("production.bookStock")}>{count(row.stock)} {row.unit}</td>
+          <td data-label={pt("production.shortageQuantity")} className={row.shortage > 0 ? 'bom-shortage' : ''}>{count(row.shortage)} {row.unit}</td><td data-label={pt("production.note")}>{row.note || '—'}</td>
         </tr>)}</tbody></table></div>
       <ScrapOutputs rows={snapshot.scraps || []} materials={snapshot.rows} />
-      <p className="bom-hint">结果与导出保留本次读取的账面库存，未预留或扣减库存。库存变化后请重新测算。</p>
+      <p className="bom-hint">{pt("production.resultsAndExportsRetainTheStockReadFor")}</p>
       </>}</BomResultViews>
     </section>}
   </>;
 }
 
 export function Bom({ data, initialProduct, onCreateProduction }) {
+  useLocale();
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0);
   const [filterProduct, setFilterProduct] = useState(initialProduct || null), [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [calculation, setCalculation] = useState(null);
@@ -158,18 +168,18 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
   const state = useRef({ dirty, busy: action.busy }); state.current = { dirty, busy: action.busy };
   useEffect(() => {
     const before = event => {
-      if (state.current.busy || state.current.dirty && !window.confirm('BOM尚未保存，确定离开？')) event.preventDefault();
+      if (state.current.busy || state.current.dirty && !window.confirm(pt("production.thisBomHasUnsavedChangesLeave"))) event.preventDefault();
     };
     const unload = event => { if (state.current.dirty || state.current.busy) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
   const apply = bom => { const value = editable(bom); setEditor(value); setBaseline(JSON.stringify(value)); setCalculation(null); action.setError(''); setMessage(''); };
-  const back = () => { if (action.busy || dirty && !window.confirm('BOM尚未保存，确定离开？')) return; setEditor(null); setCalculation(null); action.setError(''); };
+  const back = () => { if (action.busy || dirty && !window.confirm(pt("production.thisBomHasUnsavedChangesLeave"))) return; setEditor(null); setCalculation(null); action.setError(''); };
   const open = (id, kind) => action.run(async () => {
     const bom = await api(`/boms/${id}`, { warehouseId: data.warehouse_id });
     if (kind === 'calculate') { setCalculation(bom); action.setError(''); setMessage(''); }
-    else if (kind === 'copy') apply({ ...newBom(bom.product), name: `${bom.name.slice(0, 98)}副本`, base_quantity: bom.base_quantity, base_unit: bom.base_unit, loss_method: bom.loss_method, note: bom.note, items: editable(bom).items, scraps: editable(bom).scraps });
+    else if (kind === 'copy') apply({ ...newBom(bom.product), name: pt("production.copy", { v0: bom.name.slice(0, 98) }), base_quantity: bom.base_quantity, base_unit: bom.base_unit, loss_method: bom.loss_method, note: bom.note, items: editable(bom).items, scraps: editable(bom).scraps });
     else apply(bom);
   });
   const update = change => { setEditor(previous => ({ ...previous, ...change })); action.setError(''); };
@@ -185,140 +195,140 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
       validateBom(body);
       validateScrapRules(body.scraps, body.product_id, body.items);
       await action.send(editor.id ? `/boms/${editor.id}` : '/boms', body, { warehouseId: data.warehouse_id });
-      setEditor(null); setRevision(n => n + 1); setMessage('BOM已保存。');
+      setEditor(null); setRevision(n => n + 1); setMessage(pt("production.bomSaved"));
     });
   };
   if (calculation) return <div className="bom-page"><BomCalculation key={`${calculation.id}:${calculation.version}`} bom={calculation} data={data} onBack={back} onCreateProduction={onCreateProduction} /></div>;
   if (editor) return <div className="bom-page">
-    <PageHeading title={editor.id ? '编辑BOM' : '新建BOM'} description="配置基准产量和材料用量，保存后可按生产数量测算备料。">
-      <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>返回BOM</Button>
+    <PageHeading title={editor.id ? pt("production.editBom") : pt("production.newBom")} description={pt("production.setBaseOutputAndMaterialUsageThenSave")}>
+      <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{pt("production.backToBom")}</Button>
     </PageHeading>
     <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={save}>
-      <section className="panel bom-section"><h2>成品与配方</h2>
-        <div className="bom-form-grid"><label>BOM 名称<FormField label="BOM 名称" value={editor.name} required maxLength={100}><AntInput maxLength={100}  value={editor.name} disabled={action.busy} onChange={e => update({ name: e.target.value })} /></FormField></label>
-          <label>基准产量{editor.product && `（${editor.product.unit}）`}<FormField value={editor.base_quantity} required label="基准产量"><AntInput aria-label="基准产量" inputMode="decimal"  value={editor.base_quantity} disabled={action.busy} onChange={e => update({ base_quantity: e.target.value })} /></FormField></label></div>
-        {editor.product && <div className="bom-selected-product"><div><strong>成品：{editor.product.name}</strong><small>{editor.product.barcode} · {editor.product.unit}</small></div></div>}
-        {editor.product && editor.base_unit !== editor.product.unit && <p className="bom-warning">成品单位已从 {editor.base_unit} 改为 {editor.product.unit}，请核对基准产量后保存。</p>}
-        {!editor.product && <p className="bom-hint">请选择成品或半成品，同一物料可以创建多份不同名称的 BOM。</p>}
+      <section className="panel bom-section"><h2>{pt("production.finishedProductAndRecipe")}</h2>
+        <div className="bom-form-grid"><label>{pt("production.bomName")}<FormField label={pt("production.bomName")} value={editor.name} required maxLength={100}><AntInput maxLength={100}  value={editor.name} disabled={action.busy} onChange={e => update({ name: e.target.value })} /></FormField></label>
+          <label>{pt("production.baseOutput")}{editor.product && `（${editor.product.unit}）`}<FormField value={editor.base_quantity} required label={pt("production.baseOutput")}><AntInput aria-label={pt("production.baseOutput")} inputMode="decimal"  value={editor.base_quantity} disabled={action.busy} onChange={e => update({ base_quantity: e.target.value })} /></FormField></label></div>
+        {editor.product && <div className="bom-selected-product"><div><strong>{pt("production.finishedProduct2")}{editor.product.name}</strong><small>{editor.product.barcode} · {editor.product.unit}</small></div></div>}
+        {editor.product && editor.base_unit !== editor.product.unit && <p className="bom-warning">{pt("production.productUnitChangedFrom")} {editor.base_unit} {pt("production.to")} {editor.product.unit}{pt("production.verifyBaseOutputBeforeSaving")}</p>}
+        {!editor.product && <p className="bom-hint">{pt("production.selectAFinishedOrSemiFinishedProductOne")}</p>}
         <ProductPicker data={data} disabled={action.busy} onSelect={product => {
-          if ([...editor.items, ...editor.scraps].some(item => item.product_id === product.id)) { action.setError('成品不能与投入材料或废料相同，请先移除对应物料。'); return; }
+          if ([...editor.items, ...editor.scraps].some(item => item.product_id === product.id)) { action.setError(pt("production.theFinishedProductCannotAlsoBeAnInput")); return; }
           update({ product, product_id: product.id, base_unit: product.unit, name: editor.name || `${product.name}BOM`.slice(0, 100) });
         }} />
-        <label className="bom-note">备注<AntInput.TextArea rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label>
-        <AntCheckbox className="bom-checkbox" checked={!!editor.enabled} disabled={action.busy} onChange={e => update({ enabled: e.target.checked ? 1 : 0 })}>启用此 BOM</AntCheckbox>
+        <label className="bom-note">{pt("production.note")}<AntInput.TextArea rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label>
+        <AntCheckbox className="bom-checkbox" checked={!!editor.enabled} disabled={action.busy} onChange={e => update({ enabled: e.target.checked ? 1 : 0 })}>{pt("production.enableThisBom")}</AntCheckbox>
       </section>
-      <section className="panel bom-section"><div className="bom-section-heading"><h2>材料用量</h2><span className="bom-hint">已添加 {editor.items.length} / {BOM_MAX_ITEMS} 种</span></div>
-        <p className="bom-hint">填写生产 {editor.base_quantity || '…'} {editor.product?.unit || '单位成品'} 所需的材料净用量。材料可直接领用，或指定下级配方继续展开。</p>
-        <label className="bom-loss-method">标准损耗计算方式<Select aria-label="标准损耗计算方式" aria-describedby="bom-loss-help" value={editor.loss_method} disabled={action.busy}
+      <section className="panel bom-section"><div className="bom-section-heading"><h2>{pt("production.materialUsage")}</h2><span className="bom-hint">{pt("production.added")} {editor.items.length} / {BOM_MAX_ITEMS} {pt("production.types")}</span></div>
+        <p className="bom-hint">{pt("production.enterTheNetMaterialsNeededToProduce")} {editor.base_quantity || '…'} {editor.product?.unit || pt("production.unitsOfFinishedProduct")} {pt("production.materialsMayBeIssuedDirectlyOrExpandedUsing")}</p>
+        <label className="bom-loss-method">{pt("production.standardLossCalculation")}<Select aria-label={pt("production.standardLossCalculation")} aria-describedby="bom-loss-help" value={editor.loss_method} disabled={action.busy}
           onChange={e => update({ loss_method: e })}>{Object.entries(bomLossMethodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
-        <p className="bom-hint" id="bom-loss-help">本张 BOM 全部材料采用{bomLossMethodLabels[editor.loss_method]}，标准投入＝{bomLossMethodFormulas[editor.loss_method]}。{editor.loss_method === 'external' ? '损耗率按净用量计算；例如净用量 90、损耗率 10%，需投入 99。' : '损耗率按投入量计算；例如净用量 90、损耗率 10%，需投入 100。'}标准损耗率范围 0%（含）至 100%（不含）。用量已含损耗时，请先核对净用量，避免重复计算。废料另按规则计算，不再加到投入量上。</p>
-        <p className="bom-hint" id="bom-usage-help">用量支持小数或分数，如 1/40 表示每 40 件成品分摊 1 份材料（基准产量为 1 时）。分数按原比例测算，不自动按整箱取整；实际耗料在生产完工时核对。</p>
+        <p className="bom-hint" id="bom-loss-help">{pt("production.allMaterialsInThisBomUse")}{bomLossMethodLabels[editor.loss_method]}{pt("production.standardInput")}{bomLossMethodFormulas[editor.loss_method]}。{editor.loss_method === 'external' ? pt("production.lossIsBasedOnNetUsageNetUsage") : pt("production.lossIsBasedOnInputNetUsage90")}{pt("production.standardLossMustBeAtLeast0And")}</p>
+        <p className="bom-hint" id="bom-usage-help">{pt("production.usageSupportsDecimalsOrFractionsEG1")}</p>
         <ProductPicker data={data} material disabled={action.busy} onSelect={product => {
-          if (product.id === editor.product_id) { action.setError('成品不能作为自身的材料。'); return; }
-          if (editor.scraps.some(row => row.product_id === product.id)) { action.setError('投入材料不能与废料相同。'); return; }
+          if (product.id === editor.product_id) { action.setError(pt("production.aProductCannotBeItsOwnMaterial")); return; }
+          if (editor.scraps.some(row => row.product_id === product.id)) { action.setError(pt("production.inputMaterialCannotAlsoBeScrap")); return; }
           const found = editor.items.find(item => item.product_id === product.id);
-          if (!found && editor.items.length >= BOM_MAX_ITEMS) { action.setError(`最多添加 ${BOM_MAX_ITEMS} 种材料。`); return; }
+          if (!found && editor.items.length >= BOM_MAX_ITEMS) { action.setError(pt("production.youCanAddAtMostMaterials", { v0: BOM_MAX_ITEMS })); return; }
           try { update({ items: found ? editor.items.map(item => item.product_id === product.id ? { ...item, product, quantity: incrementUsage(item.quantity) } : item)
             : [...editor.items, { product_id: product.id, product, quantity: 1, loss_rate: 0, usage_mode: 'stock', child_bom_id: null, unit: product.unit, note: '' }] }); }
           catch (error) { action.setError(error.message); }
         }} />
-        {!editor.items.length && <p className="bom-empty">搜索或扫码添加材料。</p>}
+        {!editor.items.length && <p className="bom-empty">{pt("production.searchOrScanToAddMaterials")}</p>}
         <div className="bom-materials">{editor.items.map(item => <div className="bom-material" key={item.product_id}>
-          <div className="bom-material-name"><strong>{item.product.name}</strong><small>{item.product.barcode} · {item.product.specification || '无规格'}{!item.product.active && ' · 已停用'}</small>
-            {item.unit !== item.product.unit && <span className="bom-warning">单位已从 {item.unit} 改为 {item.product.unit}，请核对用量。</span>}</div>
-          <label>净用量（{item.product.unit}）<FormField value={item.quantity} required maxLength={60} label={`${item.product.name}用量`}><AntInput aria-label={`${item.product.name}用量`} aria-describedby="bom-usage-help bom-loss-help" inputMode="text" placeholder="如 0.025 或 1/40" maxLength={60} spellCheck={false}  value={item.quantity} disabled={action.busy}
+          <div className="bom-material-name"><strong>{item.product.name}</strong><small>{item.product.barcode} · {item.product.specification || pt("production.noSpecification")}{!item.product.active && pt("production.disabled")}</small>
+            {item.unit !== item.product.unit && <span className="bom-warning">{pt("production.unitChangedFrom")} {item.unit} {pt("production.to")} {item.product.unit}{pt("production.verifyUsage")}</span>}</div>
+          <label>{pt("production.netUsage")}{item.product.unit}）<FormField value={item.quantity} required maxLength={60} label={pt("production.usage", { v0: item.product.name })}><AntInput aria-label={pt("production.usage", { v0: item.product.name })} aria-describedby="bom-usage-help bom-loss-help" inputMode="text" placeholder={pt("production.eG0025Or140")} maxLength={60} spellCheck={false}  value={item.quantity} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} /></FormField></label>
-          <label>标准损耗率（%）<FormField value={item.loss_rate} required maxLength={20} label={`${item.product.name}标准损耗率`}><AntInput aria-label={`${item.product.name}标准损耗率`} aria-describedby="bom-loss-help" inputMode="decimal" maxLength={20}  value={item.loss_rate} disabled={action.busy}
+          <label>{pt("production.standardLossRate2")}<FormField value={item.loss_rate} required maxLength={20} label={pt("production.standardLossRate3", { v0: item.product.name })}><AntInput aria-label={pt("production.standardLossRate3", { v0: item.product.name })} aria-describedby="bom-loss-help" inputMode="decimal" maxLength={20}  value={item.loss_rate} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, loss_rate: e.target.value } : row) })} /></FormField></label>
-          <label className="bom-material-usage">用料方式<Select aria-label={`${item.product.name}用料方式`} value={item.usage_mode ?? 'stock'} disabled={action.busy}
+          <label className="bom-material-usage">{pt("production.materialSupplyMethod")}<Select aria-label={pt("production.supplyMethod", { v0: item.product.name })} value={item.usage_mode ?? 'stock'} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, usage_mode: e, child_bom_id: null, child_bom: null } : row) })}>
-            <option value="stock">领用本物料</option><option value="explode">展开下级 BOM</option>
+            <option value="stock">{pt("production.issueThisMaterial")}</option><option value="explode">{pt("production.expandChildBom")}</option>
           </Select></label>
-          <label className="bom-material-note">材料备注<AntInput aria-label={`${item.product.name}备注`} maxLength={200} value={item.note} disabled={action.busy}
+          <label className="bom-material-note">{pt("production.materialNote")}<AntInput aria-label={pt("production.note2", { v0: item.product.name })} maxLength={200} value={item.note} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
-          <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除材料 ${item.product.name}`} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>移除</Button>
+          <Button type="button" icon={Trash2} disabled={action.busy} aria-label={pt("production.removeMaterial", { v0: item.product.name })} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>{pt("production.remove")}</Button>
           <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} lossMethod={editor.loss_method} />
           {item.usage_mode === 'explode' && <ChildBomPicker item={item} data={queryData} disabled={action.busy}
             onChange={patch => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, ...patch } : row) })} />}
         </div>)}</div>
       </section>
-      <section className="panel bom-section"><div className="bom-section-heading"><h2>废料产出</h2><span className="bom-hint">可选 · {editor.scraps.length} / 100 种</span></div>
-        <p className="bom-hint">选择现有物料，每张 BOM 独立设置规则。按产量填写基准产量对应的废料量；按投入比例使用含标准损耗的计划投入，完工时按实际耗料计算，单位须一致。预计值在完工时核对，废料按零成本入库。</p>
+      <section className="panel bom-section"><div className="bom-section-heading"><h2>{pt("production.scrapOutput")}</h2><span className="bom-hint">{pt("production.optional")} {editor.scraps.length} {pt("production.label100Types")}</span></div>
+        <p className="bom-hint">{pt("production.selectExistingMaterialsAndConfigureRulesForEach")}</p>
         <ProductPicker data={data} scrap disabled={action.busy} onSelect={product => {
-          if (product.id === editor.product_id || editor.items.some(row => row.product_id === product.id)) { action.setError('废料不能与成品或投入材料相同。'); return; }
-          if (editor.scraps.some(row => row.product_id === product.id)) { action.setError('此废料已添加，请修改已有规则。'); return; }
-          if (editor.scraps.length >= 100) { action.setError('废料产出最多 100 种。'); return; }
+          if (product.id === editor.product_id || editor.items.some(row => row.product_id === product.id)) { action.setError(pt("production.scrapCannotBeTheFinishedProductOrAn")); return; }
+          if (editor.scraps.some(row => row.product_id === product.id)) { action.setError(pt("production.thisScrapIsAlreadyAddedEditItsExisting")); return; }
+          if (editor.scraps.length >= 100) { action.setError(pt("production.atMost100ScrapTypesAreAllowed")); return; }
           update({ scraps: [...editor.scraps, { product_id: product.id, product, unit: product.unit, method: 'output', source_product_id: null, quantity: 1, note: '' }] });
         }} />
-        {!editor.scraps.length && <p className="bom-empty">没有废料时可留空。</p>}
+        {!editor.scraps.length && <p className="bom-empty">{pt("production.leaveEmptyIfThereIsNoScrap")}</p>}
         {editor.scraps.map(row => {
           const change = patch => update({ scraps: editor.scraps.map(item => item.product_id === row.product_id ? { ...item, ...patch } : item) });
           return <article className="bom-scrap-rule" key={row.product_id}>
-            <div><strong>{row.product.name}</strong><small>{row.product.barcode} · {row.product.unit}{!row.product.active && ' · 已停用'}</small>
-              {row.unit !== row.product.unit && <p className="bom-warning">单位已变化，请核对规则后保存。</p>}</div>
+            <div><strong>{row.product.name}</strong><small>{row.product.barcode} · {row.product.unit}{!row.product.active && pt("production.disabled")}</small>
+              {row.unit !== row.product.unit && <p className="bom-warning">{pt("production.unitChangedVerifyTheRuleBeforeSaving")}</p>}</div>
             <div className="bom-scrap-fields">
-              <label>计算方式<Select aria-label={`${row.product.name}计算方式`} value={row.method} disabled={action.busy}
+              <label>{pt("production.calculationMethod")}<Select aria-label={pt("production.calculationMethod2", { v0: row.product.name })} value={row.method} disabled={action.busy}
                 onChange={e => {
                   const sources = editor.items.filter(item => item.product.unit === row.product.unit);
                   change({ method: e, source_product_id: e === 'input_ratio' && sources.length === 1 ? sources[0].product_id : null, quantity: '' });
                 }}>
-                <option value="output">按产量</option><option value="input_ratio">按材料投入比例</option>
+                <option value="output">{pt("production.byOutput")}</option><option value="input_ratio">{pt("production.byMaterialInputRatio")}</option>
               </Select></label>
-              {row.method === 'input_ratio' && <label>来源材料<Select aria-label={`${row.product.name}来源材料`} value={row.source_product_id ?? ''} required disabled={action.busy}
+              {row.method === 'input_ratio' && <label>{pt("production.sourceMaterial")}<Select aria-label={pt("production.sourceMaterial2", { v0: row.product.name })} value={row.source_product_id ?? ''} required disabled={action.busy}
                 onChange={e => change({ source_product_id: Number(e) })}>
-                <option value="">请选择同单位材料</option>{editor.items.filter(item => item.product.unit === row.product.unit).map(item => <option value={item.product_id} key={item.product_id}>{item.product.name}</option>)}
+                <option value="">{pt("production.selectMaterialWithTheSameUnit")}</option>{editor.items.filter(item => item.product.unit === row.product.unit).map(item => <option value={item.product_id} key={item.product_id}>{item.product.name}</option>)}
               </Select></label>}
-              <label>{row.method === 'output' ? `基准废料量（${row.product.unit}）` : '废料比例（%）'}<FormField value={row.quantity} required maxLength={60} label={`${row.product.name}${row.method === 'output' ? '基准废料量' : '废料比例'}`}><AntInput aria-label={`${row.product.name}${row.method === 'output' ? '基准废料量' : '废料比例'}`}
+              <label>{row.method === 'output' ? pt("production.baseScrapQuantity", { v0: row.product.unit }) : pt("production.scrapRatio")}<FormField value={row.quantity} required maxLength={60} label={`${row.product.name}${row.method === 'output' ? pt("production.baseScrapQuantity2") : pt("production.scrapRatio2")}`}><AntInput aria-label={`${row.product.name}${row.method === 'output' ? pt("production.baseScrapQuantity2") : pt("production.scrapRatio2")}`}
                 inputMode={row.method === 'output' ? 'text' : 'decimal'} maxLength={60} value={row.quantity} disabled={action.busy} onChange={e => change({ quantity: e.target.value })} /></FormField></label>
-              <label>废料备注<AntInput aria-label={`${row.product.name}废料备注`} maxLength={200} value={row.note} disabled={action.busy} onChange={e => change({ note: e.target.value })} /></label>
+              <label>{pt("production.scrapNote")}<AntInput aria-label={pt("production.scrapNote2", { v0: row.product.name })} maxLength={200} value={row.note} disabled={action.busy} onChange={e => change({ note: e.target.value })} /></label>
             </div>
-            <Button type="button" icon={Trash2} disabled={action.busy} aria-label={`移除废料 ${row.product.name}`} onClick={() => update({ scraps: editor.scraps.filter(item => item.product_id !== row.product_id) })}>移除</Button>
+            <Button type="button" icon={Trash2} disabled={action.busy} aria-label={pt("production.removeScrap", { v0: row.product.name })} onClick={() => update({ scraps: editor.scraps.filter(item => item.product_id !== row.product_id) })}>{pt("production.remove")}</Button>
           </article>;
         })}
       </section>
-      {action.error && <p className="form-error bom-error" role="alert">{action.error}</p>}
-      <div className="bom-editor-actions"><Button type="button" disabled={action.busy} onClick={back}>取消</Button>
-        {editor.id && <Button type="button" disabled={action.busy} onClick={() => { if (!dirty || window.confirm('重新读取会丢弃当前未保存内容，确定继续？')) open(editor.id, 'edit'); }}>重新读取已保存 BOM</Button>}
-        <Button type="submit" icon={Save} kind="primary" busy={action.busy} disabled={!editor.product || !editor.items.length}>保存BOM</Button></div>
+      {productionMessage(action.error) && <p className="form-error bom-error" role="alert">{productionMessage(action.error)}</p>}
+      <div className="bom-editor-actions"><Button type="button" disabled={action.busy} onClick={back}>{pt("production.cancel")}</Button>
+        {editor.id && <Button type="button" disabled={action.busy} onClick={() => { if (!dirty || window.confirm(pt("production.reloadingWillDiscardUnsavedChangesContinue"))) open(editor.id, 'edit'); }}>{pt("production.reloadSavedBom")}</Button>}
+        <Button type="submit" icon={Save} kind="primary" busy={action.busy} disabled={!editor.product || !editor.items.length}>{pt("production.saveBom")}</Button></div>
     </AntForm>
   </div>;
   return <div className="bom-page">
-    <PageHeading title="BOM" description="维护成品的材料组合，按生产数量测算需求和缺料。">
-      <Button kind="primary" icon={Plus} disabled={action.busy} onClick={() => apply(newBom(filterProduct))}>新建BOM</Button>
+    <PageHeading title="BOM" description={pt("production.maintainProductRecipesAndCalculateRequirementsAndShortages")}>
+      <Button kind="primary" icon={Plus} disabled={action.busy} onClick={() => apply(newBom(filterProduct))}>{pt("production.newBom")}</Button>
     </PageHeading>
-    {message && <p className="bom-success" role="status">{message}</p>}{action.error && <p className="form-error" role="alert">{action.error}</p>}
-    {filterProduct && <div className="bom-filter-product"><span>成品：{filterProduct.name} · {filterProduct.barcode}</span><Button onClick={() => { setFilterProduct(null); setOffset(0); }}>显示全部 BOM</Button></div>}
+    {message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
+    {filterProduct && <div className="bom-filter-product"><span>{pt("production.finishedProduct2")}{filterProduct.name} · {filterProduct.barcode}</span><Button onClick={() => { setFilterProduct(null); setOffset(0); }}>{pt("production.showAllBoms")}</Button></div>}
     <section className="panel bom-section">
-      <div className="bom-list-filters"><AntInput type="search" aria-label="搜索BOM" placeholder="搜索 BOM、成品名称或编码" maxLength={100} value={q} onChange={e => { setQ(e.target.value); setOffset(0); }} />
-        <Select aria-label="BOM 状态" value={status} onChange={e => { setStatus(e); setOffset(0); }}>
-          <option value="all">全部状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option>
+      <div className="bom-list-filters"><AntInput type="search" aria-label={pt("production.searchBoms")} placeholder={pt("production.searchBomProductNameOrCode")} maxLength={100} value={q} onChange={e => { setQ(e.target.value); setOffset(0); }} />
+        <Select aria-label={pt("production.bomStatus")} value={status} onChange={e => { setStatus(e); setOffset(0); }}>
+          <option value="all">{pt("production.allStatuses")}</option><option value="enabled">{pt("production.enabled")}</option><option value="disabled">{pt("production.disabled2")}</option>
         </Select></div>
       <QueryStatus query={list} />
       <div className="bom-list">{list.result?.boms.map(bom => <article className="bom-list-item" key={bom.id}>
-        <div className="bom-list-info"><strong>{bom.name}</strong><small>BOM #{bom.id} · 修订 {bom.version}</small><p>{bom.product_name} · {bom.barcode}</p>
-          <small>基准产量 {count(bom.base_quantity)} {bom.base_unit} · {bom.item_count} 种材料 · 更新人 {bom.updated_by_name}</small>
-          <div><Badge tone={bom.enabled ? 'green' : 'orange'}>{bom.enabled ? '已启用' : '已停用'}</Badge>{!bom.product_active && <Badge tone="orange">成品已停用</Badge>}</div></div>
-        <div className="bom-actions"><Button icon={Calculator} disabled={action.busy || !bom.enabled} onClick={() => open(bom.id, 'calculate')}>测算备料</Button>
-          {onCreateProduction && <Button disabled={action.busy || !bom.enabled || !bom.product_active} onClick={() => onCreateProduction(bom)}>新建生产单</Button>}
-          <Button disabled={action.busy} onClick={() => open(bom.id, 'edit')}>编辑</Button>
-          <Button icon={Copy} disabled={action.busy} onClick={() => open(bom.id, 'copy')}>复制</Button>
+        <div className="bom-list-info"><strong>{bom.name}</strong><small>BOM #{bom.id} {pt("production.revision")} {bom.version}</small><p>{bom.product_name} · {bom.barcode}</p>
+          <small>{pt("production.baseOutput")} {count(bom.base_quantity)} {bom.base_unit} · {bom.item_count} {pt("production.materialsUpdatedBy")} {bom.updated_by_name}</small>
+          <div><Badge tone={bom.enabled ? 'green' : 'orange'}>{bom.enabled ? pt("production.enabled") : pt("production.disabled2")}</Badge>{!bom.product_active && <Badge tone="orange">{pt("production.productDisabled")}</Badge>}</div></div>
+        <div className="bom-actions"><Button icon={Calculator} disabled={action.busy || !bom.enabled} onClick={() => open(bom.id, 'calculate')}>{pt("production.planMaterials")}</Button>
+          {onCreateProduction && <Button disabled={action.busy || !bom.enabled || !bom.product_active} onClick={() => onCreateProduction(bom)}>{pt("production.newProductionOrder")}</Button>}
+          <Button disabled={action.busy} onClick={() => open(bom.id, 'edit')}>{pt("production.edit")}</Button>
+          <Button icon={Copy} disabled={action.busy} onClick={() => open(bom.id, 'copy')}>{pt("production.copy2")}</Button>
           <Button disabled={action.busy} onClick={() => action.run(async () => {
             await action.send(`/boms/${bom.id}/status`, { version: bom.version, enabled: bom.enabled ? 0 : 1 }, { warehouseId: data.warehouse_id });
-            setRevision(n => n + 1); setMessage(bom.enabled ? 'BOM已停用。' : 'BOM已启用。');
-          })}>{bom.enabled ? '停用' : '启用'}</Button>
+            setRevision(n => n + 1); setMessage(bom.enabled ? pt("production.bomDisabled") : pt("production.bomEnabled"));
+          })}>{bom.enabled ? pt("production.disable") : pt("production.enable")}</Button>
           <Button icon={Trash2} kind="danger" disabled={action.busy} onClick={() => {
-            if (!window.confirm(`确定删除「${bom.name}」（BOM #${bom.id}）？删除无法恢复；被上级BOM或生产单引用的配方不能删除，可改为停用。`)) return;
+            if (!window.confirm(pt("production.deleteBomThisCannotBeUndoneRecipesReferenced", { v0: bom.name, v1: bom.id }))) return;
             action.run(async () => {
               setMessage('');
               await action.send(`/boms/${bom.id}/delete`, { version: bom.version }, { warehouseId: data.warehouse_id });
               if (list.result.boms.length === 1 && offset > 0) setOffset(n => Math.max(0, n - 30));
-              setRevision(n => n + 1); setMessage('BOM已删除。');
+              setRevision(n => n + 1); setMessage(pt("production.bomDeleted"));
             });
-          }}>删除</Button></div>
+          }}>{pt("production.delete")}</Button></div>
       </article>)}</div>
-      {list.result && !list.result.boms.length && <p className="bom-empty">暂无匹配的BOM，可以新建一份成品配方。</p>}
-      {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination"><Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>上一页</Button>
-        <span>共 {list.result.total} 张</span><Button disabled={!list.result.has_more} onClick={() => setOffset(n => n + 30)}>下一页</Button></div>}
+      {list.result && !list.result.boms.length && <p className="bom-empty">{pt("production.noMatchingBomsCreateAProductRecipeTo")}</p>}
+      {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination"><Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>{pt("production.previous")}</Button>
+        <span>{pt("production.total")} {list.result.total} {pt("production.orders")}</span><Button disabled={!list.result.has_more} onClick={() => setOffset(n => n + 30)}>{pt("production.next")}</Button></div>}
     </section>
   </div>;
 }

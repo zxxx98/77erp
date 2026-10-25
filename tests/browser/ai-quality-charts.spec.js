@@ -7,7 +7,7 @@ test.beforeAll(async({request})=>{
   expect([201,409]).toContain(response.status());
 });
 for(const chartType of ['line','pie'])for(const device of [null,'Pixel 7','iPhone 13'])test(`${device||'desktop'} ${chartType} AI recommends and saves a quality chart after confirmation`,async({browser})=>{
-  const context=await browser.newContext({baseURL:'http://127.0.0.1:3199',serviceWorkers:device==='iPhone 13'?'allow':'block',...(device?devices[device]:{viewport:{width:1440,height:1000}})});
+  const context=await browser.newContext({ locale: 'zh-CN',baseURL:'http://127.0.0.1:3199',serviceWorkers:device==='iPhone 13'?'allow':'block',...(device?devices[device]:{viewport:{width:1440,height:1000}})});
   try{
     await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});
     const warehouse=await(await context.request.post('/api/warehouses',{data:{name:`AI品质-${device}-${Date.now()}`}})).json();

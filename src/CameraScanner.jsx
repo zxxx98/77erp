@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { Button as AntButton } from './ui/controls.jsx';
 
 import { LoadingIndicator } from './Loading.jsx';
@@ -8,7 +10,8 @@ import { mobileDevice } from './device.js';
 import { cameraRegion, createCameraDecoder } from './camera-decoder.js';
 import './camera-scanner.css';
 
-export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫', note = '识别后自动返回' }) {
+export function CameraScanner({ onResult, onClose, onManual, title = translate("system.scan"), note = translate("system.automatically.return.after.recognition") }) {
+  useLocale();
   const video = useRef(null), overlay = useRef(null), guide = useRef(null);
   const callbacks = useRef({ onResult, onClose });
   callbacks.current = { onResult, onClose };
@@ -29,13 +32,13 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
     const suspend = () => {
       stop();
       setReady(false);
-      setError('摄像头已暂停，请重新开启扫码，或手动输入条码。');
+      setError(translate("system.the.camera.has.been.paused.please.restart.scanning.or.enter.the"));
     };
     const visibility = () => { if (document.visibilityState === 'hidden') suspend(); };
     setReady(false);
     setError('');
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      setError('手机摄像头扫码需要 HTTPS，请通过 HTTPS 地址打开此页面。');
+      setError(translate("system.scanning.the.qr.code.with.the.mobile.phone.camera.requires.https"));
       return;
     }
     document.addEventListener('visibilitychange', visibility);
@@ -99,8 +102,8 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
       stop();
       setReady(false);
       setError(e.name === 'NotAllowedError'
-        ? '摄像头权限未开启，请在浏览器中授权，或手动输入物料条码。'
-        : '无法访问摄像头，请检查摄像头及浏览器权限，或手动输入条码。');
+        ? translate("system.the.camera.permission.is.not.enabled.please.authorize.it.in.the")
+        : translate("system.unable.to.access.the.camera.please.check.the.camera.and.browser"));
     };
     start();
     return () => {
@@ -155,27 +158,27 @@ export function CameraScanner({ onResult, onClose, onManual, title = '扫一扫'
     <video ref={video} muted playsInline hidden={!!error} />
     {error ? <div className="camera-error" role="alert"><Camera size={30} /><p>{error}</p></div> : <>
       <div ref={guide} className="camera-crosshair" />
-      {!ready && <div className="camera-loading"><LoadingIndicator size={48} />正在开启摄像头…</div>}
-      <span className="camera-instruction">将物料条码或二维码置于取景框内</span>
+      {!ready && <div className="camera-loading"><LoadingIndicator size={48} />{translate("system.starting.camera")}</div>}
+      <span className="camera-instruction">{translate("system.place.the.material.barcode.or.qr.code.in.the.viewfinder")}</span>
     </>}
   </div>;
 
   return createPortal(<section ref={overlay} className="camera-scanner-immersive" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
     <video ref={video} muted playsInline className={ready ? 'camera-preview ready' : 'camera-preview'} />
     <header className="camera-overlay-header">
-      <AntButton type="text" htmlType="button" className="camera-back" aria-label="取消扫码" onClick={onClose}><ArrowLeft size={24} /></AntButton>
+      <AntButton type="text" htmlType="button" className="camera-back" aria-label={translate("system.cancel.qr.code.scanning")} onClick={onClose}><ArrowLeft size={24} /></AntButton>
       <h2 id={titleId}>{title}</h2>
     </header>
-    {error ? <div className="camera-error" role="alert"><Camera size={38} /><h3>暂时无法扫码</h3><p>{error}</p></div> : <>
+    {error ? <div className="camera-error" role="alert"><Camera size={38} /><h3>{translate("system.unable.to.scan.code.at.the.moment")}</h3><p>{error}</p></div> : <>
       <div ref={guide} className="camera-viewfinder" aria-hidden="true"><i /><i /><i /><i /><span className="camera-scan-line" /></div>
-      {!ready && <div className="camera-opening" role="status"><LoadingIndicator size={48} /><span>正在开启摄像头…</span></div>}
+      {!ready && <div className="camera-opening" role="status"><LoadingIndicator size={48} /><span>{translate("system.starting.camera")}</span></div>}
     </>}
     <footer className="camera-overlay-footer">
-      <p className="camera-overlay-instruction">将物料条码或二维码置于取景框内</p>
+      <p className="camera-overlay-instruction">{translate("system.place.the.material.barcode.or.qr.code.in.the.viewfinder")}</p>
       <p className="camera-overlay-note">{note}</p>
       <div className="camera-overlay-actions">
-        {error && <AntButton type="text" htmlType="button" className="camera-action" onClick={() => { overlay.current?.focus({ preventScroll: true }); setAttempt(value => value + 1); }}><RefreshCw size={20} />重新开启扫码</AntButton>}
-        {onManual && <AntButton type="text" htmlType="button" className="camera-action" onClick={onManual}><Keyboard size={20} />手动输入条码</AntButton>}
+        {error && <AntButton type="text" htmlType="button" className="camera-action" onClick={() => { overlay.current?.focus({ preventScroll: true }); setAttempt(value => value + 1); }}><RefreshCw size={20} />{translate("system.restart.qr.code.scanning")}</AntButton>}
+        {onManual && <AntButton type="text" htmlType="button" className="camera-action" onClick={onManual}><Keyboard size={20} />{translate("system.enter.barcode.manually")}</AntButton>}
       </div>
     </footer>
   </section>, document.body);

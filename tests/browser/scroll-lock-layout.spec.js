@@ -4,7 +4,7 @@ for (const mobile of [false, true]) {
   test(`overlays preserve background width on ${mobile ? 'mobile' : 'desktop with classic scrollbars'}`, async () => {
     // Headless Chromium normally hides scrollbars, masking this regression.
     const browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
-    const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199',
+    const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199',
       ...(mobile ? devices['iPhone 13'] : { viewport: { width: 1440, height: 900 } }), serviceWorkers: 'block' });
     try {
       await context.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });

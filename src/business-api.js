@@ -1,3 +1,4 @@
+import { localizeError } from './i18n/errors.js';
 import { useState, useRef } from 'react';
 import { api } from './api.js';
 export function useBusiness() {
@@ -13,7 +14,7 @@ export function useBusiness() {
     try {
       await fn();
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
     } finally {
       lock.current = false;
       setBusy(false);

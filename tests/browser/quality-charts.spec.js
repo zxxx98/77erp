@@ -34,7 +34,7 @@ async function fixture(page,suffix){
 async function charts(page){await page.goto('/#quality');await page.getByRole('button',{name:'图表',exact:true}).click();}
 for(const platform of ['desktop','iPhone','Android PWA'])test(`${platform} configures, saves and traces a fullscreen pie chart`,async({page,browser})=>{
   const f=await fixture(page,`饼图${platform}`);
-  const context=await browser.newContext({baseURL:'http://127.0.0.1:3199',...(platform==='desktop'?{viewport:{width:1440,height:1000}}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']),serviceWorkers:platform==='Android PWA'?'allow':'block'});
+  const context=await browser.newContext({ locale: 'zh-CN',baseURL:'http://127.0.0.1:3199',...(platform==='desktop'?{viewport:{width:1440,height:1000}}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']),serviceWorkers:platform==='Android PWA'?'allow':'block'});
   try{
     if(platform==='Android PWA')await context.addInitScript(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
     await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});

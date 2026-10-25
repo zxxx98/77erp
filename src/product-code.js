@@ -1,12 +1,13 @@
+import { t } from './i18n/index.js';
 import { BarcodeFormat, EncodeHintType, QRCodeWriter } from '@zxing/library';
 
 // Versioned product labels carry identity and display snapshots, never inventory commands.
 export function productQrPayload(product, warehouseId, sourceId) {
   if (!Number.isSafeInteger(product.id) || product.id < 1 ||
       !Number.isSafeInteger(warehouseId) || warehouseId < 1)
-    throw new Error('物料或仓库信息无效，请刷新后重试。');
+    throw new Error(t('warehouse.code.invalidIdentity'));
   if (typeof sourceId !== 'string' || !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(sourceId))
-    throw new Error('二维码来源信息缺失，请更新服务器并刷新页面。');
+    throw new Error(t('warehouse.code.missingSource'));
   return JSON.stringify({
     format: '77erp',
     version: 1,

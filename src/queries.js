@@ -1,3 +1,4 @@
+import { t as translate, getFormatLocale } from './i18n/index.js';
 import { useEffect, useState } from 'react';
 import { api } from './api.js';
 

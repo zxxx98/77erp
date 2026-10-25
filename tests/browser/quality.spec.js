@@ -456,7 +456,7 @@ test('unique KEY has one shared slot, releases it on type change and persists on
   await expect(editor.locator('.quality-property-item').first()).toContainText('唯一 KEY');
 });
 test('mobile quality navigation opens acceptance and online template editors',async({browser})=>{
-  const context=await browser.newContext({...devices['iPhone 13'],baseURL:'http://127.0.0.1:3199'});
+  const context=await browser.newContext({ locale: 'zh-CN',...devices['iPhone 13'],baseURL:'http://127.0.0.1:3199'});
   try{
     await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});const page=await context.newPage();
     await page.goto('/#quality');await expect(page.getByRole('heading',{name:'验收单',exact:true})).toBeVisible();
@@ -706,7 +706,7 @@ test('string and number regex replacement previews, persists and matches saved a
 });
 
 for(const platform of ['desktop','iPhone','Android PWA'])test(`${platform} configures plain choices and object termination with actual row counts`,async({browser})=>{
-  const context=await browser.newContext({...(platform==='desktop'?{}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']),baseURL:'http://127.0.0.1:3199',serviceWorkers:platform==='Android PWA'?'allow':'block'});
+  const context=await browser.newContext({ locale: 'zh-CN',...(platform==='desktop'?{}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']),baseURL:'http://127.0.0.1:3199',serviceWorkers:platform==='Android PWA'?'allow':'block'});
   try{
     if(platform==='Android PWA')await context.addInitScript(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
     await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});

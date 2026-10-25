@@ -56,7 +56,7 @@ test('a single-sheet template parses multiple data sheets with different names i
   await expect(page.getByRole('heading',{name:'验收单详情',exact:true})).toBeVisible();const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载上传原文件'}).click();expect(await readFile(await(await download).path())).toEqual(bytes);
   const after=await(await page.request.get(`/api/quality/templates/${id}`)).json();expect(after.definition).toEqual(template.definition);
   for(const device of ['Pixel 7','iPhone 13']){
-    const context=await browser.newContext({...devices[device],baseURL:'http://127.0.0.1:3199',serviceWorkers:'block',storageState:await page.context().storageState()});
+    const context=await browser.newContext({ locale: 'zh-CN',...devices[device],baseURL:'http://127.0.0.1:3199',serviceWorkers:'block',storageState:await page.context().storageState()});
     try{
       const mobile=await context.newPage();mobile.on('pageerror',e=>errors.push(e.message));
       await mobile.goto('/#quality');await expect(mobile.locator('.mw-tabs')).toBeVisible();

@@ -11,7 +11,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 async function session(browser, device, credentials = { username: 'admin', password: 'Test-admin-123' }, options = {}) {
-  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: 'block', ...(device ? devices[device] : {}), ...options });
+  const context = await browser.newContext({ locale: 'zh-CN', baseURL: test.info().project.use.baseURL, serviceWorkers: 'block', ...(device ? devices[device] : {}), ...options });
   expect((await context.request.post('/api/auth/login', { data: credentials })).ok()).toBe(true);
   const page = await context.newPage();
   return { context, page };

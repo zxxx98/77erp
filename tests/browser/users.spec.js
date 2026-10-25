@@ -124,7 +124,7 @@ test('employee sees shared business data and own templates, opens orders with an
 
 test('administrator configures position modules including AI and changes take effect in an existing employee session', async ({ page, browser }) => {
   const f = await fixture(page);
-  const context = await browser.newContext();
+  const context = await browser.newContext({ locale: 'zh-CN' });
   const employeePage = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

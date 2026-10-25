@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react(), VitePWA({
     registerType: 'prompt',
     injectRegister: null,
-    includeAssets: ['favicon.svg', 'icons/*.png'],
+    includeAssets: ['favicon.svg', 'icons/*.png', 'flags/*.svg'],
     manifest: {
       id: '/', name: '77 ERP · 进销存', short_name: '77 ERP', lang: 'zh-CN', description: '物料管理、扫码入出库及库存管理',
       start_url: '/', scope: '/', display: 'standalone', theme_color: '#2563eb', background_color: '#f7f8fa',

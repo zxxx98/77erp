@@ -1,3 +1,6 @@
+import { localizeError } from './i18n/errors.js';
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { currencySymbol, money as formatMoney } from './app/format.js';
 import { FormField } from './ui/FormField.jsx';
 import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from './ui/controls.jsx';
@@ -17,28 +20,29 @@ import "./commerce.css";
 import { MultiStocktake } from './MultiStocktake.jsx';
 const money = (n) => `${currencySymbol()}${formatMoney(n / 100)}`;
 export const paymentLabel = {
-  unverified: "待核对",
-  unpaid: "未收付",
-  partial: "部分收付",
-  paid: "已结清",
-  void: "已作废",
+  get unverified() { return translate("warehouse.to.verify"); },
+  get unpaid() { return translate("warehouse.unpaid"); },
+  get partial() { return translate("warehouse.partially.paid"); },
+  get paid() { return translate("warehouse.settled"); },
+  get void() { return translate("warehouse.voided"); },
 };
 export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onUse, onRefresh, initialTab }) {
+  useLocale();
   const { can, manage } = usePermissions();
   const available = [
-    ...(can('business') ? [['contacts', '往来单位']] : []),
-    ['templates', '单据模板'],
-    ...(can('finance') ? [['finance', '收付款与欠款'], ['profit', '成本与毛利']] : []),
-    ...(can('transfer') ? [['transfer', '仓库调拨']] : []),
-    ...(can('stocktake') ? [['stocktake', '库存盘点'], ['multi-stocktake', '多仓库盘点']] : []),
-    ...(manage('data_io') ? [['import', '批量导入'], ['export', '批量导出']] : []),
+    ...(can('business') ? [['contacts', translate("warehouse.business.partner")]] : []),
+    ['templates', translate("warehouse.document.template")],
+    ...(can('finance') ? [['finance', translate("warehouse.payments.and.balances")], ['profit', translate("warehouse.cost.and.gross.profit")]] : []),
+    ...(can('transfer') ? [['transfer', translate("warehouse.warehouse.transfer")]] : []),
+    ...(can('stocktake') ? [['stocktake', translate("warehouse.stocktake")], ['multi-stocktake', translate("warehouse.multi.warehouse.stocktake")]] : []),
+    ...(manage('data_io') ? [['import', translate("warehouse.batch.import")], ['export', translate("warehouse.batch.export")]] : []),
   ];
   const [tab, setTab] = useState(initialTab || available[0][0]);
   const active = available.some(([id]) => id === tab) ? tab : available[0][0];
   const [visited, setVisited] = useState(() => new Set([tab]));
   return (
     <section className="operation-panel">
-      <div className="operation-tabs" aria-label="业务分类">
+      <div className="operation-tabs" aria-label={translate("warehouse.business.classification")}>
         {available.map(([id, label]) => (
           <AntButton type="primary" htmlType="button" key={id} aria-pressed={active === id}
             className={`btn btn-${active === id ? 'primary' : 'secondary'}`} onClick={() => { setTab(id); setVisited(current => new Set([...current, id])); }}>{label}</AntButton>
@@ -57,6 +61,7 @@ export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onU
   );
 }
 function Contacts({ onRefresh }) {
+  useLocale();
   const empty = {
     role: "supplier",
     name: "",
@@ -72,43 +77,37 @@ function Contacts({ onRefresh }) {
   const { busy, error, setError, run, send } = useBusiness();
   const load = async () => setContacts(await api("/contacts"));
   useEffect(() => {
-    load().catch((e) => setError(e.message)).finally(() => setLoading(false));
+    load().catch((e) => setError(localizeError(e.message))).finally(() => setLoading(false));
   }, []);
   return (
     <div>
-      {busy && <p><LoadingStatus>正在保存往来单位…</LoadingStatus></p>}
-      <p>
-        同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。未关联单据、模板或出入库二维码的单位可删除。支持供应商、客户和内部单位；内部单位可用于入库和出库，不计入采购销售及应收应付。
-      </p>
+      {busy && <p><LoadingStatus>{translate("warehouse.saving.correspondence.units")}</LoadingStatus></p>}
+      <p>{translate("warehouse.names.cannot.be.repeated.under.the.same.type.editing.does.not")}</p>
       <ContactPicker contacts={contacts} value={form.id ? form.name : ""} selectedId={form.id}
-        label="搜索往来单位" searchable loading={loading} disabled={busy} onSelect={setForm} />
+        label={translate("warehouse.search.for.entities.you.are.dealing.with")} searchable loading={loading} disabled={busy} onSelect={setForm} />
       <AntButton type="default"
         htmlType="button"
         className="btn"
         disabled={busy}
         onClick={() => { setForm(empty); }}
-      >
-        新增往来单位
-      </AntButton>
-      <label>
-        往来类型
-        <Select
-          aria-label="往来类型"
+      >{translate("warehouse.add.new.contact.units")}</AntButton>
+      <label>{translate("warehouse.type.of.transaction")}<Select
+          aria-label={translate("warehouse.type.of.transaction")}
           value={form.role}
           disabled={busy || !!form.id}
           onChange={(e) => setForm({ ...form, role: e })}
         >
-          <option value="supplier">供应商</option>
-          <option value="customer">客户</option>
-          <option value="internal">内部单位</option>
+          <option value="supplier">{translate("warehouse.supplier")}</option>
+          <option value="customer">{translate("warehouse.customer")}</option>
+          <option value="internal">{translate("warehouse.internal.unit")}</option>
         </Select>
       </label>
       {[
-        ["name", "单位名称", 100],
-        ["person", "联系人", 100],
-        ["phone", "联系电话", 50],
-        ["address", "地址", 300],
-        ["note", "往来备注", 500],
+        ["name", translate("warehouse.unit.name"), 100],
+        ["person", translate("warehouse.contact.person"), 100],
+        ["phone", translate("warehouse.contact.number"), 50],
+        ["address", translate("warehouse.address"), 300],
+        ["note", translate("warehouse.remarks.on.correspondence"), 500],
       ].map(([key, label, max]) => (
         <label key={key}>
           {label}
@@ -122,10 +121,7 @@ function Contacts({ onRefresh }) {
       ))}
       <AntCheckbox  checked={!!form.active} disabled={busy} onChange={(e) =>
             setForm({ ...form, active: e.target.checked ? 1 : 0 })
-          }>
-
-        启用此往来单位
-      </AntCheckbox>
+          }>{translate("warehouse.activate.this.correspondent")}</AntCheckbox>
       <AntButton type="primary"
         htmlType="button"
         className="btn btn-primary"
@@ -138,18 +134,16 @@ function Contacts({ onRefresh }) {
             await onRefresh?.();
           })
         }
-      >
-        保存往来单位
-      </AntButton>
+      >{translate("warehouse.save.correspondence.units")}</AntButton>
       {form.id && <AntButton type="default" danger htmlType="button" className="btn btn-danger" disabled={busy} onClick={() => {
-        if (!window.confirm(`确定删除「${form.name}」？删除后无法恢复，已关联单据、模板或出入库二维码的单位不能删除。`)) return;
+        if (!window.confirm(translate("warehouse.are.you.sure.you.want.to.delete.it.cannot.be.restored", { v0: form.name }))) return;
         void run(async () => {
           await send(`/contacts/${form.id}/delete`, { version: form.version });
           setForm(empty);
           await load();
           await onRefresh?.();
         });
-      }}>删除往来单位</AntButton>}
+      }}>{translate("warehouse.delete.the.corresponding.unit")}</AntButton>}
       {error && (
         <p role="alert" className="form-error">
           {error}
@@ -159,6 +153,7 @@ function Contacts({ onRefresh }) {
   );
 }
 export function Templates({ onUse, type, collapsible = false, disabled = false, activeId, refreshKey = 0 }) {
+  useLocale();
   const { can, templates: manageTemplates } = usePermissions();
   const [templates, setTemplates] = useState([]);
   const [expanded, setExpanded] = useState(false);
@@ -175,16 +170,16 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
     }
   };
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load().catch((e) => setError(localizeError(e.message)));
   }, [refreshKey]);
   const visibleTemplates = templates.filter((d) => !type || d.type === type);
   const header = <span className="template-heading-main">
     <span className="template-heading-icon"><FilePenLine size={20} aria-hidden="true" /></span>
     <span className="template-heading-copy">
-      <strong>{collapsible ? "选择单据模板" : "单据模板"}</strong>
-      <span>{collapsible ? "套用常用物料组合，快速开单" : "保存常用开单内容，可反复套用"}</span>
+      <strong>{collapsible ? translate("warehouse.select.document.template") : translate("warehouse.document.template")}</strong>
+      <span>{collapsible ? translate("warehouse.apply.common.material.combinations.to.quickly.issue.orders") : translate("warehouse.save.frequently.used.billing.content.and.apply.it.repeatedly")}</span>
     </span>
-    {!loading && !error && <span className="template-count">{visibleTemplates.length} 份</span>}
+    {!loading && !error && <span className="template-count">{visibleTemplates.length}{" "}{translate("warehouse.templates")}</span>}
   </span>;
   return (
     <section className={`template-panel${collapsible ? " template-picker" : ""}`}>
@@ -192,7 +187,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
         ref={trigger}
         htmlType="button"
         className="template-trigger"
-        aria-label="选择单据模板"
+        aria-label={translate("warehouse.select.document.template")}
         aria-expanded={expanded}
         aria-controls={listId}
         disabled={disabled || busy}
@@ -200,34 +195,34 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
       >{header}<ChevronDown className="template-chevron" size={18} aria-hidden="true" /></AntButton>
         : <div className="template-heading">{header}</div>}
       <div id={listId} className="template-content" hidden={collapsible && !expanded}>
-        {collapsible && <p className="template-hint">套用后可修改本次单据，提交后模板仍会保留。</p>}
-        {(loading || busy) && <div className="template-empty" role="status"><LoadingIndicator size={24} /><span>{loading ? "正在加载模板…" : "正在处理模板…"}</span></div>}
+        {collapsible && <p className="template-hint">{translate("warehouse.this.document.can.be.modified.after.application.and.the.template.will")}</p>}
+        {(loading || busy) && <div className="template-empty" role="status"><LoadingIndicator size={24} /><span>{loading ? translate("warehouse.loading.templates") : translate("warehouse.processing.template")}</span></div>}
         {!loading && !error && !visibleTemplates.length && <div className="template-empty">
           <FilePenLine size={28} aria-hidden="true" />
-          <strong>暂无模板</strong>
-          <span>{type ? `当前仓库还没有${type === "in" ? "采购" : "销售"}模板` : "在开单页面保存常用物料组合，即可在这里套用"}</span>
+          <strong>{translate("warehouse.no.template.yet")}</strong>
+          <span>{type ? translate("warehouse.the.current.warehouse.does.not.have.template.yet", { v0: type === "in" ? translate("warehouse.procurement") : translate("warehouse.sales") }) : translate("warehouse.save.frequently.used.material.combinations.on.the.billing.page.and.apply")}</span>
         </div>}
         <div className="template-list" aria-busy={loading}>
           {visibleTemplates.map((d) => (
             <article className={`template-card${d.id === activeId ? " is-active" : ""}`} key={d.id}>
               <div className="template-card-top">
-                <span className={`template-type template-type-${d.type}`}>{d.type === "in" ? "入库" : "出库"}</span>
+                <span className={`template-type template-type-${d.type}`}>{d.type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out")}</span>
                 <span className="template-number">#{d.id}</span>
-                {d.id === activeId && <span className="template-active">本次已套用</span>}
+                {d.id === activeId && <span className="template-active">{translate("warehouse.applied.this.time")}</span>}
               </div>
               <h4>{d.name}</h4>
-              <p className="template-partner">{d.partner || "未指定往来单位"}</p>
+              <p className="template-partner">{d.partner || translate("warehouse.no.contact.unit.specified")}</p>
               <div className="template-meta">
-                <span><Package size={14} aria-hidden="true" />{d.items.length} 种物料</span>
-                <span><UserRound size={14} aria-hidden="true" />{d.created_by_name || "操作人未知"}</span>
-                <span><Clock3 size={14} aria-hidden="true" /><time dateTime={d.updated_at}>{new Date(d.updated_at).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}</time></span>
+                <span><Package size={14} aria-hidden="true" />{d.items.length}{" "}{translate("warehouse.materials")}</span>
+                <span><UserRound size={14} aria-hidden="true" />{d.created_by_name || translate("warehouse.operator.unknown")}</span>
+                <span><Clock3 size={14} aria-hidden="true" /><time dateTime={d.updated_at}>{new Date(d.updated_at).toLocaleString(getFormatLocale(), { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}</time></span>
               </div>
               {d.note && <p className="template-note" title={d.note}>{d.note}</p>}
               <div className="template-actions">
                 <AntButton type="default"
                   htmlType="button"
                   className="btn btn-secondary template-resume"
-                  aria-label={`使用模板 #${d.id}`}
+                  aria-label={translate("warehouse.using.template", { v0: d.id })}
                   disabled={busy || disabled || loading || !can(d.type === 'in' ? 'purchase' : 'sale')}
                   onClick={() => {
                     if (onUse(d) !== false && collapsible) {
@@ -235,19 +230,18 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
                       trigger.current?.focus();
                     }
                   }}
-                >
-                  使用模板 <ArrowRight size={15} aria-hidden="true" />
+                >{translate("warehouse.use.templates")}<ArrowRight size={15} aria-hidden="true" />
                 </AntButton>
                 <AntButton type="text"
                   htmlType="button"
                   className="template-delete"
                   hidden={!manageTemplates}
-                  aria-label={`删除模板 #${d.id}`}
-                  title="删除模板"
+                  aria-label={translate("warehouse.delete.template", { v0: d.id })}
+                  title={translate("warehouse.delete.template.2")}
                   disabled={busy || disabled || loading}
                   onClick={() =>
                     run(async () => {
-                      if (!window.confirm("确认删除此模板？")) return;
+                      if (!window.confirm(translate("warehouse.confirm.to.delete.this.template"))) return;
                       await send(`/templates/${d.id}/delete`, { version: d.version });
                       await load();
                     })
@@ -262,7 +256,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
         {error && (
           <div className="template-error">
             <p role="alert" className="form-error">{error}</p>
-            <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy || disabled} onClick={() => run(load)}>重新加载</AntButton>
+            <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy || disabled} onClick={() => run(load)}>{translate("warehouse.reload")}</AntButton>
           </div>
         )}
       </div>
@@ -270,6 +264,7 @@ export function Templates({ onUse, type, collapsible = false, disabled = false, 
   );
 }
 export function Payments({ order, onChanged }) {
+  useLocale();
   const [data, setData] = useState(null),
     [amount, setAmount] = useState(""),
     [method, setMethod] = useState("银行转账"),
@@ -277,7 +272,7 @@ export function Payments({ order, onChanged }) {
   const { busy, error, setError, run, send } = useBusiness();
   const load = async () => setData(await api(`/orders/${order.id}/payments`));
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load().catch((e) => setError(localizeError(e.message)));
   }, [order.id]);
   const changed = async () => {
     await load();
@@ -285,27 +280,27 @@ export function Payments({ order, onChanged }) {
   };
   return (
     <section className="operation-panel">
-      <h3>收付款记录</h3>
-      {!data && !busy && !error && <p><LoadingStatus>正在读取收付款记录…</LoadingStatus></p>}
-      {busy && <p><LoadingStatus>正在保存收付款…</LoadingStatus></p>}
+      <h3>{translate("warehouse.payment.and.receipt.records")}</h3>
+      {!data && !busy && !error && <p><LoadingStatus>{translate("warehouse.reading.payment.records")}</LoadingStatus></p>}
+      {busy && <p><LoadingStatus>{translate("warehouse.saving.payment")}</LoadingStatus></p>}
       {data && (
         <>
           <p>
-            {data.direction === "receive" ? "应收" : "应付"}{" "}
-            {money(Math.round(data.total * 100))} · 已登记{" "}
+            {data.direction === "receive" ? translate("warehouse.receivable") : translate("warehouse.payable")}{" "}
+            {money(Math.round(data.total * 100))}{" "}{translate("warehouse.registered")}{" "}
             {money(data.paid_cents)} · {paymentLabel[data.payment_status]}
             {data.payment_status !== "unverified" &&
-              ` · 待${data.direction === "receive" ? "收" : "付"} ${money(data.due_cents)}`}
+              translate("warehouse.waiting.for", { v0: data.direction === "receive" ? translate("warehouse.receive") : translate("warehouse.pay"), v1: money(data.due_cents) })}
           </p>
           {order.status !== "void" &&
             (data.payment_status === "unverified" || data.due_cents > 0) && (
               <>
                 <label>
                   {data.payment_status === "unverified"
-                    ? "历史已收付金额"
-                    : "本次收付款金额"}
-                  <FormField value={amount} type="number" min="0" label="收付款金额"><AntInput
-                    aria-label="收付款金额"
+                    ? translate("warehouse.historical.paid.amount")
+                    : translate("warehouse.the.amount.of.this.payment")}
+                  <FormField value={amount} type="number" min="0" label={translate("warehouse.payment.amount")}><AntInput
+                    aria-label={translate("warehouse.payment.amount")}
                     type="number"
                     min="0"
                     step="0.01"
@@ -314,18 +309,14 @@ export function Payments({ order, onChanged }) {
                     onChange={(e) => setAmount(e.target.value)}
                   /></FormField>
                 </label>
-                <label>
-                  收付款方式
-                  <AntInput
+                <label>{translate("warehouse.payment.method")}<AntInput
                     value={method}
                     maxLength={50}
                     disabled={busy}
                     onChange={(e) => setMethod(e.target.value)}
                   />
                 </label>
-                <label>
-                  收付款说明
-                  <AntInput
+                <label>{translate("warehouse.payment.instructions")}<AntInput
                     value={note}
                     maxLength={500}
                     disabled={busy}
@@ -339,12 +330,12 @@ export function Payments({ order, onChanged }) {
                   onClick={() =>
                     run(async () => {
                       if (!/^\d+(\.\d{1,2})?$/.test(amount))
-                        throw new Error("请填写有效金额，最多两位小数。");
+                        throw new Error(translate("warehouse.please.enter.a.valid.amount.up.to.two.decimal.places"));
                       if (
                         !window.confirm(
                           data.payment_status === "unverified"
-                            ? "确认历史已收付金额，并将此单据纳入欠款统计？"
-                            : "确认登记此次收付款？只记录实际已发生的资金收付。",
+                            ? translate("warehouse.confirm.the.historical.paid.amount.and.include.this.document.into.the")
+                            : translate("warehouse.confirm.to.register.this.payment.only.actual.receipts.and.disbursements.of"),
                         )
                       )
                         return;
@@ -364,20 +355,18 @@ export function Payments({ order, onChanged }) {
                   }
                 >
                   {data.payment_status === "unverified"
-                    ? "确认历史收付"
-                    : "登记收付款"}
+                    ? translate("warehouse.confirm.historical.payment")
+                    : translate("warehouse.register.for.payments")}
                 </AntButton>
               </>
             )}
-          <p>
-            登记只记录资金流水；退货单单独登记退款，不自动冲抵原单欠款。撤销登记不代表实际退款。
-          </p>
+          <p>{translate("warehouse.the.registration.only.records.the.flow.of.funds.the.return.order")}</p>
           {data.entries.map((p) => (
             <div className="operation-row" key={p.id}>
               <p>
                 {money(p.amount_cents)} · {p.method} · {p.note} ·{" "}
-                {new Date(p.created_at).toLocaleString()}{" "}
-                {p.reversed_at ? `已撤销：${p.reverse_reason}` : ""}
+                {new Date(p.created_at).toLocaleString(getFormatLocale())}{" "}
+                {p.reversed_at ? translate("warehouse.revoked", { v0: p.reverse_reason }) : ""}
               </p>
               {!p.reversed_at && (
                 <AntButton type="default"
@@ -387,15 +376,14 @@ export function Payments({ order, onChanged }) {
                   onClick={() =>
                     run(async () => {
                       const reason = window.prompt(
-                        "撤销收付款登记的原因（不执行实际退款）",
+                        translate("warehouse.reasons.for.canceling.collection.and.payment.registration.no.actual.refund.is"),
                       );
                       if (reason === null) return;
                       await send(`/payments/${p.id}/reverse`, { reason });
                       await changed();
                     })
                   }
-                >
-                  撤销登记 #{p.id}
+                >{translate("warehouse.unregister")}{p.id}
                 </AntButton>
               )}
             </div>
@@ -411,29 +399,28 @@ export function Payments({ order, onChanged }) {
   );
 }
 function Finance() {
+  useLocale();
   const [data, setData] = useState(null),
     [selected, setSelected] = useState(null);
   const { error, setError } = useBusiness();
   const load = async () => setData(await api("/finance"));
   useEffect(() => {
-    load().catch((e) => setError(e.message));
+    load().catch((e) => setError(localizeError(e.message)));
   }, []);
   return (
     <div>
-      <p>
-        欠款按原单和退货单分别登记；历史待核对单据暂不计入。金额为业务应收应付，不是银行余额。
-      </p>
-      {!data && !error && <p><LoadingStatus>正在读取财务数据…</LoadingStatus></p>}
+      <p>{translate("warehouse.arrears.are.registered.separately.according.to.the.original.document.and.the")}</p>
+      {!data && !error && <p><LoadingStatus>{translate("warehouse.reading.financial.data")}</LoadingStatus></p>}
       {data && (
         <>
           <div className="operation-scroll">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>往来单位</th>
-                  <th>应收未收</th>
-                  <th>应付未付</th>
-                  <th>待核对单据</th>
+                  <th>{translate("warehouse.business.partner")}</th>
+                  <th>{translate("warehouse.receivables.yet.to.be.received")}</th>
+                  <th>{translate("warehouse.payable.and.unpaid")}</th>
+                  <th>{translate("warehouse.documents.to.be.verified")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -448,9 +435,7 @@ function Finance() {
               </tbody>
             </table>
           </div>
-          <label>
-            选择收付款单据
-            <Select aria-label="选择收付款单据"
+          <label>{translate("warehouse.select.payment.document")}<Select aria-label={translate("warehouse.select.payment.document")}
               value={selected?.id || ""}
               onChange={(e) =>
                 setSelected(
@@ -459,7 +444,7 @@ function Finance() {
                 )
               }
             >
-              <option value="">请选择</option>
+              <option value="">{translate("warehouse.please.select")}</option>
               {data.orders.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.number} · {orderLabel(o)} · {o.partner} ·{" "}
@@ -478,6 +463,7 @@ function Finance() {
   );
 }
 function Profit() {
+  useLocale();
   const today = new Date().toISOString().slice(0, 10);
   const [from, setFrom] = useState(today.slice(0, 7) + "-01"),
     [to, setTo] = useState(today),
@@ -492,47 +478,36 @@ function Profit() {
   }, []);
   return (
     <div>
-      {busy && <p><LoadingStatus>正在读取毛利报表…</LoadingStatus></p>}
-      <p>
-        移动加权平均成本，销售时保存成本。旧库存以升级时参考采购价估算期初成本；旧单据成本未知，单独列出，不计入已知毛利。毛利不含运费、税费和经营费用；退货按退货日冲减，日期按
-        UTC。
-      </p>
-      <label>
-        开始日期
-        <AntInput
+      {busy && <p><LoadingStatus>{translate("warehouse.reading.gross.profit.report")}</LoadingStatus></p>}
+      <p>{translate("warehouse.moving.weighted.average.cost.saving.costs.when.selling.the.opening.cost")}</p>
+      <label>{translate("warehouse.start.date")}<AntInput
           type="date"
           value={from}
           onChange={(e) => setFrom(e.target.value)}
         />
       </label>
-      <label>
-        结束日期
-        <AntInput type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+      <label>{translate("warehouse.end.date")}<AntInput type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </label>
-      <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={load}>
-        查询毛利
-      </AntButton>
+      <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={load}>{translate("warehouse.check.gross.profit")}</AntButton>
       {data && (
         <>
-          <p>
-            销售净额 {money(data.totals.revenue_cents)} · 已知销售成本{" "}
-            {money(data.totals.cost_cents)} · 已知毛利{" "}
-            {money(data.totals.gross_profit_cents)} · 成本未知净额{" "}
+          <p>{translate("warehouse.net.sales")}{money(data.totals.revenue_cents)}{" "}{translate("warehouse.known.cost.of.sales")}{" "}
+            {money(data.totals.cost_cents)}{" "}{translate("warehouse.known.gross.profit")}{" "}
+            {money(data.totals.gross_profit_cents)}{" "}{translate("warehouse.unknown.net.cost")}{" "}
             {money(data.totals.unknown_revenue_cents)}（
-            {data.totals.unknown_lines} 条）
-          </p>
-          <p>当前库存成本 {money(data.inventory_value_cents)}</p>
+            {data.totals.unknown_lines}{translate("warehouse.article.2")}</p>
+          <p>{translate("warehouse.current.inventory.cost")}{" "}{money(data.inventory_value_cents)}</p>
           <div className="operation-scroll">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>物料</th>
-                  <th>净销量</th>
-                  <th>销售净额</th>
-                  <th>已知成本</th>
-                  <th>已知毛利</th>
-                  <th>已知毛利率</th>
-                  <th>成本未知条数</th>
+                  <th>{translate("warehouse.material")}</th>
+                  <th>{translate("warehouse.net.sales.2")}</th>
+                  <th>{translate("warehouse.net.sales")}</th>
+                  <th>{translate("warehouse.known.cost")}</th>
+                  <th>{translate("warehouse.known.gross.profit.2")}</th>
+                  <th>{translate("warehouse.known.gross.profit.margin")}</th>
+                  <th>{translate("warehouse.unknown.number.of.costs")}</th>
                 </tr>
               </thead>
               <tbody>

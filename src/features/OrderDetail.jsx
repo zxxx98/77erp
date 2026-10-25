@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { Modal, Badge, Button } from '../components/common.jsx';
 import { orderLabel } from '../order-utils.js';
@@ -7,6 +9,7 @@ import { money, price, count, currencySymbol } from '../app/format.js';
 import { orderLineAmount } from '../../shared/money.js';
 
 function OrderDetail({ order, onClose, onSaved, isAdmin }) {
+  useLocale();
   const { can, costs } = usePermissions();
   // Transfers carry no money: they are corrected from the transfer list, and
   // the line value shown is the moved moving-average cost.
@@ -14,13 +17,13 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
   const costTotal = order.items.reduce((sum, i) => sum + (i.cost_cents || 0), 0) / 100;
   const totalQuantity = order.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const totalLabel = transfer
-    ? "总计（调拨成本）"
+    ? translate("warehouse.total.transfer.cost")
     : order.kind === "internal"
-      ? "总计（参考金额）"
-      : "总计";
+      ? translate("warehouse.total.reference.amount")
+      : translate("warehouse.total.3");
   return (
     <Modal
-      title={`${orderLabel(order)}单详情`}
+      title={translate("warehouse.order.details", { v0: orderLabel(order) })}
       subtitle={order.number}
       onClose={onClose}
       presentation="drawer"
@@ -29,21 +32,19 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
     >
       <div className="form-body">
         <div className="detail-status">
-          <Badge>{order.status === "void" ? "已作废" : "已完成"}</Badge>
+          <Badge>{order.status === "void" ? translate("warehouse.voided") : translate("warehouse.completed")}</Badge>
           <span>
-            <CheckCheck size={15} />
-            库存已同步更新
-          </span>
+            <CheckCheck size={15} />{translate("warehouse.inventory.has.been.updated.simultaneously")}</span>
         </div>
         <div className="detail-meta">
           <div>
-            <small>{transfer ? (order.type === "in" ? "来自仓库" : "发往仓库") : "往来单位"}</small>
+            <small>{transfer ? (order.type === "in" ? translate("warehouse.from.warehouse") : translate("warehouse.send.to.warehouse")) : translate("warehouse.business.partner")}</small>
             <strong>{order.partner}</strong>
           </div>
           <div>
-            <small>创建时间</small>
+            <small>{translate("warehouse.creation.time")}</small>
             <strong>
-              {new Date(order.created_at).toLocaleString("zh-CN", {
+              {new Date(order.created_at).toLocaleString(getFormatLocale(), {
                 hour12: false,
               })}
             </strong>
@@ -53,11 +54,11 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
           <table className="data-table detail-table">
             <thead>
               <tr>
-                <th>物料名称</th>
-                <th>条码</th>
-                <th className="number-cell">数量</th>
-                <th className="number-cell">{transfer ? "成本单价" : "单价"}</th>
-                <th className="number-cell">{transfer ? "成本小计" : "小计"}</th>
+                <th>{translate("warehouse.material.name")}</th>
+                <th>{translate("warehouse.barcode")}</th>
+                <th className="number-cell">{translate("warehouse.quantity")}</th>
+                <th className="number-cell">{transfer ? translate("warehouse.cost.unit.price") : translate("warehouse.unit.price")}</th>
+                <th className="number-cell">{transfer ? translate("warehouse.cost.subtotal") : translate("warehouse.subtotal")}</th>
               </tr>
             </thead>
             <tbody>
@@ -84,7 +85,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
             </tbody>
             <tfoot>
               <tr className="table-total-row">
-                <td colSpan={2}>{totalLabel} · {order.items.length} 种物料</td>
+                <td colSpan={2}>{totalLabel} · {order.items.length}{" "}{translate("warehouse.materials")}</td>
                 <td className="number-cell">{count(totalQuantity)}</td>
                 <td />
                 <td className="number-cell">
@@ -95,28 +96,26 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
           </table>
         </div>
         <div className="detail-note">
-          <small>备注</small>
-          <p>{order.note || "无备注"}</p>
+          <small>{translate("warehouse.remarks")}</small>
+          <p>{order.note || translate("warehouse.no.remarks")}</p>
         </div>
-        <p className="muted">开单人：{order.created_by_name || '历史记录，操作人未知'}</p>
-        {order.kind === "internal" && <p className="info-box">内部流转不计入采购、销售、利润及应收应付；金额仅供库存流转参考。</p>}
+        <p className="muted">{translate("warehouse.biller")}{order.created_by_name || translate("warehouse.historical.record.operator.unknown")}</p>
+        {order.kind === "internal" && <p className="info-box">{translate("warehouse.internal.transfers.are.not.included.in.purchases.sales.profits.receivables.and")}</p>}
         {transfer && (
-          <div className="info-box">
-            仓库间调拨不涉及金额，两个仓库的库存已同步调整。请在有调出记录的仓库，通过「业务管理 → 仓库调拨」撤销。
-          </div>
+          <div className="info-box">{translate("warehouse.there.is.no.amount.involved.in.inter.warehouse.transfers.and.the")}</div>
         )}
         {!transfer && order.kind !== 'internal' && can('finance') && <Payments order={order} />}
         {!transfer && can('corrections') && <OrderActions order={order} onSaved={onSaved} />}
       </div>
       <div className="modal-footer order-form-footer">
         <div>
-          <small>物料种类</small>
+          <small>{translate("warehouse.material.type")}</small>
           <strong>
             {order.items.length}
-            <span> 种</span>
+            <span>{" "}{translate("warehouse.types")}</span>
           </strong>
         </div>
-        <Button onClick={onClose}>关闭详情</Button>
+        <Button onClick={onClose}>{translate("warehouse.close.details")}</Button>
       </div>
     </Modal>
   );

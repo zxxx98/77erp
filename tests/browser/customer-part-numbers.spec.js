@@ -6,7 +6,7 @@ for (const device of ['desktop', 'Android', 'iOS PWA']) {
   test(`${device}: configure, confirm, display and search customer part numbers`, async ({ browser }, testInfo) => {
     const mobile = device !== 'desktop';
     const pwa = device === 'iOS PWA';
-    const context = await browser.newContext({ ...(mobile ? devices[pwa ? 'iPhone 13' : 'Pixel 7'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: pwa ? 'allow' : 'block' });
+    const context = await browser.newContext({ locale: 'zh-CN', ...(mobile ? devices[pwa ? 'iPhone 13' : 'Pixel 7'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: pwa ? 'allow' : 'block' });
     try {
       if (pwa) await context.addInitScript(() => {
         const original = window.matchMedia.bind(window);

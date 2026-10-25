@@ -1,3 +1,7 @@
+import { localizeError } from '../i18n/errors.js';
+import { describeStockExpression, inspectionCycleLabel, inspectionUnits } from '../warehouse-format.js';
+import { t as translate, getFormatLocale, translateText } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { ConfigProvider as AntConfigProvider, Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 
@@ -11,7 +15,7 @@ import { LoadingIndicator } from '../Loading.jsx';
 import { Download, ScanLine, ImagePlus, Plus, Package, TriangleAlert, Check, Minus } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
 import { api } from '../api.js';
-import { evaluateStockExpression, describeStockExpression } from '../../shared/stock-compare.js';
+import { evaluateStockExpression } from '../../shared/stock-compare.js';
 import { price, count, stockStatus, currencySymbol } from '../app/format.js';
 import { baseCurrency } from '../currency.js';
 import { ProductHistory } from '../ProductHistory.jsx';
@@ -23,11 +27,12 @@ import { ProductConflict } from '../ProductConflict.jsx';
 import { useBusiness } from '../business-api.js';
 import { parseQuantity, materialQuantity } from '../../shared/quantity.js';
 import { mobileDevice } from '../device.js';
-import { inspectionCycleLabel, inspectionUnits } from '../../shared/inspection.js';
+
 import { CustomerPartNumbersEditor, CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
 import { productionTypes } from '../../shared/product-production-type.js';
 
 function ProductFormSection({ title, children }) {
+  useLocale();
   return mobileDevice ? <>{children}</> : <section className="drawer-form-section"><h3>{title}</h3>{children}</section>;
 }
 
@@ -40,6 +45,7 @@ const productSnapshot = (form, targets) => JSON.stringify([
 ]);
 
 function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, manageStockQr }) {
+  useLocale();
   const [format, setFormat] = useState("barcode");
   const [qr, setQr] = useState(null);
   const codeRef = useRef(null);
@@ -50,27 +56,27 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
     import("../product-code.js").then(({ productQrPayload, qrSymbol }) => {
       if (alive) setQr(qrSymbol(productQrPayload(product, product.warehouse_id ?? warehouseId, sourceId)));
     }).catch(error => {
-      if (alive) setQr({ error: error.message || "二维码生成失败，请刷新后重试。" });
+      if (alive) setQr({ error: error.message || translate("warehouse.qr.code.generation.failed.please.refresh.and.try.again") });
     });
     return () => { alive = false; };
   }, [format, product, warehouseId, sourceId]);
   const download = async () => {
     try {
       const svg = codeRef.current?.querySelector("svg");
-      if (!svg) throw new Error("标签尚未生成，请重试。");
+      if (!svg) throw new Error(translate("warehouse.the.label.has.not.been.generated.yet.please.try.again"));
       await downloadFile(
         new XMLSerializer().serializeToString(svg),
         `${product.barcode}${format === "qr" ? "-qr" : ""}.svg`,
         "image/svg+xml",
       );
-      notify(format === "qr" ? "二维码标签已下载" : "条码标签已下载");
-    } catch (error) { notify(error.message); }
+      notify(format === "qr" ? translate("warehouse.qr.code.label.has.been.downloaded") : translate("warehouse.barcode.label.downloaded"));
+    } catch (error) { notify(localizeError(error.message)); }
   };
   return (
-    <Modal title="物料条码" subtitle="打印或下载物料标签" onClose={onClose} className="product-code-modal" headerActions={
-      <div className="code-format-switch" role="group" aria-label="标签类型">
-        <AntButton type="text" htmlType="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>条形码</AntButton>
-        <AntButton type="text" htmlType="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>二维码</AntButton>
+    <Modal title={translate("warehouse.material.barcode")} subtitle={translate("warehouse.print.or.download.material.labels")} onClose={onClose} className="product-code-modal" headerActions={
+      <div className="code-format-switch" role="group" aria-label={translate("warehouse.tag.type")}>
+        <AntButton type="text" htmlType="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>{translate("warehouse.barcode.2")}</AntButton>
+        <AntButton type="text" htmlType="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>{translate("warehouse.qr.code")}</AntButton>
       </div>
     }>
       <div className="barcode-detail">
@@ -78,11 +84,11 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
         <h3>{product.name}</h3>
         <div ref={codeRef} className="product-code-symbol">
           {format === "barcode" ? <Barcode value={product.barcode} height={70} /> : !qr ? (
-            <div className="product-qr-loading" role="status"><LoadingIndicator size={64} />正在生成二维码…</div>
+            <div className="product-qr-loading" role="status"><LoadingIndicator size={64} />{translate("warehouse.generating.qr.code")}</div>
           ) : qr.error ? (
             <div className="form-error" role="alert">{qr.error}</div>
           ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="product-qr" width="256" height="256" viewBox={`0 0 ${qr.size} ${qr.size}`} role="img" aria-label={`二维码 ${product.barcode}`} shapeRendering="crispEdges">
+            <svg xmlns="http://www.w3.org/2000/svg" className="product-qr" width="256" height="256" viewBox={`0 0 ${qr.size} ${qr.size}`} role="img" aria-label={translate("warehouse.qr.code.2", { v0: product.barcode })} shapeRendering="crispEdges">
               <title>{product.name} · {product.barcode}</title>
               <rect width={qr.size} height={qr.size} fill="#fff" />
               <path d={qr.path} fill="#000" />
@@ -90,18 +96,19 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
           )}
         </div>
         {format === "qr" && <p className="product-code-number">{product.barcode}</p>}
-        <p>{format === "qr" ? "包含物料编码、名称、单位和仓库信息" : `CODE 128 · ${product.category}`}</p>
+        <p>{format === "qr" ? translate("warehouse.contains.material.code.name.unit.and.warehouse.information") : `CODE 128 · ${product.category}`}</p>
       </div>
       <div className="modal-footer">
-        {manageStockQr && <Button onClick={manageStockQr}>出入库二维码</Button>}
-        <Button onClick={onClose}>关闭</Button>
-        <Button kind="primary" icon={Download} disabled={format === "qr" && (!qr || !!qr.error)} onClick={download}>下载标签</Button>
+        {manageStockQr && <Button onClick={manageStockQr}>{translate("warehouse.inbound.and.outbound.qr.code")}</Button>}
+        <Button onClick={onClose}>{translate("warehouse.close")}</Button>
+        <Button kind="primary" icon={Download} disabled={format === "qr" && (!qr || !!qr.error)} onClick={download}>{translate("warehouse.download.tags")}</Button>
       </div>
     </Modal>
   );
 }
 
 function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onViewBom }) {
+  useLocale();
   const { costs, can } = usePermissions();
   const [tab,setTab]=useState('details');
   const showQuality=!mobileDevice&&can('quality');
@@ -122,43 +129,43 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
   const expressionValue = expression && others !== null ? evaluateStockExpression(expression, stockByWarehouse) : null;
   const expressionText = expression ? describeStockExpression(expression, nameById) : "";
   const fields = [
-    ["物料条码", product.barcode],
-    ["物料分类", product.category],
-    ["计量单位", product.unit],
-    ["所属仓库", warehouseName],
-    ["参考销售价", `${currencySymbol()} ${price(product.price)}`],
-    ...(costs ? [["参考采购价", `${currencySymbol()} ${price(product.cost)}`]] : []),
-    ["当前库存", `${count(product.stock)} ${product.unit}`],
-    ["安全库存", `${count(product.threshold)} ${product.unit}`],
-    ["库存状态", stockStatus(product)],
-    ["使用状态", product.active === 0 ? "已停用" : "已启用"],
-    ["单位是否取整", product.unit_round_up ? "是" : "否"],
-    ["固定资产", product.is_fixed_asset ? "是" : "否"],
-    ["生产类型", product.production_type || "未设置"],
-    ["下次校验日期", product.inspection_date || '未配置'],
-    ["校验周期", inspectionCycleLabel(product)],
-    ["上次校验", product.last_inspected_on || '暂无记录'],
+    [translate("warehouse.material.barcode"), product.barcode],
+    [translate("warehouse.material.categories"), product.category],
+    [translate("warehouse.unit.of.measurement"), product.unit],
+    [translate("warehouse.belonging.warehouse"), warehouseName],
+    [translate("warehouse.reference.sales.price"), `${currencySymbol()} ${price(product.price)}`],
+    ...(costs ? [[translate("warehouse.reference.purchase.price"), `${currencySymbol()} ${price(product.cost)}`]] : []),
+    [translate("warehouse.current.inventory"), `${count(product.stock)} ${product.unit}`],
+    [translate("warehouse.safety.stock"), `${count(product.threshold)} ${product.unit}`],
+    [translate("warehouse.stock.status"), stockStatus(product)],
+    [translate("warehouse.use.status"), product.active === 0 ? translate("warehouse.deactivated") : translate("warehouse.enabled")],
+    [translate("warehouse.round.quantities.to.whole.units"), product.unit_round_up ? translate("warehouse.yes") : translate("warehouse.no")],
+    [translate("warehouse.fixed.asset"), product.is_fixed_asset ? translate("warehouse.yes") : translate("warehouse.no")],
+    [translate("warehouse.production.type"), translateText(product.production_type) || translate("warehouse.not.set")],
+    [translate("warehouse.next.verification.date"), product.inspection_date || translate("warehouse.not.configured")],
+    [translate("warehouse.inspection.cycle"), inspectionCycleLabel(product)],
+    [translate("warehouse.last.check"), product.last_inspected_on || translate("warehouse.no.records")],
   ];
-  return <Modal title="物料详情" subtitle="查看物料档案与当前库存" onClose={onClose} presentation="drawer">
+  return <Modal title={translate("warehouse.material.details.2")} subtitle={translate("warehouse.view.material.files.and.current.inventory")} onClose={onClose} presentation="drawer">
     <div className="form-body product-detail">
       <div className="product-detail-heading">
         <ProductArt product={product} size="large" />
         <h3>{product.name}</h3>
       </div>
-      {showQuality&&<div className="product-quality-tabs" role="tablist" aria-label="物料详情视图">{[['details','物料信息'],['quality','品质图表']].map(([id,label])=><AntButton type="text" key={id} htmlType="button" role="tab" id={`product-tab-${id}`} aria-controls={`product-panel-${id}`} aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</AntButton>)}</div>}
+      {showQuality&&<div className="product-quality-tabs" role="tablist" aria-label={translate("warehouse.material.details.view")}>{[['details',translate("warehouse.material.information")],['quality',translate("warehouse.quality.chart")]].map(([id,label])=><AntButton type="text" key={id} htmlType="button" role="tab" id={`product-tab-${id}`} aria-controls={`product-panel-${id}`} aria-selected={tab===id} onClick={()=>setTab(id)}>{label}</AntButton>)}</div>}
       {showQuality&&tab==='quality'?<div id="product-panel-quality" role="tabpanel" aria-labelledby="product-tab-quality"><ProductQualityCharts key={product.id} product={product} data={data}/></div>:<div id="product-panel-details" role={showQuality?'tabpanel':undefined} aria-labelledby={showQuality?'product-tab-details':undefined}>
       <dl className="product-detail-fields">
         {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}
-        <div className="product-detail-full"><dt>规格型号</dt><dd>{product.specification || "—"}</dd></div>
-        <div className="product-detail-full"><dt>备注</dt><dd>{product.note || "—"}</dd></div>
+        <div className="product-detail-full"><dt>{translate("warehouse.specifications.and.models")}</dt><dd>{product.specification || "—"}</dd></div>
+        <div className="product-detail-full"><dt>{translate("warehouse.remarks")}</dt><dd>{product.note || "—"}</dd></div>
       </dl>
       <CustomerPartNumbersDetail value={product.customer_part_numbers} />
       <ProductHistory key={product.id} product={product} onViewOrder={onViewOrder} />
       <section className="product-other-stock">
-        <h4>其他仓库库存</h4>
+        <h4>{translate("warehouse.other.warehouse.inventory")}</h4>
         {otherError ? <p className="form-error" role="alert">{otherError}</p>
-          : others === null ? <p className="product-other-empty"><LoadingIndicator size={20} /> 读取中…</p>
-          : others.length === 0 ? <p className="product-other-empty">其他仓库暂无同一物料</p>
+          : others === null ? <p className="product-other-empty"><LoadingIndicator size={20} />{" "}{translate("warehouse.reading")}</p>
+          : others.length === 0 ? <p className="product-other-empty">{translate("warehouse.the.same.material.is.not.currently.available.in.other.warehouses")}</p>
           : <ul className="product-other-list">
             {others.map((row) => <li key={row.warehouse_id}>
               <span>{row.warehouse_name}</span>
@@ -176,11 +183,12 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
       </section>
       </div>}
     </div>
-    <div className="modal-footer">{can('bom') && onViewBom && <Button onClick={onViewBom}>查看BOM</Button>}<Button onClick={onClose}>关闭</Button></div>
+    <div className="modal-footer">{can('bom') && onViewBom && <Button onClick={onViewBom}>{translate("warehouse.view.bom")}</Button>}<Button onClick={onClose}>{translate("warehouse.close")}</Button></div>
   </Modal>;
 }
 
 function ProductForm({ product, categories, units = ["个"], warehouses, warehouseId, onClose, onSaved }) {
+  useLocale();
   const [syncTargets, setSyncTargets] = useState([]);
   const [currentCategories, setCurrentCategories] = useState(categories);
   const options = flattenCategories(currentCategories);
@@ -215,7 +223,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   const close = () => {
     if (busy || readingImage) return;
     if (!mobileDevice && productSnapshot(form, syncTargets) !== baseline.current &&
-      !window.confirm('物料信息尚未保存，确定放弃修改并关闭？')) return;
+      !window.confirm(translate("warehouse.the.material.information.has.not.been.saved.are.you.sure.you"))) return;
     onClose();
   };
   useEffect(() => {
@@ -227,7 +235,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
     setBusy(true);
     setError("");
     try {
-      if (form.customer_part_numbers?.some(row => row._editing)) throw new Error('请先点击勾选确认客户料号，或移除未录入的条目。');
+      if (form.customer_part_numbers?.some(row => row._editing)) throw new Error(translate("warehouse.please.click.to.confirm.the.customer.material.number.first.or.remove"));
       const result = await api(
         product ? `/products/${product.id}` : "/products",
         {
@@ -247,10 +255,10 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       );
       baseline.current = productSnapshot(form, syncTargets);
       await onSaved(
-        product ? "物料信息已更新" : `物料已创建 · 条码 ${result.barcode}`,
+        product ? translate("warehouse.material.information.has.been.updated") : translate("warehouse.material.has.been.created.barcode", { v0: result.barcode }),
       );
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
       if (e.status === 409 && e.code === 'PRODUCT_VERSION_CONFLICT') {
         setConflict(true);
         setLatest(null);
@@ -261,9 +269,8 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
   };
   const priceFields = (
     <>
-      <label>
-        参考采购价（{baseCurrency()}） <span>*</span>
-        <FormField value={form.cost} required type="number" min="0" max="99999999" label="参考采购价（ ）"><AntInput
+      <label>{translate("warehouse.reference.purchase.price.2")}{baseCurrency()}） <span>*</span>
+        <FormField value={form.cost} required type="number" min="0" max="99999999" label={translate("warehouse.reference.purchase.price.3")}><AntInput
           type="number"
           min="0"
           max="99999999"
@@ -273,9 +280,8 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
           onChange={(e) => change("cost", e.target.value)}
         /></FormField>
       </label>
-      <label>
-        参考销售价（{baseCurrency()}） <span>*</span>
-        <FormField value={form.price} required type="number" min="0" max="99999999" label="参考销售价（ ）"><AntInput
+      <label>{translate("warehouse.reference.sales.price.2")}{baseCurrency()}） <span>*</span>
+        <FormField value={form.price} required type="number" min="0" max="99999999" label={translate("warehouse.reference.sales.price.3")}><AntInput
           type="number"
           min="0"
           max="99999999"
@@ -288,54 +294,49 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
     </>
   );
   const specificationField = (
-    <label>规格型号
-      <AntInput maxLength={500} placeholder="例如：3 芯 / 1.5 mm² / 额定电压 300/500V" value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
+    <label>{translate("warehouse.specifications.and.models")}<AntInput maxLength={500} placeholder={translate("warehouse.for.example.3.cores.1.5.mm.rated.voltage.300.500v")} value={form.specification || ''} onChange={e => change('specification', e.target.value)} />
     </label>
   );
   return (
     <Modal
-      title={product ? "编辑物料" : "新增物料"}
-      subtitle="填写物料信息；条码选填，新增时留空自动生成"
+      title={product ? translate("warehouse.edit.material") : translate("warehouse.add.new.material")}
+      subtitle={translate("warehouse.fill.in.the.material.information.the.barcode.is.optional.leave.it")}
       onClose={close}
       presentation="drawer"
     >
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
         <div className="form-body">
-          <ProductFormSection title="基础信息">
-            <label>
-              物料名称 <span>*</span>
-              <FormField label="物料名称" value={form.name} required maxLength={100}><AntInput
+          <ProductFormSection title={translate("warehouse.basic.information")}>
+            <label>{translate("warehouse.material.name")}<span>*</span>
+              <FormField label={translate("warehouse.material.name")} value={form.name} required maxLength={100}><AntInput
 
                 data-autofocus
                 maxLength={100}
-                placeholder="例如：RVV 护套电线"
+                placeholder={translate("warehouse.for.example.rvv.sheathed.wire")}
                 value={form.name}
                 onChange={(e) => change("name", e.target.value)}
               /></FormField>
             </label>
-            <label>
-              物料条码（选填）
-              <div className="input-with-icon">
+            <label>{translate("warehouse.material.barcode.optional")}<div className="input-with-icon">
 
-                <FormField value={form.barcode} maxLength={64} pattern="[A-Za-z0-9_.\-]{3,64}" label="物料条码（选填）"><AntInput prefix={<ScanLine size={17} />}
+                <FormField value={form.barcode} maxLength={64} pattern="[A-Za-z0-9_.\-]{3,64}" label={translate("warehouse.material.barcode.optional")}><AntInput prefix={<ScanLine size={17} />}
                   pattern="[A-Za-z0-9_.\-]{3,64}"
                   maxLength={64}
-                  title="3–64 位字母、数字或 ._-"
-                  placeholder="扫描或输入条码，可留空"
+                  title={translate("warehouse.3.64.characters.numbers.or")}
+                  placeholder={translate("warehouse.scan.or.enter.the.barcode.you.can.leave.it.blank")}
                   value={form.barcode}
                   onChange={(e) => change("barcode", e.target.value)}
                 /></FormField>
               </div>
               <small>
                 {product
-                  ? "可扫描或手动输入条码；留空保存将保留当前条码。"
-                  : "可扫描或手动输入条码；留空保存时自动生成唯一条码。"}
+                  ? translate("warehouse.barcodes.can.be.scanned.or.entered.manually.leaving.blank.to.save")
+                  : translate("warehouse.the.barcode.can.be.scanned.or.entered.manually.a.unique.barcode")}
               </small>
             </label>
             <div className="form-grid">
-              <label>
-                物料分类 <span>*</span>
-                <Select aria-label="物料分类"
+              <label>{translate("warehouse.material.categories")}<span>*</span>
+                <Select aria-label={translate("warehouse.material.categories")}
                   required
                   value={form.category_id || ''}
                   onChange={(e) => {
@@ -343,14 +344,13 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                     setForm(current => ({ ...current, category_id: c?.id || '', category: c?.path || '' }));
                   }}
                 >
-                  <option value="" disabled>请选择分类</option>
+                  <option value="" disabled>{translate("warehouse.please.select.a.category")}</option>
                   {options.map(c => <option key={c.id} value={c.id}>{'　'.repeat(c.depth)}{c.path}</option>)}
                 </Select>
-                {!options.length && <small>请先在物料管理的「管理分类」中添加分类。</small>}
+                {!options.length && <small>{translate("warehouse.please.add.a.category.in.the.management.category.of.material.management")}</small>}
               </label>
-              <label>
-                计量单位 <span>*</span>
-                <Select aria-label="计量单位"
+              <label>{translate("warehouse.unit.of.measurement")}<span>*</span>
+                <Select aria-label={translate("warehouse.unit.of.measurement")}
                   required
                   value={form.unit}
                   onChange={(e) => change("unit", e)}
@@ -359,65 +359,56 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                     <option key={c}>{c}</option>
                   ))}
                 </Select>
-                <small>可在「设置 → 基础设置 → 计量单位」中配置。</small>
+                <small>{translate("warehouse.it.can.be.configured.in.settings.basic.settings.unit.of.measurement")}</small>
               </label>
               {mobileDevice && priceFields}
             </div>
-            <label>
-              生产类型
-              <Select aria-label="生产类型" value={form.production_type || ''} onChange={value => change('production_type', value)}>
-                <option value="">未设置</option>
-                {productionTypes.map(type => <option key={type} value={type}>{type}</option>)}
+            <label>{translate("warehouse.production.type")}<Select aria-label={translate("warehouse.production.type")} value={form.production_type || ''} onChange={value => change('production_type', value)}>
+                <option value="">{translate("warehouse.not.set")}</option>
+                {productionTypes.map(type => <option key={type} value={type}>{translateText(type)}</option>)}
               </Select>
             </label>
-            <AntCheckbox className="product-fixed-asset" checked={!!form.unit_round_up} onChange={e => change('unit_round_up', e.target.checked ? 1 : 0)}>
-              单位是否取整
-              <small>勾选后数量向上取整，例如 4.1 个按 5 个计算；BOM 配方单耗仍可填写小数或分数。</small>
+            <AntCheckbox className="product-fixed-asset" checked={!!form.unit_round_up} onChange={e => change('unit_round_up', e.target.checked ? 1 : 0)}>{translate("warehouse.round.quantities.to.whole.units")}<small>{translate("warehouse.after.checking.the.quantity.is.rounded.up.for.example.4.1")}</small>
             </AntCheckbox>
-            <AntCheckbox className="product-fixed-asset" checked={!!form.is_fixed_asset} onChange={(e) => change("is_fixed_asset", e.target.checked ? 1 : 0)}>
-
-              固定资产
-              <small>勾选后该物料标记为固定资产，导出时可选择只导出固定资产。</small>
+            <AntCheckbox className="product-fixed-asset" checked={!!form.is_fixed_asset} onChange={(e) => change("is_fixed_asset", e.target.checked ? 1 : 0)}>{translate("warehouse.fixed.asset")}<small>{translate("warehouse.after.checking.the.material.is.marked.as.a.fixed.asset.when")}</small>
             </AntCheckbox>
             {!mobileDevice && specificationField}
           </ProductFormSection>
           <div className="drawer-form-section">
             <CustomerPartNumbersEditor value={form.customer_part_numbers} onChange={value => change('customer_part_numbers', value)} disabled={busy || conflict} />
           </div>
-          <ProductFormSection title="图片与说明">
-            <div className="product-image-editor" role="group" aria-label="物料图片">
-              <div className="product-image-label">物料图片</div>
-              <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label="上传物料图片"
+          <ProductFormSection title={translate("warehouse.pictures.and.description")}>
+            <div className="product-image-editor" role="group" aria-label={translate("warehouse.material.pictures")}>
+              <div className="product-image-label">{translate("warehouse.material.pictures")}</div>
+              <input ref={imageInputRef} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || readingImage} aria-label={translate("warehouse.upload.material.pictures")}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     e.target.value = '';
                     if (!file) return;
                     setReadingImage(true); setError('');
                     try { change('image', await readProductImage(file)); }
-                    catch (e) { setError(e.message); }
+                    catch (e) { setError(localizeError(e.message)); }
                     finally { setReadingImage(false); }
                   }} />
               <AntButton type="text" htmlType="button" className="product-image-upload" disabled={busy || readingImage} aria-busy={readingImage} onClick={() => imageInputRef.current?.click()}>
                 <span className="product-image-upload-icon" aria-hidden="true">{readingImage ? <LoadingIndicator size={22} /> : <ImagePlus size={22} />}</span>
                 <span className="product-image-upload-copy">
-                  <strong>{readingImage ? '正在上传图片…' : form.image ? '更换物料图片' : '上传物料图片'}</strong>
-                  <span>{readingImage ? '正在压缩并上传，请稍候' : '点击选择图片，支持 JPEG、PNG、WebP'}</span>
+                  <strong>{readingImage ? translate("warehouse.uploading.pictures") : form.image ? translate("warehouse.replacement.material.pictures") : translate("warehouse.upload.material.pictures")}</strong>
+                  <span>{readingImage ? translate("warehouse.compressing.and.uploading.please.wait") : translate("warehouse.click.to.select.an.image.support.jpeg.png.webp")}</span>
                 </span>
                 {!readingImage && <Plus size={18} aria-hidden="true" />}
               </AntButton>
-              <small className="product-image-hint">单张图片不超过 10 MB，上传时自动压缩。</small>
-              {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt="物料图片预览" className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>移除图片</Button></div>}
+              <small className="product-image-hint">{translate("warehouse.a.single.image.should.not.exceed.10.mb.and.will.be")}</small>
+              {form.image && <div className="product-image-preview"><ProductImage src={form.image} alt={translate("warehouse.material.picture.preview")} className="product-image-thumbnail" /><Button type="button" disabled={busy || readingImage} onClick={() => change('image', '')}>{translate("warehouse.remove.image")}</Button></div>}
             </div>
             {mobileDevice && specificationField}
-            <label>物料备注
-              <AntInput.TextArea maxLength={2000} rows={3} placeholder="填写物料补充说明" value={form.note || ''} onChange={e => change('note', e.target.value)} />
+            <label>{translate("warehouse.material.remarks")}<AntInput.TextArea maxLength={2000} rows={3} placeholder={translate("warehouse.fill.in.the.material.supplementary.instructions")} value={form.note || ''} onChange={e => change('note', e.target.value)} />
             </label>
           </ProductFormSection>
-          <ProductFormSection title="价格与库存设置">
+          <ProductFormSection title={translate("warehouse.price.and.inventory.settings")}>
             {!mobileDevice && <div className="form-grid">{priceFields}</div>}
-            <label>
-              安全库存 <span>*</span>
-              <FormField label="安全库存" value={form.threshold} required type="number" min="0" max="99999999"><AntInput
+            <label>{translate("warehouse.safety.stock")}<span>*</span>
+              <FormField label={translate("warehouse.safety.stock")} value={form.threshold} required type="number" min="0" max="99999999"><AntInput
                 type="number"
                 min="0"
                 max="99999999"
@@ -425,36 +416,33 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 value={form.threshold}
                 onChange={(e) => change("threshold", e.target.value)}
               /></FormField>
-              <small>设为 0 则不启用缺货和低库存预警；大于 0 时，库存小于或等于此数量会提醒补货。</small>
+              <small>{translate("warehouse.set.to.0.to.disable.out.of.stock.and.low.stock")}</small>
             </label>
           </ProductFormSection>
-          <ProductFormSection title="校验提醒（可选）">
-            <label>下次校验日期
-              <AntInput type="date" aria-label="下次校验日期" value={form.inspection_date || ''} onChange={e => {
+          <ProductFormSection title={translate("warehouse.verification.reminder.optional")}>
+            <label>{translate("warehouse.next.verification.date")}<AntInput type="date" aria-label={translate("warehouse.next.verification.date")} value={form.inspection_date || ''} onChange={e => {
                 change('inspection_date', e.target.value);
                 if (!e.target.value) change('inspection_interval', 0);
               }} />
-              <small>到期当天起在首页显示待校验物料；留空不提醒。</small>
+              <small>{translate("warehouse.materials.to.be.verified.will.be.displayed.on.the.home.page")}</small>
             </label>
             <div className="form-grid">
-              <label>校验周期
-                <FormField value={form.inspection_interval || ''} type="number" min="1" max="999" label="校验周期"><AntInput type="number" aria-label="校验周期" min="1" max="999" step="1" disabled={!form.inspection_date} placeholder="留空则手动设置日期" value={form.inspection_interval || ''} onChange={e => change('inspection_interval', e.target.value)} /></FormField>
+              <label>{translate("warehouse.inspection.cycle")}<FormField value={form.inspection_interval || ''} type="number" min="1" max="999" label={translate("warehouse.inspection.cycle")}><AntInput type="number" aria-label={translate("warehouse.inspection.cycle")} min="1" max="999" step="1" disabled={!form.inspection_date} placeholder={translate("warehouse.leave.blank.to.set.date.manually")} value={form.inspection_interval || ''} onChange={e => change('inspection_interval', e.target.value)} /></FormField>
               </label>
-              <label>周期单位
-                <Select className="inspection-unit-select" aria-label="周期单位" disabled={!form.inspection_date} value={form.inspection_unit || 'month'} onChange={e => change('inspection_unit', e)}>
+              <label>{translate("warehouse.period.unit")}<Select className="inspection-unit-select" aria-label={translate("warehouse.period.unit")} disabled={!form.inspection_date} value={form.inspection_unit || 'month'} onChange={e => change('inspection_unit', e)}>
                   {Object.entries(inspectionUnits).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </Select>
               </label>
             </div>
-            <small>点击「已校验」后可选择实际校验日期（默认今天），按配置周期计算下次日期；未设置周期时，需手动填写下次日期。</small>
+            <small>{translate("warehouse.after.clicking.verified.you.can.select.the.actual.verification.date.default")}</small>
           </ProductFormSection>
-          <ProductFormSection title="同步到其他仓库">
+          <ProductFormSection title={translate("warehouse.sync.to.other.warehouses")}>
             <ProductSync warehouses={warehouses} warehouseId={warehouseId} targets={syncTargets} setTargets={setSyncTargets} disabled={busy || readingImage} />
           </ProductFormSection>
           {!product && (
             <div className="info-box">
               <Package size={17} />
-              <p>新物料初始库存为 0，创建后通过「入库」增加库存。</p>
+              <p>{translate("warehouse.the.initial.inventory.of.a.new.material.is.0.after.creation")}</p>
             </div>
           )}
           {error && (
@@ -471,13 +459,13 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               try {
                 const [data, detail] = await Promise.all([api('/workspace', { warehouseId }), api(`/products/${product.id}`, { warehouseId })]);
                 const current = detail.product;
-                if (!current) throw new Error('物料已被删除，当前填写内容已保留。');
+                if (!current) throw new Error(translate("warehouse.the.material.has.been.deleted.and.the.current.filled.content.has"));
                 setLatest({ product: current, categories: data.categories });
-              } catch (e) { setError(e.message); }
+              } catch (e) { setError(localizeError(e.message)); }
               finally { setBusy(false); }
-            }} busy={busy}>{busy ? '正在读取…' : '查看最新信息'}</Button>
+            }} busy={busy}>{busy ? translate("warehouse.reading.2") : translate("warehouse.view.the.latest.information")}</Button>
             {latest && <Button type="button" disabled={busy || readingImage} onClick={() => {
-              if (!window.confirm('使用最新信息替换当前填写内容，并清空同步仓库选择？')) return;
+              if (!window.confirm(translate("warehouse.replace.the.current.filled.content.with.the.latest.information.and.clear"))) return;
               setForm(latest.product);
               baseline.current = productSnapshot(latest.product, []);
               setCurrentCategories(latest.categories);
@@ -485,20 +473,18 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
               setConflict(false);
               setLatest(null);
               setError('');
-            }}>使用最新信息重新编辑</Button>}
+            }}>{translate("warehouse.re.edit.with.latest.information")}</Button>}
           </>}
         </div>
         <div className="modal-footer">
-          <Button type="button" onClick={close} disabled={busy || readingImage}>
-            取消
-          </Button>
+          <Button type="button" onClick={close} disabled={busy || readingImage}>{translate("warehouse.cancel")}</Button>
           <Button
             type="submit"
             kind="primary"
             icon={Check} busy={busy}
             disabled={busy || readingImage || conflict}
           >
-            {busy ? "正在保存…" : "保存物料"}
+            {busy ? translate("warehouse.saving") : translate("warehouse.save.material")}
           </Button>
         </div>
       </AntForm>
@@ -507,6 +493,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
 }
 
 function CategoryManager({ categories, onClose, onChanged }) {
+  useLocale();
   const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [parent, setParent] = useState('');
@@ -522,29 +509,30 @@ function CategoryManager({ categories, onClose, onChanged }) {
     if (busy) return;
     setBusy(true); setError('');
     try { await action(); await onChanged(); choose(''); }
-    catch (e) { setError(e.message); }
+    catch (e) { setError(localizeError(e.message)); }
     finally { setBusy(false); }
   };
-  return <Modal title="管理物料分类" subtitle="建立多级分类；选择上级分类即可添加子分类。" onClose={busy ? () => {} : onClose}>
+  return <Modal title={translate("warehouse.manage.material.classification")} subtitle={translate("warehouse.create.multi.level.classifications.select.the.upper.level.classification.to.add")} onClose={busy ? () => {} : onClose}>
     <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => {  void run(() => api(id ? `/categories/${id}` : '/categories', { method: id ? 'PUT' : 'POST', body: { name, parent_id: parent ? Number(parent) : null } })); }}>
       <AntConfigProvider componentDisabled={busy}><fieldset className="form-body category-form" disabled={busy}>
-        <label>编辑分类<Select aria-label="编辑分类" value={id} onChange={e => choose(e)}><option value="">新增分类</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
-        <label>分类名称 <span>*</span><FormField label="分类名称" value={name} required maxLength={100}><AntInput  maxLength={100} value={name} placeholder="例如：电线" onChange={e => setName(e.target.value)} /></FormField></label>
-        <label>上级分类<Select aria-label="上级分类" value={parent} onChange={e => setParent(e)}><option value="">无（一级分类）</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
-        <small className="muted">选中父分类会包含下级物料。删除前需移走该分类的下级分类及物料。</small>
+        <label>{translate("warehouse.edit.category")}<Select aria-label={translate("warehouse.edit.category")} value={id} onChange={e => choose(e)}><option value="">{translate("warehouse.add.new.category")}</option>{options.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
+        <label>{translate("warehouse.category.name")}{" "}<span>*</span><FormField label={translate("warehouse.category.name")} value={name} required maxLength={100}><AntInput  maxLength={100} value={name} placeholder={translate("warehouse.for.example.wire")} onChange={e => setName(e.target.value)} /></FormField></label>
+        <label>{translate("warehouse.superior.classification")}<Select aria-label={translate("warehouse.superior.classification")} value={parent} onChange={e => setParent(e)}><option value="">{translate("warehouse.none.first.level.classification")}</option>{options.filter(c => !excluded.has(c.id)).map(c => <option key={c.id} value={c.id}>{c.path}</option>)}</Select></label>
+        <small className="muted">{translate("warehouse.selecting.the.parent.category.will.include.subordinate.materials.the.lower.level")}</small>
         {error && <div className="form-error" role="alert">{error}</div>}
       </fieldset></AntConfigProvider>
       <div className="modal-footer">
-        {id && <Button type="button" disabled={busy} onClick={() => { if (window.confirm(`确定删除分类「${name}」？`)) void run(() => api(`/categories/${id}/delete`, { method: 'POST', body: {} })); }}>删除分类</Button>}
-        <Button type="button" disabled={busy} onClick={onClose}>完成</Button>
-        <Button type="submit" kind="primary" busy={busy}>{busy ? '正在保存…' : '保存分类'}</Button>
+        {id && <Button type="button" disabled={busy} onClick={() => { if (window.confirm(translate("warehouse.are.you.sure.you.want.to.delete.category", { v0: name }))) void run(() => api(`/categories/${id}/delete`, { method: 'POST', body: {} })); }}>{translate("warehouse.delete.category")}</Button>}
+        <Button type="button" disabled={busy} onClick={onClose}>{translate("warehouse.complete")}</Button>
+        <Button type="submit" kind="primary" busy={busy}>{busy ? translate("warehouse.saving") : translate("warehouse.save.category")}</Button>
       </div>
     </AntForm>
   </Modal>;
 }
 
 function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
-  const action = increase ? '增加' : '减少';
+  useLocale();
+  const action = increase ? translate("warehouse.increase") : translate("warehouse.reduce");
   const { busy, error, run, send } = useBusiness();
   const [quantity, setQuantity] = useState(""),
     [reason, setReason] = useState("");
@@ -552,12 +540,12 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
 
     run(async () => {
       const amount = materialQuantity(parseQuantity(quantity, true), product);
-      if (!reason.trim()) throw new Error(`请填写${action}原因。`);
+      if (!reason.trim()) throw new Error(translate("warehouse.please.fill.in.the.reason", { v0: action }));
       if (!increase && amount > product.stock)
-        throw new Error(`减少数量不能超过现有库存 ${product.stock} ${product.unit}。`);
+        throw new Error(translate("warehouse.quantity.reduction.cannot.exceed.existing.inventory", { v0: product.stock, v1: product.unit }));
       if (
         !window.confirm(
-          `确认将「${product.name}」库存从 ${product.stock} ${action} ${amount} ${product.unit}？`,
+          translate("warehouse.confirm.to.move.inventory.from", { v0: product.name, v1: product.stock, v2: action, v3: amount, v4: product.unit }),
         )
       )
         return;
@@ -567,13 +555,13 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
         expected_stock: product.stock,
         reason,
       });
-      await onSaved(`库存已${action} · ${product.name}`);
+      await onSaved(translate("warehouse.in.stock", { v0: action, v1: product.name }));
     });
   };
   return (
     <Modal
-      title={increase ? "增加库存（退料）" : "减少库存"}
-      subtitle={increase ? "用于生产余料退回，直接增加库存并记录原因。按当前库存平均成本计价，零库存时使用参考采购价。" : "用于报损、损耗或盘亏，直接调整现有库存并记录原因。"}
+      title={increase ? translate("warehouse.increase.stock.return") : translate("warehouse.reduce.inventory")}
+      subtitle={increase ? translate("warehouse.used.to.return.production.surplus.materials.directly.increase.inventory.and.record") : translate("warehouse.used.to.report.losses.losses.or.inventory.losses.directly.adjust.existing")}
       onClose={busy ? () => {} : onClose}
     >
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
@@ -581,12 +569,12 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
           <div className="reduce-stock-product">
             <strong>{product.name}</strong>
             <small>
-              {product.barcode} · 现有库存 {product.stock} {product.unit}
+              {product.barcode}{" "}{translate("warehouse.on.hand.inventory.2")}{" "}{product.stock} {product.unit}
             </small>
           </div>
           <label>
-            {action}数量（{product.unit}） <span>*</span>
-            <FormField label="数量（ ）" value={quantity} required type="number" min="0.0001"><AntInput
+            {action}{translate("warehouse.quantity.3")}{product.unit}） <span>*</span>
+            <FormField label={translate("warehouse.quantity.4")} value={quantity} required type="number" min="0.0001"><AntInput
 
               data-autofocus
               type="number"
@@ -599,11 +587,11 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
             /></FormField>
           </label>
           <label>
-            {action}原因 <span>*</span>
-            <FormField label="原因" value={reason} required maxLength={500}><AntInput
+            {action}{translate("warehouse.reason")}{" "}<span>*</span>
+            <FormField label={translate("warehouse.reason")} value={reason} required maxLength={500}><AntInput
 
               maxLength={500}
-              placeholder={increase ? "例如：生产余料退回" : "例如：破损报废、盘点损耗"}
+              placeholder={increase ? translate("warehouse.for.example.return.of.production.surplus.materials") : translate("warehouse.for.example.damaged.and.scrapped.inventory.loss")}
               value={reason}
               disabled={busy}
               onChange={(e) => setReason(e.target.value)}
@@ -616,11 +604,9 @@ function ReduceStockModal({ product, increase = false, onClose, onSaved }) {
           )}
         </div>
         <div className="modal-footer">
-          <Button type="button" onClick={onClose} disabled={busy}>
-            取消
-          </Button>
+          <Button type="button" onClick={onClose} disabled={busy}>{translate("warehouse.cancel")}</Button>
           <Button type="submit" kind="primary" icon={increase ? Plus : Minus} busy={busy}>
-            {busy ? "处理中…" : `确认${action}`}
+            {busy ? translate("warehouse.processing") : translate("warehouse.confirm.2", { v0: action })}
           </Button>
         </div>
       </AntForm>

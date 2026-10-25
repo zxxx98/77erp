@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useRef } from 'react';
 import { Modal } from '../components/common.jsx';
 
@@ -52,6 +54,7 @@ function registerApprovalHistory(onClose, isBusy) {
 }
 
 export function ProductionApprovalDialog({ busy, onClose, children, ...props }) {
+  useLocale();
   const callbacks = useRef({ busy, onClose });
   callbacks.current = { busy, onClose };
   useEffect(() => registerApprovalHistory(() => callbacks.current.onClose(), () => callbacks.current.busy), []);

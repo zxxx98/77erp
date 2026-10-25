@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useId, useState } from 'react';
 import { Button } from '../ui/controls.jsx';
 import { usePermissions } from '../permissions.jsx';
@@ -12,6 +14,7 @@ const readRoute = () => {
 };
 
 export function OrderApprovalWorkspace({ data, type, onChanged, children }) {
+  useLocale();
   const { can } = usePermissions();
   const id = useId();
   const [route, setRoute] = useState(readRoute);
@@ -26,9 +29,9 @@ export function OrderApprovalWorkspace({ data, type, onChanged, children }) {
   const returns = useQuery(inbound ? queryPath('/production-material-documents', { type: 'in', status: 'pending', limit: 1 }) : null, data);
   const issues = useQuery(outbound ? queryPath('/production-material-documents', { type: 'out', status: 'pending', limit: 1 }) : null, data);
   const tabs = [
-    { key: 'records', label: type === 'in' ? '入库记录' : type === 'out' ? '出库记录' : '单据记录' },
-    ...(inbound ? [{ key: 'receipts', label: '成品待入库', query: receipts }, { key: 'returns', label: '退料待入库', query: returns }] : []),
-    ...(outbound ? [{ key: 'issues', label: '领料／补料待出库', query: issues }] : []),
+    { key: 'records', label: type === 'in' ? translate("warehouse.warehousing.records") : type === 'out' ? translate("warehouse.outbound.records") : translate("warehouse.document.record") },
+    ...(inbound ? [{ key: 'receipts', label: translate("warehouse.finished.products.awaiting.storage"), query: receipts }, { key: 'returns', label: translate("warehouse.returned.materials.awaiting.storage"), query: returns }] : []),
+    ...(outbound ? [{ key: 'issues', label: translate("warehouse.picking.replenishing.materials.to.be.shipped.out.of.the.warehouse"), query: issues }] : []),
   ];
   const selected = tabs.some(tab => tab.key === route.selected) ? route.selected : 'records';
   const refreshCounts = () => { if (inbound) { receipts.retry(); returns.retry(); } if (outbound) issues.retry(); };
@@ -48,13 +51,13 @@ export function OrderApprovalWorkspace({ data, type, onChanged, children }) {
     document.getElementById(`${id}-${tabs[next].key}`)?.focus();
   };
   return <div className="order-approval-workspace">
-    <div className="order-category-tabs" role="tablist" aria-label="单据分类">
+    <div className="order-category-tabs" role="tablist" aria-label={translate("warehouse.document.classification")}>
       {tabs.map((tab, index) => <button type="button" key={tab.key} id={`${id}-${tab.key}`} role="tab" aria-selected={selected === tab.key}
         aria-controls={`${id}-panel`} tabIndex={selected === tab.key ? 0 : -1} onClick={() => select(tab.key)} onKeyDown={event => keyboard(event, index)}>
         {tab.label}{tab.query && <span className="order-category-count">{tab.query.result?.total ?? (tab.query.error ? '—' : '…')}</span>}
       </button>)}
     </div>
-    {tabs.some(tab => tab.query?.error) && <div className="order-category-error" role="alert">待办数量读取失败<Button type="text" onClick={refreshCounts}>重试待办数量</Button></div>}
+    {tabs.some(tab => tab.query?.error) && <div className="order-category-error" role="alert">{translate("warehouse.failed.to.read.to.do.quantity")}<Button type="text" onClick={refreshCounts}>{translate("warehouse.number.of.retries.to.be.done")}</Button></div>}
     <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${selected}`}>
       {selected === 'records' ? children : selected === 'receipts'
         ? <ProductionReceipts key={`${data.warehouse_id}:receipts:${route.query}`} data={data} initialQuery={route.query} onChanged={onChanged} onRefresh={refreshCounts} />

@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { Button as AntButton } from './ui/controls.jsx';
 
 import { useEffect, useState } from 'react';
@@ -26,7 +28,7 @@ export function useDataUpdates(data, userId) {
         setCheck({ revision, changed: result.revision !== revision });
       } catch (error) {
         // A deleted warehouse can be recovered by the existing explicit refresh.
-        if (!controller.signal.aborted && error.status === 400 && error.message.startsWith('仓库不存在'))
+        if (!controller.signal.aborted && error.status === 400 && error.message.startsWith(translate("system.warehouse.does.not.exist")))
           setCheck({ revision, changed: true });
       } finally { checking = false; }
     };
@@ -45,11 +47,11 @@ export function useDataUpdates(data, userId) {
 }
 
 export function DataUpdateNotice({ onRefresh, busy, disabled }) {
-  return <div className="data-update-notice" role="status" aria-label="数据更新提示">
-    <span>数据有变更，点击刷新查看最新数据。</span>
+  useLocale();
+  return <div className="data-update-notice" role="status" aria-label={translate("system.data.update.tips")}>
+    <span>{translate("system.the.data.has.changed.click.refresh.to.view.the.latest.data")}</span>
     <AntButton type="default" htmlType="button" onClick={onRefresh} disabled={busy || disabled} aria-busy={busy}>
-      {busy ? <LoadingIndicator size={18} /> : <RefreshCw size={18} />}刷新数据
-    </AntButton>
-    {disabled && <small>请先完成并关闭当前操作。</small>}
+      {busy ? <LoadingIndicator size={18} /> : <RefreshCw size={18} />}{translate("system.refresh.data")}</AntButton>
+    {disabled && <small>{translate("system.please.complete.and.close.the.current.operation.first")}</small>}
   </div>;
 }

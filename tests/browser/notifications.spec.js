@@ -6,7 +6,7 @@ test.beforeAll(async ({ request }) => {
   expect([201, 409]).toContain(r.status());
 });
 for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} notification settings persist selections and send only subscribed events`, async ({ browser }) => {
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', ...(mobile ? devices['Pixel 7'] : { viewport: { width: 1440, height: 1000 } }) });
+  const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', ...(mobile ? devices['Pixel 7'] : { viewport: { width: 1440, height: 1000 } }) });
   await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
   const reset = async () => {
     const config = await (await context.request.get('/api/settings/notifications')).json();

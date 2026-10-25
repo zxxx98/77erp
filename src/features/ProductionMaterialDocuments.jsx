@@ -1,3 +1,6 @@
+import { productionMessage } from '../i18n/production-errors.js';
+import { t as pt } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useState } from 'react';
 import { Input } from '../ui/controls.jsx';
 import { Button, Badge, QueryStatus } from '../components/common.jsx';
@@ -10,40 +13,42 @@ import { queryPath, useQuery } from '../queries.js';
 import { count, dateTime, money, currencySymbol } from '../app/format.js';
 import './production-materials.css';
 
-const statusLabels = { pending: '待批准', confirmed: '已完成', cancelled: '已取消' };
-const titleFor = doc => doc.type === 'in' ? '生产退料' : doc.kind === 'supplement' ? '生产补料' : '生产领料';
+const statusLabels = () => ({ pending: pt("production.pendingApproval"), confirmed: pt("production.completed"), cancelled: pt("production.cancelled") });
+const titleFor = doc => doc.type === 'in' ? pt("production.productionMaterialReturn") : doc.kind === 'supplement' ? pt("production.productionMaterialSupplement") : pt("production.productionMaterialIssue");
 
 export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, defaultExpanded = false }) {
+  useLocale();
   const { can } = usePermissions();
   const [expanded, setExpanded] = useState(() => defaultExpanded ? documents[0]?.id : null);
   const [cancelling, setCancelling] = useState(null);
   const [reason, setReason] = useState('');
   return <div className="material-documents">{documents.map(doc => <article className="material-document" key={doc.id}>
     <div className="material-document-heading"><div><strong>{doc.number}</strong><p>{titleFor(doc)} · {doc.production_number}</p></div>
-      <Badge tone={doc.status === 'pending' ? 'orange' : doc.status === 'confirmed' ? 'green' : 'gray'}>{statusLabels[doc.status]}</Badge></div>
+      <Badge tone={doc.status === 'pending' ? 'orange' : doc.status === 'confirmed' ? 'green' : 'gray'}>{statusLabels()[doc.status]}</Badge></div>
     <p>{doc.product_name}</p>
-    <p className="material-muted">申请：{doc.created_by_name} · {dateTime(doc.created_at)}</p>
-    {doc.confirmed_at && <p className="material-muted">确认：{doc.confirmed_by_name} · {dateTime(doc.confirmed_at)}</p>}
-    {doc.cancelled_at && <p className="material-muted">取消：{doc.cancelled_by_name} · {dateTime(doc.cancelled_at)}{doc.cancel_reason && ` · ${doc.cancel_reason}`}</p>}
+    <p className="material-muted">{pt("production.requested")}{doc.created_by_name} · {dateTime(doc.created_at)}</p>
+    {doc.confirmed_at && <p className="material-muted">{pt("production.confirmed")}{doc.confirmed_by_name} · {dateTime(doc.confirmed_at)}</p>}
+    {doc.cancelled_at && <p className="material-muted">{pt("production.cancelled2")}{doc.cancelled_by_name} · {dateTime(doc.cancelled_at)}{doc.cancel_reason && ` · ${doc.cancel_reason}`}</p>}
     {doc.note && <p className="material-note">{doc.note}</p>}
     <div className="material-actions">
-      <Button disabled={busy} aria-expanded={expanded === doc.id} onClick={() => setExpanded(expanded === doc.id ? null : doc.id)}>{expanded === doc.id ? '收起材料明细' : '查看材料明细'}</Button>
-      {doc.status === 'pending' && onConfirm && <Button kind="primary" disabled={busy} onClick={() => onConfirm(doc)}>批准并确认{doc.type === 'out' ? '出库' : '入库'}</Button>}
-      {doc.status === 'pending' && onCancel && <Button disabled={busy} onClick={() => { setCancelling(doc.id); setReason(''); }}>取消申请</Button>}
+      <Button disabled={busy} aria-expanded={expanded === doc.id} onClick={() => setExpanded(expanded === doc.id ? null : doc.id)}>{expanded === doc.id ? pt("production.collapseMaterialDetails") : pt("production.viewMaterialDetails")}</Button>
+      {doc.status === 'pending' && onConfirm && <Button kind="primary" disabled={busy} onClick={() => onConfirm(doc)}>{pt("production.approveAndConfirm")}{doc.type === 'out' ? pt("production.issue") : pt("production.receipt2")}</Button>}
+      {doc.status === 'pending' && onCancel && <Button disabled={busy} onClick={() => { setCancelling(doc.id); setReason(''); }}>{pt("production.cancelRequest")}</Button>}
     </div>
     {expanded === doc.id && <ul className="material-document-lines">{doc.items.map(item => <li key={item.product_id}>
       <div><strong>{item.name}</strong><small>{item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
       <span>{count(item.quantity)} {item.unit}</span>
-      {can('finance') && item.cost_cents != null && <small>材料成本 {currencySymbol()}{money(item.cost_cents / 100)}</small>}
+      {can('finance') && item.cost_cents != null && <small>{pt("production.materialCost")} {currencySymbol()}{money(item.cost_cents / 100)}</small>}
     </li>)}</ul>}
     {cancelling === doc.id && doc.status === 'pending' && <div className="material-cancel">
-      <label>取消原因<Input.TextArea aria-label="取消申请原因" rows={2} maxLength={500} value={reason} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
-      <div className="material-actions"><Button disabled={busy} onClick={() => setCancelling(null)}>保留申请</Button><Button kind="danger" disabled={busy || !reason.trim()} onClick={() => onCancel(doc, reason.trim())}>确认取消申请</Button></div>
+      <label>{pt("production.cancellationReason")}<Input.TextArea aria-label={pt("production.requestCancellationReason")} rows={2} maxLength={500} value={reason} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
+      <div className="material-actions"><Button disabled={busy} onClick={() => setCancelling(null)}>{pt("production.keepRequest")}</Button><Button kind="danger" disabled={busy || !reason.trim()} onClick={() => onCancel(doc, reason.trim())}>{pt("production.confirmCancellation")}</Button></div>
     </div>}
   </article>)}</div>;
 }
 
 export function ProductionMaterialDocuments({ data, type, onChanged, initialQuery = '', onRefresh }) {
+  useLocale();
   const { can } = usePermissions();
   const [status, setStatus] = useState(initialQuery ? 'all' : 'pending'), [q, setQ] = useState(initialQuery), [offset, setOffset] = useState(0);
   const [message, setMessage] = useState('');
@@ -68,30 +73,30 @@ export function ProductionMaterialDocuments({ data, type, onChanged, initialQuer
     await Promise.all([onChanged?.(), onRefresh?.()]);
   };
   const confirm = doc => action.run(async () => {
-    const direction = doc.type === 'out' ? '出库' : '入库';
-    if (!window.confirm(`确认批准 ${doc.number} 并整单${direction}？${doc.type === 'out' ? '材料将从当前仓库扣除，交付生产使用。' : '未用材料将退回当前仓库。'}`)) return;
+    const direction = doc.type === 'out' ? pt("production.issue") : pt("production.receipt2");
+    if (!window.confirm(pt("production.approveAndTheEntireOrder", { v0: doc.number, v1: direction, v2: doc.type === 'out' ? pt("production.materialsWillBeDeductedFromTheCurrentWarehouse") : pt("production.unusedMaterialsWillReturnToTheCurrentWarehouse") }))) return;
     await action.send(`/production-material-documents/${doc.id}/confirm`, { version: doc.version }, { warehouseId: data.warehouse_id });
-    setMessage(`${doc.number} 已${direction}。`); await completed();
+    setMessage(pt("production.confirmed2", { v0: doc.number, v1: direction })); await completed();
   });
   const cancel = (doc, reason) => action.run(async () => {
     await action.send(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason }, { warehouseId: data.warehouse_id });
-    setMessage(`${doc.number} 已取消，库存未变动。`); await completed();
+    setMessage(pt("production.cancelledStockUnchanged", { v0: doc.number })); await completed();
   });
-  const title = type === 'out' ? '生产领料出库单' : '生产退料入库单';
+  const title = type === 'out' ? pt("production.productionMaterialIssueOrders") : pt("production.productionMaterialReturnReceipts");
   return <section className="panel material-queue" aria-label={title}>
-    <div className="material-document-heading"><h2>{title}</h2><Button disabled={action.busy || list.loading} onClick={() => { action.setError(''); list.retry(); onRefresh?.(); }}>刷新生产单据</Button></div>
-    <p className="material-muted">{type === 'out' ? '核对领料或补料申请，批准并确认出库后扣除库存。' : '核对未用材料，批准并确认入库后退回库存。'}生产材料流转不计入采购销售额。</p>
-    <div className="material-filters"><Input type="search" aria-label="搜索生产材料单" placeholder="搜索单号、生产单或成品" maxLength={100} value={q} disabled={action.busy} onChange={event => { setQ(event.target.value); setOffset(0); }} />
-      <Select aria-label="生产材料单状态" value={status} disabled={action.busy} onChange={value => { setStatus(value); setOffset(0); }}><option value="all">全部状态</option>{Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></div>
-    {message && <p className="material-success" role="status">{message}</p>}
-    {action.error && !selected && <p className="form-error" role="alert">{action.error} 可刷新后核对当前状态。</p>}
+    <div className="material-document-heading"><h2>{title}</h2><Button disabled={action.busy || list.loading} onClick={() => { action.setError(''); list.retry(); onRefresh?.(); }}>{pt("production.refreshProductionDocuments")}</Button></div>
+    <p className="material-muted">{type === 'out' ? pt("production.verifyIssueOrSupplementRequestsStockIsDeducted") : pt("production.verifyUnusedMaterialsStockIsRestoredAfterApproval")}{pt("production.productionMaterialTransfersDoNotCountAsPurchases")}</p>
+    <div className="material-filters"><Input type="search" aria-label={pt("production.searchProductionMaterialDocuments")} placeholder={pt("production.searchDocumentNumberProductionOrderOrProduct")} maxLength={100} value={q} disabled={action.busy} onChange={event => { setQ(event.target.value); setOffset(0); }} />
+      <Select aria-label={pt("production.productionMaterialDocumentStatus")} value={status} disabled={action.busy} onChange={value => { setStatus(value); setOffset(0); }}><option value="all">{pt("production.allStatuses")}</option>{Object.entries(statusLabels()).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></div>
+    {message && <p className="material-success" role="status">{productionMessage(message)}</p>}
+    {productionMessage(action.error) && !selected && <p className="form-error" role="alert">{productionMessage(action.error)} {pt("production.refreshToCheckTheCurrentStatus")}</p>}
     <QueryStatus query={list} />
-    <ProductionApprovalList documents={documents} busy={action.busy || list.loading} onView={id => { action.setError(''); setSelection({ id, scope }); }} statusLabels={statusLabels} />
-    {list.result && !list.result.documents.length && <p className="material-muted">暂无符合条件的生产材料单。</p>}
-    {list.result && (offset > 0 || list.result.has_more) && <div className="material-actions"><Button disabled={action.busy || list.loading || !offset} onClick={() => setOffset(value => Math.max(0, value - 10))}>上一页生产材料单</Button><span>共 {list.result.total} 张 · 第 {offset / 10 + 1} 页</span><Button disabled={action.busy || list.loading || !list.result.has_more} onClick={() => setOffset(value => value + 10)}>下一页生产材料单</Button></div>}
+    <ProductionApprovalList documents={documents} busy={action.busy || list.loading} onView={id => { action.setError(''); setSelection({ id, scope }); }} statusLabels={statusLabels()} />
+    {list.result && !list.result.documents.length && <p className="material-muted">{pt("production.noMatchingProductionMaterialDocuments")}</p>}
+    {list.result && (offset > 0 || list.result.has_more) && <div className="material-actions"><Button disabled={action.busy || list.loading || !offset} onClick={() => setOffset(value => Math.max(0, value - 10))}>{pt("production.previousMaterialDocuments")}</Button><span>{pt("production.total")} {list.result.total} {pt("production.ordersPage")} {offset / 10 + 1} {pt("production.page")}</span><Button disabled={action.busy || list.loading || !list.result.has_more} onClick={() => setOffset(value => value + 10)}>{pt("production.nextMaterialDocuments")}</Button></div>}
     {selected && <ProductionApprovalDialog title={titleFor(selected)} subtitle={selected.number} busy={action.busy} onClose={() => setSelection(null)}>
       <div className="form-body">
-        {action.error && <p className="form-error" role="alert">{action.error} 可关闭详情并刷新后核对当前状态。</p>}
+        {productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)} {pt("production.closeDetailsAndRefreshToCheckTheCurrent")}</p>}
         <MaterialDocumentList key={selected.id} documents={[selected]} busy={action.busy} defaultExpanded onConfirm={confirm} onCancel={cancel} />
       </div>
     </ProductionApprovalDialog>}

@@ -6,7 +6,7 @@ test.beforeAll(async({request})=>{
 });
 
 for(const device of ['Pixel 7','iPhone 13'])test(`${device} full chart labels wrap and remain readable in both orientations`,async({browser})=>{
-  const context=await browser.newContext({baseURL:'http://127.0.0.1:3199',...devices[device],serviceWorkers:device==='iPhone 13'?'allow':'block'});
+  const context=await browser.newContext({ locale: 'zh-CN',baseURL:'http://127.0.0.1:3199',...devices[device],serviceWorkers:device==='iPhone 13'?'allow':'block'});
   try{
     await context.request.post('/api/auth/login',{data:{username:'admin',password:'Test-admin-123'}});
     const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));

@@ -12,7 +12,7 @@ for (const scenario of [
   { name: 'installed PWA', device: 'Pixel 7', standalone: true },
 ]) {
   test(`${scenario.name} keeps touch tabs borderless, form validation and accessible mobile controls`, async ({ browser }) => {
-    const context = await browser.newContext({ ...devices[scenario.device], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
+    const context = await browser.newContext({ locale: 'zh-CN', ...devices[scenario.device], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
     try {
       if (scenario.standalone) await context.addInitScript(() => {
         const original = window.matchMedia.bind(window);
@@ -63,7 +63,7 @@ for (const scenario of [
 }
 
 test('mobile login inherits form disabled state and keeps password controls accessible', async ({ browser }) => {
-  const context = await browser.newContext({ ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
+  const context = await browser.newContext({ locale: 'zh-CN', ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
   let release;
   const pending = new Promise(resolve => { release = resolve; });
   try {

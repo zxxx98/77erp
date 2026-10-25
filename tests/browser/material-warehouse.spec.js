@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile Web' : 'desktop Web'}: material history, active default, catalog reuse and warehouse deletion`, async ({ browser }) => {
-    const context = await browser.newContext({ ...(mobile ? devices['Pixel 7'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
+    const context = await browser.newContext({ locale: 'zh-CN', ...(mobile ? devices['Pixel 7'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
     try {
       await context.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
       expect((await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);

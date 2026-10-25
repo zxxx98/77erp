@@ -1,14 +1,18 @@
+import { productionMessage } from '../i18n/production-errors.js';
+import { bomLossMethodLabels, bomUsageLabels } from '../i18n/production-display.js';
+import { t as pt, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Drawer } from 'antd';
 import { ArrowLeft, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { Input } from '../ui/controls.jsx';
 import { mobileDevice } from '../device.js';
 import { usePreferences } from '../preferences.jsx';
-import { calculateBomNodes, bomUsageLabels } from '../../shared/bom-expansion.js';
-import { bomLossMethodLabels } from '../../shared/bom.js';
+import { calculateBomNodes } from '../../shared/bom-expansion.js';
+
 import './bom-structure.css';
 
-const count = value => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 });
+const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const emptyNodes = [];
 const narrowQuery = '(max-width: 760px)';
 const subscribeSize = callback => {
@@ -20,26 +24,28 @@ const isNarrow = () => mobileDevice || window.matchMedia(narrowQuery).matches;
 const onServer = () => false;
 
 function NodeDetails({ node, path, onClose }) {
-  return <section className="bom-node-details" aria-label="节点详情">
-    <div className="bom-node-details-heading"><h3>{node.name}</h3><button type="button" className="bom-tree-icon" aria-label="关闭节点详情" onClick={onClose}><X size={18} /></button></div>
+  useLocale();
+  return <section className="bom-node-details" aria-label={pt("production.nodeDetails")}>
+    <div className="bom-node-details-heading"><h3>{node.name}</h3><button type="button" className="bom-tree-icon" aria-label={pt("production.closeNodeDetails")} onClick={onClose}><X size={18} /></button></div>
     <p className="bom-node-path">{path}</p>
     <dl>
-      <dt>物料编码</dt><dd>{node.barcode || '—'}</dd>
-      <dt>结构路径</dt><dd>{node.path}</dd>
-      <dt>本次需求</dt><dd>{count(node.required)} {node.unit}</dd>
-      <dt>用料方式</dt><dd>{bomUsageLabels[node.usage_mode]}</dd>
-      <dt>来源配方</dt><dd>{node.bom_name} #{node.bom_id} · 修订 {node.bom_version}</dd>
-      <dt>基准产量</dt><dd>{count(node.bom_base_quantity)} {node.bom_base_unit}</dd>
-      <dt>基准净用量</dt><dd>{node.quantity_fraction || count(node.quantity)} {node.unit}</dd>
-      <dt>标准损耗</dt><dd>{count(node.loss_rate)}% · {bomLossMethodLabels[node.loss_method]}</dd>
-      {node.child_bom_id && <><dt>下级配方</dt><dd>#{node.child_bom_id}</dd></>}
-      {node.note && <><dt>备注</dt><dd>{node.note}</dd></>}
+      <dt>{pt("production.materialCode")}</dt><dd>{node.barcode || '—'}</dd>
+      <dt>{pt("production.structurePath")}</dt><dd>{node.path}</dd>
+      <dt>{pt("production.currentRequirement")}</dt><dd>{count(node.required)} {node.unit}</dd>
+      <dt>{pt("production.materialSupplyMethod")}</dt><dd>{bomUsageLabels[node.usage_mode]}</dd>
+      <dt>{pt("production.sourceRecipe")}</dt><dd>{node.bom_name} #{node.bom_id} {pt("production.revision")} {node.bom_version}</dd>
+      <dt>{pt("production.baseOutput")}</dt><dd>{count(node.bom_base_quantity)} {node.bom_base_unit}</dd>
+      <dt>{pt("production.baseNetUsage")}</dt><dd>{node.quantity_fraction || count(node.quantity)} {node.unit}</dd>
+      <dt>{pt("production.standardLoss")}</dt><dd>{count(node.loss_rate)}% · {bomLossMethodLabels[node.loss_method]}</dd>
+      {node.child_bom_id && <><dt>{pt("production.childRecipe")}</dt><dd>#{node.child_bom_id}</dd></>}
+      {node.note && <><dt>{pt("production.note")}</dt><dd>{node.note}</dd></>}
     </dl>
-    {node.usage_mode === 'explode' && <p className="bom-hint">本单不领用、不入库此半成品，按下级配方展开需求。</p>}
+    {node.usage_mode === 'explode' && <p className="bom-hint">{pt("production.thisSemiFinishedItemIsNeitherIssuedNor")}</p>}
   </section>;
 }
 
 export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true }) {
+  useLocale();
   // Changing production quantity keeps the current view. Replacing a recipe or
   // snapshot starts at its root, since positional paths can name different goods.
   const identity = useMemo(() => JSON.stringify(nodes.map(node => [node.path, node.product_id, node.bom_id, node.bom_version, node.usage_mode, node.child_bom_id])), [nodes]);
@@ -47,6 +53,7 @@ export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, ac
 }
 
 function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
+  useLocale();
   const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
   const [expanded, setExpanded] = useState(() => new Set());
@@ -68,7 +75,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
     }
     return { byPath, groups };
   }, [rows]);
-  const rootName = rows[0]?.bom_product_name || '根配方';
+  const rootName = rows[0]?.bom_product_name || pt("production.rootRecipe");
   const ancestors = path => {
     const result = [];
     for (let node = byPath.get(path); node; node = byPath.get(node.parent_path)) result.unshift(node);
@@ -136,49 +143,49 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
   const closeDetails = () => { setSelectedPath(null); if (!narrow) restoreDetailFocus(); };
   const clearSearch = () => { setQuery(''); setProductFilter(null); };
   if (!nodes.length) return null;
-  if (error) return <p className="bom-warning" role="alert">{error}</p>;
+  if (error) return <p className="bom-warning" role="alert">{productionMessage(error)}</p>;
 
   return <div className={`bom-structure${narrow ? ' is-drill' : ''}`} onKeyDown={event => { if (event.key === 'Escape' && selected) { event.stopPropagation(); closeDetails(); } }}>
     <div className="bom-structure-toolbar">
-      <Input type="search" aria-label="搜索结构物料" placeholder="搜索整个配方的物料名称或编码" maxLength={100} value={query}
+      <Input type="search" aria-label={pt("production.searchStructureMaterials")} placeholder={pt("production.searchMaterialNamesOrCodesAcrossTheRecipe")} maxLength={100} value={query}
         onChange={event => { setQuery(event.target.value); setProductFilter(null); }} />
-      {searching ? <button type="button" className="bom-tree-action" onClick={clearSearch}>清除搜索</button> : !narrow && <div className="bom-depth-actions">
-        <button type="button" className="bom-tree-action" onClick={() => expandTo(2)}>展开到第 2 层</button>
-        <button type="button" className="bom-tree-action" onClick={() => expandTo(3)}>展开到第 3 层</button>
-        <button type="button" className="bom-tree-action" onClick={() => setExpanded(new Set())}>全部收起</button>
+      {searching ? <button type="button" className="bom-tree-action" onClick={clearSearch}>{pt("production.clearSearch")}</button> : !narrow && <div className="bom-depth-actions">
+        <button type="button" className="bom-tree-action" onClick={() => expandTo(2)}>{pt("production.expandToLevel2")}</button>
+        <button type="button" className="bom-tree-action" onClick={() => expandTo(3)}>{pt("production.expandToLevel3")}</button>
+        <button type="button" className="bom-tree-action" onClick={() => setExpanded(new Set())}>{pt("production.collapseAll")}</button>
       </div>}
     </div>
-    <nav className="bom-breadcrumb" aria-label="BOM路径" ref={breadcrumb} tabIndex={-1}>
+    <nav className="bom-breadcrumb" aria-label={pt("production.bomPath")} ref={breadcrumb} tabIndex={-1}>
       <button type="button" aria-current={!scope ? 'location' : undefined} onClick={() => navigate('')}>{rootName}</button>
       {ancestors(scope).map(node => <span key={node.path}><ChevronRight size={14} aria-hidden="true" /><button type="button" aria-current={scope === node.path ? 'location' : undefined} onClick={() => navigate(node.path)}>{node.name}</button></span>)}
     </nav>
     <div className="bom-structure-context">
-      {scope && !searching && <button type="button" className="bom-tree-action" onClick={() => navigate(byPath.get(scope)?.parent_path || '')}><ArrowLeft size={14} />返回上一级</button>}
-      <span role="status">{searching ? `在整个配方中找到 ${matches.length} 处匹配` : `当前层 ${groups.get(scope)?.length || 0} 项${scope ? ' · 需求仍按本次成品产量计算' : ''}`}</span>
+      {scope && !searching && <button type="button" className="bom-tree-action" onClick={() => navigate(byPath.get(scope)?.parent_path || '')}><ArrowLeft size={14} />{pt("production.backToParent")}</button>}
+      <span role="status">{searching ? pt("production.matchesFoundInTheEntireRecipe", { v0: matches.length }) : pt("production.itemsAtCurrentLevel", { v0: groups.get(scope)?.length || 0, v1: scope ? pt("production.requirementsStillUseThisFinishedProductOutput") : '' })}</span>
     </div>
     <div className={`bom-structure-layout${selected && !narrow ? ' has-detail' : ''}`}>
-      <div className="bom-structure-scroll" ref={viewport} tabIndex={0} aria-label="配方结构列表">
-        <table className="bom-structure-table"><thead><tr><th scope="col">物料</th><th scope="col">用料方式</th><th scope="col">本次需求</th><th scope="col"><span className="bom-visually-hidden">分支操作</span></th></tr></thead>
+      <div className="bom-structure-scroll" ref={viewport} tabIndex={0} aria-label={pt("production.recipeStructureList")}>
+        <table className="bom-structure-table"><thead><tr><th scope="col">{pt("production.material2")}</th><th scope="col">{pt("production.materialSupplyMethod")}</th><th scope="col">{pt("production.currentRequirement")}</th><th scope="col"><span className="bom-visually-hidden">{pt("production.branchActions")}</span></th></tr></thead>
           <tbody>{visible.map(({ node, level }) => <tr className="bom-structure-row" key={node.path} data-selected={node.path === selectedPath || undefined} data-match={searching && matchedPaths.has(node.path) || undefined}>
             <td><div className="bom-tree-name" style={{ '--bom-indent': `${level * 16}px` }}>
-              {!narrow && <span className="bom-tree-toggle">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-icon" disabled={searching} aria-label={`${expanded.has(node.path) || searching ? '收起' : '展开'} ${node.name}`} aria-expanded={searching || expanded.has(node.path)} onClick={() => toggle(node.path)}>{expanded.has(node.path) || searching ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}</span>}
-              <div><button type="button" className="bom-node-name" aria-label={`查看详情 ${node.name}`} onClick={event => { detailTrigger.current = event.currentTarget; setSelectedPath(node.path); }}>{node.name}</button>
+              {!narrow && <span className="bom-tree-toggle">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-icon" disabled={searching} aria-label={`${expanded.has(node.path) || searching ? pt("production.collapse") : pt("production.expand")} ${node.name}`} aria-expanded={searching || expanded.has(node.path)} onClick={() => toggle(node.path)}>{expanded.has(node.path) || searching ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}</span>}
+              <div><button type="button" className="bom-node-name" aria-label={pt("production.viewDetails2", { v0: node.name })} onClick={event => { detailTrigger.current = event.currentTarget; setSelectedPath(node.path); }}>{node.name}</button>
                 <small>{node.barcode}</small>{narrow && <span className="bom-tree-mobile-mode">{bomUsageLabels[node.usage_mode]}</span>}
                 {searching && narrow && <small className="bom-search-path">{fullPath(node)}</small>}
               </div>
             </div></td>
             <td className="bom-tree-mode">{bomUsageLabels[node.usage_mode]}</td>
             <td className="bom-tree-quantity">{count(node.required)} <span>{node.unit}</span></td>
-            <td className="bom-tree-branch">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-action" aria-label={`进入分支 ${node.name}`} onClick={() => navigate(node.path)}>{narrow ? <ChevronRight size={18} /> : '进入分支'}</button>}</td>
+            <td className="bom-tree-branch">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-action" aria-label={pt("production.openBranch", { v0: node.name })} onClick={() => navigate(node.path)}>{narrow ? <ChevronRight size={18} /> : pt("production.openBranch2")}</button>}</td>
           </tr>)}</tbody>
         </table>
-        {!visible.length && <p className="bom-empty">没有匹配的物料，请更换名称或编码。</p>}
+        {!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}
       </div>
       {selected && !narrow && <NodeDetails node={selected} path={fullPath(selected)} onClose={closeDetails} />}
     </div>
-    <p className="bom-hint">按毛需求展开，中间半成品库存未抵扣。各路径显示值之和可能略大于汇总值；缺料以领料汇总为准。</p>
+    <p className="bom-hint">{pt("production.expandedByGrossRequirementsWithoutDeductingIntermediateStock2")}</p>
     {/* Retain the drawer shell so closing during its opening animation still restores focus. */}
-    {narrow && <Drawer title="物料详情" placement="bottom" size="80vh" open={!!selected && active} onClose={closeDetails}
+    {narrow && <Drawer title={pt("production.materialDetails")} placement="bottom" size="80vh" open={!!selected && active} onClose={closeDetails}
       mask={{ closable: preferences.closeDrawerOnBackdrop }}
       afterOpenChange={open => { if (!open && active) restoreDetailFocus(); }} focusable={{ focusTriggerAfterClose: false }} closable={false}>
       {selected && <NodeDetails node={selected} path={fullPath(selected)} onClose={closeDetails} />}

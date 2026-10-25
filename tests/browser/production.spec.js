@@ -133,7 +133,7 @@ for (const mobile of [false, true]) {
 
 test('installed mobile PWA completes and reverses a production order with the service worker active', async ({ browser }) => {
   test.setTimeout(60000);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { const page = await context.newPage(); await productionFlow(page, true); }
   finally { await context.close(); }
 });
@@ -222,7 +222,7 @@ for (const lossMethod of ['internal', 'external']) for (const mobile of [false, 
 
 for (const lossMethod of ['internal', 'external']) test(`mobile PWA uses ${lossMethod} standard loss with an active service worker`, async ({ browser }) => {
   test.setTimeout(60000);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { await standardLossFlow(await context.newPage(), true, lossMethod); }
   finally { await context.close(); }
 });
@@ -363,7 +363,7 @@ for (const mobile of [false, true]) {
 
 test('mobile PWA runs scrap production with an active service worker', async ({ browser }) => {
   test.setTimeout(60000);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { await scrapProductionFlow(await context.newPage(), true); }
   finally { await context.close(); }
 });
@@ -441,7 +441,7 @@ for (const mobile of [false, true]) {
 
 test('mobile PWA analyzes consumption differences and persists reasons with the service worker active', async ({ browser }) => {
   test.setTimeout(60000);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { await varianceFlow(await context.newPage(), true); }
   finally { await context.close(); }
 });
@@ -528,7 +528,7 @@ for (const mobile of [false, true]) {
 
 test('mobile PWA posts and corrects partial production batches with an active service worker', async ({ browser }) => {
   test.setTimeout(60000);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { await partialProductionFlow(await context.newPage(), true); }
   finally { await context.close(); }
 });

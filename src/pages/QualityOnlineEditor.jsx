@@ -1,13 +1,18 @@
+import { productionMessage } from '../i18n/production-errors.js';
+import { qualityTypeLabels } from '../i18n/production-display.js';
+import { t as pt } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import { useMemo, useState } from 'react';
 import { Check, FileSpreadsheet, List } from 'lucide-react';
 import { Button } from '../components/common.jsx';
-import { cellAddress, choiceModeOf, containsCell, convertQualityValue, hasTextProcessing, parseRegion, previewChoice, qualityTypeLabels } from '../../shared/quality-template.js';
+import { cellAddress, choiceModeOf, containsCell, convertQualityValue, hasTextProcessing, parseRegion, previewChoice } from '../../shared/quality-template.js';
 import { onlineCellConfig, onlineChoiceOptions, onlineChoiceText, onlineBooleanOptions } from '../../shared/quality-online.js';
 import { sheetPreviewBounds } from '../../shared/quality-sheet-view.js';
 
 function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
+  useLocale();
   const [editing,setEditing]=useState(false);
   const [original,setOriginal]=useState('');
   const config=onlineCellConfig(input,inputs,values), value=values[input.address]||'';
@@ -31,20 +36,21 @@ function Entry({input,inputs,values,busy,onChange,issues,inline=false}) {
           onChange(input.address,onlineChoiceText(next,config));
         }}><span aria-hidden="true">{choiceModeOf(config)==='plain'?option:config.markerPosition==='after'?`${option}${marker}`:`${marker}${option}`}</span></AntButton>;
       })}
-    </div>:inline&&!editing?<AntButton type="text" htmlType="button" className="quality-online-cell-value" {...props} title="双击填写，触屏轻点填写，也可按 Enter" onDoubleClick={begin}
+    </div>:inline&&!editing?<AntButton type="text" htmlType="button" className="quality-online-cell-value" {...props} title={pt("production.doubleClickToEnterTapOnTouchscreensOr")} onDoubleClick={begin}
       onPointerUp={event=>{if(event.pointerType==='touch'||event.pointerType==='pen')begin();}}
       onKeyDown={event=>{if(event.key==='Enter'||event.key==='F2'){event.preventDefault();begin();}}}>{value||'\u00a0'}</AntButton>:<AntInput.TextArea {...props} autoFocus={inline} rows={config.type==='measurements'||value.includes('\n')?3:1} maxLength={10000}
-      inputMode={config.type==='number'?'decimal':undefined} placeholder={`${config.required?'必填 · ':''}${['date','datetime'].includes(config.type)?(config.dateFormat||(config.type==='datetime'?'YYYY-MM-DD HH:mm:ss':'YYYY-MM-DD')):{string:'填写内容',uniqueKey:'填写编号'}[config.type]||qualityTypeLabels[config.type]||'填写内容'}`}
+      inputMode={config.type==='number'?'decimal':undefined} placeholder={`${config.required?pt("production.required2"):''}${['date','datetime'].includes(config.type)?(config.dateFormat||(config.type==='datetime'?'YYYY-MM-DD HH:mm:ss':'YYYY-MM-DD')):{string:pt("production.enterContent"),uniqueKey:pt("production.enterIdentifier")}[config.type]||qualityTypeLabels[config.type]||pt("production.enterContent")}`}
       value={value} onChange={e=>onChange(input.address,e.target.value)} onBlur={()=>setEditing(false)} onKeyDown={event=>{
         if(!inline||event.nativeEvent.isComposing)return;
         if(event.key==='Escape'){event.preventDefault();onChange(input.address,original);setEditing(false);}
         if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();setEditing(false);}
       }}/>}
-    {!!errors.length&&<small className="form-error">{[...new Set(errors.map(issue=>issue.message))].join('；')}</small>}
+    {!!errors.length&&<small className="form-error">{[...new Set(errors.map(issue=>productionMessage(issue.message)))].join('；')}</small>}
   </div>;
 }
 
 export function QualityOnlineEditor({online,busy,validated,onChange,onValidate}) {
+  useLocale();
   const [view,setView]=useState(()=>window.matchMedia('(max-width: 700px)').matches?'fields':'sheet');
   const {inputs,values,styles,heights,template,workbook,issues=[]}=online;
   const sheet=workbook.sheets.find(s=>s.name===template.definition.sheetName);
@@ -56,14 +62,14 @@ export function QualityOnlineEditor({online,busy,validated,onChange,onValidate})
     return result;
   },[sheet]);
   const entry=(input,inline=false)=><Entry input={input} inputs={inputs} values={values} busy={busy} onChange={onChange} issues={issues} inline={inline}/>;
-  return <section className="panel quality-online-editor" aria-label="在线填写验收单">
-    <div className="quality-grid-toolbar"><div><h2>在线填写 · {sheet.name}</h2><p className="muted">浅黄色为待填写，浅绿色为已填写。双击格子填写（手机轻点），选项直接点选。{validated?'当前内容已校验。':'填写后请校验并预览，再确认保存。'}</p></div>
-      <div className="quality-actions"><Button icon={FileSpreadsheet} disabled={busy} aria-pressed={view==='sheet'} onClick={()=>setView('sheet')}>表格填写</Button><Button icon={List} disabled={busy} aria-pressed={view==='fields'} onClick={()=>setView('fields')}>字段填写</Button></div>
+  return <section className="panel quality-online-editor" aria-label={pt("production.fillAcceptanceOnline")}>
+    <div className="quality-grid-toolbar"><div><h2>{pt("production.fillOnline")} {sheet.name}</h2><p className="muted">{pt("production.paleYellowMeansEmptyPaleGreenMeansFilled")}{validated?pt("production.currentContentValidated"):pt("production.validateAndPreviewAfterFillingThenConfirmSave")}</p></div>
+      <div className="quality-actions"><Button icon={FileSpreadsheet} disabled={busy} aria-pressed={view==='sheet'} onClick={()=>setView('sheet')}>{pt("production.gridEntry")}</Button><Button icon={List} disabled={busy} aria-pressed={view==='fields'} onClick={()=>setView('fields')}>{pt("production.fieldEntry")}</Button></div>
     </div>
-    {online.hasFormulas&&<p className="quality-online-formula-note">模板含公式，在线填写不会自动计算，请填写本次实际结果；下载后可在 Excel 中重新计算。</p>}
-    {view==='sheet'?<div className="quality-online-scroll"><table className="quality-grid" aria-label="模板填写表格" style={{width:46+bounds.widths.reduce((sum,width)=>sum+width,0)}}>
+    {online.hasFormulas&&<p className="quality-online-formula-note">{pt("production.templateContainsFormulasWhichAreNotAutomaticallyCalculated")}</p>}
+    {view==='sheet'?<div className="quality-online-scroll"><table className="quality-grid" aria-label={pt("production.templateEntryTable")} style={{width:46+bounds.widths.reduce((sum,width)=>sum+width,0)}}>
       <colgroup><col style={{width:46}}/>{bounds.widths.map((width,i)=><col key={i} style={{width}}/>)}</colgroup>
-      <thead><tr><th>行 / 列</th>{bounds.widths.map((_,i)=><th key={i}>{cellAddress(1,i+1).slice(0,-1)}</th>)}</tr></thead>
+      <thead><tr><th>{pt("production.rowColumn")}</th>{bounds.widths.map((_,i)=><th key={i}>{cellAddress(1,i+1).slice(0,-1)}</th>)}</tr></thead>
       <tbody>{Array.from({length:bounds.rows},(_,i)=><tr key={i} style={{height:heights[i+1]}}><th className="quality-row-number">{i+1}</th>{Array.from({length:bounds.cols},(_,j)=>{
         const row=i+1,col=j+1,address=cellAddress(row,col),rect=merges.get(address)||{r1:row,c1:col,r2:row,c2:col};
         if(rect.r1!==row||rect.c1!==col)return null;
@@ -72,12 +78,12 @@ export function QualityOnlineEditor({online,busy,validated,onChange,onValidate})
           {input?entry(input,true):sheet.cells[address]?.text||''}
         </td>;
       })}</tr>)}</tbody>
-    </table></div>:<div className="quality-online-fields">{template.definition.fields.map(field=><section key={field.id} aria-label={`填写 ${field.name}`}>
+    </table></div>:<div className="quality-online-fields">{template.definition.fields.map(field=><section key={field.id} aria-label={pt("production.enter", { v0: field.name })}>
       <h3>{field.name}{field.required?' *':''}</h3>
       <div className="quality-online-field-list">{inputs.filter(input=>input.fieldId===field.id).map(input=><div className="quality-online-field" key={input.address}>
-        {(field.type==='object'||!input.simple)&&<span>{field.type==='object'?`第 ${input.record+1} 条 · ${input.config.name}`:input.label}<small>{input.region}</small></span>}{entry(input)}
+        {(field.type==='object'||!input.simple)&&<span>{field.type==='object'?pt("production.record", { v0: input.record+1, v1: input.config.name }):input.label}<small>{input.region}</small></span>}{entry(input)}
       </div>)}</div>
     </section>)}</div>}
-    <div className="quality-grid-toolbar"><span className="muted">{inputs.length} 个填写位置 · 仅保存为新验收单，模板保持原样</span><Button kind="primary" icon={Check} busy={busy} onClick={onValidate}>校验并预览</Button></div>
+    <div className="quality-grid-toolbar"><span className="muted">{inputs.length} {pt("production.entryLocationsSavedOnlyAsANewAcceptance")}</span><Button kind="primary" icon={Check} busy={busy} onClick={onValidate}>{pt("production.validateAndPreview")}</Button></div>
   </section>;
 }

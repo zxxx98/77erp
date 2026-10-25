@@ -24,6 +24,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrateCommerce } from "./commerce.js";
 import { installAuth } from "./auth.js";
+import { installResponseLanguage } from './i18n.js';
 import { migrateImagebed, installImagebed } from './imagebed.js';
 import { migrateOperations, installOperations, operationRequest, saveOperationRequest } from "./operations.js";
 import { migrateCatalog, migrateWarehouseCategories, installCatalog } from "./catalog.js";
@@ -281,6 +282,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateBom(db);
   migrateProduction(db);
   migrateCurrency(db);
+  app.use('/api', installResponseLanguage);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
   app.use('/api/ai/chat', express.json({ limit: '6mb' }));

@@ -5,7 +5,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} defers heavy features and shows price audit in product history`, async ({ browser }) => {
-  const context = await browser.newContext({
+  const context = await browser.newContext({ locale: 'zh-CN',
     ...(mobile ? devices['Pixel 7'] : { viewport: { width: 1440, height: 1000 } }),
     baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block',
   });

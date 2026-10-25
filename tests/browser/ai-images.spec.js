@@ -2,7 +2,7 @@ import { test, expect, devices } from '@playwright/test';
 import sharp from 'sharp';
 
 for (const device of [null, 'Pixel 7', 'iPhone 13']) test(`${device || 'desktop'} AI image attachments, paste, recovery and history`, async ({ browser }) => {
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(device ? devices[device] : { viewport: { width: 1440, height: 1000 } }) });
+  const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(device ? devices[device] : { viewport: { width: 1440, height: 1000 } }) });
   try {
     const setup = await context.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
     expect([201, 409]).toContain(setup.status());

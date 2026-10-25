@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 const defaults = Object.freeze({ closeModalOnBackdrop: false, closeDrawerOnBackdrop: false });
@@ -17,6 +19,7 @@ function readPreferences(key) {
 
 // The App is keyed by account, so switching users never reuses another user's state.
 export function PreferenceProvider({ user, children }) {
+  useLocale();
   const storageKey = `77erp:preferences:v1:${user.id ?? user.username}`;
   const [preferences, setPreferences] = useState(() => readPreferences(storageKey));
   const current = useRef(preferences);
@@ -30,7 +33,7 @@ export function PreferenceProvider({ user, children }) {
       localStorage.setItem(storageKey, JSON.stringify(next));
       setStorageError('');
     } catch {
-      setStorageError('浏览器未能保存用户习惯。本次使用已生效，刷新后可能恢复；请检查浏览器存储权限或可用空间。');
+      setStorageError(translate("system.the.browser.failed.to.save.user.habits.this.use.has.taken"));
     }
   }, [storageKey]);
   useEffect(() => {

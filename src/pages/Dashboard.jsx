@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button as AntButton } from '../ui/controls.jsx';
 
 import { useState, useRef, useEffect, useId } from 'react';
@@ -26,13 +28,15 @@ import { Badge, QueryStatus, PageHeading, Button, Panel, Empty, ProductArt } fro
 import { orderLabel } from '../order-utils.js';
 
 function TrendLegend() {
+  useLocale();
   return <div className="chart-legend">
-    <span><i className="legend-dot blue" />销售金额</span>
-    <span><i className="legend-dot pale" />采购金额</span>
+    <span><i className="legend-dot blue" />{translate("warehouse.sales.amount")}</span>
+    <span><i className="legend-dot pale" />{translate("warehouse.purchase.amount")}</span>
   </div>;
 }
 
 function TrendChart({ orders, days, fullscreen = false }) {
+  useLocale();
   const gradientId = useId();
   const [hover, setHover] = useState(null);
   const chartRef = useRef();
@@ -92,7 +96,7 @@ function TrendChart({ orders, days, fullscreen = false }) {
         style={{ height: H, minWidth: fullscreen ? W : undefined }}
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`最近 ${days} 天采购与销售金额趋势`}
+        aria-label={translate("warehouse.purchase.and.sales.amount.trends.in.the.last.days", { v0: days })}
         onMouseLeave={() => setHover(null)}
       >
         <defs>
@@ -204,12 +208,10 @@ function TrendChart({ orders, days, fullscreen = false }) {
         >
           <strong>{shortDate(series[hover].date)}</strong>
           <span>
-            <i className="legend-dot blue" />
-            销售 {currencySymbol()}{money(series[hover].out)}
+            <i className="legend-dot blue" />{translate("warehouse.sales")}{currencySymbol()}{money(series[hover].out)}
           </span>
           <span>
-            <i className="legend-dot pale" />
-            采购 {currencySymbol()}{money(series[hover].in)}
+            <i className="legend-dot pale" />{translate("warehouse.procurement")}{currencySymbol()}{money(series[hover].in)}
           </span>
         </div>
       )}
@@ -218,6 +220,7 @@ function TrendChart({ orders, days, fullscreen = false }) {
 }
 
 function Dashboard({ data, low, navigate, openOrder, showDetail }) {
+  useLocale();
   const { can, costs } = usePermissions();
   const [days, setDays] = useState(7),
     [orderTab, setOrderTab] = useState("all");
@@ -235,34 +238,34 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
   const warningCount = (summary?.products.low_stock || 0) + (summary?.products.out_of_stock || 0);
   const metrics = [
     {
-      label: "物料总数",
+      label: translate("warehouse.total.materials"),
       value: summary ? count(summary.products.total) : "—",
-      unit: "种",
+      unit: translate("warehouse.types"),
       icon: Box,
       tone: "blue",
       footer: (
         <>
-          <span className="metric-info">在库物料</span>
+          <span className="metric-info">{translate("warehouse.materials.in.stock")}</span>
           <strong>{count(totalStock)}</strong>
-          <span className="metric-info">件</span>
+          <span className="metric-info">{translate("warehouse.items")}</span>
         </>
       ),
     },
     {
-      label: "库存总金额",
+      label: translate("warehouse.total.inventory.amount"),
       value: costs ? money(value) : '—',
       prefix: currencySymbol(),
       icon: Warehouse,
       tone: "purple",
       footer: (
         <>
-          <span className="metric-info">按采购成本统计</span>
+          <span className="metric-info">{translate("warehouse.statistics.by.purchase.cost")}</span>
           <span className="metric-tail">{data.settings.warehouse_name}</span>
         </>
       ),
     },
     {
-      label: "今日采购",
+      label: translate("warehouse.today.s.purchase"),
       value: money((summary?.today.purchase_cents || 0) / 100),
       prefix: currencySymbol(),
       icon: ArrowDownLeft,
@@ -271,14 +274,13 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         <>
           <Badge tone="green" dot={false}>
             <ArrowDownLeft size={12} />
-            {summary?.today.purchase_count || 0} 笔入库
-          </Badge>
-          <span className="metric-info">已完成</span>
+            {summary?.today.purchase_count || 0}{translate("warehouse.stock.in.documents")}</Badge>
+          <span className="metric-info">{translate("warehouse.completed")}</span>
         </>
       ),
     },
     {
-      label: "今日销售",
+      label: translate("warehouse.today.s.sales"),
       value: money((summary?.today.sales_cents || 0) / 100),
       prefix: currencySymbol(),
       icon: ArrowUpRight,
@@ -287,9 +289,8 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         <>
           <Badge tone="blue" dot={false}>
             <ArrowUpRight size={12} />
-            {summary?.today.sales_count || 0} 笔出库
-          </Badge>
-          <span className="metric-info">已完成</span>
+            {summary?.today.sales_count || 0}{translate("warehouse.stock.out.documents")}</Badge>
+          <span className="metric-info">{translate("warehouse.completed")}</span>
         </>
       ),
     },
@@ -298,23 +299,21 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
     <>
       <QueryStatus query={summaryQuery} /><QueryStatus query={recentQuery} />
       <PageHeading
-        title="工作台"
-        description="物料、库存及今日入出库数据概览。"
+        title={translate("warehouse.dashboard")}
+        description={translate("warehouse.overview.of.materials.inventory.and.today.s.incoming.and.outgoing.data")}
       >
         <span className="date-chip">
           <CalendarDays size={15} />
-          {new Date().toLocaleDateString("zh-CN", {
+          {new Date().toLocaleDateString(getFormatLocale(), {
             year: "numeric",
             month: "long",
             day: "numeric",
           })}
           <span className="date-weekday">
-            {new Date().toLocaleDateString("zh-CN", { weekday: "short" })}
+            {new Date().toLocaleDateString(getFormatLocale(), { weekday: "short" })}
           </span>
         </span>
-        <Button permission="purchase" kind="primary" icon={Plus} onClick={() => openOrder("in")}>
-          新建入库
-        </Button>
+        <Button permission="purchase" kind="primary" icon={Plus} onClick={() => openOrder("in")}>{translate("warehouse.new.stock.in")}</Button>
       </PageHeading>
       <div className="metric-grid">
         {metrics.map((m) => (
@@ -337,23 +336,19 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
       <InspectionPanel key={data.warehouse_id} data={data} />
       <div className="dashboard-middle">
         <Panel
-          title="采购与销售趋势"
-          subtitle="按日期统计采购与销售金额"
+          title={translate("warehouse.purchasing.and.sales.trends")}
+          subtitle={translate("warehouse.statistics.of.purchase.and.sales.amounts.by.date")}
           className="trend-panel"
           extra={
             <div className="segmented small">
               <AntButton type="text" htmlType="button"
                 className={days === 7 ? "active" : ""}
                 onClick={() => setDays(7)}
-              >
-                近 7 天
-              </AntButton>
+              >{translate("warehouse.last.7.days")}</AntButton>
               <AntButton type="text" htmlType="button"
                 className={days === 30 ? "active" : ""}
                 onClick={() => setDays(30)}
-              >
-                近 30 天
-              </AntButton>
+              >{translate("warehouse.last.30.days")}</AntButton>
             </div>
           }
         >
@@ -361,11 +356,11 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             <span className="trend-amount">
               <span>{currencySymbol()}</span>
               {money(salesSum)}
-              <small>期间销售额</small>
+              <small>{translate("warehouse.sales.during.the.period")}</small>
             </span>
             <TrendLegend />
           </div>
-          <FullscreenChart title={`最近 ${days} 天采购与销售金额趋势`}>{fullscreen => <>
+          <FullscreenChart title={translate("warehouse.purchase.and.sales.amount.trends.in.the.last.days", { v0: days })}>{fullscreen => <>
             {fullscreen && <TrendLegend />}
             <TrendChart orders={reporting} days={days} fullscreen={fullscreen}/>
           </>}</FullscreenChart>
@@ -373,13 +368,12 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
         <section className="quick-panel">
           <div className="quick-panel-heading">
             <span className="quick-label">
-              <ScanLine size={13} /> 快捷操作
-            </span>
+              <ScanLine size={13} />{translate("warehouse.quick.operation")}</span>
           </div>
           <div className="quick-hero">
             <div>
-              <h2>手机扫码</h2>
-              <p>使用手机摄像头查询物料及办理入出库。</p>
+              <h2>{translate("warehouse.scan.code.with.mobile.phone")}</h2>
+              <p>{translate("warehouse.use.the.mobile.phone.camera.to.check.materials.and.process.incoming")}</p>
             </div>
             <div className="phone-scan-illustration" aria-hidden="true">
               <div className="phone-scan-frame">
@@ -395,45 +389,37 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             className="quick-scan-button"
             onClick={() => navigate("scanner")}
           >
-            <ScanLine size={18} />
-            打开扫码工作台
-            <ArrowRight size={16} />
+            <ScanLine size={18} />{translate("warehouse.open.the.qr.code.scanning.workbench")}<ArrowRight size={16} />
           </AntButton>
           <div className="quick-action-row">
             <AntButton type="text" htmlType="button" hidden={!can("purchase")} onClick={() => openOrder("in")}>
               <span className="quick-action-icon green">
                 <ArrowDownToLine size={17} />
-              </span>
-              入库
-              <ChevronRight size={13} />
+              </span>{translate("warehouse.stock.in")}<ChevronRight size={13} />
             </AntButton>
             <i />
             <AntButton type="text" htmlType="button" hidden={!can("sale")} onClick={() => openOrder("out")}>
               <span className="quick-action-icon blue">
                 <ArrowUpFromLine size={17} />
-              </span>
-              出库
-              <ChevronRight size={13} />
+              </span>{translate("warehouse.stock.out")}<ChevronRight size={13} />
             </AntButton>
           </div>
         </section>
       </div>
       <div className="dashboard-bottom">
         <Panel
-          title="最近单据"
+          title={translate("warehouse.latest.documents")}
           className="recent-panel"
           extra={
-            <AntButton type="text" htmlType="button" className="text-button" onClick={() => navigate("history")}>
-              查看全部
-              <ArrowRight size={14} />
+            <AntButton type="text" htmlType="button" className="text-button" onClick={() => navigate("history")}>{translate("warehouse.view.all")}<ArrowRight size={14} />
             </AntButton>
           }
         >
           <div className="inline-tabs">
             {[
-              ["all", "全部单据"],
-              ["in", "入库"],
-              ["out", "出库"],
+              ["all", translate("warehouse.all.documents")],
+              ["in", translate("warehouse.stock.in")],
+              ["out", translate("warehouse.stock.out")],
             ].map(([id, name]) => (
               <AntButton type="text" htmlType="button"
                 key={id}
@@ -448,10 +434,10 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             <table className="data-table recent-table">
               <thead>
                 <tr>
-                  <th>单据信息</th>
-                  <th>往来单位</th>
-                  <th className="number-cell">金额</th>
-                  <th>状态</th>
+                  <th>{translate("warehouse.document.information")}</th>
+                  <th>{translate("warehouse.business.partner")}</th>
+                  <th className="number-cell">{translate("warehouse.amount")}</th>
+                  <th>{translate("warehouse.status")}</th>
                   <th />
                 </tr>
               </thead>
@@ -485,15 +471,15 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                     </td>
                     <td>{o.partner}</td>
                     <td className="number-cell amount-cell">
-                      {o.kind === "internal" ? `参考 ${currencySymbol()} ` : `${currencySymbol()} `}{money(o.total)}
+                      {o.kind === "internal" ? translate("warehouse.reference", { v0: currencySymbol() }) : `${currencySymbol()} `}{money(o.total)}
                     </td>
                     <td>
-                      <Badge>已完成</Badge>
+                      <Badge>{translate("warehouse.completed")}</Badge>
                     </td>
                     <td>
                       <AntButton type="text" htmlType="button"
                         className="table-arrow"
-                        aria-label={`查看 ${o.number}`}
+                        aria-label={translate("warehouse.view", { v0: o.number })}
                         onClick={(e) => {
                           e.stopPropagation();
                           showDetail(o);
@@ -510,14 +496,12 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           </div>
         </Panel>
         <Panel
-          title="库存预警"
+          title={translate("warehouse.stock.alert")}
           className="warning-panel"
-          extra={<span className="warning-counter">{warningCount} 件物料</span>}
+          extra={<span className="warning-counter">{warningCount}{" "}{translate("warehouse.pieces.of.material")}</span>}
         >
           <div className="warning-description">
-            <span className="warning-dot" />
-            当前库存低于或等于安全库存的物料。
-          </div>
+            <span className="warning-dot" />{translate("warehouse.items.whose.current.inventory.is.less.than.or.equal.to.safety")}</div>
           <div className="warning-list">
             {low.length ? (
               low.slice(0, 4).map((p) => (
@@ -525,8 +509,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                   <ProductArt product={p} />
                   <div className="warning-item-info">
                     <strong>{p.name}</strong>
-                    <small>
-                      安全库存 {p.threshold} {p.unit}
+                    <small>{translate("warehouse.safety.stock")}{p.threshold} {p.unit}
                     </small>
                   </div>
                   <div className="warning-stock">
@@ -536,12 +519,12 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                       {p.stock}
                       <small> {p.unit}</small>
                     </strong>
-                    <span>{p.stock === 0 ? "已缺货" : "库存偏低"}</span>
+                    <span>{p.stock === 0 ? translate("warehouse.out.of.stock") : translate("warehouse.low.stock")}</span>
                   </div>
                   <AntButton type="text" htmlType="button"
                     className="restock-button"
                     hidden={!can("purchase")} onClick={() => openOrder("in", p)}
-                    aria-label={`补货 ${p.name}`}
+                    aria-label={translate("warehouse.replenishment", { v0: p.name })}
                   >
                     <Plus size={15} />
                   </AntButton>
@@ -549,22 +532,18 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               ))
             ) : (
               <Empty
-                title="暂无库存预警"
-                description="所有物料都在安全库存以上。"
+                title={translate("warehouse.no.stock.alert.yet")}
+                description={translate("warehouse.all.materials.are.above.safety.stock")}
               />
             )}
           </div>
           <AntButton type="text" htmlType="button"
             className="warning-all-button"
             onClick={() => navigate("inventory", "warning")}
-          >
-            查看库存预警
-            <ArrowRight size={14} />
+          >{translate("warehouse.view.inventory.alerts")}<ArrowRight size={14} />
           </AntButton>
           <div className="warning-bottom">
-            <ShieldCheck size={13} />
-            数据变更后会提示刷新
-          </div>
+            <ShieldCheck size={13} />{translate("warehouse.after.the.data.is.changed.you.will.be.prompted.to.refresh")}</div>
         </Panel>
       </div>
     </>

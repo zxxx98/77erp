@@ -49,6 +49,19 @@ async function imageAttachment(name = '物料照片.png') {
   return { name, data_url: `data:image/png;base64,${bytes.toString('base64')}` };
 }
 
+test('AI follows interface language on each turn while preserving explicit user language requests and tool contracts', async t => {
+  const f = await fixture(t);
+  for (const [language, expected] of [['en', 'English'], ['vi', 'Tiếng Việt'], ['zh-CN', '简体中文']]) {
+    assert.equal((await f.request(f.admin, '/auth/language', { language }, 'PATCH')).status, 200);
+    assert.equal((await f.chat(f.admin, { message: '请用日语解释库存' })).status, 200);
+    const prompt = f.calls.at(-1).body.messages[0].content;
+    assert.ok(prompt.includes(`界面语言为${expected}`));
+    assert.ok(prompt.includes('用户明确要求其他回复语言时，遵循用户要求'));
+    assert.ok(!prompt.includes('助手，使用中文。'));
+    assert.ok(f.calls.at(-1).body.tools.some(tool => tool.function.name === 'count_products'));
+  }
+});
+
 test('AI images reach the model, survive tool calls and history, and remain private', async t => {
   const f = await fixture(t), picture = await imageAttachment();
   await f.permissions(['ai']);
@@ -922,6 +935,25 @@ async function qualityAiFixture(t,{save=true,extendedTypes=false,manyItems=false
   const toolResult=()=>JSON.parse(f.calls.at(-1).body.messages.filter(m=>m.role==='tool').at(-1).content);
   return {...f,row,chart,acceptance,toolResult};
 }
+test('saved AI chart preview display follows current language without changing stored business fields or payload', async t => {
+  const f = await qualityAiFixture(t);
+  f.use('preview_quality_chart', { ...f.chart, name: '保留图表名', config: { ...f.chart.config, kind: 'material' } });
+  const response = await f.chat(f.admin);
+  const action = response.data.actions[0];
+  const before = f.db.prepare('SELECT payload,preview FROM ai_actions WHERE id=?').get(action.id);
+  await f.request(f.admin, '/auth/language', { language: 'en' }, 'PATCH');
+  const english = await f.request(f.admin, `/ai/conversations/${response.data.conversation_id}`);
+  assert.match(english.data.actions[0].preview.warning, /No preview material/);
+  assert.equal(english.data.actions[0].preview.name, '保留图表名');
+  assert.equal(english.data.actions[0].preview.object_label, 'One record per worksheet');
+  assert.equal(english.data.actions[0].preview.x_label, '日期');
+  assert.equal(english.data.messages[0].content, response.data.messages[0].content);
+  await f.request(f.admin, '/auth/language', { language: 'vi' }, 'PATCH');
+  const vietnamese = await f.request(f.admin, `/ai/conversations/${response.data.conversation_id}`);
+  assert.match(vietnamese.data.actions[0].preview.warning, /Chưa chọn vật tư/);
+  assert.deepEqual(f.db.prepare('SELECT payload,preview FROM ai_actions WHERE id=?').get(action.id), before);
+});
+
 test('AI recommends charts from scoped saved data and never saves during recommendation',async t=>{
   const f=await qualityAiFixture(t);
   f.use('quality_chart_templates',{});assert.equal((await f.chat(f.admin)).status,200);

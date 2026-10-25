@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import React, { forwardRef, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { ConfigProvider, Button as DesktopButton, Input as DesktopInput, Checkbox as DesktopCheckbox, Radio as DesktopRadio, Tag as DesktopTag, Empty as DesktopEmpty, Spin as DesktopSpin } from 'antd';
 import { Button as TouchButton, Input as TouchInput, TextArea, Checkbox as TouchCheckbox, Radio as TouchRadio, Tag as TouchTag, Empty as TouchEmpty, DotLoading } from 'antd-mobile';
@@ -13,6 +15,7 @@ function useDisabled(disabled) {
 }
 
 const MobileButton = forwardRef(function MobileButton({ type, htmlType = 'button', danger, loading, icon, children, size, disabled, ...props }, ref) {
+  useLocale();
   const inheritedDisabled = useDisabled(disabled);
   const native = useRef(null);
   useImperativeHandle(ref, () => ({
@@ -43,6 +46,7 @@ const MobileButton = forwardRef(function MobileButton({ type, htmlType = 'button
 export const Button = mobileDevice ? MobileButton : DesktopButton;
 
 const MobileInput = forwardRef(function MobileInput({ multiline, password, prefix, suffix, allowClear, bordered, status, size, className = '', onChange, value, defaultValue, min, max, required, disabled, ...props }, ref) {
+  useLocale();
   const inheritedDisabled = useDisabled(disabled);
   const native = useRef(null);
   const [visible, setVisible] = useState(false);
@@ -82,7 +86,7 @@ const MobileInput = forwardRef(function MobileInput({ multiline, password, prefi
         onChange?.({ target, currentTarget: native.current?.nativeElement || target, type: 'change' });
       }} />
     {suffix}
-    {password && <TouchButton fill="none" aria-label={visible ? '隐藏密码' : '显示密码'} onClick={() => setVisible(!visible)} disabled={inheritedDisabled}>
+    {password && <TouchButton fill="none" aria-label={visible ? translate("system.hide.password") : translate("system.show.password")} onClick={() => setVisible(!visible)} disabled={inheritedDisabled}>
       {visible ? <EyeOff size={20} /> : <Eye size={20} />}
     </TouchButton>}
   </div>;
@@ -93,6 +97,7 @@ export const Input = mobileDevice ? Object.assign(MobileInput, {
 }) : DesktopInput;
 
 function MobileChoice({ radio, onChange, disabled, children, checked, defaultChecked = false, ...props }) {
+  useLocale();
   const inheritedDisabled = useDisabled(disabled);
   const host = useRef(null);
   const [internal, setInternal] = useState(defaultChecked);
@@ -115,4 +120,8 @@ export const Checkbox = mobileDevice ? props => <MobileChoice {...props} /> : De
 export const Radio = mobileDevice ? props => <MobileChoice {...props} radio /> : DesktopRadio;
 export const Tag = mobileDevice ? ({ color, ...props }) => <TouchTag {...props} fill="outline" color={{ error: 'danger', processing: 'primary' }[color] || color} /> : DesktopTag;
 export const Empty = mobileDevice ? ({ children, ...props }) => <div className="erp-mobile-empty"><TouchEmpty {...props} />{children}</div> : DesktopEmpty;
-export const Spin = mobileDevice ? ({ children, spinning = true }) => <>{spinning && <span role="status" aria-label="正在加载"><DotLoading /></span>}{children}</> : DesktopSpin;
+function MobileSpin({ children, spinning = true }) {
+  useLocale();
+  return <>{spinning && <span role="status" aria-label={translate("system.loading.2")}><DotLoading /></span>}{children}</>;
+}
+export const Spin = mobileDevice ? MobileSpin : DesktopSpin;

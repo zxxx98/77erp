@@ -30,7 +30,7 @@ async function fixture(page) {
 
 for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mobile ? 'mobile' : 'desktop'} production issue approval, registration and material return`, async ({ page, browser }) => {
   test.setTimeout(90000);
-  const context = mobile === 'pwa' ? await browser.newContext({ serviceWorkers: 'allow', viewport: { width: 390, height: 844 }, userAgent: iphone }) : null;
+  const context = mobile === 'pwa' ? await browser.newContext({ locale: 'zh-CN', serviceWorkers: 'allow', viewport: { width: 390, height: 844 }, userAgent: iphone }) : null;
   if (context) page = await context.newPage();
   if (mobile) {
     await page.setViewportSize({ width: 390, height: 844 });

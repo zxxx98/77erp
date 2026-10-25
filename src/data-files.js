@@ -1,3 +1,4 @@
+import { t, getLocale, translateText } from './i18n/index.js';
 import { parseQuantity, materialQuantity } from "../shared/quantity.js";
 import { productionTypeValue } from '../shared/product-production-type.js';
 
@@ -13,6 +14,10 @@ export const importHeaders = [
   "单位是否取整",
   "生产类型",
 ];
+const importHeaderKeys = ["warehouse.material.name","warehouse.barcode","warehouse.classification","warehouse.unit","warehouse.reference.purchase.price","warehouse.reference.sales.price","warehouse.safety.stock","warehouse.opening.stock","warehouse.round.quantities.to.whole.units","warehouse.production.type"];
+export const getImportHeaders = (language = getLocale()) => importHeaderKeys.map(key => t(key, { lng: language }));
+export const createImportTemplate = (language = getLocale()) => '\ufeff' + getImportHeaders(language).join(',') + '\r\n示例电线,TEST-001,电线,米,10.00,15.00,5,20,否,原料\r\n';
+// Preserve the existing Chinese template contract for external consumers.
 export const importTemplate =
   "\ufeff" +
   importHeaders.join(",") +
@@ -46,11 +51,11 @@ export function parseCSV(input) {
     } else if (c === '"' && !cell && !closed) quoted = true;
     else {
       if (closed || c === '"')
-        throw new Error("CSV 引号格式错误，请重新导出。");
+        throw new Error(t("warehouse.import.csvQuotes"));
       cell += c;
     }
   }
-  if (quoted) throw new Error("CSV 引号未闭合。");
+  if (quoted) throw new Error(t("warehouse.import.unclosedQuote"));
   if (cell || row.length || closed) {
     row.push(cell);
     rows.push(row);
@@ -68,45 +73,45 @@ export function rowsToProducts(table) {
   if (
     !header ||
     ![8, 9, importHeaders.length].includes(header.length) ||
-    header.some((c, i) => String(c).trim() !== importHeaders[i])
+    !['zh-CN', 'en', 'vi'].some(language => { const expected = getImportHeaders(language); return header.every((cell, i) => String(cell).trim() === expected[i]); })
   )
-    throw new Error("表头不匹配，请使用导入模板，保持列顺序。");
+    throw new Error(t("warehouse.import.headers"));
   if (!rows.length || rows.length > 1000)
-    throw new Error("每次导入 1–1000 行物料。");
+    throw new Error(t("warehouse.import.rowLimit"));
   const numeric = (value, quantity, row) => {
     const s = value == null ? "" : String(value).trim();
     if (quantity) {
       try { return parseQuantity(s); }
-      catch (error) { throw new Error(`第 ${row} 行：${error.message}`); }
+      catch (error) { throw new Error(t('warehouse.import.rowError', { row, message: translateText(error.message) })); }
     }
     if (!/^\d+(\.\d{1,4})?$/.test(s))
       throw new Error(
-        `第 ${row} 行：数量最多 4 位小数，单价最多四位小数，不能留空。`,
+        t('warehouse.import.rowError', { row, message: t('warehouse.import.number') }),
       );
     return Number(s);
   };
   return rows.map((cells, i) => {
     if (cells.length > header.length || !cells[0])
-      throw new Error(`第 ${i + 2} 行：物料名称为空或列数错误。`);
+      throw new Error(t('warehouse.import.rowError', { row: i + 2, message: t('warehouse.import.name') }));
     const [name, barcode, category, unit, cost, price, threshold, stock, roundUp, productionType] =
       cells;
     const flag = String(roundUp ?? '').trim().toLowerCase();
-    if (!['', '是', '否', 'true', 'false', '1', '0', 'yes', 'no'].includes(flag))
-      throw new Error(`第 ${i + 2} 行：单位是否取整需填写是/否、true/false 或 1/0。`);
+    if (!['', '是', '否', 'true', 'false', '1', '0', 'yes', 'no', 'có', 'không'].includes(flag))
+      throw new Error(t('warehouse.import.rowError', { row: i + 2, message: t('warehouse.import.round') }));
     let production_type;
-    try { production_type = productionTypeValue(String(productionType ?? '').trim()); }
-    catch (error) { throw new Error(`第 ${i + 2} 行：${error.message}`); }
+    try { const rawType = String(productionType ?? '').trim(); const aliases = { 'Finished product': '成品', 'Semi-finished product': '半成品', 'Raw material': '原料', 'Thành phẩm': '成品', 'Bán thành phẩm': '半成品', 'Nguyên liệu': '原料' }; production_type = productionTypeValue(aliases[rawType] ?? rawType); }
+    catch (error) { throw new Error(t('warehouse.import.rowError', { row: i + 2, message: t('warehouse.import.productionType') })); }
     return {
       production_type,
-      unit_round_up: ['是', 'true', '1', 'yes'].includes(flag) ? 1 : 0,
+      unit_round_up: ['是', 'true', '1', 'yes', 'có'].includes(flag) ? 1 : 0,
       name: String(name).trim(),
       barcode: barcode == null ? "" : String(barcode).trim(),
       category: category == null ? "" : String(category).trim(),
       unit: unit == null ? "" : String(unit).trim(),
       cost: numeric(cost, false, i + 2),
       price: numeric(price, false, i + 2),
-      threshold: materialQuantity(numeric(threshold, true, i + 2), { unit_round_up: ['是', 'true', '1', 'yes'].includes(flag) }),
-      stock: materialQuantity(numeric(stock, true, i + 2), { unit_round_up: ['是', 'true', '1', 'yes'].includes(flag) }),
+      threshold: materialQuantity(numeric(threshold, true, i + 2), { unit_round_up: ['是', 'true', '1', 'yes', 'có'].includes(flag) }),
+      stock: materialQuantity(numeric(stock, true, i + 2), { unit_round_up: ['是', 'true', '1', 'yes', 'có'].includes(flag) }),
     };
   });
 }

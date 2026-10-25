@@ -1,3 +1,4 @@
+import { getLocale, t } from './i18n/index.js';
 let warehouseId = Number(new URLSearchParams(location.search).get('warehouse_id') || localStorage.getItem('77erp-warehouse')) || 1;
 export const getWarehouseId = () => warehouseId;
 export function setWarehouseId(id) {
@@ -11,7 +12,7 @@ export function setWarehouseId(id) {
 }
 export async function api(path, options) {
   if (navigator.onLine === false && options?.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
-    const error = new Error('当前离线，请联网后确认操作。');
+    const error = new Error(t('common.networkOffline'));
     error.code = 'NETWORK_OFFLINE';
     throw error;
   }
@@ -19,11 +20,11 @@ export async function api(path, options) {
   const multipart = options?.body instanceof FormData;
   const res = await fetch("/api" + path, {
     credentials: "same-origin",
-    ...(!path.startsWith('/auth/') ? { headers: { 'X-Warehouse-ID': String(selected) } } : {}),
+    headers: { 'Accept-Language': getLocale(), ...(!path.startsWith('/auth/') ? { 'X-Warehouse-ID': String(selected) } : {}) },
     ...(options
       ? {
           ...request,
-          headers: { ...(!multipart ? { "Content-Type": "application/json" } : {}), ...(!path.startsWith('/auth/') ? { 'X-Warehouse-ID': String(selected) } : {}), ...request.headers },
+          headers: { 'Accept-Language': getLocale(), ...(!multipart ? { "Content-Type": "application/json" } : {}), ...(!path.startsWith('/auth/') ? { 'X-Warehouse-ID': String(selected) } : {}), ...request.headers },
           body: multipart ? options.body : options.body ? JSON.stringify(options.body) : undefined,
         }
       : {}),
@@ -33,7 +34,7 @@ export async function api(path, options) {
     if (res.status === 401 && !path.startsWith("/auth/")) {
       window.dispatchEvent(new Event("erp:unauthorized"));
     }
-    const error = new Error(data.error || "请求失败，请重试。");
+    const error = new Error(data.message || data.error || t('common.requestFailed'));
     error.status = res.status;
     error.code = data.code;
     error.details = data.details;

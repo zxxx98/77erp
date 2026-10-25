@@ -2,7 +2,7 @@ import { test, expect, devices } from '@playwright/test';
 
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile Web/PWA' : 'desktop'} stock alerts exclude inactive products and refresh after reactivation`, async ({ browser }) => {
-    const context = await browser.newContext({ ...(mobile ? devices['Pixel 7'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
+    const context = await browser.newContext({ locale: 'zh-CN', ...(mobile ? devices['Pixel 7'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
     try {
       await context.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
       expect((await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
@@ -52,7 +52,7 @@ for (const mobile of [false, true]) {
 
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile Web/PWA' : 'desktop'} zero safety stock disables warning badges, lists and counters`, async ({ browser }) => {
-    const context = await browser.newContext({ ...(mobile ? devices['iPhone 13'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
+    const context = await browser.newContext({ locale: 'zh-CN', ...(mobile ? devices['iPhone 13'] : {}), baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
     try {
       await context.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
       expect((await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);

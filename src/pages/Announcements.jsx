@@ -1,3 +1,6 @@
+import { localizeError } from '../i18n/errors.js';
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 import { FormField } from './../ui/FormField.jsx';
@@ -12,12 +15,14 @@ import { Button, Modal, PageHeading } from '../components/common.jsx';
 import { LoadingStatus } from '../Loading.jsx';
 import './announcements.css';
 
-const formatDate = value => new Date(value).toLocaleString('zh-CN', { hour12: false });
+const formatDate = value => new Date(value).toLocaleString(getFormatLocale(), { hour12: false });
 function ErrorNotice({ children, retry }) {
-  return children ? <div className="announcement-error" role="alert"><span>{children}</span>{retry && <Button onClick={retry} icon={RefreshCw}>重新加载</Button>}</div> : null;
+  useLocale();
+  return children ? <div className="announcement-error" role="alert"><span>{children}</span>{retry && <Button onClick={retry} icon={RefreshCw}>{translate("system.reload")}</Button>}</div> : null;
 }
 
 export function Announcements({ data, openModal }) {
+  useLocale();
   const { user } = usePermissions();
   const [unread, setUnread] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -27,36 +32,37 @@ export function Announcements({ data, openModal }) {
     if (result && offset > 0 && !result.announcements.length) setOffset(Math.max(0, offset - 20));
   }, [result, offset]);
   return <div className="announcements-page">
-    <PageHeading title="公告中心" description="查看团队公告，所有仓库共用。">
-      {user.role === 'admin' && <Button kind="primary" icon={Plus} onClick={() => openModal({ kind: 'announcementEditor' })}>发布公告</Button>}
+    <PageHeading title={translate("system.announcements")} description={translate("system.view.team.announcements.shared.by.all.repositories")}>
+      {user.role === 'admin' && <Button kind="primary" icon={Plus} onClick={() => openModal({ kind: 'announcementEditor' })}>{translate("system.make.an.announcement")}</Button>}
     </PageHeading>
     <div className="announcement-toolbar">
-      <div className="segmented" role="group" aria-label="公告筛选">
-        <AntButton type="text" htmlType="button" aria-pressed={!unread} className={!unread ? 'active' : ''} onClick={() => { setUnread(false); setOffset(0); }}>全部公告</AntButton>
-        <AntButton type="text" htmlType="button" aria-pressed={unread} className={unread ? 'active' : ''} onClick={() => { setUnread(true); setOffset(0); }}>只看未读{result ? `（${result.unread_count}）` : ''}</AntButton>
+      <div className="segmented" role="group" aria-label={translate("system.announcement.screening")}>
+        <AntButton type="text" htmlType="button" aria-pressed={!unread} className={!unread ? 'active' : ''} onClick={() => { setUnread(false); setOffset(0); }}>{translate("system.all.announcements")}</AntButton>
+        <AntButton type="text" htmlType="button" aria-pressed={unread} className={unread ? 'active' : ''} onClick={() => { setUnread(true); setOffset(0); }}>{translate("system.see.only.unread")}{result ? `（${result.unread_count}）` : ''}</AntButton>
       </div>
-      <Button icon={RefreshCw} onClick={announcementsChanged} busy={query.loading}>刷新公告</Button>
+      <Button icon={RefreshCw} onClick={announcementsChanged} busy={query.loading}>{translate("system.refresh.announcement")}</Button>
     </div>
     <ErrorNotice retry={query.retry}>{query.error}</ErrorNotice>
-    {query.loading && <LoadingStatus>正在读取公告…</LoadingStatus>}
+    {query.loading && <LoadingStatus>{translate("system.reading.announcement")}</LoadingStatus>}
     {result && <>
       <div className="announcement-list">
         {result.announcements.map(item => <AntButton type="text" htmlType="button" key={item.id} className="announcement-card" onClick={() => openModal({ kind: 'announcementDetail', id: item.id })}>
           <div className="announcement-card-heading">
-            {!!item.pinned && <span className="announcement-tag"><Pin size={13} />置顶</span>}
-            <strong>{item.title}</strong><span className={`announcement-state${item.unread ? ' unread' : ''}`}>{item.unread ? '未读' : '已读'}</span>
+            {!!item.pinned && <span className="announcement-tag"><Pin size={13} />{translate("system.pin.to.top")}</span>}
+            <strong>{item.title}</strong><span className={`announcement-state${item.unread ? ' unread' : ''}`}>{item.unread ? translate("system.unread") : translate("system.read")}</span>
           </div>
           <p>{item.excerpt}</p>
           <span className="announcement-meta">{item.created_by_name} · {formatDate(item.created_at)}</span>
         </AntButton>)}
       </div>
-      {!result.announcements.length && <div className="announcement-empty"><Megaphone size={32} /><h2>{unread ? '暂无未读公告' : '暂无公告'}</h2><p>{unread ? '新的公告会在这里显示。' : user.role === 'admin' ? '发布第一条公告，让团队及时了解最新安排。' : '管理员发布公告后会在这里显示。'}</p></div>}
-      {result.total > 0 && <div className="announcement-pagination"><span>共 {result.total} 条 · 第 {offset / 20 + 1} 页</span><Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>上一页</Button><Button disabled={!result.has_more} onClick={() => setOffset(offset + 20)}>下一页</Button></div>}
+      {!result.announcements.length && <div className="announcement-empty"><Megaphone size={32} /><h2>{unread ? translate("system.no.unread.announcements.yet") : translate("system.no.announcement.yet")}</h2><p>{unread ? translate("system.new.announcements.will.appear.here") : user.role === 'admin' ? translate("system.make.the.first.announcement.to.keep.the.team.up.to.date") : translate("system.announcements.posted.by.administrators.will.be.displayed.here")}</p></div>}
+      {result.total > 0 && <div className="announcement-pagination"><span>{translate("system.total.2")}{" "}{result.total}{" "}{translate("system.article.article")}{" "}{offset / 20 + 1}{" "}{translate("system.page")}</span><Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>{translate("system.previous.page")}</Button><Button disabled={!result.has_more} onClick={() => setOffset(offset + 20)}>{translate("system.next.page")}</Button></div>}
     </>}
   </div>;
 }
 
 export function AnnouncementDetail({ id, data, onClose, onEdit, onSaved, onRead }) {
+  useLocale();
   const { user } = usePermissions();
   // A read receipt refreshes the workspace baseline, but must not reload the open detail.
   const queryScope = useMemo(() => ({ warehouse_id: data.warehouse_id }), [data.warehouse_id]);
@@ -80,24 +86,25 @@ export function AnnouncementDetail({ id, data, onClose, onEdit, onSaved, onRead 
     return () => controller.abort();
   }, [id, item]);
   const remove = async () => {
-    if (!window.confirm(`删除公告“${item.title}”？删除后无法恢复。`)) return;
+    if (!window.confirm(translate("system.delete.announcement.it.cannot.be.restored.after.deletion", { v0: item.title }))) return;
     setBusy(true); setError('');
-    try { await api(`/announcements/${id}`, { method: 'DELETE', body: { version: item.version } }); onSaved('公告已删除'); }
-    catch (error) { setError(error.message); }
+    try { await api(`/announcements/${id}`, { method: 'DELETE', body: { version: item.version } }); onSaved(translate("system.announcement.has.been.deleted")); }
+    catch (error) { setError(localizeError(error.message)); }
     finally { setBusy(false); }
   };
-  return <Modal title="公告详情" className="announcement-modal" onClose={busy ? () => {} : onClose}>
+  return <Modal title={translate("system.announcement.details")} className="announcement-modal" onClose={busy ? () => {} : onClose}>
     <div className="form-body announcement-detail">
       <ErrorNotice retry={query.retry}>{query.error}</ErrorNotice>
-      {query.loading && <LoadingStatus>正在读取公告…</LoadingStatus>}
-      {item && <><h2>{!!item.pinned && <Pin size={18} />}{item.title}</h2><p className="announcement-meta">{item.created_by_name} · 发布于 {formatDate(item.created_at)}</p>{item.content_version > 1 && <p className="announcement-meta">更新于 {formatDate(item.updated_at)}</p>}<div className="announcement-content">{item.content}</div></>}
+      {query.loading && <LoadingStatus>{translate("system.reading.announcement")}</LoadingStatus>}
+      {item && <><h2>{!!item.pinned && <Pin size={18} />}{item.title}</h2><p className="announcement-meta">{item.created_by_name}{" "}{translate("system.published.in")}{" "}{formatDate(item.created_at)}</p>{item.content_version > 1 && <p className="announcement-meta">{translate("system.updated.on")}{" "}{formatDate(item.updated_at)}</p>}<div className="announcement-content">{item.content}</div></>}
       <ErrorNotice retry={query.retry}>{readError}</ErrorNotice><ErrorNotice>{error}</ErrorNotice>
     </div>
-    <div className="modal-footer">{item && user.role === 'admin' && <><Button kind="danger" busy={busy} onClick={remove}>删除公告</Button><Button disabled={busy} onClick={() => onEdit(item)}>编辑公告</Button></>}<Button onClick={onClose} disabled={busy}>关闭</Button></div>
+    <div className="modal-footer">{item && user.role === 'admin' && <><Button kind="danger" busy={busy} onClick={remove}>{translate("system.delete.announcement")}</Button><Button disabled={busy} onClick={() => onEdit(item)}>{translate("system.editorial.notice")}</Button></>}<Button onClick={onClose} disabled={busy}>{translate("system.close")}</Button></div>
   </Modal>;
 }
 
 export function AnnouncementEditor({ item, onClose, onSaved }) {
+  useLocale();
   const [title, setTitle] = useState(item?.title || '');
   const [content, setContent] = useState(item?.content || '');
   const [pinned, setPinned] = useState(!!item?.pinned);
@@ -109,19 +116,19 @@ export function AnnouncementEditor({ item, onClose, onSaved }) {
     setBusy(true); setError('');
     try {
       await api(item ? `/announcements/${item.id}` : '/announcements', { method: item ? 'PUT' : 'POST', body: { title, content, pinned, ...(item ? { version: item.version } : {}) } });
-      onSaved(item ? '公告已更新' : '公告已发布');
-    } catch (error) { setError(error.message); }
+      onSaved(item ? translate("system.announcement.has.been.updated") : translate("system.announcement.has.been.released"));
+    } catch (error) { setError(localizeError(error.message)); }
     finally { setBusy(false); }
   };
-  return <Modal title={item ? '编辑公告' : '发布公告'} subtitle="所有登录用户、所有仓库可见" onClose={busy ? () => {} : onClose}>
+  return <Modal title={item ? translate("system.editorial.notice") : translate("system.make.an.announcement")} subtitle={translate("system.visible.to.all.logged.in.users.and.all.warehouses")} onClose={busy ? () => {} : onClose}>
     <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
       <div className="form-body announcement-editor">
-        <label><span>公告标题</span><FormField value={title} required maxLength={100}><AntInput value={title} onChange={event => setTitle(event.target.value)} maxLength={100}  disabled={busy} placeholder="例如：月末盘点安排" /></FormField></label>
-        <label><span>公告正文</span><FormField value={content} required maxLength={10000} label="公告正文"><AntInput.TextArea aria-label="公告正文" value={content} onChange={event => setContent(event.target.value)} maxLength={10000}  disabled={busy} rows={10} placeholder="填写需要告知团队的内容…" /></FormField><small>{content.length} / 10,000 字</small></label>
-        <AntCheckbox  checked={pinned} onChange={event => setPinned(event.target.checked)} disabled={busy}><span>置顶公告</span></AntCheckbox>
+        <label><span>{translate("system.announcement.title")}</span><FormField value={title} required maxLength={100}><AntInput value={title} onChange={event => setTitle(event.target.value)} maxLength={100}  disabled={busy} placeholder={translate("system.for.example.month.end.inventory.arrangement")} /></FormField></label>
+        <label><span>{translate("system.announcement.text")}</span><FormField value={content} required maxLength={10000} label={translate("system.announcement.text")}><AntInput.TextArea aria-label={translate("system.announcement.text")} value={content} onChange={event => setContent(event.target.value)} maxLength={10000}  disabled={busy} rows={10} placeholder={translate("system.fill.in.what.you.need.to.tell.your.team")} /></FormField><small>{content.length}{" "}{translate("system.10.000.words")}</small></label>
+        <AntCheckbox  checked={pinned} onChange={event => setPinned(event.target.checked)} disabled={busy}><span>{translate("system.pinned.announcement")}</span></AntCheckbox>
         <ErrorNotice>{error}</ErrorNotice>
       </div>
-      <div className="modal-footer"><Button type="button" disabled={busy} onClick={onClose}>取消</Button><Button type="submit" kind="primary" busy={busy} disabled={!title.trim() || !content.trim()}>{item ? '保存修改' : '确认发布'}</Button></div>
+      <div className="modal-footer"><Button type="button" disabled={busy} onClick={onClose}>{translate("system.cancel")}</Button><Button type="submit" kind="primary" busy={busy} disabled={!title.trim() || !content.trim()}>{item ? translate("system.save.changes") : translate("system.confirm.release")}</Button></div>
     </AntForm>
   </Modal>;
 }

@@ -7,7 +7,7 @@ for (const mobile of [false, true]) {
     const server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
     const baseURL = `http://127.0.0.1:${server.address().port}`;
-    const context = await browser.newContext({ baseURL, ...(mobile ? devices['Pixel 7'] : {}), serviceWorkers: 'block' });
+    const context = await browser.newContext({ locale: 'zh-CN', baseURL, ...(mobile ? devices['Pixel 7'] : {}), serviceWorkers: 'block' });
     try {
       await context.request.post('/api/auth/setup', { data: { username: 'paging', password: 'Test-password-123' } });
       await context.request.post('/api/settings/reset', { data: { confirmation: 'RESET_BUSINESS_DATA' } });

@@ -1,4 +1,8 @@
+import { localizeError } from '../i18n/errors.js';
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { ProductionOnlyShell } from './ProductionOnlyShell.jsx';
+import { LanguageSwitcher } from '../i18n/LanguageSwitcher.jsx';
 import { PreferenceProvider } from '../preferences.jsx';
 import { Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
@@ -82,6 +86,7 @@ import { version as appVersion } from '../../package.json';
 const navItems = allNavItems.filter(item => mobileDevice || item.id !== 'more');
 
 function StandardApp({ admin, onLogout }) {
+  useLocale();
   const isAdmin = admin.role === "admin";
   const preferenceKey = `77erp:mode:${admin.id || admin.username}`;
   const [initialNavigation] = useState(() => {
@@ -156,7 +161,7 @@ function StandardApp({ admin, onLogout }) {
     try {
       await onLogout();
     } catch (e) {
-      notify(e.message);
+      notify(localizeError(e.message));
       setLoggingOut(false);
     }
   };
@@ -170,7 +175,7 @@ function StandardApp({ admin, onLogout }) {
       let d;
       try { d = await api("/workspace"); }
       catch (e) {
-        if (e.status !== 400 || !e.message.startsWith('仓库不存在')) throw e;
+        if (e.status !== 400 || e.code !== 'WAREHOUSE_NOT_FOUND') throw e;
         d = await api('/workspace', { warehouseId: 1 });
       }
       if (generation !== loadGeneration.current) return;
@@ -185,7 +190,7 @@ function StandardApp({ admin, onLogout }) {
       setLoadError("");
     } catch (e) {
       if (generation !== loadGeneration.current) return;
-      setLoadError(e.message);
+      setLoadError(localizeError(e.message));
       // A read that fails right after connectivity returns recovers by itself,
       // instead of waiting for the user to press 重新连接.
       if (!e.status && navigator.onLine && attempt < 1)
@@ -282,7 +287,7 @@ function StandardApp({ admin, onLogout }) {
       setData({ ...workspace, products: [], orders: [] });
       setSearch(''); setNotification(false); setInventoryFilter('all'); setLoadError('');
       return true;
-    } catch (e) { notify(e.message, 'error'); }
+    } catch (e) { notify(localizeError(e.message), 'error'); }
     finally { setSwitching(false); setRefreshing(false); }
   };
   const user = data.user || admin;
@@ -302,14 +307,14 @@ function StandardApp({ admin, onLogout }) {
     try {
       const { order: full } = await api(`/orders/${id}`);
       setModal({ kind: "detail", order: full });
-    } catch (e) { notify(e.message, "error"); }
+    } catch (e) { notify(localizeError(e.message), "error"); }
   };
   const openOrder = (type, product, template) => {
-    if (!can(type === 'in' ? 'purchase' : 'sale')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
+    if (!can(type === 'in' ? 'purchase' : 'sale')) { notify(translate("system.if.you.do.not.have.permission.for.this.operation.please.contact"), 'error'); return; }
     setModal({ kind: 'order', type, product, template });
   };
   const reduceStock = (product) => {
-    if (!can('stocktake')) { notify('没有此操作的权限，请联系管理员。', 'error'); return; }
+    if (!can('stocktake')) { notify(translate("system.if.you.do.not.have.permission.for.this.operation.please.contact"), 'error'); return; }
     setModal({ kind: 'reduce', product });
   };
   const visibleNav = modeItems(mode, can);
@@ -318,7 +323,7 @@ function StandardApp({ admin, onLogout }) {
   if (isProductionOnly(user)) return <ProductionOnlyShell admin={user} onLogout={onLogout} />;
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
-      {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />正在切换仓库…</div>}
+      {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />{translate("system.switching.warehouses")}</div>}
       {mobileDevice ? <div inert={!!modal} aria-hidden={modal ? true : undefined}><MobileShell mode={mode} switchMode={switchMode} user={user} data={data} page={page} navigate={navigate} openModal={setModal} openOrder={openOrder}
         showProduct={product => setModal({ kind: 'productDetail', product })} showOrder={openOrderDetail}
         switchWarehouse={switchWarehouse} loading={loading} switching={switching} loadError={loadError} reload={reload} onSaved={saved} refreshing={refreshing}
@@ -326,9 +331,9 @@ function StandardApp({ admin, onLogout }) {
         updateNotice={updateNotice}
         announcementCount={announcementCount}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
-        renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">没有品质管理权限，请联系管理员。</div>}
-        renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有BOM权限，请联系管理员。</div>}
-        renderProduction={() => canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>}
+        renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">{translate("system.if.you.do.not.have.quality.management.rights.please.contact.the")}</div>}
+        renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">{translate("system.if.you.do.not.have.bom.permission.please.contact.the.administrator")}</div>}
+        renderProduction={() => canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">{translate("system.if.you.do.not.have.production.order.permission.please.contact.the")}</div>}
         renderScanner={() => <Scanner key={data.warehouse_id} data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({ kind: 'stockQr' })} />}
       /></div> : <>
       <aside className="sidebar" inert={switching}>
@@ -346,7 +351,7 @@ function StandardApp({ admin, onLogout }) {
             <strong>
               77 <span>ERP</span>
             </strong>
-            <small>轻量进销存</small>
+            <small>{translate("system.inventory.management")}</small>
           </div>
         </a>
         <ModeSwitch mode={mode} onChange={switchMode} disabled={!!modal || switching} />
@@ -359,12 +364,12 @@ function StandardApp({ admin, onLogout }) {
           </span>
           <span>
             <strong>{data.settings.business_name}</strong>
-            <small>我的工作空间</small>
+            <small>{translate("system.my.workspace")}</small>
           </span>
           <ChevronDown size={14} />
         </AntButton>
-        <div className="nav-label">{mode === 'production' ? '生产管理' : '仓储管理'}</div>
-        <nav aria-label="主导航">
+        <div className="nav-label">{mode === 'production' ? translate("system.production.management") : translate("system.warehouse.management.2")}</div>
+        <nav aria-label={translate("system.main.navigation")}>
           {visibleNav.filter(item => item.group === 'main').map(({ id, name, icon: Icon }) => (
             <a
               key={id}
@@ -385,8 +390,8 @@ function StandardApp({ admin, onLogout }) {
             </a>
           ))}
         </nav>
-        <div className="nav-label second-label">效率工具</div>
-        <nav aria-label="效率工具">
+        <div className="nav-label second-label">{translate("system.productivity.tools")}</div>
+        <nav aria-label={translate("system.productivity.tools")}>
           {visibleNav.filter(item => item.group === 'tools').map(({ id, name, icon: Icon }) => (
             <a
               key={id}
@@ -398,7 +403,7 @@ function StandardApp({ admin, onLogout }) {
             >
               <Icon size={19} strokeWidth={1.8} />
               <span>{name}</span>
-              {id === 'announcements' && announcementCount > 0 && <span className="announcement-entry-count" aria-label={`${announcementCount} 条未读公告`}>{announcementCount > 99 ? '99+' : announcementCount}</span>}
+              {id === 'announcements' && announcementCount > 0 && <span className="announcement-entry-count" aria-label={translate("system.unread.announcements", { v0: announcementCount })}>{announcementCount > 99 ? '99+' : announcementCount}</span>}
             </a>
           ))}
         </nav>
@@ -407,18 +412,17 @@ function StandardApp({ admin, onLogout }) {
             <span className="tip-icon">
               <ScanLine size={19} />
             </span>
-            <strong>扫码管理</strong>
-            <p>使用手机摄像头识别物料条码。</p>
-            <AntButton type="text" htmlType="button" onClick={() => navigate("scanner")}>
-              打开扫码工作台 <ArrowRight size={13} />
+            <strong>{translate("system.scan.code.management")}</strong>
+            <p>{translate("system.use.your.phone.camera.to.identify.material.barcodes")}</p>
+            <AntButton type="text" htmlType="button" onClick={() => navigate("scanner")}>{translate("system.open.the.qr.code.scanning.workbench")}<ArrowRight size={13} />
             </AntButton>
           </div>}
           <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'businessTools' })}>
-            <History size={18} /><span>业务管理</span>
+            <History size={18} /><span>{translate("system.business.management")}</span>
           </AntButton>
-          {can('ai') && <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'ai' })}><Settings size={18} /><span>AI 助手</span></AntButton>}
-          {isAdmin && <AntButton type="text" htmlType="button" className="nav-item" aria-label="系统设置" title="系统设置" onClick={() => setModal({ kind: 'settings' })}>
-            <Settings size={18} /><span>系统设置</span>
+          {can('ai') && <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'ai' })}><Settings size={18} /><span>{translate("system.ai.assistant")}</span></AntButton>}
+          {isAdmin && <AntButton type="text" htmlType="button" className="nav-item" aria-label={translate("system.system.settings")} title={translate("system.system.settings")} onClick={() => setModal({ kind: 'settings' })}>
+            <Settings size={18} /><span>{translate("system.system.settings")}</span>
           </AntButton>}
           <AntButton type="text" htmlType="button"
             className="user-profile"
@@ -427,7 +431,7 @@ function StandardApp({ admin, onLogout }) {
             <span className="avatar">{(user.name || user.username).slice(0, 1).toUpperCase()}</span>
             <span>
               <strong>{user.name || user.username}</strong>
-              <small>{isAdmin ? "管理员" : "员工"}</small>
+              <small>{isAdmin ? translate("system.administrator") : translate("system.employee")}</small>
             </span>
             <Ellipsis size={18} />
           </AntButton>
@@ -436,17 +440,17 @@ function StandardApp({ admin, onLogout }) {
       <div className="main-shell">
         <header className="topbar" inert={switching}>
           <div className="breadcrumb">
-            <span>工作空间</span>
+            <span>{translate("system.workspace")}</span>
             <ChevronRight size={13} />
             <strong>{currentNav?.name}</strong>
           </div>
           <div className="topbar-right">
-            <Select className="warehouse-select" aria-label="当前仓库" value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e))}>
+            <Select className="warehouse-select" aria-label={translate("system.current.warehouse")} value={data.warehouse_id || 1} disabled={switching || !!modal || loading} onChange={e => switchWarehouse(Number(e))}>
               {(data.warehouses || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </Select>
             <div className={`sync-state${updatesAvailable ? ' pending' : ''}`}>
               <i />
-              {refreshing ? '正在刷新' : updatesAvailable ? '有数据变更' : '数据已读取'}
+              {refreshing ? translate("system.refreshing") : updatesAvailable ? translate("system.there.are.data.changes") : translate("system.data.has.been.read")}
             </div>
             <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }}
               className="global-search"
@@ -457,8 +461,8 @@ function StandardApp({ admin, onLogout }) {
             >
               <AntInput prefix={<Search size={16} />} suffix={<kbd>⌘ K</kbd>}
                 ref={searchRef}
-                aria-label="搜索物料或条码"
-                placeholder="搜索物料、条码…"
+                aria-label={translate("system.search.for.items.or.barcodes")}
+                placeholder={translate("system.search.materials.barcodes")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -466,7 +470,7 @@ function StandardApp({ admin, onLogout }) {
             <div className="notification-wrap">
               <AntButton type="text" htmlType="button"
                 className={`icon-button notification-button ${notification ? "selected" : ""}`}
-                aria-label="库存提醒"
+                aria-label={translate("system.inventory.reminder")}
                 onClick={() => setNotification(!notification)}
               >
                 <Bell size={19} />
@@ -475,8 +479,8 @@ function StandardApp({ admin, onLogout }) {
               {notification && (
                 <div className="notification-popover">
                   <div className="popover-title">
-                    <strong>库存提醒</strong>
-                    <span>{lowCount} 条</span>
+                    <strong>{translate("system.inventory.reminder")}</strong>
+                    <span>{lowCount}{" "}{translate("system.records")}</span>
                   </div>
                   {low.length ? (
                     low.map((p) => (
@@ -491,25 +495,22 @@ function StandardApp({ admin, onLogout }) {
                         </span>
                         <span>
                           <strong>{p.name}</strong>
-                          <small>
-                            剩余 {p.stock} {p.unit} · {stockStatus(p)}
+                          <small>{translate("system.remaining")}{p.stock} {p.unit} · {stockStatus(p)}
                           </small>
                         </span>
                         <ChevronRight size={14} />
                       </AntButton>
                     ))
                   ) : (
-                    <p className="popover-empty">所有物料库存充足</p>
+                    <p className="popover-empty">{translate("system.all.materials.are.in.sufficient.stock")}</p>
                   )}
-                  <div className="popover-footer">
-                    按物料设置的安全库存实时提醒
-                  </div>
+                  <div className="popover-footer">{translate("system.real.time.reminder.of.safety.stock.set.by.material")}</div>
                 </div>
               )}
             </div>
             <AntButton type="text" htmlType="button"
               className="icon-button help-button"
-              aria-label="使用帮助"
+              aria-label={translate("system.help")}
               onClick={() => setModal({ kind: "help" })}
             >
               <CircleHelp size={19} />
@@ -517,21 +518,22 @@ function StandardApp({ admin, onLogout }) {
             <span className="topbar-divider" />
             <AntButton type="text" htmlType="button"
               className="avatar avatar-small"
-              aria-label={isAdmin ? "商户设置" : "账户设置"}
+              aria-label={isAdmin ? translate("system.merchant.settings") : translate("system.account.settings")}
               onClick={() => setModal({ kind: isAdmin ? "settings" : "account" })}
             >
               {(user.name || user.username).slice(0, 1).toUpperCase()}
             </AntButton>
             <AntButton type="text" htmlType="button"
               className="icon-button logout-button"
-              aria-label="退出登录"
-              title="退出登录"
+              aria-label={translate("system.sign.out")}
+              title={translate("system.sign.out")}
               onClick={logout}
               disabled={loggingOut}
               aria-busy={loggingOut}
             >
               {loggingOut ? <LoadingIndicator size={20} /> : <LogOut size={18} />}
             </AntButton>
+            <LanguageSwitcher />
           </div>
         </header>
         <main key={data.warehouse_id || 1} className="main-content" inert={switching}>
@@ -539,16 +541,14 @@ function StandardApp({ admin, onLogout }) {
           {loading ? (
             <div className="loading-page" role="status">
               <LoadingIndicator size={64} />
-              <p>正在加载数据…</p>
+              <p>{translate("system.loading.data")}</p>
             </div>
           ) : loadError ? (
             <div className="load-error">
               <TriangleAlert size={32} />
-              <h2>暂时无法获取数据</h2>
+              <h2>{translate("system.unable.to.obtain.data.at.the.moment")}</h2>
               <p>{loadError}</p>
-              <Button icon={RefreshCw} onClick={reload}>
-                重新加载
-              </Button>
+              <Button icon={RefreshCw} onClick={reload}>{translate("system.reload")}</Button>
             </div>
           ) : (
             <>
@@ -563,9 +563,9 @@ function StandardApp({ admin, onLogout }) {
               )}
               {page === 'announcements' && <Announcements data={data} openModal={setModal} />}
               {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
-              {page === 'quality' && !can('quality') && <div className="info-box">没有品质管理权限，请联系管理员。</div>}
-              {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">没有BOM权限，请联系管理员。</div>)}
-              {page === 'production' && (canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">没有生产单权限，请联系管理员。</div>)}
+              {page === 'quality' && !can('quality') && <div className="info-box">{translate("system.if.you.do.not.have.quality.management.rights.please.contact.the")}</div>}
+              {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">{translate("system.if.you.do.not.have.bom.permission.please.contact.the.administrator")}</div>)}
+              {page === 'production' && (canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">{translate("system.if.you.do.not.have.production.order.permission.please.contact.the")}</div>)}
               {page === "products" && (
                 <Products
                   data={data}
@@ -609,10 +609,9 @@ function StandardApp({ admin, onLogout }) {
               )}
               <footer className="page-footer">
                 <span>
-                  <span className="footer-brand">77 ERP</span> 进销存管理系统
-                </span>
+                  <span className="footer-brand">77 ERP</span>{translate("system.purchase.sale.and.inventory.management.system")}</span>
                 <span>
-                  <ShieldCheck size={13} /> 本地数据存储 <i /> v{appVersion}
+                  <ShieldCheck size={13} />{" "}{translate("system.local.data.storage")}{" "}<i /> v{appVersion}
                 </span>
               </footer>
             </>
@@ -671,13 +670,13 @@ function StandardApp({ admin, onLogout }) {
           notify={notify}
         />
       )}
-      {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant key={`${user.id}:${user.permissions_version}:${user.production_group_id}:${user.access_mode}`} mode={mode} userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
-      {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{user.name || user.username}（{user.username}） · {isAdmin ? '管理员' : '员工'}</p><UserPreferences /><ChangePassword onChanged={onLogout} /></div></Modal>}
-      {modal?.kind === 'preferences' && <Modal title="用户习惯" onClose={() => setModal(null)}><div className="form-body"><UserPreferences showTitle={false} /></div></Modal>}
-      {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
+      {can('ai') && modal?.kind === 'ai' && <Modal title={translate("system.ai.assistant")} subtitle={translate("system.inventory.and.business.feel.free.to.ask.me")} className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant key={`${user.id}:${user.permissions_version}:${user.production_group_id}:${user.access_mode}`} mode={mode} userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
+      {modal?.kind === "account" && <Modal title={translate("system.account.settings")} onClose={() => setModal(null)}><div className="form-body"><p>{user.name || user.username}（{user.username}） · {isAdmin ? translate("system.administrator") : translate("system.employee")}</p><UserPreferences /><ChangePassword onChanged={onLogout} /></div></Modal>}
+      {modal?.kind === 'preferences' && <Modal title={translate("system.preferences")} onClose={() => setModal(null)}><div className="form-body"><UserPreferences showTitle={false} /></div></Modal>}
+      {modal?.kind === 'businessTools' && <Modal title={translate("system.business.management")} subtitle={translate("system.manage.business.data.finance.inventory.and.material.import")} wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools data={data} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
           onUse={template => openOrder(template.type, undefined, template)} onRefresh={reload} /></div>
-        <div className="modal-footer"><Button onClick={() => setModal(null)}>取消</Button></div>
+        <div className="modal-footer"><Button onClick={() => setModal(null)}>{translate("system.cancel")}</Button></div>
       </Modal>}
       {isAdmin && modal?.kind === "settings" && (
         <SettingsForm
@@ -692,8 +691,8 @@ function StandardApp({ admin, onLogout }) {
       )}
       {modal?.kind === "help" && (
         <Modal
-          title="使用说明"
-          subtitle="物料建档、条码识别和单据确认"
+          title={translate("system.instructions.for.use")}
+          subtitle={translate("system.material.archiving.barcode.identification.and.document.confirmation")}
           onClose={() => setModal(null)}
         >
           <div className="help-content">
@@ -701,20 +700,20 @@ function StandardApp({ admin, onLogout }) {
               [
                 Box,
                 "01",
-                "建立物料档案",
-                "添加名称、参考采购价、参考销售价和安全库存。条码可选填，留空保存时自动生成。",
+                translate("system.create.material.file"),
+                translate("system.add.name.reference.purchase.price.reference.sales.price.and.safety.stock"),
               ],
               [
                 ScanLine,
                 "02",
-                "扫码，找到物料",
-                "在扫码工作台打开手机摄像头，将物料条码放入取景框。也可手动输入条码查询。",
+                translate("system.scan.the.code.to.find.the.material"),
+                translate("system.turn.on.the.mobile.phone.camera.on.the.code.scanning.workbench"),
               ],
               [
                 PackageCheck,
                 "03",
-                "确认入库或出库",
-                "添加数量并确认单据，库存自动更新，每一笔操作都有记录。",
+                translate("system.confirm.entry.or.exit"),
+                translate("system.add.quantities.and.confirm.documents.the.inventory.is.automatically.updated.and"),
               ],
             ].map(([Icon, number, title, text]) => (
               <div className="help-step" key={number}>
@@ -730,10 +729,7 @@ function StandardApp({ admin, onLogout }) {
             ))}
             <div className="info-box">
               <ShieldCheck size={18} />
-              <p>
-                当前为单仓库本地版本，无登录权限。演示单据用于体验；正式使用前请备份或使用新的数据库。摄像头需
-                HTTPS 或 localhost。
-              </p>
+              <p>{translate("system.it.is.currently.a.local.version.of.a.single.warehouse.and")}</p>
             </div>
           </div>
           <div className="modal-footer">
@@ -743,8 +739,7 @@ function StandardApp({ admin, onLogout }) {
                 setModal(null);
                 navigate("products");
               }}
-            >
-              前往物料管理 <ArrowRight size={15} />
+            >{translate("system.go.to.materials.management")}<ArrowRight size={15} />
             </Button>
           </div>
         </Modal>
@@ -757,7 +752,7 @@ function StandardApp({ admin, onLogout }) {
             <TriangleAlert size={19} />
           )}
           <span>{toast.message}</span>
-          <AntButton type="text" htmlType="button" aria-label="关闭通知" onClick={() => setToast(null)}>
+          <AntButton type="text" htmlType="button" aria-label={translate("system.turn.off.notifications")} onClick={() => setToast(null)}>
             <X size={14} />
           </AntButton>
         </div>
@@ -766,5 +761,6 @@ function StandardApp({ admin, onLogout }) {
   );
 }
 
-function App(props) { return <PreferenceProvider key={props.admin.id ?? props.admin.username} user={props.admin}>{isProductionOnly(props.admin) ? <ProductionOnlyShell {...props} /> : <StandardApp {...props} />}</PreferenceProvider>; }
+function App(props) {
+  useLocale(); return <PreferenceProvider key={props.admin.id ?? props.admin.username} user={props.admin}>{isProductionOnly(props.admin) ? <ProductionOnlyShell {...props} /> : <StandardApp {...props} />}</PreferenceProvider>; }
 export { App };

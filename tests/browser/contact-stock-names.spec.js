@@ -8,7 +8,7 @@ for (const mobile of [false, true]) {
     const server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
     const baseURL = `http://127.0.0.1:${server.address().port}`;
-    const context = await browser.newContext({ ...(mobile ? devices['iPhone 13'] : { viewport: { width: 1440, height: 1000 } }), baseURL, serviceWorkers: 'block' });
+    const context = await browser.newContext({ locale: 'zh-CN', ...(mobile ? devices['iPhone 13'] : { viewport: { width: 1440, height: 1000 } }), baseURL, serviceWorkers: 'block' });
     try {
       expect((await context.request.post('/api/auth/setup', { data: { username: 'owner', password: 'Test-password-123', name: '仓库管理员' } })).ok()).toBe(true);
       await context.request.post('/api/settings/reset', { data: { confirmation: 'RESET_BUSINESS_DATA' } });

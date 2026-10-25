@@ -5,7 +5,7 @@ test.beforeAll(async ({ request }) => {
   expect([201, 409]).toContain(r.status());
 });
 for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} R2 backup settings persist and redact credentials`, async ({ browser }) => {
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', ...(mobile ? devices['iPhone 13'] : { viewport: { width: 1440, height: 1000 } }) });
+  const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', ...(mobile ? devices['iPhone 13'] : { viewport: { width: 1440, height: 1000 } }) });
   try {
     await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
     const page = await context.newPage();

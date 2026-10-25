@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { ConfigProvider as AntConfigProvider, Form as AntForm } from 'antd';
 import { Input as AntInput } from '../ui/controls.jsx';
 
@@ -19,6 +21,7 @@ import { usePwa } from '../pwa/Pwa.jsx';
 import { MobileButton as Button, MobileIcon, Notice, SearchField, ProductRow, moneyBase, count } from './ui.jsx';
 
 export function MobileOrderForm({ type, initialProduct, initialTemplate, initialDraft, data, userId, Modal, CameraScanner, onClose, onSaved }) {
+  useLocale();
   const { templates: manageTemplates } = usePermissions();
   const { online } = usePwa();
   const scope = useMemo(() => draftScope(userId, data.instance_id, data.warehouse_id), [userId, data.instance_id, data.warehouse_id]);
@@ -33,7 +36,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const snapshot = (p, line = {}) => ({ product_id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version, quantity: line.quantity ?? 1, price: line.price ?? (type === 'in' ? p.cost : p.price) });
   const [items, setItems] = useState(() => initialDraft?.items || (initialTemplate ? initialTemplate.items.map(line => {
     const p = data.products.find(p => p.id === line.product_id);
-    return p ? snapshot(p, line) : { ...line, name: line.name || '正在读取物料' };
+    return p ? snapshot(p, line) : { ...line, name: line.name || translate("warehouse.reading.material") };
   }) : initialProduct ? [snapshot(initialProduct)] : []));
   const [pending, setPending] = useState(initialDraft?.pending || null);
   const [query, setQuery] = useState('');
@@ -89,7 +92,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     if (disabled) return;
     selection.remember(product);
     const found = items.find(line => line.product_id === product.id);
-    if (!found && items.length >= 100) { reportError('一张单据最多添加 100 种物料。'); return; }
+    if (!found && items.length >= 100) { reportError(translate("warehouse.a.maximum.of.100.materials.can.be.added.to.one.document")); return; }
     try {
       setItems(found ? items.map(line => line === found ? { ...line, quantity: addQuantity(parseQuantity(line.quantity), 1) } : line) : [...items, snapshot(product)]);
       setQuery(''); setBarcode(''); reportError('');
@@ -99,7 +102,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     setCamera(false);
     try {
       const product = await lookupProductCode(code, data);
-      if (!product) throw new Error(`未找到条码「${code.trim()}」，请先建立物料档案。`);
+      if (!product) throw new Error(translate("warehouse.the.barcode.was.not.found.please.create.a.material.file.first", { v0: code.trim() }));
       add(product);
     } catch (e) { reportError(e.message); }
   };
@@ -112,19 +115,19 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   }, [selection.products.map(p => `${p.id}:${p.version}`).join(',')]);
   const stale = items.filter(line => { const p = data.products.find(p => p.id === line.product_id); return p && line.version && line.version !== p.version; });
   const payload = () => {
-    if (!partner.trim() || partner.length > 100) throw new Error('请填写 1–100 字的往来单位。');
-    if (note.length > 500) throw new Error('备注最多 500 字。');
-    if (!items.length || items.length > 100) throw new Error('请添加 1–100 种物料。');
-    if (stale.length) throw new Error('物料资料已变化，请核对最新档案后继续。');
+    if (!partner.trim() || partner.length > 100) throw new Error(translate("warehouse.please.fill.in.the.correspondence.unit.of.1.100.words"));
+    if (note.length > 500) throw new Error(translate("warehouse.notes.can.be.up.to.500.words"));
+    if (!items.length || items.length > 100) throw new Error(translate("warehouse.please.add.1.100.items"));
+    if (stale.length) throw new Error(translate("warehouse.the.material.information.has.changed.please.check.the.latest.file.before"));
     const seen = new Set();
     return { type, partner: partner.trim(), ...(partnerId ? { partner_id: partnerId } : {}), note, items: items.map(line => {
       const p = data.products.find(p => p.id === line.product_id);
-      if (!p) throw new Error(`「${line.name || '物料'}」已不存在，请移除后重新选择。`);
-      if (seen.has(p.id)) throw new Error('同一物料不能重复添加。');
+      if (!p) throw new Error(translate("warehouse.no.longer.exists.please.remove.it.and.select.again", { v0: line.name || translate("warehouse.material") }));
+      if (seen.has(p.id)) throw new Error(translate("warehouse.the.same.material.cannot.be.added.repeatedly"));
       seen.add(p.id);
       const quantity = materialQuantity(parseQuantity(line.quantity, true), p), price = Number(line.price);
-      if (!/^\d+(\.\d{1,4})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(`${p.name} 单价需为非负金额，最多四位小数。`);
-      if (type === 'out' && quantity > p.stock) throw new Error(`${p.name} 库存不足（当前 ${count(p.stock)} ${p.unit}）。`);
+      if (!/^\d+(\.\d{1,4})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(translate("warehouse.the.unit.price.must.be.a.non.negative.amount.with.up", { v0: p.name }));
+      if (type === 'out' && quantity > p.stock) throw new Error(translate("warehouse.is.out.of.stock.currently", { v0: p.name, v1: count(p.stock), v2: p.unit }));
       return { product_id: p.id, quantity, price };
     }) };
   };
@@ -136,7 +139,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   };
   const submit = async () => {
     if (lock.current || templateAction.busy) return;
-    if (!navigator.onLine) { reportError('当前离线，请联网后确认。'); return; }
+    if (!navigator.onLine) { reportError(translate("warehouse.currently.offline.please.connect.to.the.internet.to.confirm")); return; }
     lock.current = true; setBusy(true); setConfirming(false); reportError('');
     let receipt, request = pending, sent = false;
     const controller = new AbortController();
@@ -158,14 +161,14 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
       } else {
         // 401/403 can follow an earlier committed request: keep the receipt key until reauthenticated.
         setPending(request); latest.current = { ...latest.current, pending: request };
-        reportError(`提交结果待确认。${e.status ? e.message : '网络响应未完成，请联网后核对原提交。'}`);
+        reportError(translate("warehouse.submission.results.are.pending.confirmation", { v0: e.status ? e.message : translate("warehouse.the.network.response.is.not.completed.please.check.the.original.submission") }));
       }
     } finally { clearTimeout(timeout); lock.current = false; setBusy(false); }
     if (receipt) {
       finished.current = true;
-      let message = `单据 ${receipt.number} 已保存`;
+      let message = translate("warehouse.document.saved", { v0: receipt.number });
       try { await removeDraft(scope, id); }
-      catch { message += '；本地草稿清理失败，请在草稿中核对后清理。'; }
+      catch { message += translate("warehouse.local.draft.cleanup.failed.please.check.it.in.the.draft.and"); }
       await onSaved(message);
     }
   };
@@ -173,7 +176,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     if (pending) return;
     const body = payload();
     const result = await templateAction.send('/templates', { ...(overwrite && template ? { id: template.id, version: template.version } : {}), name: templateName, type, partner: body.partner, partner_id: partnerId, note, items: body.items });
-    setTemplate(result); setTemplateName(result.name); setTemplateRevision(value => value + 1); setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
+    setTemplate(result); setTemplateName(result.name); setTemplateRevision(value => value + 1); setTemplateMessage(translate("warehouse.template.has.been.saved.and.can.be.applied.repeatedly", { v0: result.name }));
   });
   const close = () => {
     if (lock.current || templateAction.busy || savingClose) return;
@@ -184,7 +187,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     if (savingClose) return;
     setSavingClose(true);
     try {
-      if (discard && pending) throw new Error('请先核对待确认的提交结果。');
+      if (discard && pending) throw new Error(translate("warehouse.please.check.pending.submission.results.first"));
       if (discard) await removeDraft(scope, id);
       else await persist(latest.current);
       finished.current = true; onClose();
@@ -196,43 +199,43 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const matches = query.trim() ? selection.matches : [];
 
   return <>
-    <Modal title={internal ? (type === 'in' ? '内部入库' : '内部出库') : type === 'in' ? '入库' : '出库'} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
+    <Modal title={internal ? (type === 'in' ? translate("warehouse.internal.stock.in") : translate("warehouse.internal.stock.out")) : type === 'in' ? translate("warehouse.stock.in") : translate("warehouse.stock.out")} subtitle={data.settings.warehouse_name} className="mw-order-modal" onClose={close}>
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={confirm} className="mw-order-form">
         <div ref={bodyRef} className="form-body mw-stack mw-order-body">
           <Notice>{error.message || selection.error || contacts.error}</Notice><Notice>{storageError}</Notice>
-          <p className="mw-muted" aria-live="polite">{savedAt ? `草稿已保存 · ${new Date(savedAt).toLocaleTimeString('zh-CN', { hour12: false })}` : '本地草稿自动保存'}</p>
-          {pending && <section className="mw-card mw-stack"><h2>提交结果待确认</h2><p>保留原单据内容，核对时不会重复开单。</p><Button primary busy={busy} disabled={!online} onClick={submit}>核对并重试原提交</Button></section>}
-          {!!stale.length && !pending && <section className="mw-card mw-stack"><Notice>物料资料已变化：{stale.map(line => line.name).join('、')}。请核对物料与成交单价。</Notice><Button onClick={() => setItems(current => current.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? { ...line, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version } : line; }))}>使用最新档案继续核对</Button></section>}
+          <p className="mw-muted" aria-live="polite">{savedAt ? translate("warehouse.draft.saved", { v0: new Date(savedAt).toLocaleTimeString(getFormatLocale(), { hour12: false }) }) : translate("warehouse.local.drafts.are.automatically.saved")}</p>
+          {pending && <section className="mw-card mw-stack"><h2>{translate("warehouse.submit.results.to.be.confirmed")}</h2><p>{translate("warehouse.the.content.of.the.original.document.will.be.retained.and.no")}</p><Button primary busy={busy} disabled={!online} onClick={submit}>{translate("warehouse.check.and.retry.the.original.commit")}</Button></section>}
+          {!!stale.length && !pending && <section className="mw-card mw-stack"><Notice>{translate("warehouse.the.material.data.has.changed")}{stale.map(line => line.name).join('、')}{translate("warehouse.please.check.the.materials.and.transaction.price")}</Notice><Button onClick={() => setItems(current => current.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? { ...line, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version } : line; }))}>{translate("warehouse.continue.checking.with.the.latest.file")}</Button></section>}
           <AntConfigProvider componentDisabled={disabled}><fieldset disabled={disabled} className="mw-stack mw-fieldset">
             {online && <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={disabled} onUse={selected => {
-              if (items.length && !window.confirm('套用模板将替换当前编辑内容，是否继续？')) return false;
+              if (items.length && !window.confirm(translate("warehouse.applying.the.template.will.replace.the.current.editing.content.do.you"))) return false;
               setTemplate(selected); setTemplateName(selected.name); setTemplateMessage(''); setPartner(selected.partner); setPartnerId(selected.partner_id); setNote(selected.note);
-              setItems(selected.items.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? snapshot(p, line) : { ...line, name: line.name || '正在读取物料' }; }));
+              setItems(selected.items.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? snapshot(p, line) : { ...line, name: line.name || translate("warehouse.reading.material") }; }));
             }} />}
-            {template && <p className="mw-muted">已套用「{template.name}」，本次修改不会自动更新模板。</p>}
-            {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">模板名称<AntInput maxLength={100} placeholder="例如：每周日用品补货" value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? '另存为模板' : '保存为模板'}</Button>{template && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
-            <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable label={type === 'in' ? '供应商' : '客户 / 往来单位'} required disabled={disabled} onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
-            {internal && <p className="mw-muted">内部流转仅调整库存，不计入采购额、销售额、利润及应收应付。入库单价用于库存计价。</p>}
-            <Button primary icon={Camera} disabled={!online} onClick={() => setCamera(value => !value)}>{camera ? '关闭摄像头' : '扫码添加物料'}</Button>
-            {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加物料" note="识别后自动添加到当前单据"
+            {template && <p className="mw-muted">{translate("warehouse.applied")}{template.name}{translate("warehouse.this.modification.will.not.automatically.update.the.template")}</p>}
+            {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">{translate("warehouse.template.name")}<AntInput maxLength={100} placeholder={translate("warehouse.for.example.weekly.daily.necessities.replenishment")} value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? translate("warehouse.save.as.template") : translate("warehouse.save.as.template.2")}</Button>{template && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>{translate("warehouse.update.template")}</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
+            <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable label={type === 'in' ? translate("warehouse.supplier") : translate("warehouse.customers.correspondence.units")} required disabled={disabled} onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
+            {internal && <p className="mw-muted">{translate("warehouse.internal.transfers.only.adjust.inventory.and.do.not.include.purchases.sales")}</p>}
+            <Button primary icon={Camera} disabled={!online} onClick={() => setCamera(value => !value)}>{camera ? translate("warehouse.turn.off.camera") : translate("warehouse.scan.code.to.add.materials")}</Button>
+            {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title={translate("warehouse.scan.code.to.add.materials")} note={translate("warehouse.automatically.added.to.the.current.document.after.recognition")}
               onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
-            <label className="mw-field">手动输入物料条码<div className="mw-manual-row"><AntInput ref={barcodeInput} aria-label="扫描物料条码" value={barcode} onChange={e => setBarcode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (barcode.trim()) scan(barcode); } }} /><Button disabled={!online || !barcode.trim()} onClick={() => scan(barcode)}>添加</Button></div></label>
-            <SearchField label="搜索要添加的物料或条码" value={query} onChange={setQuery} />
-            {!!query.trim() && <section className="mw-card">{online ? matches.length ? matches.map(p => <ProductRow key={p.id} product={p} onOpen={add} />) : <p className="mw-muted">未找到物料，请先建立物料档案。</p> : <p className="mw-muted">联网后可以查询并添加物料。</p>}</section>}
-            <Button onClick={() => setIncludeInactive(value => !value)}>{includeInactive ? '隐藏停用物料' : '包含停用物料（清库存等）'}</Button>
-            {!items.length && <section className="mw-card"><p className="mw-muted">扫码或搜索，添加第一件物料。</p></section>}
+            <label className="mw-field">{translate("warehouse.manually.enter.material.barcode")}<div className="mw-manual-row"><AntInput ref={barcodeInput} aria-label={translate("warehouse.scan.material.barcode")} value={barcode} onChange={e => setBarcode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (barcode.trim()) scan(barcode); } }} /><Button disabled={!online || !barcode.trim()} onClick={() => scan(barcode)}>{translate("warehouse.add")}</Button></div></label>
+            <SearchField label={translate("warehouse.search.for.items.or.barcodes.to.add")} value={query} onChange={setQuery} />
+            {!!query.trim() && <section className="mw-card">{online ? matches.length ? matches.map(p => <ProductRow key={p.id} product={p} onOpen={add} />) : <p className="mw-muted">{translate("warehouse.material.not.found.please.create.a.material.file.first")}</p> : <p className="mw-muted">{translate("warehouse.after.connecting.to.the.internet.you.can.query.and.add.materials")}</p>}</section>}
+            <Button onClick={() => setIncludeInactive(value => !value)}>{includeInactive ? translate("warehouse.hide.deactivated.materials") : translate("warehouse.contains.discontinued.materials.clearance.of.inventory.etc")}</Button>
+            {!items.length && <section className="mw-card"><p className="mw-muted">{translate("warehouse.scan.the.qr.code.or.search.to.add.the.first.item")}</p></section>}
             {items.map(line => {
               const p = data.products.find(p => p.id === line.product_id);
-              const name = p?.name || line.name || '物料已不存在';
-              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? '（已停用）' : ''}</strong><p className="mw-muted">{p ? `可用库存 ${count(p.stock)} ${p.unit}` : '物料已不存在，请移除'}</p></div><MobileIcon icon={Trash2} label={`移除 ${name}`} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">数量<FormField value={line.quantity} required type="number" min="0.0001" max="99999999" label={`${name} 数量`}><AntInput type="number" inputMode="decimal" min="0.0001" max="99999999" step="0.0001"  aria-label={`${name} 数量`} value={line.quantity} onBlur={() => { if (p?.unit_round_up && validQuantity(Number(line.quantity), true)) update(line.product_id, "quantity", Math.ceil(Number(line.quantity))); }} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></FormField></label><label className="mw-field">单价<FormField value={line.price} required type="number" min="0" max="99999999" label={`${name} 单价`}><AntInput type="number" inputMode="decimal" min="0" max="99999999" step="0.0001"  aria-label={`${name} 单价`} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></FormField></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={`减少 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', Math.max(0.0001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={`增加 ${name} 数量`} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) * Number(line.price) * 100) / 100)}</strong></div></section>;
+              const name = p?.name || line.name || translate("warehouse.the.material.no.longer.exists");
+              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? translate("warehouse.deactivated.2") : ''}</strong><p className="mw-muted">{p ? translate("warehouse.available.inventory", { v0: count(p.stock), v1: p.unit }) : translate("warehouse.the.material.no.longer.exists.please.remove.it")}</p></div><MobileIcon icon={Trash2} label={translate("warehouse.remove", { v0: name })} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">{translate("warehouse.quantity")}<FormField value={line.quantity} required type="number" min="0.0001" max="99999999" label={translate("warehouse.quantity.2", { v0: name })}><AntInput type="number" inputMode="decimal" min="0.0001" max="99999999" step="0.0001"  aria-label={translate("warehouse.quantity.2", { v0: name })} value={line.quantity} onBlur={() => { if (p?.unit_round_up && validQuantity(Number(line.quantity), true)) update(line.product_id, "quantity", Math.ceil(Number(line.quantity))); }} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></FormField></label><label className="mw-field">{translate("warehouse.unit.price")}<FormField value={line.price} required type="number" min="0" max="99999999" label={translate("warehouse.unit.price.2", { v0: name })}><AntInput type="number" inputMode="decimal" min="0" max="99999999" step="0.0001"  aria-label={translate("warehouse.unit.price.2", { v0: name })} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></FormField></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={translate("warehouse.reduce.the.number.of", { v0: name })} onClick={() => update(line.product_id, 'quantity', Math.max(0.0001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={translate("warehouse.increase.quantity", { v0: name })} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) * Number(line.price) * 100) / 100)}</strong></div></section>;
             })}
-            <label className="mw-field">备注（选填）<AntInput.TextArea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
+            <label className="mw-field">{translate("warehouse.remarks.optional")}<AntInput.TextArea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
           </fieldset></AntConfigProvider>
         </div>
-        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length} 种物料 · 总量 {count(totalQuantity)}</span><h2>{moneyBase(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>确认{type === 'in' ? '入库' : '出库'}</Button></div>
+        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length}{" "}{translate("warehouse.kind.of.material.total.quantity")}{" "}{count(totalQuantity)}</span><h2>{moneyBase(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>{translate("warehouse.confirm")}{type === 'in' ? translate("warehouse.stock.in") : translate("warehouse.stock.out")}</Button></div>
       </AntForm>
     </Modal>
-    {confirming && <Modal title={internal ? (type === 'in' ? '确认内部入库？' : '确认内部出库？') : type === 'in' ? '确认入库？' : '确认出库？'} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length} 种物料，合计 {moneyBase(total)}。确认后立即更新库存。</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>继续编辑</Button><Button primary disabled={!online || busy} onClick={submit}>确认提交</Button></div></Modal>}
-    {closing && <Modal title={pending ? '保存待核对单据？' : '保存本地草稿？'} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? '提交结果尚未确认，请保留草稿，联网后核对原提交。' : '保存后可从“更多 → 本地草稿”继续编辑。'}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>保存草稿并关闭</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>放弃草稿</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>继续编辑</Button></div></Modal>}
+    {confirming && <Modal title={internal ? (type === 'in' ? translate("warehouse.confirm.internal.storage") : translate("warehouse.confirm.internal.shipment")) : type === 'in' ? translate("warehouse.confirm.storage") : translate("warehouse.confirm.delivery")} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length}{" "}{translate("warehouse.materials.total")}{" "}{moneyBase(total)}{translate("warehouse.inventory.will.be.updated.immediately.upon.confirmation")}</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>{translate("warehouse.continue.editing")}</Button><Button primary disabled={!online || busy} onClick={submit}>{translate("warehouse.confirm.submission")}</Button></div></Modal>}
+    {closing && <Modal title={pending ? translate("warehouse.save.documents.pending.verification") : translate("warehouse.save.local.draft")} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? translate("warehouse.the.submission.result.has.not.been.confirmed.yet.please.keep.the") : translate("warehouse.after.saving.you.can.continue.editing.from.more.local.draft")}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>{translate("warehouse.save.draft.and.close")}</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>{translate("warehouse.abandon.draft")}</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>{translate("warehouse.continue.editing")}</Button></div></Modal>}
   </>;
 }

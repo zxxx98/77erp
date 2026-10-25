@@ -1,3 +1,6 @@
+import { productionMessage } from '../i18n/production-errors.js';
+import { t as pt, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { Input } from '../ui/controls.jsx';
@@ -11,22 +14,24 @@ import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.
 import { ScrapOutputs } from './ScrapOutputs.jsx';
 import './production-stages.css';
 
-const count = value => Number(value ?? 0).toLocaleString('zh-CN', { maximumFractionDigits: 6 });
-const time = value => new Date(value).toLocaleString('zh-CN', { hour12: false });
+const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 6 });
+const time = value => new Date(value).toLocaleString(getFormatLocale(), { hour12: false });
 
 export function ProductionStageSummary({ order, onOpen, disabled }) {
+  useLocale();
   const children = order.stages.filter(stage => stage.path !== '');
   const started = children.filter(stage => stage.completed_quantity > 0).length;
   const remaining = children.filter(stage => stage.available_quantity > 0);
-  return <section className="panel bom-section" aria-label="分层生产进度">
-    <div className="bom-section-heading"><h2>分层生产</h2><span>{started} / {children.length} 个半成品层已登记</span></div>
-    <p className="bom-hint">先登记下层半成品，再供上层使用。半成品留在本单内，原材料只记录一次耗用。</p>
-    {remaining.length > 0 && <p className="bom-hint">{remaining.length} 个半成品层仍有可用数量，使用完后才能结束生产。</p>}
-    <Button disabled={disabled} onClick={onOpen}>查看各层进度与批次</Button>
+  return <section className="panel bom-section" aria-label={pt("production.productionProgressByLevel")}>
+    <div className="bom-section-heading"><h2>{pt("production.productionByLevel")}</h2><span>{started} / {children.length} {pt("production.semiFinishedLevelsRegistered")}</span></div>
+    <p className="bom-hint">{pt("production.registerLowerLevelSemiFinishedOutputFirstFor")}</p>
+    {remaining.length > 0 && <p className="bom-hint">{remaining.length} {pt("production.semiFinishedLevelsStillHaveAvailableQuantitiesConsume")}</p>}
+    <Button disabled={disabled} onClick={onOpen}>{pt("production.viewProgressAndBatchesByLevel")}</Button>
   </section>;
 }
 
 export function ProductionStages({ order, data, canRegister, canVoid, canReceive, management, busy = false, onActivity, onSaved, onBack }) {
+  useLocale();
   const [scope, setScope] = useState(''), [search, setSearch] = useState('');
   const [form, setForm] = useState(null), [baseline, setBaseline] = useState('');
   const [history, setHistory] = useState(null), [voiding, setVoiding] = useState(null);
@@ -45,13 +50,13 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   useEffect(() => () => onActivity?.(null), [onActivity]);
   const guard = useRef({}); guard.current = { dirty, locked };
   useEffect(() => {
-    const navigate = event => { if (guard.current.locked || guard.current.dirty && !window.confirm('分层登记尚未保存，确定离开？')) event.preventDefault(); };
+    const navigate = event => { if (guard.current.locked || guard.current.dirty && !window.confirm(pt("production.levelRegistrationIsUnsavedLeave"))) event.preventDefault(); };
     const unload = event => { if (guard.current.dirty || guard.current.locked) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('erp:before-navigate', navigate); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', navigate); window.removeEventListener('beforeunload', unload); };
   }, []);
   useEffect(() => { window.scrollTo({ top: 0 }); }, [form?.path, history?.path, scope]);
-  const leave = fn => { if (!locked && (!dirty || window.confirm('分层登记尚未保存，确定离开？'))) { action.setError(''); fn(); } };
+  const leave = fn => { if (!locked && (!dirty || window.confirm(pt("production.levelRegistrationIsUnsavedLeave")))) { action.setError(''); fn(); } };
   const back = () => leave(() => {
     if (form) setForm(null);
     else if (history) { setHistory(null); setVoiding(null); }
@@ -75,16 +80,16 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       const items = form.items.map(row => {
         const item = stage.items.find(item => item.path === row.path);
         const actual = materialQuantity(parseQuantity(row.quantity, item.usage_mode === 'explode'), item);
-        if (actual > item.available_quantity) throw new Error(`${item.name}可用数量不足，请先${item.usage_mode === 'explode' ? '登记下层半成品' : '补料'}。`);
+        if (actual > item.available_quantity) throw new Error(pt("production.insufficientAvailableFirst", { v0: item.name, v1: item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials") }));
         return { ...row, quantity: actual };
       });
-      if (!items.some(item => item.quantity > 0)) throw new Error('至少一种材料的实际投入需大于零。');
+      if (!items.some(item => item.quantity > 0)) throw new Error(pt("production.actualInputForAtLeastOneMaterialMust"));
       const scraps = form.scraps.map(row => ({ ...row, quantity: materialQuantity(parseQuantity(row.quantity), order.scraps.find(item => item.product_id === row.product_id)) }));
       if (stage.path === '') validateScrapActuals(scraps, order.scraps);
-      if (!window.confirm(`确认登记 ${stage.name} ${count(quantity)} ${stage.unit}？${stage.path ? '本批半成品留在本单，供上层使用。' : '本批成品待仓库批准后入库。'}${finish ? '同时结束生产单。' : ''}`)) return;
+      if (!window.confirm(pt("production.register2", { v0: stage.name, v1: count(quantity), v2: stage.unit, v3: stage.path ? pt("production.thisSemiFinishedBatchStaysWithinTheOrder") : pt("production.thisProductBatchAwaitsWarehouseReceiptApproval"), v4: finish ? pt("production.alsoEndTheProductionOrder") : '' }))) return;
       const result = await send('/stages/complete', { path: stage.path, completed_quantity: quantity, items, scraps, note: form.note, finish_order: finish });
       setForm(null); setBaseline('');
-      await onSaved(result, stage.path ? '本批半成品已登记，可供上层使用，仓库库存未变动。' : `本批成品已登记，待仓库批准入库。${finish ? '生产已结束。' : ''}`);
+      await onSaved(result, stage.path ? pt("production.semiFinishedBatchRegisteredForParentUseWarehouse") : pt("production.productBatchRegisteredAwaitingWarehouseApproval", { v0: finish ? pt("production.productionEnded") : '' }));
     });
   };
   let standardError = '';
@@ -100,8 +105,8 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     const actual = form.scraps.find(item => item.product_id === row.product_id);
     return { ...row, expected_quantity, actual: actual.quantity, disposition: actual.disposition };
   }) : [];
-  const heading = stage ? `登记${stage.path ? '半成品' : '成品'}` : history ? '层级批次记录' : '选择生产层';
-  const notices = <>{action.error && <p className="form-error" role="alert">{action.error}</p>}</>;
+  const heading = stage ? pt("production.register3", { v0: stage.path ? pt("production.semiFinishedProduct") : pt("production.finishedProduct") }) : history ? pt("production.levelBatchRecords") : pt("production.selectProductionLevel");
+  const notices = <>{productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}</>;
   const visible = order.stages.filter(item => search.trim()
     ? `${item.name} ${item.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
     : item.path === scope || item.path !== '' && item.parent_path === scope);
@@ -111,90 +116,90 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   };
   return <div className="production-stages">
     <PageHeading title={heading} description={`${order.number} · ${stage ? pathLabel(stage) : history ? pathLabel(byPath.get(history.path)) : order.product_name}`}>
-      <Button icon={ArrowLeft} disabled={locked} onClick={back}>{form || history ? '返回层级选择' : '返回单据详情'}</Button>
+      <Button icon={ArrowLeft} disabled={locked} onClick={back}>{form || history ? pt("production.backToLevelSelection") : pt("production.backToOrderDetails")}</Button>
     </PageHeading>
     {form && stage ? <form onSubmit={submit}>
       <section className="panel bom-section">
         <h2>{stage.name}</h2><p className="stage-path">{pathLabel(stage)}</p>
-        <p className="bom-hint">计划 {count(stage.planned_quantity)} {stage.unit}，累计合格 {count(stage.completed_quantity)} {stage.unit}。填写本批数量。</p>
-        <label className="production-output">本批合格数量（{stage.unit}）<Input aria-label="本批合格数量" inputMode="decimal" value={form.completed_quantity} disabled={locked} onChange={event => patch({ completed_quantity: event.target.value })} /></label>
-        {Number(form.completed_quantity) + stage.completed_quantity > stage.planned_quantity && <p className="bom-warning">本次登记后将超过计划产量，请按实际产出核对。</p>}
-        <Button disabled={locked} onClick={() => action.run(async () => patch({ items: defaults(stage, parseQuantity(form.completed_quantity, true)).map(item => ({ ...item, variance_reason: form.items.find(row => row.path === item.path).variance_reason })) }))}>按本批产量带出耗料</Button>
+        <p className="bom-hint">{pt("production.planned")} {count(stage.planned_quantity)} {stage.unit}{pt("production.acceptedToDate")} {count(stage.completed_quantity)} {stage.unit}{pt("production.enterThisBatchSQuantity")}</p>
+        <label className="production-output">{pt("production.acceptedBatchQuantity")}{stage.unit}）<Input aria-label={pt("production.acceptedBatchQuantity2")} inputMode="decimal" value={form.completed_quantity} disabled={locked} onChange={event => patch({ completed_quantity: event.target.value })} /></label>
+        {Number(form.completed_quantity) + stage.completed_quantity > stage.planned_quantity && <p className="bom-warning">{pt("production.thisRegistrationWillExceedPlannedOutputVerifyActual")}</p>}
+        <Button disabled={locked} onClick={() => action.run(async () => patch({ items: defaults(stage, parseQuantity(form.completed_quantity, true)).map(item => ({ ...item, variance_reason: form.items.find(row => row.path === item.path).variance_reason })) }))}>{pt("production.fillUsageFromThisBatchSOutput")}</Button>
       </section>
-      <section className="panel bom-section"><h2>核对本层投入</h2><p className="bom-hint">原材料消耗已领余额；半成品消耗对应下层的可用数量，不重复扣下层原料。</p>
-        {standardError && <p className="bom-warning">{standardError}</p>}
+      <section className="panel bom-section"><h2>{pt("production.verifyInputsForThisLevel")}</h2><p className="bom-hint">{pt("production.rawMaterialsUseTheIssuedBalanceSemiFinished")}</p>
+        {standardError && <p className="bom-warning">{productionMessage(standardError)}</p>}
         {stage.items.map(item => {
           const actual = form.items.find(row => row.path === item.path), standard = standards.get(item.path);
           return <article className="stage-input" key={item.path}>
-            <div><strong>{item.name}</strong><p className="bom-hint">{item.usage_mode === 'explode' ? '本单半成品' : '已领原材料'} · {item.usage_mode === 'explode' ? pathLabel(byPath.get(item.path)) : item.path}</p></div>
-            <div className="stage-input-numbers"><span>标准投入 <strong>{standard === undefined ? '—' : count(standard)} {item.unit}</strong></span><span>可用 <strong>{count(item.available_quantity)} {item.unit}</strong></span></div>
-            <label>实际投入（{item.unit}）<Input aria-label={`${item.name}实际投入`} inputMode="decimal" disabled={locked} value={actual.quantity} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, quantity: event.target.value } : row) })} /></label>
-            {Number(actual.quantity) > item.available_quantity && <p className="bom-warning">可用数量不足，请先{item.usage_mode === 'explode' ? '登记下层半成品' : '补料'}。</p>}
-            <label>耗料差异原因<Input aria-label={`${item.name}耗料差异原因`} maxLength={500} value={actual.variance_reason} disabled={locked} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, variance_reason: event.target.value } : row) })} /></label>
+            <div><strong>{item.name}</strong><p className="bom-hint">{item.usage_mode === 'explode' ? pt("production.semiFinishedInThisOrder") : pt("production.issuedRawMaterials")} · {item.usage_mode === 'explode' ? pathLabel(byPath.get(item.path)) : item.path}</p></div>
+            <div className="stage-input-numbers"><span>{pt("production.standardInput2")} <strong>{standard === undefined ? '—' : count(standard)} {item.unit}</strong></span><span>{pt("production.available")} <strong>{count(item.available_quantity)} {item.unit}</strong></span></div>
+            <label>{pt("production.actualInput")}{item.unit}）<Input aria-label={pt("production.actualInput2", { v0: item.name })} inputMode="decimal" disabled={locked} value={actual.quantity} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, quantity: event.target.value } : row) })} /></label>
+            {Number(actual.quantity) > item.available_quantity && <p className="bom-warning">{pt("production.insufficientAvailableQuantityFirst")}{item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials")}。</p>}
+            <label>{pt("production.usageVarianceReason2")}<Input aria-label={pt("production.usageVarianceReason", { v0: item.name })} maxLength={500} value={actual.variance_reason} disabled={locked} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, variance_reason: event.target.value } : row) })} /></label>
           </article>;
         })}
       </section>
       {scrapRows.length > 0 && <section className="panel bom-section"><ScrapOutputs rows={scrapRows} materials={stage.items} complete disabled={locked}
         onChange={(id, changes) => patch({ scraps: form.scraps.map(row => row.product_id === id ? { ...row, ...changes } : row) })} /></section>}
-      <section className="panel bom-section"><label>本批备注<Input.TextArea aria-label="本批备注" maxLength={500} rows={2} value={form.note} disabled={locked} onChange={event => patch({ note: event.target.value })} /></label></section>
-      {notices}<div className="bom-editor-actions"><Button disabled={locked} onClick={back}>取消</Button>
-        <Button disabled={locked} onClick={() => leave(() => action.run(async () => onSaved(await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id }), '已重新读取生产单，请选择层级后核对。')))}>重新读取生产单</Button>
-        <Button type="submit" kind="primary" value="continue" busy={locked}>{stage.path ? '登记本批半成品' : '本批登记并继续生产'}</Button>
-        {stage.path === '' && management && <Button type="submit" value="finish" disabled={locked}>本批登记并结束生产</Button>}
+      <section className="panel bom-section"><label>{pt("production.batchNote")}<Input.TextArea aria-label={pt("production.batchNote")} maxLength={500} rows={2} value={form.note} disabled={locked} onChange={event => patch({ note: event.target.value })} /></label></section>
+      {notices}<div className="bom-editor-actions"><Button disabled={locked} onClick={back}>{pt("production.cancel")}</Button>
+        <Button disabled={locked} onClick={() => leave(() => action.run(async () => onSaved(await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id }), pt("production.productionOrderReloadedSelectALevelAndVerify"))))}>{pt("production.reloadProductionOrder")}</Button>
+        <Button type="submit" kind="primary" value="continue" busy={locked}>{stage.path ? pt("production.registerSemiFinishedBatch") : pt("production.registerBatchAndContinue")}</Button>
+        {stage.path === '' && management && <Button type="submit" value="finish" disabled={locked}>{pt("production.registerBatchAndEndProduction")}</Button>}
       </div>
     </form> : history ? <section className="panel bom-section">
       <h2>{byPath.get(history.path)?.name}</h2><QueryStatus query={historyQuery} />
-      {historyQuery.result?.batches.length === 0 && <p className="bom-hint">本层尚无登记批次。</p>}
+      {historyQuery.result?.batches.length === 0 && <p className="bom-hint">{pt("production.noRegisteredBatchesAtThisLevel")}</p>}
       {historyQuery.result?.batches.map(batch => <article className="production-batch" key={batch.id}>
-        <div className="bom-section-heading"><strong>第 {batch.batch_number} 批 · {count(batch.completed_quantity)} {byPath.get(history.path)?.unit}</strong><Badge tone={batch.status === 'active' ? 'green' : 'gray'}>{batch.status === 'active' ? '有效' : '已作废'}</Badge></div>
+        <div className="bom-section-heading"><strong>{pt("production.batch")} {batch.batch_number} {pt("production.batchSuffix")} {count(batch.completed_quantity)} {byPath.get(history.path)?.unit}</strong><Badge tone={batch.status === 'active' ? 'green' : 'gray'}>{batch.status === 'active' ? pt("production.valid") : pt("production.voided2")}</Badge></div>
         <p className="bom-hint">{batch.created_by_name} · {time(batch.created_at)}</p>
         {batch.note && <p className="production-note">{batch.note}</p>}
-        <details><summary>查看本批投入</summary>{batch.items?.map(item => {
+        <details><summary>{pt("production.viewBatchInputs")}</summary>{batch.items?.map(item => {
           const source = byPath.get(history.path)?.items.find(input => input.path === item.path);
           let standard = null;
           try { if (source) standard = stageDisplayStandardQuantity(source, batch.completed_quantity); } catch { /* Show actual records if standards exceed limits. */ }
           return <div className="production-batch-material" key={item.path ?? item.id}><strong>{item.name}</strong>
-            <p>实际投入 {count(item.quantity ?? item.actual_quantity)} {item.unit}{standard !== null && ` · 标准 ${count(standard)} ${item.unit}`}</p>
-            {item.variance_reason && <p>差异原因：{item.variance_reason}</p>}
-            {item.allocations?.map(allocation => <p className="bom-hint" key={allocation.id}>来源层 {allocation.source_path} · 第 {allocation.source_batch_number} 批 · {count(allocation.quantity)} {item.unit}</p>)}
+            <p>{pt("production.actualInput3")} {count(item.quantity ?? item.actual_quantity)} {item.unit}{standard !== null && pt("production.standard", { v0: count(standard), v1: item.unit })}</p>
+            {item.variance_reason && <p>{pt("production.varianceReason")}{item.variance_reason}</p>}
+            {item.allocations?.map(allocation => <p className="bom-hint" key={allocation.id}>{pt("production.sourceLevel")} {allocation.source_path} {pt("production.batch3")} {allocation.source_batch_number} {pt("production.batchSuffix")} {count(allocation.quantity)} {item.unit}</p>)}
           </div>;
         })}</details>
-        {batch.status === 'void' && <p className="bom-hint">作废原因：{batch.void_reason}</p>}
+        {batch.status === 'void' && <p className="bom-hint">{pt("production.voidReason2")}{batch.void_reason}</p>}
         {canVoid && batch.status === 'active' && order.status !== 'void' && (requiresReceiptPermission(batch) && !canReceive
-          ? <p className="bom-hint">本批成品已入库，作废还需要仓库入库权限。</p>
-          : <div className="bom-actions"><Button disabled={locked} onClick={() => leave(() => setVoiding({ id: batch.id, reason: '' }))}>作废第 {batch.batch_number} 批</Button></div>)}
+          ? <p className="bom-hint">{pt("production.thisProductBatchIsReceivedVoidingAlsoRequires")}</p>
+          : <div className="bom-actions"><Button disabled={locked} onClick={() => leave(() => setVoiding({ id: batch.id, reason: '' }))}>{pt("production.voidBatch")} {batch.batch_number} {pt("production.batch2")}</Button></div>)}
         {voiding?.id === batch.id && <form onSubmit={event => { event.preventDefault(); action.run(async () => {
-          if (!voiding.reason.trim()) throw new Error('请填写作废原因。');
+          if (!voiding.reason.trim()) throw new Error(pt("production.enterAReasonForVoiding"));
           const consequence = batch.path === ''
-            ? requiresReceiptPermission(batch) ? '已入库的成品和废料将按原数量、原成本回退。' : '本批待批准的入库单也会作废。'
-            : '已被上层使用的半成品须先撤销上层批次。';
-          if (!window.confirm(`确认作废此批次并恢复原投入？${consequence}`)) return;
+            ? requiresReceiptPermission(batch) ? pt("production.receivedProductsAndScrapWillReverseAtOriginal") : pt("production.thePendingReceiptForThisBatchWillAlso")
+            : pt("production.ifSemiFinishedOutputWasUsedByA");
+          if (!window.confirm(pt("production.voidThisBatchAndRestoreOriginalInputs", { v0: consequence }))) return;
           const result = await send(`/stages/batches/${batch.id}/void`, { reason: voiding.reason });
-          setVoiding(null); await onSaved(result, '本批已作废，原投入数量和成本已恢复。');
-        }); }}><label>作废原因<Input.TextArea aria-label="层级批次作废原因" rows={2} maxLength={500} disabled={locked} value={voiding.reason} onChange={event => setVoiding({ ...voiding, reason: event.target.value })} /></label>
-          <div className="bom-actions"><Button disabled={locked} onClick={() => leave(() => setVoiding(null))}>取消作废</Button><Button type="submit" kind="danger" busy={locked}>确认作废批次</Button></div></form>}
+          setVoiding(null); await onSaved(result, pt("production.batchVoidedOriginalInputQuantitiesAndCostsRestored"));
+        }); }}><label>{pt("production.voidReason")}<Input.TextArea aria-label={pt("production.levelBatchVoidReason")} rows={2} maxLength={500} disabled={locked} value={voiding.reason} onChange={event => setVoiding({ ...voiding, reason: event.target.value })} /></label>
+          <div className="bom-actions"><Button disabled={locked} onClick={() => leave(() => setVoiding(null))}>{pt("production.cancelVoid")}</Button><Button type="submit" kind="danger" busy={locked}>{pt("production.confirmBatchVoid")}</Button></div></form>}
       </article>)}
-      <div className="bom-actions"><Button disabled={locked || !history.offset} onClick={() => leave(() => setHistory({ ...history, offset: history.offset - 20 }))}>上一页批次</Button><Button disabled={locked || !historyQuery.result?.has_more} onClick={() => leave(() => setHistory({ ...history, offset: history.offset + 20 }))}>下一页批次</Button></div>{notices}
+      <div className="bom-actions"><Button disabled={locked || !history.offset} onClick={() => leave(() => setHistory({ ...history, offset: history.offset - 20 }))}>{pt("production.previousBatches")}</Button><Button disabled={locked || !historyQuery.result?.has_more} onClick={() => leave(() => setHistory({ ...history, offset: history.offset + 20 }))}>{pt("production.nextBatches")}</Button></div>{notices}
     </section> : <section className="panel bom-section">
-      <h2>分层生产</h2><p className="bom-hint">选择要登记的成品或半成品。半成品仅供本单对应上层使用。</p>
-      <Input type="search" aria-label="搜索生产层" placeholder="搜索成品、半成品或层级路径" value={search} disabled={locked} onChange={event => setSearch(event.target.value)} />
-      {scope && !search && <div className="bom-actions"><Button icon={ArrowLeft} disabled={locked} onClick={() => setScope(byPath.get(scope)?.parent_path || '')}>返回上层</Button><span className="stage-path">{pathLabel(byPath.get(scope))}</span></div>}
-      {!visible.length && <p className="bom-hint">没有匹配的生产层。</p>}
+      <h2>{pt("production.productionByLevel")}</h2><p className="bom-hint">{pt("production.selectAFinishedOrSemiFinishedProductTo")}</p>
+      <Input type="search" aria-label={pt("production.searchProductionLevels")} placeholder={pt("production.searchProductSemiFinishedItemOrLevelPath")} value={search} disabled={locked} onChange={event => setSearch(event.target.value)} />
+      {scope && !search && <div className="bom-actions"><Button icon={ArrowLeft} disabled={locked} onClick={() => setScope(byPath.get(scope)?.parent_path || '')}>{pt("production.backToParent2")}</Button><span className="stage-path">{pathLabel(byPath.get(scope))}</span></div>}
+      {!visible.length && <p className="bom-hint">{pt("production.noMatchingProductionLevels")}</p>}
       {visible.map(item => <article className="stage-row" key={item.path}>
-        <div className="stage-row-heading"><div><strong>{item.name}</strong><p className="stage-path">{item.path ? `${pathLabel(item)} · 路径 ${item.path}` : '最终成品'}</p></div><Badge tone={item.completed_quantity >= item.planned_quantity ? 'green' : item.completed_quantity ? 'blue' : 'gray'}>{item.completed_quantity >= item.planned_quantity ? '已达计划' : item.completed_quantity ? '已登记' : '未登记'}</Badge></div>
-        <dl className="stage-progress"><div><dt>计划</dt><dd>{count(item.planned_quantity)} {item.unit}</dd></div><div><dt>已完成</dt><dd>{count(item.completed_quantity)} {item.unit}</dd></div>
-          <div><dt>尚欠计划</dt><dd>{count(Math.max(0, addQuantity(item.planned_quantity, -item.completed_quantity)))} {item.unit}</dd></div>
-          {item.path !== '' && <><div><dt>已供上层</dt><dd>{count(item.consumed_quantity)} {item.unit}</dd></div><div><dt>单内可用</dt><dd>{count(item.available_quantity)} {item.unit}</dd></div></>}
+        <div className="stage-row-heading"><div><strong>{item.name}</strong><p className="stage-path">{item.path ? pt("production.path", { v0: pathLabel(item), v1: item.path }) : pt("production.finalProduct")}</p></div><Badge tone={item.completed_quantity >= item.planned_quantity ? 'green' : item.completed_quantity ? 'blue' : 'gray'}>{item.completed_quantity >= item.planned_quantity ? pt("production.planReached") : item.completed_quantity ? pt("production.registered2") : pt("production.notRegistered")}</Badge></div>
+        <dl className="stage-progress"><div><dt>{pt("production.planned")}</dt><dd>{count(item.planned_quantity)} {item.unit}</dd></div><div><dt>{pt("production.completed")}</dt><dd>{count(item.completed_quantity)} {item.unit}</dd></div>
+          <div><dt>{pt("production.remainingPlan2")}</dt><dd>{count(Math.max(0, addQuantity(item.planned_quantity, -item.completed_quantity)))} {item.unit}</dd></div>
+          {item.path !== '' && <><div><dt>{pt("production.suppliedToParent")}</dt><dd>{count(item.consumed_quantity)} {item.unit}</dd></div><div><dt>{pt("production.availableInOrder")}</dt><dd>{count(item.available_quantity)} {item.unit}</dd></div></>}
         </dl>
-        <details><summary>查看累计投入差异</summary><p className="bom-hint">标准按本层累计合格数量计算一次；已作废批次不计入。</p>
+        <details><summary>{pt("production.viewCumulativeInputVariance")}</summary><p className="bom-hint">{pt("production.standardIsCalculatedOnceFromThisLevelS")}</p>
           {item.items.map(input => <div className="stage-cumulative-input" key={input.path}>
-            <strong>{input.name}</strong><p>累计实际 {count(input.actual_quantity)} {input.unit} · 累计标准 {input.standard_quantity == null ? '超出计算范围' : `${count(input.standard_quantity)} ${input.unit}`}</p>
-            {input.standard_quantity != null && <p>差异 {count(addQuantity(input.actual_quantity, -input.standard_quantity))} {input.unit}</p>}
+            <strong>{input.name}</strong><p>{pt("production.cumulativeActual")} {count(input.actual_quantity)} {input.unit} {pt("production.cumulativeStandard")} {input.standard_quantity == null ? pt("production.outsideCalculationRange") : `${count(input.standard_quantity)} ${input.unit}`}</p>
+            {input.standard_quantity != null && <p>{pt("production.variance")} {count(addQuantity(input.actual_quantity, -input.standard_quantity))} {input.unit}</p>}
           </div>)}
         </details><div className="bom-actions">
-          {canRegister && <Button kind="primary" disabled={locked} aria-label={`登记 ${item.name}`} onClick={() => begin(item)}>登记</Button>}
-          <Button disabled={locked} aria-label={`查看批次 ${item.name}`} onClick={() => { setHistory({ path: item.path, offset: 0 }); action.setError(''); }}>批次记录</Button>
-          {item.path !== scope && item.items.some(input => input.usage_mode === 'explode') && <Button disabled={locked} icon={ChevronRight} aria-label={`查看下层 ${item.name}`} onClick={() => { setScope(item.path); setSearch(''); }}>查看下层</Button>}
+          {canRegister && <Button kind="primary" disabled={locked} aria-label={pt("production.register4", { v0: item.name })} onClick={() => begin(item)}>{pt("production.register")}</Button>}
+          <Button disabled={locked} aria-label={pt("production.viewBatches", { v0: item.name })} onClick={() => { setHistory({ path: item.path, offset: 0 }); action.setError(''); }}>{pt("production.batchRecords")}</Button>
+          {item.path !== scope && item.items.some(input => input.usage_mode === 'explode') && <Button disabled={locked} icon={ChevronRight} aria-label={pt("production.viewChildLevel", { v0: item.name })} onClick={() => { setScope(item.path); setSearch(''); }}>{pt("production.viewChildLevel2")}</Button>}
         </div>
       </article>)}{notices}
     </section>}

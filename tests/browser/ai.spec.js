@@ -7,7 +7,7 @@ test.beforeAll(async ({ request }) => {
 });
 for (const device of [null, 'Pixel 7', 'iPhone 13']) test(`${device || 'desktop'} AI settings, Excel, transfer, stocktake confirmations and conversation recovery`, async ({ browser }) => {
   const mobile = !!device;
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(mobile ? devices[device] : { viewport: { width: 1440, height: 1000 } }) });
+  const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(mobile ? devices[device] : { viewport: { width: 1440, height: 1000 } }) });
   try {
     await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
     const warehouse = await (await context.request.post('/api/warehouses', { data: { name: `AI-${mobile}-${Date.now()}` } })).json();

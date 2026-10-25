@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import { usePermissions } from '../permissions.jsx';
@@ -29,6 +31,7 @@ import {
 import { count, money, stockStatus, stockTone, currencySymbol } from '../app/format.js';
 
 function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceStock, increaseStock, showBarcode, showProduct }) {
+  useLocale();
   const { can, costs } = usePermissions();
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
@@ -48,23 +51,19 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
       <QueryStatus query={list} /><QueryStatus query={stats} />
       <PageHeading
         eyebrow="INVENTORY"
-        title="库存管理"
-        description="查看现有库存、库存成本及补货预警。"
+        title={translate("warehouse.inventory.management")}
+        description={translate("warehouse.view.on.hand.inventory.inventory.costs.and.replenishment.alerts")}
       >
         <span className="warehouse-chip">
           <Warehouse size={15} />
           {data.settings.warehouse_name}
         </span>
-        <Button permission="transfer" icon={Truck} onClick={openTransfer}>
-          仓库调拨
-        </Button>
+        <Button permission="transfer" icon={Truck} onClick={openTransfer}>{translate("warehouse.warehouse.transfer")}</Button>
         <Button permission="purchase"
           kind="primary"
           icon={ArrowDownToLine}
           onClick={() => openOrder("in")}
-        >
-          入库
-        </Button>
+        >{translate("warehouse.stock.in")}</Button>
       </PageHeading>
       <div className="inventory-stats">
         <div>
@@ -72,10 +71,10 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
             <Boxes size={21} />
           </span>
           <span>
-            <small>在库总数量</small>
+            <small>{translate("warehouse.total.quantity.in.stock")}</small>
             <strong>
               {count(summary?.active_stock || 0)}
-              <em> 件</em>
+              <em>{" "}{translate("warehouse.items")}</em>
             </strong>
           </span>
         </div>
@@ -84,7 +83,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
             <Warehouse size={21} />
           </span>
           <span>
-            <small>库存成本金额</small>
+            <small>{translate("warehouse.inventory.cost.amount")}</small>
             <strong>
               <em>{currencySymbol()} </em>
               {costs ? money((summary?.active_value_cents || 0) / 100) : '—'}
@@ -96,10 +95,10 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
             <TriangleAlert size={21} />
           </span>
           <span>
-            <small>低库存物料</small>
+            <small>{translate("warehouse.low.inventory.materials")}</small>
             <strong>
               {lowCount}
-              <em> 种</em>
+              <em>{" "}{translate("warehouse.types")}</em>
             </strong>
           </span>
         </div>
@@ -108,26 +107,26 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
             <Package size={21} />
           </span>
           <span>
-            <small>缺货物料</small>
+            <small>{translate("warehouse.out.of.stock.material")}</small>
             <strong>
               {summary?.out_of_stock || 0}
-              <em> 种</em>
+              <em>{" "}{translate("warehouse.types")}</em>
             </strong>
           </span>
         </div>
       </div>
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
-          <h3>物料分类</h3>
+          <h3>{translate("warehouse.material.categories")}</h3>
           <CategoryTree categories={categories} counts={stats.result?.category_counts} active selected={category} onSelect={setCategory} />
         </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
           <div className="filter-tabs">
             {[
-              ["all", "全部库存", summary?.active || 0],
-              ["warning", "库存预警", lowCount],
-              ["empty", "已缺货", summary?.out_of_stock || 0],
+              ["all", translate("warehouse.all.in.stock"), summary?.active || 0],
+              ["warning", translate("warehouse.stock.alert"), lowCount],
+              ["empty", translate("warehouse.out.of.stock"), summary?.out_of_stock || 0],
             ].map(([id, label, n]) => (
               <AntButton type="text" htmlType="button"
                 key={id}
@@ -141,8 +140,8 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           </div>
           <div className="table-search">
             <AntInput prefix={<Search size={16} />} allowClear
-              aria-label="搜索库存物料"
-              placeholder="搜索物料或条码"
+              aria-label={translate("warehouse.search.for.inventory.items")}
+              placeholder={translate("warehouse.search.for.items.or.barcodes")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -152,13 +151,13 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           <table className="data-table">
             <thead>
               <tr>
-                <th>物料信息</th>
-                <th>分类</th>
-                <th className="number-cell">现有库存</th>
-                <th className="number-cell">安全库存</th>
-                <th>库存状态</th>
-                <th className="number-cell">库存成本</th>
-                <th className="number-cell">操作</th>
+                <th>{translate("warehouse.material.information")}</th>
+                <th>{translate("warehouse.classification")}</th>
+                <th className="number-cell">{translate("warehouse.on.hand.inventory")}</th>
+                <th className="number-cell">{translate("warehouse.safety.stock")}</th>
+                <th>{translate("warehouse.stock.status")}</th>
+                <th className="number-cell">{translate("warehouse.inventory.cost")}</th>
+                <th className="number-cell">{translate("warehouse.operation")}</th>
               </tr>
             </thead>
             <tbody>
@@ -210,19 +209,14 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
                         className="text-button"
                         hidden={!can("purchase")} onClick={() => openOrder("in", p)}
                       >
-                        <Plus size={14} />
-                        补货
-                      </AntButton>
+                        <Plus size={14} />{translate("warehouse.restock")}</AntButton>
                       <AntButton type="text" htmlType="button" className="text-button" hidden={!can("stocktake")} onClick={() => increaseStock(p)}>
-                        <Plus size={14} />增加库存（退料）
-                      </AntButton>
+                        <Plus size={14} />{translate("warehouse.increase.stock.return")}</AntButton>
                       <AntButton type="text" danger htmlType="button"
                         className="text-button danger"
                         hidden={!can("stocktake")} onClick={() => reduceStock(p)}
                       >
-                        <Minus size={14} />
-                        减少
-                      </AntButton>
+                        <Minus size={14} />{translate("warehouse.reduce")}</AntButton>
                     </div>
                   </td>
                 </tr>
@@ -231,8 +225,8 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           </table>
           {!filtered.length && (
             <Empty
-              title="暂无符合条件的物料"
-              description="调整筛选条件，查看其他库存。"
+              title={translate("warehouse.there.are.currently.no.materials.that.meet.the.criteria")}
+              description={translate("warehouse.adjust.your.filters.to.see.other.inventory")}
             />
           )}
         </div>
@@ -240,9 +234,7 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
       </section>
       </div>
       <div className="page-hint">
-        <ShieldCheck size={16} />
-        库存随单据确认自动更新，安全库存可在物料档案中调整。
-      </div>
+        <ShieldCheck size={16} />{translate("warehouse.inventory.is.automatically.updated.with.document.confirmation.and.safety.stock.can")}</div>
     </>
   );
 }

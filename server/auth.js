@@ -1,5 +1,6 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+import { isSupportedLanguage } from './i18n.js';
 
 import { permissionKeys, hasPermission, isProductionOnly } from '../shared/permissions.js';
 import { queueNotification } from './notifications.js';
@@ -19,6 +20,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL
   );`);
   const userColumns = db.prepare('PRAGMA table_info(users)').all();
+  if (!userColumns.some(c => c.name === 'language')) db.exec("ALTER TABLE users ADD COLUMN language TEXT CHECK(language IS NULL OR language IN ('zh-CN','en','vi'))");
   if (!userColumns.some(c => c.name === 'permissions')) db.exec('ALTER TABLE users ADD COLUMN permissions TEXT');
   if (!userColumns.some(c => c.name === 'permissions_version')) db.exec('ALTER TABLE users ADD COLUMN permissions_version INTEGER NOT NULL DEFAULT 1');
   if (!userColumns.some(c => c.name === 'name')) db.exec("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''");
@@ -54,7 +56,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     }
   }
   const initialized = () => !!db.prepare("SELECT 1 FROM users LIMIT 1").get();
-  const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, role: user.role,
+  const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, role: user.role, language: user.language ?? null,
     ...(user.role === 'admin' ? { permissions: permissionKeys, legacy_permissions: false, position_id: null, position_name: null, access_mode: 'standard' } : positionAuthorization(db, user)),
     production_group_id: user.production_group_id ?? null,
     production_group_name: user.production_group_id ? db.prepare('SELECT name FROM production_groups WHERE id=?').get(user.production_group_id)?.name ?? null : null,
@@ -85,7 +87,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   };
   const sessionUser = (req) => {
     const token = sessionToken(req);
-    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.position_id,u.production_group_id,u.permissions_version FROM auth_sessions s
+    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.language,u.position_id,u.production_group_id,u.permissions_version FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`)
       .get(digest(token), Date.now()) : undefined;
     return user ? publicUser(user) : undefined;
@@ -212,6 +214,14 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     req.user = sessionUser(req);
     if (!req.user) return res.status(401).json({ error: "请登录后继续操作。" });
     next();
+  });
+  app.patch('/api/auth/language', (req, res) => {
+    if (req.body?.user_id !== undefined && req.body.user_id !== req.user.id)
+      return res.status(409).json({ error: '当前登录账号已变化，请刷新后重试。', code: 'ACCOUNT_CHANGED' });
+    const language = req.body?.language;
+    if (!isSupportedLanguage(language)) return res.status(400).json({ error: '请选择有效的界面语言。' });
+    db.prepare('UPDATE users SET language=? WHERE id=?').run(language, req.user.id);
+    res.json({ language });
   });
   app.post('/api/auth/password', authLimit, async (req, res) => {
     const { current_password, password } = req.body || {};

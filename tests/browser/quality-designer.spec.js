@@ -99,7 +99,7 @@ test('starter template can be created, published, filled and submitted entirely 
 });
 
 for(const platform of ['Android PWA','iPhone'])test(`${platform} creates and saves a template using touch and range controls`,async({browser})=>{
-  const context=await browser.newContext({...devices[platform==='iPhone'?'iPhone 13':'Pixel 7'],baseURL:'http://127.0.0.1:3199',serviceWorkers:platform==='Android PWA'?'allow':'block'});
+  const context=await browser.newContext({ locale: 'zh-CN',...devices[platform==='iPhone'?'iPhone 13':'Pixel 7'],baseURL:'http://127.0.0.1:3199',serviceWorkers:platform==='Android PWA'?'allow':'block'});
   try{
     if(platform==='Android PWA')await context.addInitScript(()=>{const original=window.matchMedia.bind(window);window.matchMedia=query=>{const result=original(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
     const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));

@@ -191,3 +191,8 @@
 .mw-batch-summary {display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;}
 .mw-batch-clear {border:0;background:transparent;color:#2563eb;font-size:13px;padding:4px 8px;}
 .mw-batch-buttons {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+
+/* Keep language selection available on every mobile route, including scanner. */
+.mw-header > .language-switcher { margin-left:auto;flex-shrink:0; }
+.mw-header .mw-modal-title { min-width:0;overflow-wrap:anywhere; }
+@media(max-width:380px) { .mw-header { gap:2px;padding-left:max(6px,env(safe-area-inset-left));padding-right:max(6px,env(safe-area-inset-right)); } .mw-header .mw-wordmark {font-size:19px;padding:0 3px;} .mw-header .mw-icon {min-width:40px;width:40px;} }

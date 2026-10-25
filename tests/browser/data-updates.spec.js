@@ -8,7 +8,7 @@ test.beforeAll(async ({ request }) => {
 
 for (const device of [null, 'Pixel 7', 'iPhone 13']) {
   test(`${device || 'desktop'} checks for changes without replacing data until refresh is clicked`, async ({ browser }) => {
-    const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(device ? devices[device] : {}) });
+    const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(device ? devices[device] : {}) });
     await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
     const page = await context.newPage();
     const errors = [];
@@ -60,13 +60,13 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) {
 }
 
 test('employee editing is preserved while updates are detected, and revoked sessions still log out', async ({ browser }) => {
-  const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
+  const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block' });
   await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
   const username = `updates-${Date.now()}`;
   const created = await context.request.post('/api/users', { data: { position_id: await browserPosition(context.request, ['products']), username, password: 'Test-staff-123' } });
   const { id } = await created.json();
   const user = (await (await context.request.get('/api/users')).json()).find(user => user.id === id);
-  const employee = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', ...devices['Pixel 7'], serviceWorkers: 'block' });
+  const employee = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', ...devices['Pixel 7'], serviceWorkers: 'block' });
   await employee.request.post('/api/auth/login', { data: { username, password: 'Test-staff-123' } });
   const page = await employee.newPage();
   try {

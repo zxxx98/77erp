@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button as AntButton } from '../ui/controls.jsx';
 
 import { LoadingIndicator } from '../Loading.jsx';
@@ -12,6 +14,7 @@ const appModes = ['standalone', 'fullscreen', 'minimal-ui'];
 const inAppWindow = () => appModes.some(mode => matchMedia(`(display-mode: ${mode})`).matches) || navigator.standalone === true;
 
 export function PwaProvider({ children }) {
+  useLocale();
   const [online, setOnline] = useState(navigator.onLine);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installing, setInstalling] = useState(false);
@@ -25,7 +28,7 @@ export function PwaProvider({ children }) {
   const installed = useRef(false);
   const { needRefresh: [needRefresh, setNeedRefresh], offlineReady: [offlineReady], updateServiceWorker } = useRegisterSW({
     onRegisteredSW: (_url, value) => { registration.current = value; },
-    onRegisterError: () => setRegistrationError('应用离线准备失败，联网时仍可正常使用。'),
+    onRegisterError: () => setRegistrationError(translate("system.the.application.failed.to.prepare.offline.but.can.still.be.used")),
   });
   useEffect(() => {
     const status = () => setOnline(navigator.onLine);
@@ -40,7 +43,7 @@ export function PwaProvider({ children }) {
       installed.current = true;
       setInstallationReported(true);
       setInstallPrompt(null);
-      setMessage('浏览器已报告应用安装完成。请在应用列表或系统“应用管理”中查找 77 ERP；网页无法确认桌面图标是否已生成。');
+      setMessage(translate("system.the.browser.has.reported.that.the.app.installation.is.complete.please"));
     };
     const displayQueries = appModes.map(mode => matchMedia(`(display-mode: ${mode})`));
     const displayChanged = () => setStandalone(inAppWindow());
@@ -63,7 +66,7 @@ export function PwaProvider({ children }) {
     };
   }, []);
   const install = async () => {
-    if (standalone) { setMessage('当前已在桌面应用中打开。'); return; }
+    if (standalone) { setMessage(translate("system.currently.open.in.the.desktop.app")); return; }
     if (installBusy.current) return;
     if (installPrompt) {
       installBusy.current = true;
@@ -72,57 +75,59 @@ export function PwaProvider({ children }) {
         await installPrompt.prompt();
         const choice = await installPrompt.userChoice;
         if (!installed.current) setMessage(choice.outcome === 'accepted'
-          ? '已确认安装，浏览器和系统正在处理。请稍后在应用列表查找 77 ERP；当前尚未确认安装完成。'
-          : '已取消安装。');
+          ? translate("system.installation.confirmed.browser.and.system.processing.please.look.for.77.erp")
+          : translate("system.installation.canceled"));
       }
-      catch { setMessage('无法调起安装，请使用浏览器菜单中的“安装应用”；“创建快捷方式”会在浏览器中打开。'); }
+      catch { setMessage(translate("system.unable.to.launch.the.installation.please.use.install.app.in.the")); }
       finally { setInstallPrompt(null); setInstalling(false); installBusy.current = false; }
       return;
     }
     if (installed.current) {
-      setMessage('请先在应用列表或系统“应用管理”中查找 77 ERP，再从应用图标打开。若两处都没有，请在浏览器菜单重新检查安装状态；“创建快捷方式”会保留浏览器地址栏。');
+      setMessage(translate("system.please.first.search.for.77.erp.in.the.application.list.or"));
       return;
     }
     const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-    setMessage(!window.isSecureContext ? '安装应用需要 HTTPS，请使用安全地址访问。' : ios ? '请使用 Safari 的分享菜单，选择“添加到主屏幕”，再从主屏幕图标打开。' : '请在浏览器菜单中选择 Install（安装）或“安装应用”，完成后从应用图标打开。Create shortcut（创建快捷方式）会保留浏览器地址栏。');
+    setMessage(!window.isSecureContext ? translate("system.installing.the.app.requires.https.please.use.a.secure.address.to") : ios ? translate("system.please.use.safari.s.share.menu.select.add.to.home.screen") : translate("system.please.select.install.or.install.app.from.the.browser.menu.and"));
   };
   const checkUpdate = async () => {
-    if (!navigator.onLine) { setMessage('当前离线，请联网后检查更新。'); return; }
-    if (!registration.current) { setMessage('应用尚未完成离线准备，请稍后重试。'); return; }
+    if (!navigator.onLine) { setMessage(translate("system.currently.offline.please.connect.to.the.internet.to.check.for.updates")); return; }
+    if (!registration.current) { setMessage(translate("system.the.app.is.not.ready.for.offline.yet.please.try.again")); return; }
     setChecking(true);
     try {
       await registration.current.update();
       if (registration.current.waiting) setNeedRefresh(true);
-      setMessage(registration.current.waiting ? '新版本已就绪。' : registration.current.installing ? '正在下载新版本，完成后会提示更新。' : '已检查更新。');
-    } catch { setMessage('无法检查更新，请检查网络后重试。'); }
+      setMessage(registration.current.waiting ? translate("system.new.version.is.ready") : registration.current.installing ? translate("system.the.new.version.is.being.downloaded.and.you.will.be.prompted") : translate("system.checked.for.updates"));
+    } catch { setMessage(translate("system.unable.to.check.for.updates.please.check.the.network.and.try")); }
     finally { setChecking(false); }
   };
   const update = async () => {
-    if (document.querySelector('[role="dialog"]')) { setMessage('请先保存并关闭当前编辑页面，再更新应用。'); return; }
+    if (document.querySelector('[role="dialog"]')) { setMessage(translate("system.please.save.and.close.the.current.editing.page.before.updating.the")); return; }
     try { await updateServiceWorker(true); }
-    catch { setMessage('更新失败，请检查网络后重试。'); }
+    catch { setMessage(translate("system.update.failed.please.check.the.network.and.try.again")); }
   };
   return <Context.Provider value={{ online, offlineReady, registrationError, needRefresh, checking, standalone, installing, installationReported, install, checkUpdate, update }}>
     {children}
-    {(needRefresh || message) && <aside className="pwa-notice" aria-label="应用状态" role="status">
-      <span>{message || '新版本已就绪。'}</span>
-      {needRefresh && <AntButton type="default" htmlType="button" onClick={update}><RefreshCw size={17} />更新应用</AntButton>}
-      <AntButton type="text" htmlType="button" className="pwa-notice-close" aria-label="关闭应用提示" onClick={() => { setMessage(''); setNeedRefresh(false); }}><X size={19} /></AntButton>
+    {(needRefresh || message) && <aside className="pwa-notice" aria-label={translate("system.application.status")} role="status">
+      <span>{message || translate("system.new.version.is.ready")}</span>
+      {needRefresh && <AntButton type="default" htmlType="button" onClick={update}><RefreshCw size={17} />{translate("system.update.app")}</AntButton>}
+      <AntButton type="text" htmlType="button" className="pwa-notice-close" aria-label={translate("system.close.app.prompt")} onClick={() => { setMessage(''); setNeedRefresh(false); }}><X size={19} /></AntButton>
     </aside>}
   </Context.Provider>;
 }
 
 export function PwaActions() {
+  useLocale();
   const { install, checkUpdate, update, needRefresh, online, offlineReady, registrationError, checking, standalone, installing, installationReported } = usePwa();
   return <section className="mw-card mw-stack">
-    <h2>网页版应用</h2>
-    <p className="mw-muted">{!online ? '当前离线，联网后确认业务操作。' : registrationError || (offlineReady ? '应用已准备好离线打开。' : '首次使用需要联网。')}</p>
-    {!standalone && <AntButton type="default" htmlType="button" className="mw-button" onClick={install} disabled={installing} aria-busy={installing}>{installing ? <LoadingIndicator size={20} /> : <Download size={19} />}{installing ? '正在请求安装…' : installationReported ? '查看安装说明' : '安装应用'}</AntButton>}
-    <AntButton type="default" htmlType="button" className="mw-button" disabled={checking || !online} aria-busy={checking} onClick={needRefresh ? update : checkUpdate}>{checking ? <LoadingIndicator size={20} /> : <RefreshCw size={19} />}{checking ? '正在检查…' : needRefresh ? '更新应用' : '检查更新'}</AntButton>
+    <h2>{translate("system.web.version.application")}</h2>
+    <p className="mw-muted">{!online ? translate("system.currently.offline.confirm.business.operations.after.connecting.to.the.internet") : registrationError || (offlineReady ? translate("system.the.app.is.ready.to.open.offline") : translate("system.an.internet.connection.is.required.for.first.time.use"))}</p>
+    {!standalone && <AntButton type="default" htmlType="button" className="mw-button" onClick={install} disabled={installing} aria-busy={installing}>{installing ? <LoadingIndicator size={20} /> : <Download size={19} />}{installing ? translate("system.requesting.installation") : installationReported ? translate("system.view.installation.instructions") : translate("system.install.app")}</AntButton>}
+    <AntButton type="default" htmlType="button" className="mw-button" disabled={checking || !online} aria-busy={checking} onClick={needRefresh ? update : checkUpdate}>{checking ? <LoadingIndicator size={20} /> : <RefreshCw size={19} />}{checking ? translate("system.checking") : needRefresh ? translate("system.update.app") : translate("system.check.for.updates")}</AntButton>
   </section>;
 }
 
 export function OfflineNotice() {
+  useLocale();
   const { online } = usePwa();
-  return !online ? <div className="mw-offline" role="status"><WifiOff size={17} />当前离线 · 可编辑草稿，联网后确认</div> : null;
+  return !online ? <div className="mw-offline" role="status"><WifiOff size={17} />{translate("system.currently.offline.editable.draft.confirm.after.connecting.to.the.internet")}</div> : null;
 }

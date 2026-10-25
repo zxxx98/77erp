@@ -1,3 +1,6 @@
+import { localizeError } from '../i18n/errors.js';
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
@@ -24,6 +27,7 @@ import { CameraScanner, StockQrExecution } from '../LazyComponents.jsx';
 import { stockStatus, price, money, stockTone, currencySymbol } from '../app/format.js';
 
 function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onSaved }) {
+  useLocale();
   const { can } = usePermissions();
   const [stockLabel, setStockLabel] = useState(null), [stockBusy, setStockBusy] = useState(false);
   const [mode, setMode] = useState("query"),
@@ -41,7 +45,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
     const controller = new AbortController();
     api(`/products/${selected.id}`, { warehouseId: data.warehouse_id, signal: controller.signal })
       .then(({ product }) => { if (!controller.signal.aborted) setSelected(product); })
-      .catch(error => { if (!controller.signal.aborted) { setSelected(null); setError(error.message); } });
+      .catch(error => { if (!controller.signal.aborted) { setSelected(null); setError(localizeError(error.message)); } });
     return () => controller.abort();
   }, [data, selected?.id]);
   const product = selected;
@@ -63,12 +67,12 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
       if (generation !== scanGeneration.current) return;
     } catch (e) {
       if (generation !== scanGeneration.current) return;
-      setError(e.message);
+      setError(localizeError(e.message));
       setSelected(null);
       return;
     }
     if (!p) {
-      setError(`未找到「${code.trim()}」对应的物料，请先在物料管理中建档。`);
+      setError(translate("warehouse.the.material.corresponding.to.was.not.found.please.create.a.file", { v0: code.trim() }));
       setSelected(null);
       return;
     }
@@ -76,29 +80,27 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
     setSelected(p);
     setBarcode("");
     setRecent((prev) => [p, ...prev.filter((x) => x.id !== p.id)].slice(0, 4));
-    notify(`已识别：${p.name}`);
+    notify(translate("warehouse.recognized", { v0: p.name }));
     if (mode !== "query") openOrder(mode, p);
   };
   return (
     <>
       <PageHeading
         eyebrow="SCAN WORKSPACE"
-        title="扫码工作台"
-        description="使用手机摄像头识别物料条码或二维码标签，进行物料查询、入库或出库。"
+        title={translate("warehouse.scanning.workbench")}
+        description={translate("warehouse.use.the.mobile.phone.camera.to.identify.material.barcodes.or.qr")}
       >
-        {isAdmin && <Button onClick={manageStockQr}>管理出入库二维码</Button>}
+        {isAdmin && <Button onClick={manageStockQr}>{translate("warehouse.manage.incoming.and.outgoing.qr.codes")}</Button>}
         <span className="scanner-ready">
-          <i />
-          手机摄像头扫码
-        </span>
+          <i />{translate("warehouse.scan.code.with.mobile.phone.camera")}</span>
       </PageHeading>
       <div className="scanner-layout">
         <section className="panel scanner-main">
           <div className="scanner-mode-tabs">
             {[
-              ["query", "查找物料", Search],
-              ["in", "扫码入库", ArrowDownToLine],
-              ["out", "扫码出库", ArrowUpFromLine],
+              ["query", translate("warehouse.find.items"), Search],
+              ["in", translate("warehouse.scan.code.to.store"), ArrowDownToLine],
+              ["out", translate("warehouse.scan.the.qr.code.to.exit.the.warehouse"), ArrowUpFromLine],
             ].map(([id, name, Icon]) => (
               <AntButton type="text" htmlType="button"
                 key={id}
@@ -122,13 +124,13 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             </div>
             <h2>
               {mode === "query"
-                ? "扫描物料条码"
+                ? translate("warehouse.scan.material.barcode")
                 : mode === "in"
-                  ? "扫描入库物料"
-                  : "扫描出库物料"}
+                  ? translate("warehouse.scan.incoming.materials")
+                  : translate("warehouse.scan.outbound.materials")}
             </h2>
-            <p>打开手机摄像头，将物料条码或二维码放入取景框</p>
-            {mode !== "query" && <p>免确认出入库二维码将直接执行全部物料。</p>}
+            <p>{translate("warehouse.open.the.mobile.phone.camera.and.put.the.material.barcode.or")}</p>
+            {mode !== "query" && <p>{translate("warehouse.the.qr.code.for.entering.and.exiting.the.warehouse.without.confirmation")}</p>}
             <Button
               kind="primary"
               icon={Camera}
@@ -139,17 +141,17 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 setError("");
               }}
             >
-              {camera ? "关闭摄像头" : "手机扫码"}
+              {camera ? translate("warehouse.turn.off.camera") : translate("warehouse.scan.code.with.mobile.phone")}
             </Button>
             {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)}
-              title={mode === 'query' ? '扫一扫 · 查找物料' : mode === 'in' ? '扫一扫 · 入库' : '扫一扫 · 出库'}
-              note={mode === 'query' ? '识别后自动返回查看物料' : '识别后自动返回；免确认出入库二维码会直接更新库存。'}
+              title={mode === 'query' ? translate("warehouse.scan.find.materials") : mode === 'in' ? translate("warehouse.scan.store") : translate("warehouse.scan.delivery")}
+              note={mode === 'query' ? translate("warehouse.automatically.return.to.view.materials.after.identification") : translate("warehouse.it.will.automatically.return.after.identification.the.qr.code.for.entering")}
               onManual={() => { setCamera(false); setManual(true); requestAnimationFrame(() => input.current?.focus()); }} />}
             <AntButton type="text" htmlType="button"
               className="manual-entry-toggle"
               onClick={() => setManual(!manual)}
             >
-              {manual ? "收起手动输入" : "手动输入条码"}
+              {manual ? translate("warehouse.close.manual.input") : translate("warehouse.enter.barcode.manually")}
               <ChevronDown size={14} className={manual ? "rotate" : ""} />
             </AntButton>
             {manual && (
@@ -163,14 +165,12 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 <ScanLine size={21} />
                 <AntInput
                   ref={input}
-                  aria-label="物料条码"
-                  placeholder="输入物料条码"
+                  aria-label={translate("warehouse.material.barcode")}
+                  placeholder={translate("warehouse.enter.material.barcode")}
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
-                <AntButton type="default" htmlType="submit" disabled={!barcode || stockBusy}>
-                  识别
-                  <ArrowRight size={16} />
+                <AntButton type="default" htmlType="submit" disabled={!barcode || stockBusy}>{translate("warehouse.identify")}<ArrowRight size={16} />
                 </AntButton>
               </AntForm>
             )}
@@ -185,9 +185,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
           {product && (
             <div className="scan-result">
               <div className="scan-result-label">
-                <CircleCheck size={16} />
-                物料已识别
-              </div>
+                <CircleCheck size={16} />{translate("warehouse.material.identified")}</div>
               <div className="scan-result-product">
                 <ProductArt product={product} size="large" />
                 <div>
@@ -204,7 +202,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                   </Badge>
                 </div>
                 <div className="scan-result-stock">
-                  <small>当前库存</small>
+                  <small>{translate("warehouse.current.inventory")}</small>
                   <strong>
                     {product.stock}
                     <em> {product.unit}</em>
@@ -212,49 +210,43 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 </div>
               </div>
               <div className="scan-result-prices">
-                <span>
-                  参考采购价 <strong>{currencySymbol()} {price(product.cost)}</strong>
+                <span>{translate("warehouse.reference.purchase.price")}<strong>{currencySymbol()} {price(product.cost)}</strong>
                 </span>
-                <span>
-                  参考销售价 <strong>{currencySymbol()} {price(product.price)}</strong>
+                <span>{translate("warehouse.reference.sales.price")}<strong>{currencySymbol()} {price(product.price)}</strong>
                 </span>
               </div>
               <div className="scan-result-actions">
                 <Button permission="purchase"
                   icon={ArrowDownToLine}
                   onClick={() => openOrder("in", product)}
-                >
-                  入库
-                </Button>
+                >{translate("warehouse.stock.in")}</Button>
                 <Button permission="sale"
                   kind="primary"
                   icon={ArrowUpFromLine}
                   onClick={() => openOrder("out", product)}
-                >
-                  出库
-                </Button>
+                >{translate("warehouse.stock.out")}</Button>
               </div>
             </div>
           )}
         </section>
         <div className="scanner-aside">
-          <Panel title="扫码操作说明" icon={ScanLine}>
+          <Panel title={translate("warehouse.scan.code.operation.instructions")} icon={ScanLine}>
             <div className="scan-guide">
               {[
                 [
                   "01",
-                  "打开手机摄像头",
-                  "点击手机扫码，并允许浏览器访问摄像头。",
+                  translate("warehouse.turn.on.your.phone.camera"),
+                  translate("warehouse.click.on.your.phone.to.scan.the.qr.code.and.allow"),
                 ],
                 [
                   "02",
-                  "选择工作模式",
-                  "查找、入库或出库，按当前工作自由切换。",
+                  translate("warehouse.select.working.mode"),
+                  translate("warehouse.search.enter.or.exit.the.warehouse.and.switch.freely.according.to"),
                 ],
                 [
                   "03",
-                  "扫描并确认",
-                  "物料标签确认开单；业务二维码按配置确认整单。",
+                  translate("warehouse.scan.and.confirm"),
+                  translate("warehouse.the.material.label.confirms.the.billing.the.business.qr.code.confirms"),
                 ],
               ].map(([n, title, desc]) => (
                 <div key={n}>
@@ -268,12 +260,12 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             </div>
             <div className="scan-guide-note">
               <ShieldCheck size={16} />
-              <p>物料标签只识别物料；免确认出入库二维码会直接更新全部物料库存。</p>
+              <p>{translate("warehouse.the.material.label.only.identifies.the.material.the.qr.code.for")}</p>
             </div>
           </Panel>
           <Panel
-            title="最近识别"
-            extra={<span className="muted">本次会话</span>}
+            title={translate("warehouse.recently.recognized")}
+            extra={<span className="muted">{translate("warehouse.this.session")}</span>}
           >
             {recent.length ? (
               <div className="recent-scans">
@@ -291,7 +283,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             ) : (
               <div className="recent-scans-empty">
                 <ScanLine size={23} />
-                <p>扫过的物料会出现在这里</p>
+                <p>{translate("warehouse.the.scanned.materials.will.appear.here")}</p>
               </div>
             )}
           </Panel>

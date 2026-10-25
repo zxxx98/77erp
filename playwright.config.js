@@ -4,6 +4,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   use: {
+    locale: 'zh-CN',
     baseURL: "http://127.0.0.1:3199",
     viewport: { width: 1440, height: 1000 },
     // Page routing cannot intercept requests handled by a Service Worker.

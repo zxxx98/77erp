@@ -282,14 +282,14 @@ for (const mobile of [false, true]) {
 
 test('mobile PWA preserves fractional BOM recipes and exact production quantities with an active service worker', async ({ browser }) => {
   test.setTimeout(60000);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   try { await fractionalRecipeFlow(await context.newPage(), true); }
   finally { await context.close(); }
 });
 
 test('mobile PWA loads the BOM route, scans a material and keeps the form when returning from the camera', async ({ browser }) => {
   test.setTimeout(60000);
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 }, userAgent: iphone, serviceWorkers: 'allow' });
   const page = await context.newPage(), f = await fixture(page);
   try {
     await page.addInitScript(() => {
@@ -319,7 +319,7 @@ test('mobile PWA loads the BOM route, scans a material and keeps the form when r
 for (const profile of ['desktop', 'iphone', 'android-pwa']) {
   test(`${profile} selects among child recipes, copies the same product and completes a frozen multilevel order`, async ({ page: defaultPage, browser }) => {
     test.setTimeout(90000);
-    const context = profile === 'android-pwa' ? await browser.newContext({ viewport: { width: 412, height: 915 }, serviceWorkers: 'allow', userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36' }) : null;
+    const context = profile === 'android-pwa' ? await browser.newContext({ locale: 'zh-CN', viewport: { width: 412, height: 915 }, serviceWorkers: 'allow', userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36' }) : null;
     const page = context ? await context.newPage() : defaultPage;
     if (profile === 'iphone') { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
     const { chooseOption } = await import('./dropdown-helpers.js');

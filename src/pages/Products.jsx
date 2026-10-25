@@ -1,3 +1,6 @@
+import { localizeError } from '../i18n/errors.js';
+import { t as translate, getFormatLocale, translateText } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button as AntButton, Checkbox as AntCheckbox, Input as AntInput } from '../ui/controls.jsx';
 
 import { usePermissions } from '../permissions.jsx';
@@ -23,10 +26,11 @@ import { CategoryManager } from '../LazyComponents.jsx';
 
 export function summarizeProductNames(list) {
   const names = list.slice(0, 5).map(p => `「${p.name}」`).join('、');
-  return list.length > 5 ? `${names} 等 ${list.length} 项` : `${names}（共 ${list.length} 项）`;
+  return list.length > 5 ? translate("warehouse.and.other.items", { v0: names, v1: list.length }) : translate("warehouse.items.in.total", { v0: names, v1: list.length });
 }
 
 export function ProductBatchDialog({ mode, selectedProducts, onClose, onCompleted }) {
+  useLocale();
   const [submitting, setSubmitting] = useState(false);
   const [previewing, setPreviewing] = useState(mode === 'delete');
   const [preview, setPreview] = useState(null);
@@ -48,7 +52,7 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
         if (alive) setPreview({ deletable: data.deletable || [], blocked: data.blocked || [] });
       })
       .catch(e => {
-        if (alive) setError(e.message);
+        if (alive) setError(localizeError(e.message));
       })
       .finally(() => {
         if (alive) setPreviewing(false);
@@ -72,12 +76,12 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
       });
       const skippedCount = res.skipped?.length || 0;
       const message = skippedCount
-        ? `已停用 ${res.updated.length} 种物料，跳过 ${skippedCount} 项`
-        : `已停用 ${res.updated.length} 种物料`;
+        ? translate("warehouse.items.deactivated.items.skipped", { v0: res.updated.length, v1: skippedCount })
+        : translate("warehouse.items.have.been.deactivated", { v0: res.updated.length });
       await onCompleted({ clearedIds: selectedProducts.map(p => p.id), message });
       onClose();
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
     } finally {
       setSubmitting(false);
     }
@@ -97,8 +101,8 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
       await onCompleted({
         clearedIds: deletedIds,
         message: blocked.length
-          ? `已删除 ${deletedIds.length} 种物料，${blocked.length} 项因关联约束未删除`
-          : `已删除 ${deletedIds.length} 种物料`,
+          ? translate("warehouse.materials.have.been.deleted.items.have.not.been.deleted.due.to", { v0: deletedIds.length, v1: blocked.length })
+          : translate("warehouse.items.have.been.deleted", { v0: deletedIds.length }),
       });
       if (blocked.length) {
         setResult({ deletedCount: deletedIds.length, failed: blocked });
@@ -115,7 +119,7 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
           error: e.message,
         });
       } else {
-        setError(e.message);
+        setError(localizeError(e.message));
       }
     } finally {
       setSubmitting(false);
@@ -124,22 +128,18 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
 
   if (mode === 'deactivate') {
     return (
-      <Modal title="批量停用物料" onClose={submitting ? () => {} : onClose}>
+      <Modal title={translate("warehouse.deactivate.materials.in.batches")} onClose={submitting ? () => {} : onClose}>
         <div className="form-body batch-dialog-body">
-          <p>待停用物料：{summarizeProductNames(activeItems)}</p>
+          <p>{translate("warehouse.materials.to.be.deactivated")}{summarizeProductNames(activeItems)}</p>
           {inactiveCount > 0 && (
-            <p className="muted">已选中的另外 {inactiveCount} 项已是停用状态，将自动跳过。</p>
+            <p className="muted">{translate("warehouse.selected.additional")}{" "}{inactiveCount}{" "}{translate("warehouse.the.item.is.inactive.and.will.be.automatically.skipped")}</p>
           )}
-          <div className="info-box">
-            仅影响当前仓库；停用保留库存和历史记录，普通开单选品默认隐藏，可从库存页面开单清库存。
-          </div>
+          <div className="info-box">{translate("warehouse.only.affects.the.current.warehouse.disables.the.retention.of.inventory.and")}</div>
           {error && <div className="info-box" role="alert">{error}</div>}
         </div>
         <div className="modal-footer">
-          <Button onClick={onClose} disabled={submitting}>取消</Button>
-          <Button kind="primary" busy={submitting} disabled={!activeItems.length} onClick={handleDeactivate}>
-            确认停用
-          </Button>
+          <Button onClick={onClose} disabled={submitting}>{translate("warehouse.cancel")}</Button>
+          <Button kind="primary" busy={submitting} disabled={!activeItems.length} onClick={handleDeactivate}>{translate("warehouse.confirm.deactivation")}</Button>
         </div>
       </Modal>
     );
@@ -147,19 +147,18 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
 
   if (result) {
     return (
-      <Modal title="批量删除结果" onClose={onClose}>
+      <Modal title={translate("warehouse.delete.results.in.batches")} onClose={onClose}>
         <div className="form-body batch-dialog-body">
           <p>
-            <strong>成功删除 {result.deletedCount} 项</strong>，失败 {result.failed.length} 项（失败项已保留选中）。
-          </p>
+            <strong>{translate("warehouse.successfully.deleted")}{" "}{result.deletedCount}{" "}{translate("warehouse.items.2")}</strong>{translate("warehouse.failed")}{" "}{result.failed.length}{translate("warehouse.items.failed.items.remain.selected")}</p>
           {result.rolledBack && (
             <div className="info-box" role="alert">
-              {result.error || '检测到物料状态已变化，本次未删除任何物料。'}
+              {result.error || translate("warehouse.it.is.detected.that.the.material.status.has.changed.and.no")}
             </div>
           )}
           {result.failed.length > 0 && (
-            <div className="batch-blocked-section" role="region" aria-label="删除失败的物料">
-              <strong>失败物料及原因：</strong>
+            <div className="batch-blocked-section" role="region" aria-label={translate("warehouse.delete.failed.materials")}>
+              <strong>{translate("warehouse.failed.materials.and.reasons")}</strong>
               <ul className="batch-blocked-list">
                 {result.failed.map(item => (
                   <li key={item.id}>
@@ -172,29 +171,25 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
           )}
         </div>
         <div className="modal-footer">
-          <Button kind="primary" onClick={onClose}>关闭</Button>
+          <Button kind="primary" onClick={onClose}>{translate("warehouse.close")}</Button>
         </div>
       </Modal>
     );
   }
 
   return (
-    <Modal title="批量删除物料" onClose={submitting ? () => {} : onClose}>
+    <Modal title={translate("warehouse.delete.materials.in.batches")} onClose={submitting ? () => {} : onClose}>
       <div className="form-body batch-dialog-body">
-        <p>已选物料：{summarizeProductNames(selectedProducts)}</p>
-        <div className="info-box">
-          仅影响当前仓库；停用保留库存和历史，开单选品默认隐藏；删除不可恢复。
-        </div>
-        {previewing && <p><LoadingStatus>正在预检物料删除条件…</LoadingStatus></p>}
+        <p>{translate("warehouse.selected.materials")}{summarizeProductNames(selectedProducts)}</p>
+        <div className="info-box">{translate("warehouse.only.affects.the.current.warehouse.disables.the.retention.of.inventory.and.2")}</div>
+        {previewing && <p><LoadingStatus>{translate("warehouse.pre.checking.material.deletion.conditions")}</LoadingStatus></p>}
         {error && <div className="info-box" role="alert">{error}</div>}
         {preview && (
           <>
-            <p>
-              预检结果：<strong>可删除 {preview.deletable.length} 项</strong>，无法删除 {preview.blocked.length} 项。
-            </p>
+            <p>{translate("warehouse.pre.check.results")}<strong>{translate("warehouse.can.be.deleted")}{" "}{preview.deletable.length}{" "}{translate("warehouse.items.2")}</strong>{translate("warehouse.cannot.be.deleted")}{" "}{preview.blocked.length}{translate("warehouse.item")}</p>
             {preview.blocked.length > 0 && (
-              <div className="batch-blocked-section" role="region" aria-label="无法删除的物料">
-                <strong>以下 {preview.blocked.length} 项物料无法删除：</strong>
+              <div className="batch-blocked-section" role="region" aria-label={translate("warehouse.items.that.cannot.be.deleted")}>
+                <strong>{translate("warehouse.below")}{" "}{preview.blocked.length}{" "}{translate("warehouse.item.item.cannot.be.deleted")}</strong>
                 <ul className="batch-blocked-list">
                   {preview.blocked.map(item => (
                     <li key={item.id}>
@@ -209,15 +204,14 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
         )}
       </div>
       <div className="modal-footer">
-        <Button onClick={onClose} disabled={submitting}>取消</Button>
+        <Button onClick={onClose} disabled={submitting}>{translate("warehouse.cancel")}</Button>
         <Button
           kind="primary"
           className="btn-danger"
           busy={submitting}
           disabled={previewing || !preview?.deletable?.length}
           onClick={handleDelete}
-        >
-          确认删除{preview?.deletable?.length ? ` (${preview.deletable.length})` : ''}
+        >{translate("warehouse.confirm.deletion")}{preview?.deletable?.length ? ` (${preview.deletable.length})` : ''}
         </Button>
       </div>
     </Modal>
@@ -225,6 +219,7 @@ export function ProductBatchDialog({ mode, selectedProducts, onClose, onComplete
 }
 
 function Products({ data, search, setSearch, edit, showProduct, barcode, onCategoriesChanged, onSaved, isAdmin }) {
+  useLocale();
   const { can } = usePermissions();
   const [status, setStatus] = useState("active");
   const [busy, setBusy] = useState(false);
@@ -236,8 +231,8 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
     if (actionLock.current) return;
     const active = product.active === 0 ? 1 : 0;
     const message = remove
-      ? `确定删除「${product.name}」？删除无法恢复，仅允许删除库存为零且没有单据、盘点和模板关联的物料。仅影响当前仓库。`
-      : `确定${active ? "启用" : "停用"}「${product.name}」？${active ? "启用后恢复普通开单选品。" : "停用后普通开单选品默认隐藏，库存和历史记录保留，可从库存页面开单清库存。"}仅影响当前仓库。`;
+      ? translate("warehouse.are.you.sure.you.want.to.delete.deletion.cannot.be.recovered", { v0: product.name })
+      : translate("warehouse.are.you.sure.only.affects.the.current.warehouse", { v0: active ? translate("warehouse.activate") : translate("warehouse.deactivate"), v1: product.name, v2: active ? translate("warehouse.after.activation.the.normal.ordering.selection.will.be.restored") : translate("warehouse.after.deactivation.the.general.ordering.selection.will.be.hidden.by.default") });
     if (!window.confirm(message)) return;
     actionLock.current = true;
     setBusy(true); setActionError("");
@@ -250,13 +245,13 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
         else next.set(product.id, { ...next.get(product.id), active });
         return next;
       });
-      await onSaved(remove ? "物料已删除" : active ? "物料已启用" : "物料已停用");
+      await onSaved(remove ? translate("warehouse.material.deleted") : active ? translate("warehouse.material.is.enabled") : translate("warehouse.material.has.been.deactivated"));
     } catch (e) { setActionError(e.message); }
     finally { actionLock.current = false; setBusy(false); }
   };
   const lifecycleActions = (p) => isAdmin && <>
-    <AntButton type="text" htmlType="button" className="text-button" disabled={busy} aria-label={`${p.active === 0 ? "启用" : "停用"} ${p.name}`} onClick={() => changeProduct(p)}>{p.active === 0 ? "启用" : "停用"}</AntButton>
-    <AntButton type="text" htmlType="button" className="text-button product-delete" disabled={busy} aria-label={`删除 ${p.name}`} onClick={() => changeProduct(p, true)}>删除</AntButton>
+    <AntButton type="text" htmlType="button" className="text-button" disabled={busy} aria-label={`${p.active === 0 ? translate("warehouse.activate") : translate("warehouse.deactivate")} ${p.name}`} onClick={() => changeProduct(p)}>{p.active === 0 ? translate("warehouse.activate") : translate("warehouse.deactivate")}</AntButton>
+    <AntButton type="text" htmlType="button" className="text-button product-delete" disabled={busy} aria-label={translate("warehouse.delete", { v0: p.name })} onClick={() => changeProduct(p, true)}>{translate("warehouse.delete.2")}</AntButton>
   </>;
   const [category, setCategory] = useState(null),
     [view, setView] = useState("list"),
@@ -334,64 +329,56 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
     <>
       <PageHeading
         eyebrow="MATERIALS"
-        title="物料管理"
-        description="按分类维护物料图片、规格型号、价格及备注。"
+        title={translate("warehouse.material.management")}
+        description={translate("warehouse.maintain.material.pictures.specifications.and.models.prices.and.remarks.by.category")}
       >
-        <Button permission="products" kind="primary" icon={Plus} onClick={() => edit(null)}>
-          新增物料
-        </Button>
+        <Button permission="products" kind="primary" icon={Plus} onClick={() => edit(null)}>{translate("warehouse.add.new.material")}</Button>
       </PageHeading>
-      {busy && <p><LoadingStatus>正在更新物料…</LoadingStatus></p>}
+      {busy && <p><LoadingStatus>{translate("warehouse.updating.material")}</LoadingStatus></p>}
       {actionError && <div className="info-box" role="alert">{actionError}</div>}
       <div className="catalog-layout">
         <aside className="panel category-sidebar">
-          <h3>物料分类</h3>
+          <h3>{translate("warehouse.material.categories")}</h3>
           <CategoryTree categories={categories} counts={stats.result?.category_counts} selected={category} onSelect={setCategory} />
         </aside>
       <section className="panel products-panel">
         <div className="table-toolbar">
           {isAdmin && (
             <div className="product-toolbar-left">
-              <Button onClick={() => setManaging(true)}>管理分类</Button>
+              <Button onClick={() => setManaging(true)}>{translate("warehouse.management.classification")}</Button>
               {view === "grid" && visible.length > 0 && (
-                <AntCheckbox className="batch-select-all" indeterminate={somePageSelected} aria-label="全选本页物料" checked={allPageSelected} onChange={togglePageAll} disabled={busy}>
+                <AntCheckbox className="batch-select-all" indeterminate={somePageSelected} aria-label={translate("warehouse.select.all.materials.on.this.page")} checked={allPageSelected} onChange={togglePageAll} disabled={busy}>
 
-                  <span>全选本页</span>
+                  <span>{translate("warehouse.select.all.this.page")}</span>
                 </AntCheckbox>
               )}
               {selectedList.length > 0 && (
-                <div className="batch-selection-bar" role="region" aria-label="批量操作">
-                  <span className="batch-selection-count">已选 {selectedList.length} 项</span>
-                  <AntButton type="text" htmlType="button" className="text-button" disabled={busy} onClick={clearSelection}>
-                    清除选择
-                  </AntButton>
+                <div className="batch-selection-bar" role="region" aria-label={translate("warehouse.batch.operations")}>
+                  <span className="batch-selection-count">{translate("warehouse.selected")}{" "}{selectedList.length}{" "}{translate("warehouse.items.2")}</span>
+                  <AntButton type="text" htmlType="button" className="text-button" disabled={busy} onClick={clearSelection}>{translate("warehouse.clear.selection")}</AntButton>
                 </div>
               )}
               <Button
                 disabled={busy || activeSelected.length === 0}
                 onClick={() => setBatchMode("deactivate")}
-              >
-                批量停用
-              </Button>
+              >{translate("warehouse.deactivate.selected")}</Button>
               <Button
                 className="product-delete"
                 disabled={busy || selectedList.length === 0}
                 onClick={() => setBatchMode("delete")}
-              >
-                批量删除
-              </Button>
+              >{translate("warehouse.delete.selected")}</Button>
             </div>
           )}
           <div className="toolbar-right product-toolbar-actions">
-            <div className="filter-tabs product-status-filter" role="group" aria-label="物料使用状态">
-              {[["all", "全部状态"], ["active", "已启用"], ["inactive", "已停用"]].map(([value, label]) => (
+            <div className="filter-tabs product-status-filter" role="group" aria-label={translate("warehouse.material.usage.status")}>
+              {[["all", translate("warehouse.all.status")], ["active", translate("warehouse.enabled")], ["inactive", translate("warehouse.deactivated")]].map(([value, label]) => (
                 <AntButton type="text" key={value} htmlType="button" className={status === value ? "active" : ""} aria-pressed={status === value} onClick={() => setStatus(value)}>{label}</AntButton>
               ))}
             </div>
             <div className="table-search">
-              <AntInput prefix={<Search size={16} />} allowClear={{ clearIcon: <X size={14} aria-label="清除搜索" /> }}
-                aria-label="筛选物料"
-                placeholder="搜索名称、条码、规格或客户料号"
+              <AntInput prefix={<Search size={16} />} allowClear={{ clearIcon: <X size={14} aria-label={translate("warehouse.clear.search")} /> }}
+                aria-label={translate("warehouse.filter.materials")}
+                placeholder={translate("warehouse.search.by.name.barcode.specification.or.customer.part.number")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -400,14 +387,14 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
             <div className="view-toggle">
               <AntButton type="text" htmlType="button"
                 className={view === "list" ? "active" : ""}
-                aria-label="列表视图"
+                aria-label={translate("warehouse.list.view")}
                 onClick={() => setView("list")}
               >
                 <List size={17} />
               </AntButton>
               <AntButton type="text" htmlType="button"
                 className={view === "grid" ? "active" : ""}
-                aria-label="网格视图"
+                aria-label={translate("warehouse.grid.view")}
                 onClick={() => setView("grid")}
               >
                 <Grid2X2 size={16} />
@@ -426,20 +413,20 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       <th className="checkbox-cell">
                         <AntCheckbox
                           indeterminate={somePageSelected}
-                          aria-label="全选本页物料"
+                          aria-label={translate("warehouse.select.all.materials.on.this.page")}
                           checked={allPageSelected}
                           onChange={togglePageAll}
                           disabled={busy || !visible.length}
                         />
                       </th>
                     )}
-                    <th>物料信息</th>
-                    <th>分类</th>
-                    <th>生产类型</th>
-                    <th className="number-cell">参考采购价 / 参考销售价</th>
-                    <th className="number-cell">当前库存</th>
-                    <th>库存状态</th>
-                    <th className="number-cell">操作</th>
+                    <th>{translate("warehouse.material.information")}</th>
+                    <th>{translate("warehouse.classification")}</th>
+                    <th>{translate("warehouse.production.type")}</th>
+                    <th className="number-cell">{translate("warehouse.reference.purchase.price.reference.sales.price")}</th>
+                    <th className="number-cell">{translate("warehouse.current.inventory")}</th>
+                    <th>{translate("warehouse.stock.status")}</th>
+                    <th className="number-cell">{translate("warehouse.operation")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -448,7 +435,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       {isAdmin && (
                         <td className="checkbox-cell">
                           <AntCheckbox
-                            aria-label={`选择 ${p.name}`}
+                            aria-label={translate("warehouse.select", { v0: p.name })}
                             checked={selectedMap.has(p.id)}
                             onChange={() => toggleSelect(p)}
                             disabled={busy}
@@ -460,7 +447,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                           <ProductArt product={p} />
                           <div>
                             <strong><ProductName product={p} onView={showProduct} /></strong>
-                            {p.active === 0 && <Badge tone="orange">已停用</Badge>}
+                            {p.active === 0 && <Badge tone="orange">{translate("warehouse.deactivated")}</Badge>}
                             <small>{p.barcode}</small>
                             {p.specification && <small className="product-spec">{p.specification}</small>}
                             {p.note && <small className="product-note" title={p.note}>{p.note}</small>}
@@ -470,11 +457,11 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       <td>
                         <span className="category-tag">{p.category}</span>
                       </td>
-                      <td>{p.production_type || '未设置'}</td>
+                      <td>{translateText(p.production_type) || translate("warehouse.not.set")}</td>
                       <td className="number-cell">
                         <div className="price-pair">
                           <strong>{currencySymbol()} {price(p.price)}</strong>
-                          <small>采购 {currencySymbol()} {price(p.cost)}</small>
+                          <small>{translate("warehouse.procurement")}{" "}{currencySymbol()} {price(p.cost)}</small>
                         </div>
                       </td>
                       <td className="number-cell">
@@ -496,7 +483,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                         <div className="row-actions">
                           <AntButton type="text" htmlType="button"
                             className="icon-button"
-                            aria-label={`查看 ${p.name} 条码`}
+                            aria-label={translate("warehouse.view.barcode", { v0: p.name })}
                             onClick={() => barcode(p)}
                           >
                             <ScanLine size={17} />
@@ -504,9 +491,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                           <AntButton type="text" htmlType="button"
                             className="text-button"
                             hidden={!can("products")} onClick={() => edit(p)}
-                          >
-                            编辑
-                          </AntButton>
+                          >{translate("warehouse.edit")}</AntButton>
                           {lifecycleActions(p)}
                         </div>
                       </td>
@@ -525,7 +510,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                         <AntCheckbox
 
                           className="product-card-checkbox"
-                          aria-label={`选择 ${p.name}`}
+                          aria-label={translate("warehouse.select", { v0: p.name })}
                           checked={selectedMap.has(p.id)}
                           onChange={() => toggleSelect(p)}
                           disabled={busy}
@@ -541,26 +526,21 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
                       {stockStatus(p)}
                     </Badge>
                   </div>
-                  <h3><ProductName product={p} onView={showProduct} /> {p.active === 0 && <Badge tone="orange">已停用</Badge>}</h3>
+                  <h3><ProductName product={p} onView={showProduct} /> {p.active === 0 && <Badge tone="orange">{translate("warehouse.deactivated")}</Badge>}</h3>
                   <p>{p.barcode}</p>
                   <p>{p.category}</p>
-                  <p>生产类型：{p.production_type || '未设置'}</p>
+                  <p>{translate("warehouse.production.type.2")}{translateText(p.production_type) || translate("warehouse.not.set")}</p>
                   {p.specification && <p className="product-spec">{p.specification}</p>}
                   {p.note && <p className="product-note" title={p.note}>{p.note}</p>}
                   <div className="product-grid-stats">
                     <strong>{currencySymbol()} {price(p.price)}</strong>
-                    <span>
-                      库存 {p.stock} {p.unit}
+                    <span>{translate("warehouse.stock")}{p.stock} {p.unit}
                     </span>
                   </div>
                   <div className="product-grid-actions">
                     <AntButton type="text" htmlType="button" onClick={() => barcode(p)}>
-                      <ScanLine size={15} />
-                      物料条码
-                    </AntButton>
-                    <AntButton type="text" htmlType="button" hidden={!can("products")} onClick={() => edit(p)}>
-                      编辑
-                      <ChevronRight size={13} />
+                      <ScanLine size={15} />{translate("warehouse.material.barcode")}</AntButton>
+                    <AntButton type="text" htmlType="button" hidden={!can("products")} onClick={() => edit(p)}>{translate("warehouse.edit")}<ChevronRight size={13} />
                     </AntButton>
                     {lifecycleActions(p)}
                   </div>
@@ -570,12 +550,10 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
           )
         ) : !list.loading && !list.error && (
           <Empty
-            title="没有找到物料"
-            description="请调整搜索条件，或新增物料。"
+            title={translate("warehouse.material.not.found")}
+            description={translate("warehouse.please.adjust.the.search.conditions.or.add.new.materials")}
             action={
-              <Button permission="products" icon={Plus} onClick={() => edit(null)}>
-                新增物料
-              </Button>
+              <Button permission="products" icon={Plus} onClick={() => edit(null)}>{translate("warehouse.add.new.material")}</Button>
             }
           />
         )}
@@ -597,7 +575,7 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
       )}
       <div className="page-hint">
         <ScanLine size={16} />
-        <span>物料条码可自动生成，支持扫码识别及标签下载。</span>
+        <span>{translate("warehouse.material.barcodes.can.be.automatically.generated.supporting.code.scanning.and.label")}</span>
       </div>
     </>
   );

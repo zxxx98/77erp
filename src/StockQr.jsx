@@ -1,3 +1,6 @@
+import { localizeError } from './i18n/errors.js';
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { parseQuantity, validQuantity, materialQuantity } from '../shared/quantity.js';
 import { ConfigProvider as AntConfigProvider, Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput, Checkbox as AntCheckbox } from './ui/controls.jsx';
@@ -27,6 +30,7 @@ const configSnapshot = form => JSON.stringify([
   form.items.map(item => [item.product_id, item.quantity === '' ? '' : Number(item.quantity), item.price === '' ? '' : Number(item.price)]),
 ]);
 function Lines({ items }) {
+  useLocale();
   return (
     <div className="stock-qr-lines">
       {items.map((i) => (
@@ -34,7 +38,7 @@ function Lines({ items }) {
           <div>
             <strong>{i.name}</strong>
             <small>
-              {i.barcode} · 库存 {i.stock} {i.unit}
+              {i.barcode}{" "}{translate("warehouse.inventory.2")}{" "}{i.stock} {i.unit}
             </small>
           </div>
           <div>
@@ -48,6 +52,7 @@ function Lines({ items }) {
 }
 // Keep complete product names and units readable on exported labels.
 function PrintableLabel({ qr, symbol, labelRef }) {
+  useLocale();
   const wrap = (value, max) => {
     const lines = [];
     let line = "",
@@ -77,7 +82,7 @@ function PrintableLabel({ qr, symbol, labelRef }) {
   const qrY = y;
   y += 280;
   add(
-    `${qr.warehouse_name} · ${qr.type === "in" ? "入库" : "出库"} · ${qr.require_confirmation ? "需要确认" : "免确认"} · ${qr.items.length} 种物料`,
+    translate("warehouse.materials.3", { v0: qr.warehouse_name, v1: qr.type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out"), v2: qr.require_confirmation ? translate("warehouse.need.confirmation") : translate("warehouse.confirmation.free"), v3: qr.items.length }),
   );
   for (const item of qr.items) {
     y += 6;
@@ -85,12 +90,12 @@ function PrintableLabel({ qr, symbol, labelRef }) {
     add(item.barcode, 11);
   }
   y += 10;
-  add("以系统当前配置为准", 11);
+  add(translate("warehouse.based.on.the.current.configuration.of.the.system"), 11);
   return (
     <svg
       ref={labelRef}
       role="img"
-      aria-label="出入库二维码"
+      aria-label={translate("warehouse.inbound.and.outbound.qr.code")}
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 420 ${y}`}
       width="420"
@@ -124,6 +129,7 @@ export function StockQrManager({
   CameraScanner,
   onClose,
 }) {
+  useLocale();
   const formId = useId();
   const contentRef = useRef(null), errorRef = useRef(null), baseline = useRef(null);
   const [rows, setRows] = useState([]),
@@ -164,7 +170,7 @@ export function StockQrManager({
           setTotal(r.total);
         }
       })
-      .catch((e) => live && setError(e.message));
+      .catch((e) => live && setError(localizeError(e.message)));
     return () => {
       live = false;
     };
@@ -177,7 +183,7 @@ export function StockQrManager({
     try {
       await fn();
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
     } finally {
       lock.current = false;
       setBusy(false);
@@ -221,7 +227,7 @@ export function StockQrManager({
             })),
           }
         : {
-            name: initialProduct ? `${initialProduct.name}入库` : "入库二维码",
+            name: initialProduct ? translate("warehouse.storage", { v0: initialProduct.name }) : translate("warehouse.warehousing.qr.code"),
             type: "in",
             max_scans: "1",
             require_confirmation: true,
@@ -236,11 +242,11 @@ export function StockQrManager({
   const add = (p) => {
     selection.remember(p);
     if (form.items.some((i) => i.product_id === p.id)) {
-      setError("该物料已在明细中，请编辑已有数量。");
+      setError(translate("warehouse.the.material.is.already.in.the.details.please.edit.the.existing"));
       return;
     }
     if (form.items.length >= 100) {
-      setError("最多配置 100 种物料。");
+      setError(translate("warehouse.configure.up.to.100.materials"));
       return;
     }
     setForm({
@@ -257,11 +263,11 @@ export function StockQrManager({
     setCamera(false);
     try {
       const p = await lookupProductCode(raw, data);
-      if (!p) throw new Error("未找到物料，请先建立物料档案。");
+      if (!p) throw new Error(translate("warehouse.material.not.found.please.create.a.material.file.first"));
       add(p);
       setBarcode("");
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
     }
   };
   const updateLine = (id, key, value) =>
@@ -277,7 +283,7 @@ export function StockQrManager({
       if (
         selected &&
         !window.confirm(
-          "保存后，已打印的二维码将按新的物料明细和配置执行。确认保存？",
+          translate("warehouse.after.saving.the.printed.qr.code.will.be.executed.according.to"),
         )
       )
         return;
@@ -307,7 +313,7 @@ export function StockQrManager({
             ) > 0.00001,
         )
       )
-        throw new Error("各物料成交单价最多四位小数。");
+        throw new Error(translate("warehouse.the.transaction.unit.price.of.each.material.can.have.up.to"));
       const q = await send(
         selected ? `/stock-qrs/${selected.qr_id}` : "/stock-qrs",
         selected ? "PUT" : "POST",
@@ -328,7 +334,7 @@ export function StockQrManager({
         if (live)
           setSymbol(qrSymbol(stockQrPayload(selected, data.instance_id)));
       })
-      .catch((e) => live && setError(e.message));
+      .catch((e) => live && setError(localizeError(e.message)));
     return () => {
       live = false;
     };
@@ -343,7 +349,7 @@ export function StockQrManager({
       setRecords(r);
     });
   const canLeave = () => mobileDevice || !form || configSnapshot(form) === baseline.current ||
-    window.confirm('二维码配置尚未保存，确定放弃修改？');
+    window.confirm(translate("warehouse.the.qr.code.configuration.has.not.been.saved.are.you.sure"));
   const back = () => {
     if (busy || !canLeave()) return;
     setSelected(null);
@@ -367,33 +373,30 @@ export function StockQrManager({
   }, [error]);
   const title = form
     ? selected
-      ? "编辑出入库二维码"
-      : "新建出入库二维码"
+      ? translate("warehouse.edit.the.qr.code.for.incoming.and.outgoing.warehouses")
+      : translate("warehouse.create.a.new.entry.and.exit.qr.code")
     : records
       ? recordKind === "usages"
-        ? "使用记录"
-        : "配置修改记录"
+        ? translate("warehouse.usage.records")
+        : translate("warehouse.configuration.modification.record")
       : selected
-        ? "出入库二维码标签"
-        : "管理出入库二维码";
+        ? translate("warehouse.inbound.and.outbound.qr.code.labels")
+        : translate("warehouse.manage.incoming.and.outgoing.qr.codes");
   return (
     <Modal title={title} onClose={close} wide presentation="drawer" drawerSize="wide"
-      headerNavigation={(selected || form) && <AntButton type="text" htmlType="button" className={`${button} drawer-header-back`} disabled={busy} onClick={back}>返回列表</AntButton>}
+      headerNavigation={(selected || form) && <AntButton type="text" htmlType="button" className={`${button} drawer-header-back`} disabled={busy} onClick={back}>{translate("warehouse.return.to.list")}</AntButton>}
       footer={<div className="modal-footer">
         {form ? <>
-          <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={back}>取消编辑</AntButton>
+          <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={back}>{translate("warehouse.cancel.edit")}</AntButton>
           <AntButton type="primary" className="btn btn-primary" htmlType="submit" form={formId} disabled={busy} aria-busy={busy}>
-            {busy && <LoadingIndicator size={20} />}保存二维码
-          </AntButton>
-        </> : <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={close}>关闭</AntButton>}
+            {busy && <LoadingIndicator size={20} />}{translate("warehouse.save.qr.code")}</AntButton>
+        </> : <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={close}>{translate("warehouse.close")}</AntButton>}
       </div>}
     >
       <div ref={contentRef} className="form-body stock-qr-manager" aria-busy={busy}>
-        {busy && <p><LoadingStatus>正在处理出入库二维码…</LoadingStatus></p>}
+        {busy && <p><LoadingStatus>{translate("warehouse.processing.the.inbound.and.outbound.qr.code")}</LoadingStatus></p>}
         {mobileDevice && (selected || form) && (
-          <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={back}>
-            返回列表
-          </AntButton>
+          <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={back}>{translate("warehouse.return.to.list")}</AntButton>
         )}
         {error && (
           <p ref={errorRef} className="form-error" role="alert">
@@ -409,9 +412,7 @@ export function StockQrManager({
             }}
           >
             <AntConfigProvider componentDisabled={busy}><fieldset disabled={busy}>
-              <label>
-                二维码名称
-                <FormField label="二维码名称" value={form.name} required maxLength={60}><AntInput
+              <label>{translate("warehouse.qr.code.name")}<FormField label={translate("warehouse.qr.code.name")} value={form.name} required maxLength={60}><AntInput
 
                   data-autofocus
                   maxLength={60}
@@ -419,9 +420,7 @@ export function StockQrManager({
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 /></FormField>
               </label>
-              <label>
-                操作类型
-                <Select aria-label="操作类型"
+              <label>{translate("warehouse.operation.type")}<Select aria-label={translate("warehouse.operation.type")}
                   value={form.type}
                   disabled={!!selected}
                   onChange={(e) => {
@@ -442,16 +441,14 @@ export function StockQrManager({
                     });
                   }}
                 >
-                  <option value="in">入库</option>
-                  <option value="out">出库</option>
+                  <option value="in">{translate("warehouse.stock.in")}</option>
+                  <option value="out">{translate("warehouse.stock.out")}</option>
                 </Select>
               </label>
-              <h3>物料明细（{form.items.length}/100）</h3>
-              <label>
-                搜索添加物料
-                <AntInput
+              <h3>{translate("warehouse.material.details.3")}{form.items.length}/100）</h3>
+              <label>{translate("warehouse.search.to.add.materials")}<AntInput
                   value={query}
-                  placeholder="输入名称或编码"
+                  placeholder={translate("warehouse.enter.name.or.code")}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </label>
@@ -476,11 +473,11 @@ export function StockQrManager({
                   className={button}
                   onClick={() => setCamera(!camera)}
                 >
-                  {camera ? "关闭摄像头" : "扫描添加物料"}
+                  {camera ? translate("warehouse.turn.off.camera") : translate("warehouse.scan.to.add.materials")}
                 </AntButton>
                 <AntInput
                   ref={barcodeInput}
-                  aria-label="添加物料条码"
+                  aria-label={translate("warehouse.add.material.barcode")}
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
@@ -488,23 +485,21 @@ export function StockQrManager({
                   htmlType="button"
                   className={button}
                   onClick={() => scan(barcode)}
-                >
-                  识别物料
-                </AntButton>
+                >{translate("warehouse.identify.materials")}</AntButton>
               </div>
-              {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title="扫码添加物料" note="识别后自动添加到二维码物料明细"
+              {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} title={translate("warehouse.scan.code.to.add.materials")} note={translate("warehouse.automatically.added.to.the.qr.code.material.details.after.identification")}
                 onManual={() => { setCamera(false); requestAnimationFrame(() => barcodeInput.current?.focus()); }} />}
               {form.items.map((i, index) => (
                 <div className="stock-qr-edit-line" key={i.product_id}>
                   <strong>
                     {i.name}{" "}
                     <small>
-                      {i.barcode} · 库存 {i.stock} {i.unit}
+                      {i.barcode}{" "}{translate("warehouse.inventory.2")}{" "}{i.stock} {i.unit}
                     </small>
                   </strong>
                   <label>
-                    {i.name} 单次数量（{i.unit}）
-                    <FormField label="单次数量（ ）" value={i.quantity} required type="number" min={0.0001} max={99999999}><AntInput
+                    {i.name}{" "}{translate("warehouse.single.quantity")}{i.unit}）
+                    <FormField label={translate("warehouse.single.quantity.2")} value={i.quantity} required type="number" min={0.0001} max={99999999}><AntInput
                       type="number"
                       min={0.0001}
                       max={99999999}
@@ -517,8 +512,7 @@ export function StockQrManager({
                     /></FormField>
                   </label>
                   <label>
-                    {i.name} 成交单价
-                    <FormField label="成交单价" value={i.price} required type="number" min={0} max={99999999}><AntInput
+                    {i.name}{translate("warehouse.transaction.unit.price")}<FormField label={translate("warehouse.transaction.unit.price")} value={i.price} required type="number" min={0} max={99999999}><AntInput
                       type="number"
                       min={0}
                       max={99999999}
@@ -529,16 +523,13 @@ export function StockQrManager({
                       }
                     /></FormField>
                   </label>
-                  <span>
-                    金额{" "}
+                  <span>{translate("warehouse.amount")}{" "}
                     {money(
                       Math.round(quantityOf(i) * Number(i.price) * 100),
                     )}
                   </span>
                   {form.type === "out" && Number(i.quantity) > i.stock && (
-                    <p className="form-error">
-                      当前库存不足，暂时无法整组执行。
-                    </p>
+                    <p className="form-error">{translate("warehouse.the.current.inventory.is.insufficient.and.the.entire.group.cannot.be")}</p>
                   )}
                   <div className="stock-qr-actions">
                     <AntButton type="text"
@@ -553,9 +544,7 @@ export function StockQrManager({
                         ];
                         setForm({ ...form, items });
                       }}
-                    >
-                      上移
-                    </AntButton>
+                    >{translate("warehouse.move.up")}</AntButton>
                     <AntButton type="text"
                       htmlType="button"
                       className={button}
@@ -567,15 +556,12 @@ export function StockQrManager({
                           ),
                         })
                       }
-                    >
-                      移除 {i.name}
+                    >{translate("warehouse.remove.2")}{i.name}
                     </AntButton>
                   </div>
                 </div>
               ))}
-              <p>
-                单次总金额：
-                {money(
+              <p>{translate("warehouse.total.amount.per.trip")}{money(
                   form.items.reduce(
                     (s, i) =>
                       s +
@@ -585,13 +571,9 @@ export function StockQrManager({
                 )}
               </p>
               {selected && (
-                <p>
-                  已使用 {selected.used_scans} 次；修改组合不会清零已用次数。
-                </p>
+                <p>{translate("warehouse.already.used")}{selected.used_scans}{translate("warehouse.times.modifying.the.combination.will.not.clear.the.used.times")}</p>
               )}
-              <label>
-                次数限制
-                <Select aria-label="次数限制"
+              <label>{translate("warehouse.number.of.times.limit")}<Select aria-label={translate("warehouse.number.of.times.limit")}
                   value={form.max_scans === null ? "unlimited" : "limited"}
                   onChange={(e) =>
                     setForm({
@@ -603,14 +585,12 @@ export function StockQrManager({
                     })
                   }
                 >
-                  <option value="limited">限制次数</option>
-                  <option value="unlimited">不限次数</option>
+                  <option value="limited">{translate("warehouse.limit.the.number.of.times")}</option>
+                  <option value="unlimited">{translate("warehouse.unlimited.times")}</option>
                 </Select>
               </label>
               {form.max_scans !== null && (
-                <label>
-                  可扫描次数（累计上限）
-                  <FormField label="可扫描次数（累计上限）" value={form.max_scans} required type="number" min={Math.max(selected?.used_scans || 0, 1)} max={99999999}><AntInput
+                <label>{translate("warehouse.number.of.scans.possible.accumulated.upper.limit")}<FormField label={translate("warehouse.number.of.scans.possible.accumulated.upper.limit")} value={form.max_scans} required type="number" min={Math.max(selected?.used_scans || 0, 1)} max={99999999}><AntInput
                     type="number"
                     min={Math.max(selected?.used_scans || 0, 1)}
                     max={99999999}
@@ -624,25 +604,18 @@ export function StockQrManager({
               )}
               <AntCheckbox className="stock-qr-check" checked={form.require_confirmation} onChange={(e) =>
                     setForm({ ...form, require_confirmation: e.target.checked })
-                  }>
-
-                需要二次确认
-              </AntCheckbox>
+                  }>{translate("warehouse.need.second.confirmation")}</AntCheckbox>
               {!form.require_confirmation && (
-                <p className="info-box">
-                  扫码后将直接生成整张单据并更新全部物料库存。
-                </p>
+                <p className="info-box">{translate("warehouse.after.scanning.the.qr.code.the.entire.document.will.be.directly")}</p>
               )}
               <ContactPicker contacts={(data.contacts || []).filter(c => c.active && contactMatchesDirection(c, form.type))}
-                label="往来单位" value={form.partner} selectedId={form.partner_id} required disabled={busy}
+                label={translate("warehouse.business.partner")} value={form.partner} selectedId={form.partner_id} required disabled={busy}
                 onChange={partner => {
                   const contact = (data.contacts || []).find(c => c.active && contactMatchesDirection(c, form.type) && c.name === partner);
                   setForm({ ...form, partner, partner_id: contact?.id });
                 }}
                 onSelect={contact => setForm({ ...form, partner: contact.name, partner_id: contact.id })} />
-              <label>
-                单据备注
-                <AntInput.TextArea
+              <label>{translate("warehouse.document.remarks")}<AntInput.TextArea
                   maxLength={500}
                   value={form.note}
                   onChange={(e) => setForm({ ...form, note: e.target.value })}
@@ -650,27 +623,22 @@ export function StockQrManager({
               </label>
               <AntCheckbox className="stock-qr-check" checked={form.enabled} onChange={(e) =>
                     setForm({ ...form, enabled: e.target.checked })
-                  }>
-
-                启用
-              </AntCheckbox>
-              {mobileDevice && <AntButton type="primary" className="btn btn-primary" htmlType="submit">
-                保存二维码
-              </AntButton>}
+                  }>{translate("warehouse.activate")}</AntCheckbox>
+              {mobileDevice && <AntButton type="primary" className="btn btn-primary" htmlType="submit">{translate("warehouse.save.qr.code")}</AntButton>}
             </fieldset></AntConfigProvider>
           </AntForm>
         ) : records ? (
           <>
-            {!records.rows.length && <p>暂无记录。</p>}
+            {!records.rows.length && <p>{translate("warehouse.no.records.yet")}</p>}
             {records.rows.map((r) => (
               <section className="stock-qr-record" key={r.id}>
                 <strong>
                   {r.order
-                    ? `${r.order.number} · ${r.order.status === "void" ? "已作废" : "有效"}`
-                    : `配置版本 ${r.version}`}
+                    ? `${r.order.number} · ${r.order.status === "void" ? translate("warehouse.voided") : translate("warehouse.valid")}`
+                    : translate("warehouse.configuration.version", { v0: r.version })}
                 </strong>
                 <p>
-                  {r.created_by_name || "操作人未知"} · {r.created_at}
+                  {r.created_by_name || translate("warehouse.operator.unknown")} · {r.created_at}
                 </p>
                 <Lines items={r.snapshot.items} />
               </section>
@@ -680,19 +648,13 @@ export function StockQrManager({
                 className={button}
                 disabled={busy || recordPage === 1}
                 onClick={() => recordLoad(selected, recordKind, recordPage - 1)}
-              >
-                上一页
-              </AntButton>
-              <span>
-                第 {recordPage} 页 · 共 {records.total} 条
-              </span>
+              >{translate("warehouse.previous.page")}</AntButton>
+              <span>{translate("warehouse.no.2")}{recordPage}{" "}{translate("warehouse.pages.total")}{" "}{records.total}{translate("warehouse.records")}</span>
               <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy || recordPage * 20 >= records.total}
                 onClick={() => recordLoad(selected, recordKind, recordPage + 1)}
-              >
-                下一页
-              </AntButton>
+              >{translate("warehouse.next.page")}</AntButton>
             </div>
           </>
         ) : selected ? (
@@ -700,10 +662,9 @@ export function StockQrManager({
             <h3>{selected.name}</h3>
             <p>
               {selected.warehouse_name} ·{" "}
-              {selected.type === "in" ? "入库" : "出库"} ·{" "}
-              {selected.require_confirmation ? "需要二次确认" : "免确认"} · 已用{" "}
-              {selected.used_scans}/{selected.max_scans ?? "不限"} 次
-            </p>
+              {selected.type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out")} ·{" "}
+              {selected.require_confirmation ? translate("warehouse.need.second.confirmation") : translate("warehouse.confirmation.free")}{" "}{translate("warehouse.used")}{" "}
+              {selected.used_scans}/{selected.max_scans ?? translate("warehouse.no.limit")}{translate("warehouse.times")}</p>
             {symbol && (
               <PrintableLabel
                 qr={selected}
@@ -717,9 +678,7 @@ export function StockQrManager({
                 className={button}
                 disabled={busy}
                 onClick={() => edit(selected)}
-              >
-                编辑配置
-              </AntButton>
+              >{translate("warehouse.edit.configuration")}</AntButton>
               <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={!symbol}
@@ -730,72 +689,63 @@ export function StockQrManager({
                     "image/svg+xml",
                   )
                 }
-              >
-                下载标签
-              </AntButton>
+              >{translate("warehouse.download.tags")}</AntButton>
               <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy}
                 onClick={() => recordLoad(selected, "usages")}
-              >
-                查看使用记录
-              </AntButton>
+              >{translate("warehouse.view.usage.history")}</AntButton>
               <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={busy}
                 onClick={() => recordLoad(selected, "revisions")}
-              >
-                查看修改记录
-              </AntButton>
+              >{translate("warehouse.view.modification.history")}</AntButton>
             </div>
           </>
         ) : (
           <>
             <div className="stock-qr-actions">
-              <AntButton type="primary" htmlType="button" className="btn btn-primary" onClick={() => edit(null)}>
-                新建二维码
-              </AntButton>
+              <AntButton type="primary" htmlType="button" className="btn btn-primary" onClick={() => edit(null)}>{translate("warehouse.create.a.new.qr.code")}</AntButton>
               <Select
-                aria-label="按操作类型筛选"
+                aria-label={translate("warehouse.filter.by.action.type")}
                 value={type}
                 onChange={(e) => {
                   setType(e);
                   setPage(1);
                 }}
               >
-                <option value="">全部类型</option>
-                <option value="in">入库</option>
-                <option value="out">出库</option>
+                <option value="">{translate("warehouse.all.types")}</option>
+                <option value="in">{translate("warehouse.stock.in")}</option>
+                <option value="out">{translate("warehouse.stock.out")}</option>
               </Select>
               <Select
-                aria-label="按二维码状态筛选"
+                aria-label={translate("warehouse.filter.by.qr.code.status")}
                 value={status}
                 onChange={(e) => {
                   setStatus(e);
                   setPage(1);
                 }}
               >
-                <option value="">全部状态</option>
-                <option value="available">可用</option>
-                <option value="exhausted">已用完</option>
-                <option value="disabled">已停用</option>
+                <option value="">{translate("warehouse.all.status")}</option>
+                <option value="available">{translate("warehouse.available")}</option>
+                <option value="exhausted">{translate("warehouse.used.up")}</option>
+                <option value="disabled">{translate("warehouse.deactivated")}</option>
               </Select>
             </div>
-            {!rows.length && <p>暂无出入库二维码，请新建并添加物料明细。</p>}
+            {!rows.length && <p>{translate("warehouse.there.is.currently.no.qr.code.for.incoming.and.outgoing.warehouses")}</p>}
             {rows.map((q) => (
               <section key={q.qr_id} className="stock-qr-record">
                 <h3>{q.name}</h3>
                 <p>
-                  {q.type === "in" ? "入库" : "出库"} · {q.items.length} 种物料
-                  · 已用 {q.used_scans}/{q.max_scans ?? "不限"} 次 ·{" "}
-                  {q.require_confirmation ? "需要二次确认" : "免确认"} ·{" "}
+                  {q.type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out")} · {q.items.length}{translate("warehouse.material.used")}{q.used_scans}/{q.max_scans ?? translate("warehouse.no.limit")}{" "}{translate("warehouse.times.2")}{" "}
+                  {q.require_confirmation ? translate("warehouse.need.second.confirmation") : translate("warehouse.confirmation.free")} ·{" "}
                   {!q.enabled
-                    ? "已停用"
+                    ? translate("warehouse.deactivated")
                     : q.remaining_scans === 0
-                      ? "已用完"
+                      ? translate("warehouse.used.up")
                       : q.items.some((i) => i.product_changed)
-                        ? "物料已变化"
-                        : "可用"}
+                        ? translate("warehouse.material.has.changed")
+                        : translate("warehouse.available")}
                 </p>
                 <Lines items={q.items} />
                 <div className="stock-qr-actions">
@@ -805,12 +755,8 @@ export function StockQrManager({
                       setSelected(q);
                       setError("");
                     }}
-                  >
-                    查看标签
-                  </AntButton>
-                  <AntButton type="text" htmlType="button" className={button} aria-label={`编辑 ${q.name}`} onClick={() => edit(q)}>
-                    编辑
-                  </AntButton>
+                  >{translate("warehouse.view.tags")}</AntButton>
+                  <AntButton type="text" htmlType="button" className={button} aria-label={translate("warehouse.edit.2", { v0: q.name })} onClick={() => edit(q)}>{translate("warehouse.edit")}</AntButton>
                   <AntButton type="text" htmlType="button"
                     className={button}
                     disabled={busy}
@@ -825,7 +771,7 @@ export function StockQrManager({
                       })
                     }
                   >
-                    {q.enabled ? "停用" : "启用"}
+                    {q.enabled ? translate("warehouse.deactivate") : translate("warehouse.activate")}
                   </AntButton>
                 </div>
               </section>
@@ -835,19 +781,13 @@ export function StockQrManager({
                 className={button}
                 disabled={page === 1}
                 onClick={() => setPage(page - 1)}
-              >
-                上一页
-              </AntButton>
-              <span>
-                第 {page} 页 · 共 {total} 条
-              </span>
+              >{translate("warehouse.previous.page")}</AntButton>
+              <span>{translate("warehouse.no.2")}{page}{" "}{translate("warehouse.pages.total")}{" "}{total}{translate("warehouse.records")}</span>
               <AntButton type="text" htmlType="button"
                 className={button}
                 disabled={page * 20 >= total}
                 onClick={() => setPage(page + 1)}
-              >
-                下一页
-              </AntButton>
+              >{translate("warehouse.next.page")}</AntButton>
             </div>
           </>
         )}
@@ -866,6 +806,7 @@ export function StockQrExecution({
   onSaved,
   onBusy,
 }) {
+  useLocale();
   const storageKey = `77erp-stock-qr-pending:${location.origin}:${data.instance_id}:${userKey}:${data.warehouse_id}`;
   const [preview, setPreview] = useState(null),
     [pending, setPending] = useState(() => {
@@ -900,12 +841,12 @@ export function StockQrExecution({
       localStorage.removeItem(storageKey);
       onLabelDone();
       try {
-        await onSaved(`单据 ${r.number} 已保存`);
+        await onSaved(translate("warehouse.document.saved", { v0: r.number }));
       } catch {
-        setError("单据已保存，数据刷新失败，请刷新页面。");
+        setError(translate("warehouse.the.document.has.been.saved.data.refresh.failed.please.refresh.the"));
       }
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
       if (e.status >= 400 && e.status < 500 && ![401, 403].includes(e.status)) {
         setPending(null);
         setPreview(null);
@@ -932,7 +873,7 @@ export function StockQrExecution({
     if (!label || processed.current === label) return;
     processed.current = label;
     if (pending) {
-      setError("上次扫码结果未知，请先重试原请求。");
+      setError(translate("warehouse.the.result.of.the.last.qr.code.scan.is.unknown.please"));
       onLabelDone();
       return;
     }
@@ -955,7 +896,7 @@ export function StockQrExecution({
       })
       .catch((e) => {
         if (live) {
-          setError(e.message);
+          setError(localizeError(e.message));
           onLabelDone();
         }
       })
@@ -978,7 +919,7 @@ export function StockQrExecution({
   };
   return (
     <>
-      {busy && <p><LoadingStatus>正在处理扫码请求…</LoadingStatus></p>}
+      {busy && <p><LoadingStatus>{translate("warehouse.processing.qr.code.scan.request")}</LoadingStatus></p>}
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -986,26 +927,24 @@ export function StockQrExecution({
       )}
       {pending && (
         <section className="info-box">
-          <p>上次扫码提交结果未知，请重试同一请求，避免重复出入库。</p>
+          <p>{translate("warehouse.the.result.of.the.last.qr.code.submission.is.unknown.please")}</p>
           <AntButton type="primary" htmlType="button"
             className="btn btn-primary"
             disabled={busy}
             onClick={() => execute(pending)}
-          >
-            重试原扫码请求
-          </AntButton>
+          >{translate("warehouse.retry.the.original.scan.code.request")}</AntButton>
         </section>
       )}
       {result && (
         <section className="stock-qr-record" role="status">
-          <strong>单据 {result.number} 已保存</strong>
+          <strong>{translate("warehouse.document")}{" "}{result.number}{" "}{translate("warehouse.saved")}</strong>
           <Lines items={result.items} />
-          <p>剩余次数：{result.remaining_scans ?? "不限"}</p>
+          <p>{translate("warehouse.remaining.times")}{result.remaining_scans ?? translate("warehouse.no.limit")}</p>
         </section>
       )}
       {preview?.require_confirmation && !pending && (
         <Modal
-          title={preview.type === "in" ? "确认入库" : "确认出库"}
+          title={preview.type === "in" ? translate("warehouse.confirm.storage.2") : translate("warehouse.confirm.delivery.2")}
           onClose={cancel}
           wide
         >
@@ -1014,13 +953,9 @@ export function StockQrExecution({
               {preview.warehouse_name} · {preview.name}
             </p>
             <Lines items={preview.items} />
-            <p>
-              总金额 {money(preview.total_cents)} · 往来单位：
-              {preview.partner_name}
+            <p>{translate("warehouse.total.amount.2")}{money(preview.total_cents)}{translate("warehouse.corresponding.units")}{preview.partner_name}
             </p>
-            <p>
-              备注：{preview.note || "无"} · 剩余次数：
-              {preview.remaining_scans ?? "不限"}
+            <p>{translate("warehouse.remarks.2")}{preview.note || translate("warehouse.none")}{translate("warehouse.remaining.times.2")}{preview.remaining_scans ?? translate("warehouse.no.limit")}
             </p>
             {error && (
               <p className="form-error" role="alert">
@@ -1029,9 +964,7 @@ export function StockQrExecution({
             )}
           </div>
           <div className="modal-footer">
-            <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={cancel}>
-              取消
-            </AntButton>
+            <AntButton type="text" htmlType="button" className={button} disabled={busy} onClick={cancel}>{translate("warehouse.cancel")}</AntButton>
             <AntButton type="primary" htmlType="button"
               className="btn btn-primary"
               disabled={busy}
@@ -1039,7 +972,7 @@ export function StockQrExecution({
               aria-busy={busy}
             >
               {busy && <LoadingIndicator size={20} />}
-              {preview.type === "in" ? "确认入库" : "确认出库"}
+              {preview.type === "in" ? translate("warehouse.confirm.storage.2") : translate("warehouse.confirm.delivery.2")}
             </AntButton>
           </div>
         </Modal>

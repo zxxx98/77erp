@@ -123,12 +123,15 @@ export function aggregateQualityChart(config,definition,entries,filters={},trace
         if(chartDateTypes.includes(axis.type))x=dateBucket(calendarDate(x,axis.type),config.bucket);
         const grouped=config.groupBy?.system==='material'?(binding?.product_id?`material:${binding.product_id}`:'未绑定物料'):read(config.groupBy);
         const series=config.groupBy?String(empty(grouped)?'（空）':grouped):'统计值';
+        // Keep the series identity stable for source drilldown; only generated
+        // display labels receive metadata, never matching user-entered text.
+        const seriesLabelKey=!config.groupBy?'statistic':config.groupBy.system==='material'&&!binding?.product_id?'unboundMaterial':empty(grouped)?'empty':undefined;
         const metric=config.metric,aggregation=metric.aggregation;
         const value=read(metric.value);
         if(aggregation!=='count'&&!number(value)){stats.excluded++;continue;}
         const key=JSON.stringify([x,series]);
         let group=groups.get(key);
-        if(!group){group={x,series,seriesLabel:config.groupBy?.system==='material'&&binding?.product?`${binding.product.name} · ${binding.product.barcode}`:series,count:0,sum:0,min:Infinity,max:-Infinity,sources:[]};groups.set(key,group);}
+        if(!group){group={x,series,seriesLabel:config.groupBy?.system==='material'&&binding?.product?`${binding.product.name} · ${binding.product.barcode}`:series,...(seriesLabelKey?{seriesLabelKey}:{}),count:0,sum:0,min:Infinity,max:-Infinity,sources:[]};groups.set(key,group);}
         if(groups.size>1000||stats.records>=20000)fail('图表数据超过 1000 个分组或 20000 条记录，请缩小时间或验收单范围。');
         group.count++;stats.records++;
         if(number(value)){group.sum+=value;group.min=Math.min(group.min,value);group.max=Math.max(group.max,value);}
@@ -146,7 +149,7 @@ export function aggregateQualityChart(config,definition,entries,filters={},trace
     const aggregation=config.metric.aggregation;
     let value=aggregation==='count'?group.count:aggregation==='avg'?group.sum/group.count:aggregation==='min'?group.min:aggregation==='max'?group.max:group.sum;
     if(value!==null&&!Number.isFinite(value))fail('统计结果超出数值范围，请缩小统计范围。');
-    return {x:group.x,series:group.series,seriesLabel:group.seriesLabel,value,count:group.count};
+    return {x:group.x,series:group.series,seriesLabel:group.seriesLabel,...(group.seriesLabelKey?{seriesLabelKey:group.seriesLabelKey}:{}),value,count:group.count};
   });
   return {rows,stats,xType:axis.type==='datetime'?'date':axis.type,unit:fields.find(field=>refKey(field.ref)===refKey(config.metric.value))?.unit||''};
 }

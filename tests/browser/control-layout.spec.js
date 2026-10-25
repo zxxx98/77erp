@@ -29,7 +29,7 @@ for (const scenario of [
     const server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
     const baseURL = `http://127.0.0.1:${server.address().port}`;
-    const context = await browser.newContext({ baseURL, viewport: { width: scenario.width, height: 900 },
+    const context = await browser.newContext({ locale: 'zh-CN', baseURL, viewport: { width: scenario.width, height: 900 },
       ...(scenario.mobile ? { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148', isMobile: true, hasTouch: true } : {}),
     });
     try {

@@ -41,7 +41,7 @@ async function fixture(page, worker = false) {
 
 for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child BOM then root without double consumption`, async ({ page, browser }) => {
   test.setTimeout(90000);
-  const context = mode === 'pwa' ? await browser.newContext({ serviceWorkers: 'allow', viewport: { width: 390, height: 844 }, userAgent: iphone }) : null;
+  const context = mode === 'pwa' ? await browser.newContext({ locale: 'zh-CN', serviceWorkers: 'allow', viewport: { width: 390, height: 844 }, userAgent: iphone }) : null;
   if (context) page = await context.newPage();
   if (mode !== 'desktop') {
     await page.setViewportSize({ width: 390, height: 844 });

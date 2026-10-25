@@ -41,7 +41,7 @@ export function installWarehouses(app, db) {
     const raw = req.query.warehouse_id ?? req.get('X-Warehouse-ID') ?? '1';
     const id = Number(raw);
     req.warehouse = Number.isSafeInteger(id) && id > 0 && /^\d+$/.test(String(raw)) ? db.prepare('SELECT * FROM warehouses WHERE id=?').get(id) : null;
-    if (!req.warehouse) return res.status(400).json({ error: '仓库不存在，请重新选择仓库。' });
+    if (!req.warehouse) return res.status(400).json({ error: '仓库不存在，请重新选择仓库。', code: 'WAREHOUSE_NOT_FOUND' });
     // Guard every route accepting existing business IDs, including financial corrections.
     const checks = [];
     const match = /^\/(products|orders|templates|payments|categories)\/([^/]+)(?:\/|$)/.exec(path);

@@ -7,7 +7,7 @@ test('two users keep conflicting edits, compare the latest product and explicitl
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 390, height: 844 } });
   try {
     expect((await page.request.post(base + '/api/auth/setup', { data: { username: 'owner', password: 'Test-password-123' } })).status()).toBe(201);
     expect((await page.request.post(base + '/api/users', { data: { position_id: await browserPosition(page.request, ['products'], base), username: 'staff', password: 'Test-password-123', role: 'employee' } })).status()).toBe(201);

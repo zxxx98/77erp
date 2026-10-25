@@ -1,3 +1,6 @@
+import { localizeError } from './i18n/errors.js';
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { Form as AntForm } from 'antd';
 import { Select } from './Dropdown.jsx';
 import { Spin, Button as AntButton, Input as AntInput } from './ui/controls.jsx';
@@ -10,24 +13,28 @@ import "./auth.css";
 import warehouseIllustration from './assets/auth-warehouse.webp';
 import warehouseIllustrationSmall from './assets/auth-warehouse-small.webp';
 import { clearUserDrafts } from './pwa/drafts.js';
+import { LanguageSwitcher } from './i18n/LanguageSwitcher.jsx';
+import { setLanguageUser } from './i18n/index.js';
 
 export function AuthGate({ children }) {
+  useLocale();
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useEffect(() => { setLanguageUser(state); }, [state?.authenticated, state?.id, state?.language]);
   const refresh = async () => {
     setError("");
     try {
       setState(await api("/auth/status"));
     } catch (e) {
-      setError(navigator.onLine === false ? '当前离线，请联网后登录。' : e.message);
+      setError(navigator.onLine === false ? translate("system.currently.offline.please.log.in.after.connecting.to.the.internet") : e.message);
     }
   };
   useEffect(() => {
     refresh();
     const unauthorized = () => {
       setState({ initialized: true, authenticated: false });
-      setNotice("登录已失效，请重新登录。");
+      setNotice(translate("system.login.has.expired.please.log.in.again"));
     };
     window.addEventListener("erp:unauthorized", unauthorized);
     window.addEventListener('online', refresh);
@@ -41,7 +48,7 @@ export function AuthGate({ children }) {
     const inspect = async () => {
       if (checking || !navigator.onLine || document.visibilityState !== 'visible') return;
       checking = true;
-      try { const next = await api('/auth/status', { signal: controller.signal }); if (!controller.signal.aborted) setState(previous => previous?.permissions_version !== next.permissions_version || previous?.id !== next.id || previous?.access_mode !== next.access_mode ? next : previous); }
+      try { const next = await api('/auth/status', { signal: controller.signal }); if (!controller.signal.aborted) setState(previous => previous?.permissions_version !== next.permissions_version || previous?.id !== next.id || previous?.access_mode !== next.access_mode || previous?.language !== next.language ? next : previous); }
       catch {} finally { checking = false; }
     };
     const timer = setInterval(inspect, 15000);
@@ -54,17 +61,18 @@ export function AuthGate({ children }) {
     window.dispatchEvent(new Event('erp:logout'));
     let cleanupNotice = '';
     try { await clearUserDrafts(state.id); }
-    catch { cleanupNotice = '已退出登录，本地草稿清理失败，请检查浏览器存储设置。'; }
+    catch { cleanupNotice = translate("system.logged.out.local.draft.cleanup.failed.please.check.browser.storage.settings"); }
     setState({ initialized: true, authenticated: false });
     setNotice(cleanupNotice);
   };
   if (!state) {
     return (
       <main className="auth-loading" aria-live="polite">
+        <div className="auth-language"><LanguageSwitcher /></div>
         {error ? (
-          <><p role="alert">{error}</p><AntButton type="primary" htmlType="button" className="btn btn-primary" onClick={refresh}>重新连接</AntButton></>
+          <><p role="alert">{error}</p><AntButton type="primary" htmlType="button" className="btn btn-primary" onClick={refresh}>{translate("system.reconnect")}</AntButton></>
         ) : (
-          <><LoadingIndicator size={64} /><p>正在连接工作空间…</p></>
+          <><LoadingIndicator size={64} /><p>{translate("system.connecting.to.workspace")}</p></>
         )}
       </main>
     );
@@ -82,6 +90,7 @@ export function AuthGate({ children }) {
 }
 
 function AuthPage({ setup, notice, onSuccess, onConflict }) {
+  useLocale();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async ({ username, name, password, baseCurrency }) => {
@@ -95,7 +104,7 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
       });
       onSuccess(state);
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
       if (e.status === 409) await onConflict();
     } finally {
       setBusy(false);
@@ -103,63 +112,64 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
   };
   return (
     <main className="auth-page">
+      <div className="auth-language"><LanguageSwitcher /></div>
       <section className="auth-intro" aria-label="77 ERP">
         <div className="brand auth-brand">
           <span className="brand-mark"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 12h11l-7 17m10-17h10l-7 17" /></svg></span>
-          <div><strong>77 <span>ERP</span></strong><small>轻量进销存</small></div>
+          <div><strong>77 <span>ERP</span></strong><small>{translate("system.inventory.management")}</small></div>
         </div>
         <div className="auth-intro-content">
-          <h2>物料、库存与单据<br />集中管理</h2>
-          <p>记录每一次入库与出库，掌握当前库存。</p>
+          <h2>{translate("system.materials.inventory.and.documents")}<br />{translate("system.centralized.management")}</h2>
+          <p>{translate("system.record.every.entry.and.exit.to.keep.track.of.current.inventory")}</p>
           <img className="auth-warehouse-illustration"
             src={warehouseIllustration}
             srcSet={`${warehouseIllustrationSmall} 768w, ${warehouseIllustration} 1536w`}
             sizes="(max-width: 760px) 1px, (min-width: 2464px) 1040px, 42vw"
             width="1536" height="1024" alt="" loading="lazy" decoding="async" />
         </div>
-        <span className="auth-intro-footer">77 ERP · 轻量进销存系统</span>
+        <span className="auth-intro-footer">{translate("system.77.erp.lightweight.purchase.sales.and.inventory.system")}</span>
       </section>
       <section className="auth-form-panel">
         <div className="auth-form-wrap">
           <span className="auth-form-icon">{setup ? <ShieldCheck size={24} /> : <LockKeyhole size={24} />}</span>
           <div className="auth-form-heading">
-            <span className="auth-eyebrow">{setup ? "首次初始化" : "账号登录"}</span>
-            <h1>{setup ? "设置管理员" : "账号登录"}</h1>
-            <p>{setup ? "首次使用，请创建管理员账号。" : "使用管理员分配的账号登录。"}</p>
+            <span className="auth-eyebrow">{setup ? translate("system.first.time.setup") : translate("system.sign.in")}</span>
+            <h1>{setup ? translate("system.set.up.administrator") : translate("system.sign.in")}</h1>
+            <p>{setup ? translate("system.for.first.time.use.please.create.an.administrator.account") : translate("system.log.in.using.the.account.assigned.by.the.administrator")}</p>
           </div>
           <AntForm noValidate layout="vertical" className="auth-form" onFinish={submit} disabled={busy}
             initialValues={{ baseCurrency: 'USD' }} scrollToFirstError={{ focus: true }}>
-            <AntForm.Item name="username" label={setup ? '管理员账号' : '账号'} rules={[
-              { required: true, message: '请输入账号' },
-              ...(setup ? [{ pattern: /^[A-Za-z0-9_.\-]{3,32}$/, message: '账号须为 3–32 位字母、数字或 ._-' }] : []),
+            <AntForm.Item name="username" label={setup ? translate("system.administrator.account") : translate("system.account")} rules={[
+              { required: true, message: translate("system.please.enter.account.number") },
+              ...(setup ? [{ pattern: /^[A-Za-z0-9_.\-]{3,32}$/, message: translate("system.account.number.must.be.3.32.letters.numbers.or") }] : []),
             ]}>
               <AntInput prefix={<UserRound size={17} />} autoComplete="username" autoCapitalize="none" spellCheck={false}
-                maxLength={32} placeholder={setup ? '设置管理员账号' : '请输入账号'} />
+                maxLength={32} placeholder={setup ? translate("system.set.up.an.administrator.account") : translate("system.please.enter.account.number")} />
             </AntForm.Item>
-            {setup && <AntForm.Item name="name" label="管理员名称（选填）"><AntInput prefix={<UserRound size={17} />} maxLength={60} /></AntForm.Item>}
-            {setup && <AntForm.Item name="baseCurrency" label="基准币种" extra="初始化后不可修改，业务数据将以该币种为准。">
-              <Select><option value="USD">美元（USD）</option><option value="CNY">人民币（CNY）</option></Select>
+            {setup && <AntForm.Item name="name" label={translate("system.administrator.name.optional")}><AntInput prefix={<UserRound size={17} />} maxLength={60} /></AntForm.Item>}
+            {setup && <AntForm.Item name="baseCurrency" label={translate("system.base.currency")} extra={translate("system.it.cannot.be.modified.after.initialization.and.business.data.will.be")}>
+              <Select><option value="USD">{translate("system.us.dollar.usd")}</option><option value="CNY">{translate("system.chinese.yuan.cny")}</option></Select>
             </AntForm.Item>}
-            <AntForm.Item name="password" label={setup ? '设置密码' : '密码'} rules={[
-              { required: true, message: '请输入密码' }, ...(setup ? [{ min: 8, message: '密码至少需要 8 个字符' }] : []),
+            <AntForm.Item name="password" label={setup ? translate("system.set.password") : translate("system.password")} rules={[
+              { required: true, message: translate("system.please.enter.password") }, ...(setup ? [{ min: 8, message: translate("system.password.requires.at.least.8.characters") }] : []),
             ]}>
               <AntInput.Password prefix={<LockKeyhole size={17} />} autoComplete={setup ? 'new-password' : 'current-password'}
-                maxLength={128} placeholder={setup ? '设置 8–128 位密码' : '请输入密码'}
-                iconRender={visible => visible ? <EyeOff size={17} aria-label="隐藏密码" /> : <Eye size={17} aria-label="显示密码" />} />
+                maxLength={128} placeholder={setup ? translate("system.set.an.8.128.bit.password") : translate("system.please.enter.password")}
+                iconRender={visible => visible ? <EyeOff size={17} aria-label={translate("system.hide.password")} /> : <Eye size={17} aria-label={translate("system.show.password")} />} />
             </AntForm.Item>
-            {setup && <AntForm.Item name="confirmation" label="确认密码" dependencies={['password']} rules={[
-              { required: true, message: '请再次输入密码' },
+            {setup && <AntForm.Item name="confirmation" label={translate("system.confirm.password")} dependencies={['password']} rules={[
+              { required: true, message: translate("system.please.enter.password.again") },
               ({ getFieldValue }) => ({ validator: (_, value) => !value || value === getFieldValue('password')
-                ? Promise.resolve() : Promise.reject(new Error('两次输入的密码不一致。')) }),
-            ]}><AntInput.Password prefix={<LockKeyhole size={17} />} autoComplete="new-password" maxLength={128} placeholder="再次输入密码" /></AntForm.Item>}
+                ? Promise.resolve() : Promise.reject(new Error(translate("system.the.passwords.entered.twice.are.inconsistent"))) }),
+            ]}><AntInput.Password prefix={<LockKeyhole size={17} />} autoComplete="new-password" maxLength={128} placeholder={translate("system.enter.password.again")} /></AntForm.Item>}
             {(error || notice) && <div className="form-error auth-error" role="alert"><TriangleAlert size={16} /><span>{error || notice}</span></div>}
             <AntButton type="primary" className="auth-submit" htmlType="submit" loading={busy && { icon: <span aria-hidden="true"><Spin size="small" /></span> }} block>
-              {setup ? '创建管理员并进入' : '登录'}<ArrowRight size={17} />
+              {setup ? translate("system.create.an.administrator.and.enter") : translate("system.sign.in.2")}<ArrowRight size={17} />
             </AntButton>
           </AntForm>
-          <p className="auth-form-note"><ShieldCheck size={15} />{setup ? "管理员可以在设置中添加员工账号。" : "登录后访问此工作空间。"}</p>
+          <p className="auth-form-note"><ShieldCheck size={15} />{setup ? translate("system.administrators.can.add.employee.accounts.in.settings") : translate("system.sign.in.to.access.this.workspace")}</p>
         </div>
-        <span className="auth-form-footer">物料管理 · 扫码入出库 · 库存管理</span>
+        <span className="auth-form-footer">{translate("system.material.management.scan.code.for.entry.and.exit.inventory.management")}</span>
       </section>
     </main>
   );

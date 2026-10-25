@@ -1,3 +1,7 @@
+import { localizeError } from '../i18n/errors.js';
+import { ExportLanguageSelect } from '../ExportLanguageSelect.jsx';
+import { t as translate, getFormatLocale, getLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import { downloadFile } from '../app/download.js';
@@ -12,12 +16,13 @@ import { Download, Plus, PackageCheck, Search, ArrowDownLeft, ArrowUpRight, Chev
 import { Select } from '../Dropdown.jsx';
 import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
-async function exportOrders(orders, notify) {
+async function exportOrders(orders, notify, language = getLocale()) {
+  const exportText = (key, params) => translate(key, { ...params, lng: language });
   try {
     const exported = await api('/orders/export');
     const ids = new Set(orders.map(o => o.id));
     orders = exported.filter(o => ids.has(o.id));
-  } catch (error) { notify(error.message); return; }
+  } catch (error) { notify(localizeError(error.message)); return; }
   const cell = (s) =>
     '"' +
     String(s)
@@ -26,21 +31,21 @@ async function exportOrders(orders, notify) {
     '"';
   const rows = [
     [
-      "单据编号",
-      "类型",
-      "往来单位",
-      "金额",
-      "时间",
-      "物料",
-      "数量",
-      "单价",
-      "明细金额",
-      "备注",
+      exportText("warehouse.document.number"),
+      exportText("warehouse.type"),
+      exportText("warehouse.business.partner"),
+      exportText("warehouse.amount"),
+      exportText("warehouse.time"),
+      exportText("warehouse.material"),
+      exportText("warehouse.quantity"),
+      exportText("warehouse.unit.price"),
+      exportText("warehouse.detailed.amount"),
+      exportText("warehouse.remarks"),
     ],
     ...orders.flatMap((o) =>
       o.items.map((i) => [
         o.number,
-        orderLabel(o),
+        orderLabel(o, language),
         o.partner,
         o.total,
         o.created_at,
@@ -55,20 +60,21 @@ async function exportOrders(orders, notify) {
   try {
     await downloadFile(
       "\uFEFF" + rows.map((r) => r.map(cell).join(",")).join("\r\n"),
-      `77ERP-单据-${todayKey()}.csv`,
+      exportText("warehouse.77erp.document.csv", { v0: todayKey() }),
       "text/csv;charset=utf-8",
     );
-    notify("单据已导出为 CSV");
-  } catch (error) { notify(error.message); }
+    notify(translate("warehouse.document.exported.to.csv"));
+  } catch (error) { notify(localizeError(error.message)); }
 }
 
 function Orders(props) {
+  useLocale();
   const { page, data, openOrder, onChanged } = props;
   const type = page === 'purchases' ? 'in' : page === 'sales' ? 'out' : null;
-  const title = type === 'in' ? '入库' : type === 'out' ? '出库' : '操作记录';
+  const title = type === 'in' ? translate("warehouse.stock.in") : type === 'out' ? translate("warehouse.stock.out") : translate("warehouse.activity.history");
   return <>
-    <PageHeading title={title} description={type === 'in' ? '查看入库记录，核对成品和退料的待入库单据。' : type === 'out' ? '查看出库记录，核对生产领料和补料申请。' : '查看全部入出库单据，追溯物料、数量和往来单位。'}>
-      {type && <Button permission={type === 'in' ? 'purchase' : 'sale'} kind="primary" icon={Plus} onClick={() => openOrder(type)}>新建{title}</Button>}
+    <PageHeading title={title} description={type === 'in' ? translate("warehouse.check.the.warehousing.records.and.check.the.documents.to.be.stored") : type === 'out' ? translate("warehouse.check.outbound.records.and.verify.production.picking.and.replenishment.applications") : translate("warehouse.view.all.inbound.and.outbound.documents.and.trace.materials.quantities.and")}>
+      {type && <Button permission={type === 'in' ? 'purchase' : 'sale'} kind="primary" icon={Plus} onClick={() => openOrder(type)}>{translate("warehouse.new")}{title}</Button>}
     </PageHeading>
     <OrderApprovalWorkspace key={`${data.warehouse_id}:${page}`} data={data} type={type} onChanged={onChanged}>
       <OrderRecords {...props} />
@@ -77,6 +83,8 @@ function Orders(props) {
 }
 
 function OrderRecords({ page, data, openOrder, showDetail, notify }) {
+  useLocale();
+  const [exportLanguage, setExportLanguage] = useState('');
   const type = page === "purchases" ? "in" : page === "sales" ? "out" : null;
   const [query, setQuery] = useState(""),
     [days, setDays] = useState("all"),
@@ -98,9 +106,9 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
   const aggregate = list.result?.aggregate;
   useEffect(() => { if (list.result) setPageNum(p => Math.min(p, Math.max(1, Math.ceil(total / 8)))); }, [list.result, total]);
   const titles = {
-    purchases: ["PURCHASES", "入库", "入库"],
-    sales: ["SALES", "出库", "出库"],
-    history: ["ACTIVITY", "操作记录", "操作记录"],
+    purchases: ["PURCHASES", translate("warehouse.stock.in"), translate("warehouse.stock.in")],
+    sales: ["SALES", translate("warehouse.stock.out"), translate("warehouse.stock.out")],
+    history: ["ACTIVITY", translate("warehouse.activity.history"), translate("warehouse.activity.history")],
   };
   const [, , label] = titles[page];
   return (
@@ -108,36 +116,32 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
       <QueryStatus query={list} />
       <div className="order-summary">
         <div>
-          <span>
-            筛选内净额（不含作废、调拨及内部流转，扣除退货）
-          </span>
+          <span>{translate("warehouse.net.amount.within.the.screen.excluding.voiding.transfers.and.internal.transfers")}</span>
           <strong>
             <small>{currencySymbol()} </small>
             {money(aggregate?.net_total || 0)}
           </strong>
         </div>
         <div>
-          <span>有效单据</span>
+          <span>{translate("warehouse.valid.documents")}</span>
           <strong>
             {aggregate?.active_count || 0}
-            <small> 笔</small>
+            <small>{" "}{translate("warehouse.transactions")}</small>
           </strong>
         </div>
         <div>
-          <span>物料流转数量</span>
+          <span>{translate("warehouse.material.circulation.quantity")}</span>
           <strong>
             {count(
               aggregate?.quantity || 0,
             )}
-            <small> 件</small>
+            <small>{" "}{translate("warehouse.items")}</small>
           </strong>
         </div>
         <div className="order-summary-note">
           <PackageCheck size={26} />
-          <span>
-            确认单据后更新库存
-            <br />
-            <small>支持查看物料明细与成交金额</small>
+          <span>{translate("warehouse.update.inventory.after.confirming.documents")}<br />
+            <small>{translate("warehouse.support.viewing.material.details.and.transaction.amounts")}</small>
           </span>
         </div>
       </div>
@@ -145,13 +149,13 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
         <div className="table-toolbar">
           <div className="filter-tabs">
             {(type
-              ? [[type, `全部${label}单`]]
+              ? [[type, translate("warehouse.all.orders", { v0: label })]]
               : [
-                  ["all", "全部操作"],
-                  ["in", "入库"],
-                  ["out", "出库"],
-                  ["transfer", "仓库调拨"],
-                  ["internal", "内部流转"],
+                  ["all", translate("warehouse.all.operations")],
+                  ["in", translate("warehouse.stock.in")],
+                  ["out", translate("warehouse.stock.out")],
+                  ["transfer", translate("warehouse.warehouse.transfer")],
+                  ["internal", translate("warehouse.internal.movement")],
                 ]
             ).map(([id, name]) => (
               <AntButton type="text" htmlType="button"
@@ -167,24 +171,24 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
             ))}
           </div>
           <div className="toolbar-right">
-            <Button icon={Download} permission="data_io" onClick={() => exportOrders(filtered, notify)} disabled={!filtered.length}>导出单据</Button>
+            <ExportLanguageSelect value={exportLanguage} onChange={setExportLanguage} /><Button icon={Download} permission="data_io" onClick={() => exportOrders(filtered, notify, exportLanguage || getLocale())} disabled={!filtered.length}>{translate("warehouse.export.documents")}</Button>
             <div className="table-search">
               <AntInput prefix={<Search size={16} />} allowClear
-                aria-label="搜索单据"
-                placeholder="搜索单号、单位或物料"
+                aria-label={translate("warehouse.search.documents")}
+                placeholder={translate("warehouse.search.for.order.number.unit.or.material")}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
             </div>
             <Select
               className="filter-select"
-              aria-label="单据时间范围"
+              aria-label={translate("warehouse.document.time.range")}
               value={days}
               onChange={(e) => setDays(e)}
             >
-              <option value="all">全部时间</option>
-              <option value="7">近 7 天</option>
-              <option value="30">近 30 天</option>
+              <option value="all">{translate("warehouse.all.time")}</option>
+              <option value="7">{translate("warehouse.last.7.days")}</option>
+              <option value="30">{translate("warehouse.last.30.days")}</option>
             </Select>
           </div>
         </div>
@@ -192,12 +196,12 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
           <table className="data-table orders-table">
             <thead>
               <tr>
-                <th>单据编号</th>
-                <th>往来单位</th>
-                <th>物料明细</th>
-                <th className="number-cell">金额</th>
-                <th>创建时间</th>
-                <th>状态</th>
+                <th>{translate("warehouse.document.number")}</th>
+                <th>{translate("warehouse.business.partner")}</th>
+                <th>{translate("warehouse.material.details")}</th>
+                <th className="number-cell">{translate("warehouse.amount")}</th>
+                <th>{translate("warehouse.creation.time")}</th>
+                <th>{translate("warehouse.status")}</th>
                 <th />
               </tr>
             </thead>
@@ -232,26 +236,25 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
                     <div className="order-item-preview">
                       <strong>{o.item_names?.[0]}</strong>
                       <small>
-                        {o.item_count} 种物料 ·{" "}
-                        {count(o.item_quantity)} 件
-                      </small>
+                        {o.item_count}{" "}{translate("warehouse.material.2")}{" "}
+                        {count(o.item_quantity)}{translate("warehouse.items")}</small>
                     </div>
                   </td>
                   <td className="number-cell amount-cell">
                     {o.kind === "transfer" ? (
-                      <span className="muted">不涉及金额</span>
+                      <span className="muted">{translate("warehouse.no.financial.amount")}</span>
                     ) : (
-                      `${o.kind === "internal" ? "参考 " : ""}${currencySymbol()} ${money(o.total)}`
+                      `${o.kind === "internal" ? translate("warehouse.reference.2") : ""}${currencySymbol()} ${money(o.total)}`
                     )}
                   </td>
                   <td className="muted">{dateTime(o.created_at)}</td>
                   <td>
-                    <Badge>已完成</Badge>
+                    <Badge>{translate("warehouse.completed")}</Badge>
                   </td>
                   <td>
                     <AntButton type="text" htmlType="button"
                       className="table-arrow"
-                      aria-label={`查看单据 ${o.number}`}
+                      aria-label={translate("warehouse.view.document", { v0: o.number })}
                       onClick={(e) => {
                         e.stopPropagation();
                         showDetail(o);
@@ -266,13 +269,11 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
           </table>
           {!filtered.length && (
             <Empty
-              title="暂无符合条件的单据"
-              description="调整搜索或日期范围，或开始创建单据。"
+              title={translate("warehouse.there.are.currently.no.documents.that.meet.the.criteria")}
+              description={translate("warehouse.adjust.the.search.or.date.range.or.start.creating.a.document")}
               action={
                 type && (
-                  <Button permission={type === 'in' ? 'purchase' : 'sale'} icon={Plus} onClick={() => openOrder(type)}>
-                    新建单据
-                  </Button>
+                  <Button permission={type === 'in' ? 'purchase' : 'sale'} icon={Plus} onClick={() => openOrder(type)}>{translate("warehouse.create.new.document")}</Button>
                 )
               }
             />

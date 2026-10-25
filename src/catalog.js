@@ -1,3 +1,4 @@
+import { t as translate, getFormatLocale } from './i18n/index.js';
 import { api } from './api.js';
 
 export function flattenCategories(categories, parent = null, depth = 0, prefix = '') {
@@ -18,8 +19,8 @@ export function categoryBranch(categories, id) {
 }
 
 export async function readProductImage(file) {
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('请选择 JPEG、PNG 或 WebP 图片。');
-  if (file.size > 10 * 1024 * 1024) throw new Error('上传图片不能超过 10 MB。');
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error(translate("extra.please.select.a.jpeg.png.or.webp.image"));
+  if (file.size > 10 * 1024 * 1024) throw new Error(translate("extra.upload.images.cannot.exceed.10.mb"));
   const url = URL.createObjectURL(file);
   let image;
   try {
@@ -35,10 +36,10 @@ export async function readProductImage(file) {
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(img, 0, 0, canvas.width, canvas.height);
     image = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
-    if (!image) throw new Error('图片无法读取，请选择有效的图片。');
-    if (image.size > 1024 * 1024) throw new Error('图片压缩后仍超过 1 MB，请选择较小的图片。');
+    if (!image) throw new Error(translate("extra.the.image.cannot.be.read.please.select.a.valid.image"));
+    if (image.size > 1024 * 1024) throw new Error(translate("extra.the.compressed.image.still.exceeds.1.mb.please.choose.a.smaller"));
   } catch (e) {
-    throw new Error(e.message.includes('MB') ? e.message : '图片无法读取，请选择有效的图片。');
+    throw new Error(e.message.includes('MB') ? e.message : translate("extra.the.image.cannot.be.read.please.select.a.valid.image"));
   } finally { URL.revokeObjectURL(url); }
   const body = new FormData();
   body.append('file', image, 'product.jpg');

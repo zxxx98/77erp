@@ -1,23 +1,27 @@
+import { t as translate, getFormatLocale, translateText } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import React from 'react';
 import { ProductImage } from './ProductImage.jsx';
 
-const fields = [
-  ['name', '物料名称'], ['barcode', '物料条码'], ['category', '物料分类'],
-  ['production_type', '生产类型'],
-  ['unit', '计量单位'], ['unit_round_up', '单位是否取整'], ['cost', '参考采购价'], ['price', '参考销售价'],
-  ['threshold', '安全库存'], ['specification', '规格型号'], ['note', '物料备注'], ['image', '物料图片'],
-  ['inspection_date', '校验日期'], ['inspection_interval', '校验周期'], ['inspection_unit', '周期单位'], ['last_inspected_on', '上次校验'],
+const fields = () => [
+  ['name', translate("system.material.name")], ['barcode', translate("system.material.barcode.2")], ['category', translate("system.material.categories")],
+  ['production_type', translate("system.production.type")],
+  ['unit', translate("system.unit.of.measurement")], ['unit_round_up', translate("system.round.quantities.to.whole.units")], ['cost', translate("system.reference.purchase.price")], ['price', translate("system.reference.sales.price")],
+  ['threshold', translate("system.safety.stock")], ['specification', translate("system.specifications.and.models")], ['note', translate("system.material.remarks")], ['image', translate("system.material.pictures")],
+  ['inspection_date', translate("system.verification.date")], ['inspection_interval', translate("system.inspection.cycle")], ['inspection_unit', translate("system.period.unit")], ['last_inspected_on', translate("system.last.check")],
 ];
 
 export function ProductConflict({ form, latest }) {
+  useLocale();
+  const displayValue = (key, value) => key === 'production_type' ? translateText(value) : key === 'unit_round_up' ? translate(value ? 'system.yes' : 'system.no') : value;
   return <div className="product-conflict">
-    <p>你的填写内容已保留。核对最新信息后，可选择使用最新信息重新编辑；这会替换当前表单并清空同步仓库选择。</p>
+    <p>{translate("system.your.input.has.been.retained.after.verifying.the.latest.information.you")}</p>
     {latest && <>
-      <strong>最新物料信息</strong>
-      <dl>{fields.map(([key, label]) => <div key={key}>
+      <strong>{translate("system.latest.material.information")}</strong>
+      <dl>{fields().map(([key, label]) => <div key={key}>
         <dt>{label}</dt>
-        <dd><small>当前填写</small>{key === 'image' && form[key] ? <ProductImage src={form[key]} alt="当前填写的物料图片" /> : <span>{String(form[key] ?? '') || '未填写'}</span>}</dd>
-        <dd><small>最新信息</small>{key === 'image' && latest[key] ? <ProductImage src={latest[key]} alt="最新物料图片" /> : <span>{String(latest[key] ?? '') || '未填写'}</span>}</dd>
+        <dd><small>{translate("system.currently.filled.in")}</small>{key === 'image' && form[key] ? <ProductImage src={form[key]} alt={translate("system.picture.of.the.currently.filled.material")} /> : <span>{String(displayValue(key, form[key]) ?? '') || translate("system.not.filled.in")}</span>}</dd>
+        <dd><small>{translate("system.latest.information")}</small>{key === 'image' && latest[key] ? <ProductImage src={latest[key]} alt={translate("system.latest.material.pictures")} /> : <span>{String(displayValue(key, latest[key]) ?? '') || translate("system.not.filled.in")}</span>}</dd>
       </div>)}</dl>
     </>}
   </div>;

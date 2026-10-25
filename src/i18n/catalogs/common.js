@@ -1,0 +1,18 @@
+export default {
+  'language.accountPreference': ['语言与当前账号同步，桌面和手机均可使用。', 'Language is saved to your account for desktop and mobile.', 'Ngôn ngữ được lưu vào tài khoản để dùng trên máy tính và điện thoại.'],
+  'export.pdfFailed': ['导出 PDF 失败，请稍后重试。', 'PDF export failed. Please try again.', 'Xuất PDF thất bại. Vui lòng thử lại.'],
+  'export.pdfInvalid': ['服务器未返回有效的 PDF，请刷新后重试。', 'The server did not return a valid PDF. Reload and try again.', 'Máy chủ không trả về PDF hợp lệ. Hãy tải lại và thử lại.'],
+  'export.productionOrder': ['生产单', 'Production order', 'Lệnh sản xuất'],
+  'language.label': ['语言', 'Language', 'Ngôn ngữ'],
+  'language.change': ['切换语言', 'Change language', 'Đổi ngôn ngữ'],
+  'language.syncError': ['语言已在本机生效，账户同步失败，联网后将重试。', 'Language changed on this device. Account sync failed; it will retry when online.', 'Đã đổi ngôn ngữ trên thiết bị này. Đồng bộ tài khoản thất bại; sẽ thử lại khi có mạng.'],
+  'language.storageError': ['浏览器未能保存语言，刷新后可能恢复。', 'The browser could not save your language. It may reset after reloading.', 'Trình duyệt không lưu được ngôn ngữ. Cài đặt có thể bị đặt lại khi tải lại.'],
+  'common.save': ['保存', 'Save', 'Lưu'],
+  'common.cancel': ['取消', 'Cancel', 'Hủy'],
+  'common.confirm': ['确认', 'Confirm', 'Xác nhận'],
+  'common.close': ['关闭', 'Close', 'Đóng'],
+  'common.retry': ['重试', 'Retry', 'Thử lại'],
+  'common.loading': ['加载中…', 'Loading…', 'Đang tải…'],
+  'common.networkOffline': ['当前离线，请联网后确认操作。', 'You are offline. Connect to the internet to confirm this action.', 'Bạn đang ngoại tuyến. Hãy kết nối mạng để xác nhận thao tác.'],
+  'common.requestFailed': ['请求失败，请重试。', 'Request failed. Please try again.', 'Yêu cầu thất bại. Vui lòng thử lại.'],
+};

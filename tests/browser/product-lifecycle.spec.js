@@ -51,7 +51,7 @@ test('delist, filter, explicitly choose for clearance, relist, and delete an unu
 });
 
 test('desktop and mobile batch deactivate and delete with cross-page selection, indeterminate state, filter reset, preview, and permission/offline guards', async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   await page.request.post('/api/auth/setup', { data: { username: 'admin', password: 'Test-admin-123' } });
   expect((await page.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
@@ -160,7 +160,7 @@ test('desktop and mobile batch deactivate and delete with cross-page selection, 
   })).status()).toBe(201);
   await context.close();
 
-  const empContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const empContext = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 1000 } });
   const empPage = await empContext.newPage();
   expect((await empPage.request.post('/api/auth/login', {
     data: { username: 'viewer_emp', password: 'Test-staff-123' },
@@ -171,7 +171,7 @@ test('desktop and mobile batch deactivate and delete with cross-page selection, 
   await empContext.close();
 
   // Mobile Web batch mode, offline guard, and batch operations
-  const mobileContext = await browser.newContext({
+  const mobileContext = await browser.newContext({ locale: 'zh-CN',
     viewport: { width: 390, height: 844 },
     userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
     isMobile: true,

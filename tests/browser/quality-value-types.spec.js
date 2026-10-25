@@ -10,7 +10,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 for (const platform of ['desktop','iPhone','Android PWA']) test(`${platform} configures and exports percentages, dates, timestamps and false`, async ({ browser }) => {
-  const context = await browser.newContext({ ...(platform==='desktop'?{}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']), baseURL:'http://127.0.0.1:3199', serviceWorkers:platform==='Android PWA'?'allow':'block' });
+  const context = await browser.newContext({ locale: 'zh-CN', ...(platform==='desktop'?{}:devices[platform==='iPhone'?'iPhone 13':'Pixel 7']), baseURL:'http://127.0.0.1:3199', serviceWorkers:platform==='Android PWA'?'allow':'block' });
   try {
     if (platform==='Android PWA') await context.addInitScript(() => {
       const original=window.matchMedia.bind(window);

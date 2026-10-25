@@ -1,3 +1,4 @@
+import { requestLanguage } from './i18n.js';
 import { isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
 import { rebuildTable } from './table-migration.js';
 import { BOM_NODE_COLUMNS, validateSnapshotNodes, validateExpansionScraps, calculateBomNodes } from '../shared/bom-expansion.js';
@@ -311,7 +312,7 @@ export function installProduction(app, db) {
         if (header) { try { allowedOrigins.add(new URL(header).origin); } catch { /* Invalid request metadata cannot authorize another origin. */ } }
       }
       if (!allowedOrigins.has(new URL(registrationUrl).origin)) fail('生产登记地址与当前访问地址不一致。');
-      const bytes = await renderProductionPdf({ order, warehouseName: req.warehouse.name, registrationUrl });
+      const bytes = await renderProductionPdf({ order, warehouseName: req.warehouse.name, registrationUrl, language: requestLanguage(req) });
       res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="production-${order.id}.pdf"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }).send(bytes);
     } catch (error) { res.status(error.status || 400).json({ error: error.message }); }
   });

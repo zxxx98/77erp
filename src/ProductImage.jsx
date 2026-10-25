@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { Button as AntButton } from './ui/controls.jsx';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -6,6 +8,7 @@ import { X } from 'lucide-react';
 import { productThumbnailUrl } from './image-url.js';
 
 export function ProductImage({ src, alt, className = '', preview = true, thumbnailSize }) {
+  useLocale();
   const [open, setOpen] = useState(false);
   const [failedThumbnail, setFailedThumbnail] = useState('');
   const thumbnail = productThumbnailUrl(src, thumbnailSize);
@@ -13,12 +16,13 @@ export function ProductImage({ src, alt, className = '', preview = true, thumbna
   const img = <img src={displaySrc} alt={alt} loading="lazy" decoding="async" onError={() => { if (displaySrc !== src) setFailedThumbnail(thumbnail); }} />;
   if (!preview) return <span className={className}>{img}</span>;
   return <>
-    <AntButton type="text" htmlType="button" className={`product-image-button ${className}`} aria-label={`放大查看 ${alt}`} onClick={e => { e.stopPropagation(); setOpen(true); }}>{img}</AntButton>
+    <AntButton type="text" htmlType="button" className={`product-image-button ${className}`} aria-label={translate("system.zoom.in.to.view", { v0: alt })} onClick={e => { e.stopPropagation(); setOpen(true); }}>{img}</AntButton>
     {open && createPortal(<ImageViewer src={src} title={alt} onClose={() => setOpen(false)} />, document.body)}
   </>;
 }
 
 function ImageViewer({ src, title, onClose }) {
+  useLocale();
   const [failed, setFailed] = useState(false);
   const closeButton = useRef(null);
   const close = useRef(onClose);
@@ -50,8 +54,8 @@ function ImageViewer({ src, title, onClose }) {
       previousFocus?.focus();
     };
   }, []);
-  return <section className="image-viewer" role="dialog" aria-modal="true" aria-label={`图片预览：${title}`}>
-    <AntButton type="text" ref={closeButton} htmlType="button" className="image-viewer-close" aria-label="关闭图片预览" onClick={e => { e.stopPropagation(); onClose(); }}><X size={24} /></AntButton>
-    {failed ? <p role="alert">图片无法显示，请关闭后重试。</p> : <img className="image-viewer-image" src={src} alt={`${title} 大图`} draggable={false} onClick={e => e.stopPropagation()} onError={() => setFailed(true)} />}
+  return <section className="image-viewer" role="dialog" aria-modal="true" aria-label={translate("system.image.preview", { v0: title })}>
+    <AntButton type="text" ref={closeButton} htmlType="button" className="image-viewer-close" aria-label={translate("system.close.image.preview")} onClick={e => { e.stopPropagation(); onClose(); }}><X size={24} /></AntButton>
+    {failed ? <p role="alert">{translate("system.the.image.cannot.be.displayed.please.close.it.and.try.again")}</p> : <img className="image-viewer-image" src={src} alt={translate("system.big.picture", { v0: title })} draggable={false} onClick={e => e.stopPropagation()} onError={() => setFailed(true)} />}
   </section>;
 }

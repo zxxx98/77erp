@@ -232,6 +232,7 @@ test('business backups preserve actor names and same-server template owners, but
 const routeRoles = new Map(Object.entries({
   'get /api/auth/status': 'public', 'post /api/auth/setup': 'public', 'post /api/auth/login': 'public', 'post /api/auth/logout': 'public',
   'post /api/auth/password': 'employee',
+  'patch /api/auth/language': 'employee',
   'get /api/announcements': 'employee', 'get /api/announcements/unread-count': 'employee',
   'get /api/announcements/:announcementId': 'employee', 'post /api/announcements/:announcementId/read': 'employee',
   'post /api/announcements': 'admin', 'put /api/announcements/:announcementId': 'admin', 'delete /api/announcements/:announcementId': 'admin',

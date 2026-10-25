@@ -40,7 +40,7 @@ async function fixture(page, wide = false) {
 
 for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} navigates ten BOM levels, searches repeated paths and preserves views`, async ({ page: defaultPage, browser }) => {
   test.setTimeout(90000);
-  const context = profile === 'android-pwa' ? await browser.newContext({ viewport: { width: 412, height: 915 }, userAgent: android, serviceWorkers: 'allow' }) : null;
+  const context = profile === 'android-pwa' ? await browser.newContext({ locale: 'zh-CN', viewport: { width: 412, height: 915 }, userAgent: android, serviceWorkers: 'allow' }) : null;
   const page = context ? await context.newPage() : defaultPage;
   if (profile === 'iphone') {
     await page.setViewportSize({ width: 390, height: 844 });

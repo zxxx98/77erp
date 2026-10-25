@@ -1,13 +1,16 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button, Badge } from '../components/common.jsx';
 import { count, dateTime } from '../app/format.js';
 
 export function ProductionApprovalList({ documents, busy, onView, statusLabels, receipt = false }) {
+  useLocale();
   return <ul className="production-approval-list">{documents.map(doc => <li className="production-approval-row" key={doc.id}>
     <div className="production-approval-summary">
       <div className="production-approval-number"><strong>{doc.number}</strong><Badge tone={doc.status === 'pending' ? 'orange' : doc.status === 'confirmed' ? 'green' : 'gray'}>{statusLabels[doc.status]}</Badge></div>
       <p>{doc.production_number} · {doc.product_name}</p>
-      <small>{receipt ? `第 ${doc.batch_number} 批 · ${count(doc.quantity)} ${doc.unit}` : `${doc.type === 'in' ? '退料' : doc.kind === 'supplement' ? '补料' : '领料'} · ${doc.items.length} 种材料`} · {doc.created_by_name} · {dateTime(doc.created_at)}</small>
+      <small>{receipt ? translate("warehouse.batch.2", { v0: doc.batch_number, v1: count(doc.quantity), v2: doc.unit }) : translate("warehouse.materials.2", { v0: doc.type === 'in' ? translate("warehouse.material.return") : doc.kind === 'supplement' ? translate("warehouse.additional.material.issue") : translate("warehouse.material.issue"), v1: doc.items.length })} · {doc.created_by_name} · {dateTime(doc.created_at)}</small>
     </div>
-    <Button disabled={busy} aria-label={`${doc.status === 'pending' ? '查看并审批' : '查看详情'} ${doc.number}`} onClick={() => onView(doc.id)}>{doc.status === 'pending' ? '查看并审批' : '查看详情'}</Button>
+    <Button disabled={busy} aria-label={`${doc.status === 'pending' ? translate("warehouse.view.and.approve") : translate("warehouse.view.details")} ${doc.number}`} onClick={() => onView(doc.id)}>{doc.status === 'pending' ? translate("warehouse.view.and.approve") : translate("warehouse.view.details")}</Button>
   </li>)}</ul>;
 }

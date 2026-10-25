@@ -10,7 +10,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 async function mobile(browser) {
-  const context = await browser.newContext({ ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
+  const context = await browser.newContext({ locale: 'zh-CN', ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
   expect((await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } })).ok()).toBe(true);
   const page = await context.newPage();
   await page.goto('/');
@@ -184,7 +184,7 @@ test('closing a scanner discards a native result that arrives late', async ({ br
 
 test('expanded search recognizes off-guide QR and wide Code 128 labels on mobile and desktop', async ({ browser }) => {
   for (const desktop of [false, true]) {
-    const context = await browser.newContext({ ...(desktop ? {} : devices['Pixel 7']),
+    const context = await browser.newContext({ locale: 'zh-CN', ...(desktop ? {} : devices['Pixel 7']),
       baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
     await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
     const page = await context.newPage();

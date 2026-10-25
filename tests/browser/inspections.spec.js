@@ -9,7 +9,7 @@ test.beforeAll(async ({ request }) => {
 
 for (const device of [null, 'Pixel 7', 'iPhone 13']) {
   test(`${device || 'desktop'} configures inspections, renews a cycle and manually enters a one-off next date`, async ({ browser }) => {
-    const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(device ? devices[device] : { viewport: { width: 1440, height: 1000 } }) });
+    const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', serviceWorkers: device === 'iPhone 13' ? 'allow' : 'block', ...(device ? devices[device] : { viewport: { width: 1440, height: 1000 } }) });
     await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
     const page = await context.newPage(), errors = [];
     page.on('pageerror', error => errors.push(error.message));

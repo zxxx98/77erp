@@ -1,3 +1,7 @@
+import { chartSeriesLabel } from '../i18n/production-display.js';
+import { productionMessage } from '../i18n/production-errors.js';
+import { t as pt, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import { useEffect, useRef, useState } from 'react';
@@ -25,13 +29,15 @@ function wrapAxisLabel(value,width) {
   }
   return lines;
 }
-export const chartNumber=(value,unit='')=>value===null?'—':`${new Intl.NumberFormat('zh-CN',{maximumFractionDigits:4}).format(value)}${unit}`;
+export const chartNumber=(value,unit='')=>value===null?'—':`${new Intl.NumberFormat(getFormatLocale(),{maximumFractionDigits:4}).format(value)}${unit}`;
 export function QualityChartView({result,type,title,onSources}) {
-  if(!result.rows.length)return <div className="quality-chart-empty">该范围暂无可用数据。</div>;
+  useLocale();
+  if(!result.rows.length)return <div className="quality-chart-empty">{pt("production.noDataAvailableForThisScope")}</div>;
   return <FullscreenChart title={title}>{fullscreen=> <QualityChartContent result={result} type={type} title={title} onSources={onSources} fullscreen={fullscreen}/>}</FullscreenChart>;
 }
 
 function QualityChartContent({result,type,title,onSources,fullscreen}) {
+  useLocale();
   const plotRef=useRef(null),[plotSize,setPlotSize]=useState({width:820,height:320});
   useEffect(()=>{
     if(!fullscreen||!plotRef.current)return;
@@ -40,7 +46,7 @@ function QualityChartContent({result,type,title,onSources,fullscreen}) {
     return ()=>observer.disconnect();
   },[fullscreen,type]);
   const rows=result.rows,labels=[...new Set(rows.map(row=>row.x))],series=[...new Set(rows.map(row=>row.series))];
-  if(!rows.length)return <div className="quality-chart-empty">该范围暂无可用数据。</div>;
+  if(!rows.length)return <div className="quality-chart-empty">{pt("production.noDataAvailableForThisScope")}</div>;
   const availableWidth=fullscreen?Math.max(360,plotSize.width):820;
   const max=Math.max(0,...rows.map(row=>row.value)),min=Math.min(0,...rows.map(row=>row.value)),span=max-min||1;
   const yTicks=Array.from({length:5},(_,i)=>min+span*i/4);
@@ -68,7 +74,7 @@ function QualityChartContent({result,type,title,onSources,fullscreen}) {
   }
   const bottom=Math.max(66,lanes.length*rowHeight+32),height=Math.max(fullscreen?Math.max(280,plotSize.height):320,bottom+160);
   const y=value=>height-bottom-(value-min)/span*(height-bottom-top);
-  const label=key=>rows.find(row=>row.series===key)?.seriesLabel||key;
+  const label=key=>chartSeriesLabel(rows.find(row=>row.series===key))||key;
   return <div className="quality-chart-view">
     {type==='pie'&&<QualityPieChart result={result} title={title} onSources={onSources}/>}
     {type!=='table'&&type!=='pie'&&<>
@@ -86,45 +92,46 @@ function QualityChartContent({result,type,title,onSources,fullscreen}) {
             {type==='line'&&<path d={path} fill="none" stroke={color} strokeWidth="2.5"/>}
             {points.filter(Boolean).map(point=>{
               const text=`${point.x} · ${label(key)}：${chartNumber(point.value,result.unit)}`;
-              const props={key:String(point.x),fill:color,onClick:onSources?()=>onSources(point):undefined,role:onSources?'button':undefined,tabIndex:onSources?0:undefined,'aria-label':onSources?`查看来源 ${text}`:undefined,onKeyDown:onSources?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSources(point);}}:undefined,style:{cursor:onSources?'pointer':undefined}};
+              const props={key:String(point.x),fill:color,onClick:onSources?()=>onSources(point):undefined,role:onSources?'button':undefined,tabIndex:onSources?0:undefined,'aria-label':onSources?pt("production.viewSource", { v0: text }):undefined,onKeyDown:onSources?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSources(point);}}:undefined,style:{cursor:onSources?'pointer':undefined}};
               return type==='line'?<circle {...props} cx={x(point.x)} cy={y(point.value)} r="5"><title>{text}</title></circle>:<rect {...props} x={x(point.x)+(i-series.length/2)*barWidth} y={Math.min(y(0),y(point.value))} width={Math.max(1,barWidth-3)} height={Math.max(2,Math.abs(y(0)-y(point.value)))} rx="2"><title>{text}</title></rect>;
             })}
           </g>;
         })}
       </svg></div>
     </>}
-    <details className="quality-chart-table" open={type==='table'}><summary>查看统计数据（{rows.length} 项）</summary><div className="quality-preview-table"><table><thead><tr><th>{type==='pie'?'分类':'横轴'}</th><th>分组</th><th>数值{result.unit?`（${result.unit}）`:''}</th><th>参与记录数</th>{onSources&&<th>来源</th>}</tr></thead><tbody>{rows.map(row=><tr key={JSON.stringify([row.x,row.series])}><td>{String(row.x)}</td><td>{row.seriesLabel}</td><td>{chartNumber(row.value,result.unit)}</td><td>{row.count}</td>{onSources&&<td><Button onClick={()=>onSources(row)}>查看来源</Button></td>}</tr>)}</tbody></table></div></details>
+    <details className="quality-chart-table" open={type==='table'}><summary>{pt("production.viewStatistics")}{rows.length} {pt("production.items")}</summary><div className="quality-preview-table"><table><thead><tr><th>{type==='pie'?pt("production.category"):pt("production.xAxis")}</th><th>{pt("production.group")}</th><th>{pt("production.value")}{result.unit?`（${result.unit}）`:''}</th><th>{pt("production.recordCount")}</th>{onSources&&<th>{pt("production.source")}</th>}</tr></thead><tbody>{rows.map(row=><tr key={JSON.stringify([row.x,row.series])}><td>{String(row.x)}</td><td>{chartSeriesLabel(row)}</td><td>{chartNumber(row.value,result.unit)}</td><td>{row.count}</td>{onSources&&<td><Button onClick={()=>onSources(row)}>{pt("production.viewSource2")}</Button></td>}</tr>)}</tbody></table></div></details>
   </div>;
 }
 
 function QualityPieChart({result,title,onSources}) {
+  useLocale();
   const series=[...new Set(result.rows.map(row=>row.series))];
   const categories=[...new Set(result.rows.map(row=>row.x))];
   const color=value=>{const i=categories.indexOf(value);return colors[i]||`hsl(${(i*137.508)%360} 65% 45%)`;};
-  const percent=value=>new Intl.NumberFormat('zh-CN',{style:'percent',maximumFractionDigits:2}).format(value);
+  const percent=value=>new Intl.NumberFormat(getFormatLocale(),{style:'percent',maximumFractionDigits:2}).format(value);
   const point=angle=>[160+120*Math.cos(angle),160+120*Math.sin(angle)];
   return <div className="quality-pie-charts">
-    <p className="muted quality-pie-note">占比为各分类统计值占本饼图统计值总和的比例。每个分组单独展示，原始统计值保留在图例和统计数据中。</p>
+    <p className="muted quality-pie-note">{pt("production.sharesAreCategoryTotalsDividedByTheTotal")}</p>
     {series.map(key=>{
       const rows=result.rows.filter(row=>row.series===key),{slices,message}=qualityPieSlices(rows);
-      const name=series.length===1?title:`${title} · ${rows[0].seriesLabel||key}`;
+      const name=series.length===1?title:`${title} · ${chartSeriesLabel(rows[0])||key}`;
       return <section className="quality-pie-card" key={key} aria-label={name}>
-        {series.length>1&&<h3>{rows[0].seriesLabel||key}</h3>}
-        {message?<p className="quality-chart-empty" role="status">{message}</p>:<>
+        {series.length>1&&<h3>{chartSeriesLabel(rows[0])||key}</h3>}
+        {message?<p className="quality-chart-empty" role="status">{productionMessage(message)}</p>:<>
           <svg className="quality-pie-svg" viewBox="0 0 320 320" role="img" aria-label={name}>
             <title>{name}</title>
             {slices.filter(slice=>slice.share>0).map(slice=>{
-              const text=`${slice.x}：${chartNumber(slice.value,result.unit)} · 占比 ${percent(slice.share)}`;
+              const text=pt("production.share", { v0: slice.x, v1: chartNumber(slice.value,result.unit), v2: percent(slice.share) });
               const props={fill:color(slice.x),stroke:'var(--surface, #fff)',strokeWidth:1.5,
-                role:onSources?'button':undefined,tabIndex:onSources?0:undefined,'aria-label':onSources?`查看来源 ${text}`:text,
+                role:onSources?'button':undefined,tabIndex:onSources?0:undefined,'aria-label':onSources?pt("production.viewSource", { v0: text }):text,
                 onClick:onSources?()=>onSources(slice):undefined,onKeyDown:onSources?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onSources(slice);}}:undefined};
               const [x1,y1]=point(slice.startAngle),[x2,y2]=point(slice.endAngle);
               return <g key={String(slice.x)}>{slice.share===1?<circle {...props} cx="160" cy="160" r="120"><title>{text}</title></circle>:<path {...props} d={`M160,160 L${x1},${y1} A120,120 0 ${slice.share>0.5?1:0},1 ${x2},${y2} Z`}><title>{text}</title></path>}</g>;
             })}
           </svg>
-          <ul className="quality-pie-legend" aria-label={`${name}图例`}>{slices.map(slice=>{
+          <ul className="quality-pie-legend" aria-label={pt("production.legend", { v0: name })}>{slices.map(slice=>{
             const content=<><i style={{background:color(slice.x)}} aria-hidden="true"/><span>{String(slice.x)}</span><strong>{chartNumber(slice.value,result.unit)}</strong><span>{percent(slice.share)}</span></>;
-            return <li key={String(slice.x)}>{onSources?<AntButton type="text" htmlType="button" onClick={()=>onSources(slice)} aria-label={`查看来源 ${slice.x} · ${slice.seriesLabel}：${chartNumber(slice.value,result.unit)} · 占比 ${percent(slice.share)}`}>{content}</AntButton>:<div>{content}</div>}</li>;
+            return <li key={String(slice.x)}>{onSources?<AntButton type="text" htmlType="button" onClick={()=>onSources(slice)} aria-label={pt("production.viewSourceShare", { v0: slice.x, v1: chartSeriesLabel(slice), v2: chartNumber(slice.value,result.unit), v3: percent(slice.share) })}>{content}</AntButton>:<div>{content}</div>}</li>;
           })}</ul>
         </>}
       </section>;
@@ -133,29 +140,31 @@ function QualityPieChart({result,title,onSources}) {
 }
 
 export function QualityChartSources({chartId,point,filters,data,onClose}) {
+  useLocale();
   const [offset,setOffset]=useState(0),[acceptance,setAcceptance]=useState(null),[error,setError]=useState('');
   const query=useQuery(queryPath(`/quality/charts/${chartId}/sources`,{...filters,x:String(point.x),series:point.series,offset}),data);
   const open=async id=>{try{setError('');setAcceptance(await api(`/quality/acceptances/${id}`));}catch(error){setError(error.message);}};
-  return <Modal title="图表数据来源" subtitle={`${point.x} · ${point.seriesLabel}`} wide onClose={onClose}><div className="form-body quality-chart-sources">
+  return <Modal title={pt("production.chartDataSources")} subtitle={`${point.x} · ${chartSeriesLabel(point)}`} wide onClose={onClose}><div className="form-body quality-chart-sources">
     {(error||query.error)&&<div role="alert" className="form-error">{error||query.error}</div>}
-    {query.loading?<p role="status">正在读取来源…</p>:<><div className="quality-preview-table"><table><thead><tr><th>验收单</th><th>工作表 / 位置</th><th>统计原值</th><th>操作</th></tr></thead><tbody>{query.result?.sources.map((source,i)=><tr key={i}>
-      <td>{source.name}<small>{source.number}</small></td><td>{source.sheetName}{source.row?` · 第 ${source.row} 行`:source.column?` · 第 ${source.column} 列`:''}</td><td>{source.value}</td><td><Button onClick={()=>open(source.acceptanceId)}>查看验收单</Button></td>
-    </tr>)}</tbody></table></div><div className="quality-toolbar"><Button disabled={!offset} onClick={()=>setOffset(value=>value-50)}>上一页</Button><span>共 {query.result?.total||0} 条来源</span><Button disabled={offset+50>=(query.result?.total||0)} onClick={()=>setOffset(value=>value+50)}>下一页</Button></div></>}
-    {acceptance&&<section className="quality-chart-source-acceptance"><div className="quality-toolbar"><h3>{acceptance.name}</h3><Button onClick={()=>downloadExcel(`/acceptances/${acceptance.id}/download`).catch(error=>setError(error.message))}>下载上传原文件</Button></div><WorkbookResults definition={acceptance.definition} preview={acceptance.result} compact/></section>}
+    {query.loading?<p role="status">{pt("production.loadingSources")}</p>:<><div className="quality-preview-table"><table><thead><tr><th>{pt("production.acceptances")}</th><th>{pt("production.worksheetLocation")}</th><th>{pt("production.originalStatisticValue")}</th><th>{pt("production.actions")}</th></tr></thead><tbody>{query.result?.sources.map((source,i)=><tr key={i}>
+      <td>{source.name}<small>{source.number}</small></td><td>{source.sheetName}{source.row?pt("production.row", { v0: source.row }):source.column?pt("production.column", { v0: source.column }):''}</td><td>{source.value}</td><td><Button onClick={()=>open(source.acceptanceId)}>{pt("production.viewAcceptance")}</Button></td>
+    </tr>)}</tbody></table></div><div className="quality-toolbar"><Button disabled={!offset} onClick={()=>setOffset(value=>value-50)}>{pt("production.previous")}</Button><span>{pt("production.total")} {query.result?.total||0} {pt("production.sources")}</span><Button disabled={offset+50>=(query.result?.total||0)} onClick={()=>setOffset(value=>value+50)}>{pt("production.next")}</Button></div></>}
+    {acceptance&&<section className="quality-chart-source-acceptance"><div className="quality-toolbar"><h3>{acceptance.name}</h3><Button onClick={()=>downloadExcel(`/acceptances/${acceptance.id}/download`).catch(error=>setError(error.message))}>{pt("production.downloadUploadedOriginal")}</Button></div><WorkbookResults definition={acceptance.definition} preview={acceptance.result} compact/></section>}
   </div></Modal>;
 }
 
 export function QualityChartData({chart,data,productId=null}) {
+  useLocale();
   const [from,setFrom]=useState(''),[to,setTo]=useState(''),[point,setPoint]=useState(null),[single,setSingle]=useState(false),[acceptanceId,setAcceptanceId]=useState(''),[search,setSearch]=useState('');
   const acceptances=useQuery(single?queryPath('/quality/chart-acceptances',{template_id:chart.template_id,q:search}):null,data,200);
   const filters={product_id:productId,acceptance_id:single?acceptanceId:null,from,to};
   const query=useQuery(single&&!acceptanceId?null:queryPath(`/quality/charts/${chart.id}/data`,filters),data,150);
   return <div className="quality-chart-data">
-    <div className="quality-chart-filters"><label>数据范围<Select aria-label="图表数据范围" value={single?'single':'all'} onChange={event=>{setSingle(event==='single');setAcceptanceId('');setPoint(null);}}><option value="all">全部验收单</option><option value="single">单张验收单</option></Select></label>{single&&<><label>搜索验收单<AntInput aria-label="搜索图表验收单" value={search} onChange={event=>setSearch(event.target.value)}/></label><label>验收单<Select aria-label="图表验收单" value={acceptanceId} onChange={event=>{setAcceptanceId(event);setPoint(null);}}><option value="">请选择验收单</option>{acceptances.result?.acceptances.map(item=><option key={item.id} value={item.id}>{item.name} · {item.number}</option>)}</Select></label>{acceptances.error&&<span role="alert">{acceptances.error}</span>}{acceptances.result?.has_more&&<span className="muted">仅显示前 100 张，请搜索缩小范围。</span>}</>}</div>
-    {chart.config.dateField&&<div className="quality-chart-filters"><label>开始日期<AntInput aria-label={`${chart.name} 开始日期`} type="date" value={from} onChange={event=>{setFrom(event.target.value);setPoint(null);}}/></label><label>结束日期<AntInput aria-label={`${chart.name} 结束日期`} type="date" value={to} onChange={event=>{setTo(event.target.value);setPoint(null);}}/></label><Button onClick={()=>{setFrom('');setTo('');setPoint(null);}}>全部时间</Button></div>}
-    {single&&!acceptanceId?<p className="quality-chart-empty">请选择一张验收单。</p>:query.error?<div className="form-error" role="alert">{query.error}<Button onClick={query.retry}>重试</Button></div>:query.loading?<p role="status">正在读取图表…</p>:query.result&&<>
+    <div className="quality-chart-filters"><label>{pt("production.dataScope")}<Select aria-label={pt("production.chartDataScope")} value={single?'single':'all'} onChange={event=>{setSingle(event==='single');setAcceptanceId('');setPoint(null);}}><option value="all">{pt("production.allAcceptances")}</option><option value="single">{pt("production.singleAcceptance")}</option></Select></label>{single&&<><label>{pt("production.searchAcceptances")}<AntInput aria-label={pt("production.searchChartAcceptances")} value={search} onChange={event=>setSearch(event.target.value)}/></label><label>{pt("production.acceptances")}<Select aria-label={pt("production.chartAcceptance")} value={acceptanceId} onChange={event=>{setAcceptanceId(event);setPoint(null);}}><option value="">{pt("production.selectAnAcceptance")}</option>{acceptances.result?.acceptances.map(item=><option key={item.id} value={item.id}>{item.name} · {item.number}</option>)}</Select></label>{acceptances.error&&<span role="alert">{acceptances.error}</span>}{acceptances.result?.has_more&&<span className="muted">{pt("production.onlyTheFirst100AreShownSearchTo")}</span>}</>}</div>
+    {chart.config.dateField&&<div className="quality-chart-filters"><label>{pt("production.startDate")}<AntInput aria-label={pt("production.startDate2", { v0: chart.name })} type="date" value={from} onChange={event=>{setFrom(event.target.value);setPoint(null);}}/></label><label>{pt("production.endDate")}<AntInput aria-label={pt("production.endDate2", { v0: chart.name })} type="date" value={to} onChange={event=>{setTo(event.target.value);setPoint(null);}}/></label><Button onClick={()=>{setFrom('');setTo('');setPoint(null);}}>{pt("production.allTime")}</Button></div>}
+    {single&&!acceptanceId?<p className="quality-chart-empty">{pt("production.selectAnAcceptance2")}</p>:query.error?<div className="form-error" role="alert">{query.error}<Button onClick={query.retry}>{pt("production.retry")}</Button></div>:query.loading?<p role="status">{pt("production.loadingChart")}</p>:query.result&&<>
       <QualityChartView result={query.result} type={chart.config.chartType} title={chart.name} onSources={setPoint}/>
-      <p className="muted">{query.result.stats.sheets} 个 Sheet · {query.result.stats.records} 条记录{query.result.stats.incompatibleSheets?` · ${query.result.stats.incompatibleSheets} 个 Sheet 字段类型或单位不兼容，未参与统计`:''}{query.result.stats.excluded?` · ${query.result.stats.excluded} 条记录因筛选或字段空值未参与统计`:''}</p>
+      <p className="muted">{query.result.stats.sheets} {pt("production.sheets")} {query.result.stats.records} {pt("production.records")}{query.result.stats.incompatibleSheets?pt("production.sheetsExcludedDueToIncompatibleFieldTypesOr2", { v0: query.result.stats.incompatibleSheets }):''}{query.result.stats.excluded?pt("production.recordsExcludedByFiltersOrEmptyFields", { v0: query.result.stats.excluded }):''}</p>
     </>}
     {point&&createPortal(<QualityChartSources chartId={chart.id} point={point} filters={filters} data={data} onClose={()=>setPoint(null)}/>,document.body)}
   </div>;

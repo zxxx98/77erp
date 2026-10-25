@@ -154,7 +154,7 @@ test('QR drawer keeps its form submit outside scrolling content and guards retur
 
 test('phone and iPad keep sheets, field order and original QR actions without desktop discard prompts', async ({ browser }) => {
   for (const device of [devices['Pixel 7'], devices['iPad Pro 11']]) {
-    const context = await browser.newContext({ ...device, baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
+    const context = await browser.newContext({ locale: 'zh-CN', ...device, baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
     try {
       await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
       const page = await context.newPage();

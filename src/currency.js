@@ -1,4 +1,5 @@
-export const CURRENCY_LABELS = { USD: "美元", CNY: "人民币" };
+import { translateText } from './i18n/index.js';
+export const CURRENCY_LABELS = { get USD() { return translateText('美元'); }, get CNY() { return translateText('人民币'); } };
 export const CURRENCY_SYMBOLS = { USD: "$", CNY: "¥" };
 export const CURRENCIES = ["USD", "CNY"];
 

@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import React, { lazy, Suspense } from 'react';
 import { LoadingStatus } from './Loading.jsx';
 
@@ -5,7 +7,8 @@ import { LoadingStatus } from './Loading.jsx';
 function deferred(load, name) {
   const Component = lazy(() => load().then(module => ({ default: module[name] })));
   return function DeferredComponent(props) {
-    return <Suspense fallback={<LoadingStatus>正在加载…</LoadingStatus>}><Component {...props} /></Suspense>;
+  useLocale();
+    return <Suspense fallback={<LoadingStatus>{translate("extra.loading")}</LoadingStatus>}><Component {...props} /></Suspense>;
   };
 }
 

@@ -1,9 +1,10 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
 const DATABASE = '77erp-local-drafts';
 const RETENTION = 7 * 24 * 60 * 60 * 1000;
 let connection;
 
 function database() {
-  if (!globalThis.indexedDB) return Promise.reject(new Error('当前浏览器无法保存本地草稿。'));
+  if (!globalThis.indexedDB) return Promise.reject(new Error(translate("extra.the.current.browser.cannot.save.local.drafts")));
   if (!connection) {
     connection = new Promise((resolve, reject) => {
       const request = indexedDB.open(DATABASE, 1);
@@ -12,8 +13,8 @@ function database() {
         store.createIndex('owner', ['userId', 'instanceId', 'warehouseId']);
         store.createIndex('user', 'userId');
       };
-      request.onerror = () => { connection = undefined; reject(new Error('无法打开本地草稿，请检查浏览器存储设置。')); };
-      request.onblocked = () => { connection = undefined; reject(new Error('本地草稿正在更新，请关闭其他旧页面后重试。')); };
+      request.onerror = () => { connection = undefined; reject(new Error(translate("extra.unable.to.open.local.draft.please.check.your.browser.storage.settings"))); };
+      request.onblocked = () => { connection = undefined; reject(new Error(translate("extra.the.local.draft.is.being.updated.please.close.other.old.pages"))); };
       request.onsuccess = () => {
         const db = request.result;
         db.onversionchange = () => { db.close(); connection = undefined; };
@@ -26,7 +27,7 @@ function database() {
 
 export function draftScope(userId, instanceId, warehouseId) {
   if (!Number.isSafeInteger(userId) || userId < 1 || !instanceId || !Number.isSafeInteger(warehouseId) || warehouseId < 1)
-    throw new Error('无法核对草稿归属，请联网重新登录。');
+    throw new Error(translate("extra.unable.to.check.draft.ownership.please.log.in.again.online"));
   return { userId, instanceId, warehouseId };
 }
 
@@ -39,12 +40,12 @@ async function transaction(action, mode = 'readonly') {
     const tx = db.transaction('drafts', mode);
     const result = action(tx.objectStore('drafts'));
     tx.oncomplete = () => resolve(result?.result);
-    tx.onerror = tx.onabort = () => reject(new Error('本地草稿保存失败，请检查浏览器可用存储空间。'));
+    tx.onerror = tx.onabort = () => reject(new Error(translate("extra.failed.to.save.local.draft.please.check.the.available.storage.space")));
   });
 }
 
 export async function saveDraft(scope, draft) {
-  if (!draft.id || !['in', 'out'].includes(draft.type)) throw new Error('草稿格式错误。');
+  if (!draft.id || !['in', 'out'].includes(draft.type)) throw new Error(translate("extra.the.draft.is.formatted.incorrectly"));
   const record = { ...draft, ...scope, key: keyOf(scope, draft.id), updatedAt: Date.now() };
   await transaction(store => store.put(record), 'readwrite');
   return record;

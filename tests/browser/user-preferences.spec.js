@@ -128,7 +128,7 @@ test('corrupt and non-boolean stored preferences fall back to disabled', async (
 });
 
 test('production-only mobile accounts can configure habits and return closes the panel first', async ({ browser }) => {
-  const context = await browser.newContext({ ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
+  const context = await browser.newContext({ locale: 'zh-CN', ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
   try {
     await login(context.request);
     const tag = randomUUID().slice(0, 8);
@@ -202,7 +202,7 @@ for (const scenario of [
 ]) {
   test(`${scenario.name} bottom sheets use drawer preference and retain it after reload`, async ({ browser }) => {
     const safari = scenario.webkit ? await webkit.launch() : null;
-    const context = await (safari || browser).newContext({ ...devices[scenario.device], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
+    const context = await (safari || browser).newContext({ locale: 'zh-CN', ...devices[scenario.device], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', reducedMotion: 'reduce' });
     try {
       if (scenario.standalone) await context.addInitScript(() => {
         const original = window.matchMedia.bind(window);

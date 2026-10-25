@@ -8,7 +8,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 async function mobile(browser, options = {}) {
-  const context = await browser.newContext({ ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', ...options });
+  const context = await browser.newContext({ locale: 'zh-CN', ...devices['Pixel 7'], baseURL: 'http://127.0.0.1:3199', serviceWorkers: 'block', ...options });
   const response = await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
   expect(response.ok()).toBe(true);
   const page = await context.newPage();
@@ -48,7 +48,7 @@ test('device identity chooses mobile on Android tablets and iPadOS, and PC on na
     { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36', viewport: { width: 390, height: 844 }, touch: 10, mobile: false },
   ];
   for (const scenario of scenarios) {
-    const context = await browser.newContext({ baseURL: 'http://127.0.0.1:3199', userAgent: scenario.userAgent, viewport: scenario.viewport });
+    const context = await browser.newContext({ locale: 'zh-CN', baseURL: 'http://127.0.0.1:3199', userAgent: scenario.userAgent, viewport: scenario.viewport });
     await context.addInitScript(touch => { Object.defineProperty(navigator, 'maxTouchPoints', { get: () => touch }); Object.defineProperty(navigator, 'userAgentData', { get: () => ({ mobile: false }) }); }, scenario.touch);
     await context.request.post('/api/auth/login', { data: { username: 'admin', password: 'Test-admin-123' } });
     const page = await context.newPage(); await page.goto('/');

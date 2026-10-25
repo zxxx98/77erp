@@ -1,3 +1,6 @@
+import { localizeError } from '../i18n/errors.js';
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { Form as AntForm } from 'antd';
 import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from '../ui/controls.jsx';
 import { FormField } from './../ui/FormField.jsx';
@@ -17,6 +20,7 @@ import { moneyBase, baseCurrencySymbol, count } from '../app/format.js';
 import { baseCurrency } from '../currency.js';
 
 function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSaved }) {
+  useLocale();
   const { templates } = usePermissions();
   const [template, setTemplate] = useState(initialTemplate || null);
   const [templateName, setTemplateName] = useState(initialTemplate?.name || "");
@@ -68,7 +72,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           ];
     });
     setQuery("");
-    setScanMessage(`已添加 ${p.name}${p.active === 0 ? "（已停用）" : ""}`);
+    setScanMessage(translate("warehouse.added", { v0: p.name, v1: p.active === 0 ? translate("warehouse.deactivated.2") : "" }));
     setError("");
   };
   const scan = async (code) => {
@@ -76,13 +80,13 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     try {
       const p = await lookupProductCode(code, data);
       if (!p) {
-        setError(`未找到条码「${code.trim()}」，请先在物料管理中建档。`);
+        setError(translate("warehouse.the.barcode.was.not.found.please.create.a.file.in.material", { v0: code.trim() }));
         return;
       }
       add(p);
       setBarcode("");
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
     }
   };
   const update = (id, key, value) =>
@@ -102,7 +106,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   const submit = async () => {
 
     if (!items.length) {
-      setError("请至少添加一件物料。");
+      setError(translate("warehouse.please.add.at.least.one.item"));
       return;
     }
     if (submitLock.current || templateAction.busy) return;
@@ -116,9 +120,9 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
         partner, note,
         items: items.map(i => ({ ...i, quantity: materialQuantity(parseQuantity(i.quantity, true), data.products.find(p => p.id === i.product_id)), price: Number(i.price) })),
       });
-      await onSaved(`${type === "in" ? "入库" : "出库"}成功 · ${r.number}`);
+      await onSaved(translate("warehouse.success", { v0: type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out"), v1: r.number }));
     } catch (e) {
-      setError(e.message);
+      setError(localizeError(e.message));
     } finally {
       setBusy(false);
       submitLock.current = false;
@@ -133,33 +137,33 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     setTemplate(result);
     setTemplateName(result.name);
     setTemplateRevision(value => value + 1);
-    setTemplateMessage(`模板「${result.name}」已保存，可反复套用`);
+    setTemplateMessage(translate("warehouse.template.has.been.saved.and.can.be.applied.repeatedly", { v0: result.name }));
   });
   const partners = (data.contacts || []).filter(c => c.active && contactMatchesDirection(c, type));
   const internal = partners.find(c => c.id === partnerId)?.role === 'internal';
   const matches = selection.matches.slice(0, 6);
   return (
     <Modal
-      title={internal ? (type === "in" ? "新建内部入库" : "新建内部出库") : type === "in" ? "新建入库" : "新建出库"}
-      subtitle={`确认后将${type === "in" ? "增加" : "扣减"}库存，并生成可追溯的${type === "in" ? "入库" : "出库"}单据`}
+      title={internal ? (type === "in" ? translate("warehouse.create.a.new.internal.warehouse") : translate("warehouse.create.a.new.internal.warehouse.2")) : type === "in" ? translate("warehouse.new.stock.in") : translate("warehouse.new.stock.out")}
+      subtitle={translate("warehouse.after.confirmation.will.be.put.into.inventory.and.traceable.documents.will", { v0: type === "in" ? translate("warehouse.increase") : translate("warehouse.deduction"), v1: type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out") })}
       onClose={busy || templateAction.busy ? () => {} : onClose}
       wide
     >
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
         {selection.error && <div role="alert">{selection.error}</div>}<QueryStatus query={contacts} />
         <div className="form-body order-form-body">
-          <AntCheckbox className="inactive-product-option" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}>包含停用物料（用于清库存等操作）</AntCheckbox>
+          <AntCheckbox className="inactive-product-option" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}>{translate("warehouse.contains.discontinued.materials.used.for.operations.such.as.inventory.clearance")}</AntCheckbox>
 
           <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={busy || templateAction.busy} onUse={d => {
-            if ((items.length || note) && !window.confirm("套用模板将替换当前编辑内容，是否继续？")) return false;
+            if ((items.length || note) && !window.confirm(translate("warehouse.applying.the.template.will.replace.the.current.editing.content.do.you"))) return false;
             setTemplate(d); setTemplateName(d.name); setTemplateMessage(""); setPartner(d.partner); setPartnerId(d.partner_id); setNote(d.note); setItems(d.items);
           }} />
-          {template && <span className="order-template-status"><FilePenLine size={15} aria-hidden="true" />已套用「{template.name}」<small>本次修改不会自动更新模板</small></span>}
+          {template && <span className="order-template-status"><FilePenLine size={15} aria-hidden="true" />{translate("warehouse.applied")}{template.name}」<small>{translate("warehouse.this.modification.will.not.automatically.update.the.template.2")}</small></span>}
           {templates && <div className="template-save-panel">
-            <label>模板名称<AntInput value={templateName} maxLength={100} placeholder="例如：每周日用品补货" disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
+            <label>{translate("warehouse.template.name")}<AntInput value={templateName} maxLength={100} placeholder={translate("warehouse.for.example.weekly.daily.necessities.replenishment")} disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
             <div className="order-template-actions">
-              <Button type="button" icon={FilePenLine} busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(false)}>{template ? "另存为模板" : "保存为模板"}</Button>
-              {template && <Button type="button" busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(true)}>更新模板</Button>}
+              <Button type="button" icon={FilePenLine} busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(false)}>{template ? translate("warehouse.save.as.template") : translate("warehouse.save.as.template.2")}</Button>
+              {template && <Button type="button" busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(true)}>{translate("warehouse.update.template")}</Button>}
             </div>
             {templateMessage && <p className="template-success" role="status">{templateMessage}</p>}
           </div>
@@ -167,16 +171,14 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           {templateAction.error && <p role="alert" className="form-error">{templateAction.error}</p>}
           <div className="form-grid">
             <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable
-              label={type === "in" ? "供应商" : "客户 / 往来单位"}
-              placeholder={type === "in" ? "选择供应商或内部单位" : "选择客户或内部单位"}
+              label={type === "in" ? translate("warehouse.supplier") : translate("warehouse.customers.correspondence.units")}
+              placeholder={type === "in" ? translate("warehouse.select.a.vendor.or.internal.unit") : translate("warehouse.select.client.or.internal.unit")}
               required disabled={busy || templateAction.busy}
               onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
-            <label>
-              入出库仓库
-              <AntInput value={data.settings.warehouse_name} disabled />
+            <label>{translate("warehouse.inbound.and.outbound.warehouse")}<AntInput value={data.settings.warehouse_name} disabled />
             </label>
           </div>
-          {internal && <p className="info-box">内部流转仅调整库存，不计入采购额、销售额、利润及应收应付。入库单价用于库存计价。</p>}
+          {internal && <p className="info-box">{translate("warehouse.internal.transfers.only.adjust.inventory.and.do.not.include.purchases.sales")}</p>}
           <div className="order-scan-row">
             <Button
               type="button"
@@ -184,13 +186,13 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               icon={Camera}
               onClick={() => setCamera(!camera)}
             >
-              {camera ? "关闭摄像头" : "手机扫码"}
+              {camera ? translate("warehouse.turn.off.camera") : translate("warehouse.scan.code.with.mobile.phone")}
             </Button>
             <div className="input-with-icon">
 
               <AntInput prefix={<ScanLine size={18} />}
-                aria-label="扫描物料条码"
-                placeholder="手动输入物料条码"
+                aria-label={translate("warehouse.scan.material.barcode")}
+                placeholder={translate("warehouse.manually.enter.material.barcode")}
                 value={barcode}
                 onChange={(e) => setBarcode(e.target.value)}
                 onKeyDown={(e) => {
@@ -206,16 +208,14 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               icon={Plus}
               disabled={!barcode.trim()}
               onClick={() => scan(barcode)}
-            >
-              添加
-            </Button>
+            >{translate("warehouse.add")}</Button>
           </div>
           {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)} />}
           <div className="product-picker">
             <div className="table-search">
-              <AntInput prefix={<Search size={16} />} allowClear={{ clearIcon: <X size={14} aria-label="清除" /> }}
-                aria-label="查找并添加物料"
-                placeholder="或搜索物料名称，点击添加"
+              <AntInput prefix={<Search size={16} />} allowClear={{ clearIcon: <X size={14} aria-label={translate("warehouse.clear")} /> }}
+                aria-label={translate("warehouse.find.and.add.items")}
+                placeholder={translate("warehouse.or.search.for.the.material.name.and.click.add")}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -228,16 +228,16 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                     <AntButton type="text" key={p.id} htmlType="button" onClick={() => add(p)}>
                       <ProductArt product={p} size="small" preview={false} />
                       <span>
-                        <strong>{p.name}{p.active === 0 ? "（已停用）" : ""}</strong>
+                        <strong>{p.name}{p.active === 0 ? translate("warehouse.deactivated.2") : ""}</strong>
                         <small>
-                          {p.barcode} · 库存 {p.stock} {p.unit}
+                          {p.barcode}{" "}{translate("warehouse.inventory.2")}{" "}{p.stock} {p.unit}
                         </small>
                       </span>
                       <Plus size={16} />
                     </AntButton>
                   ))
                 ) : (
-                  <p>未找到物料，请先建立物料档案。</p>
+                  <p>{translate("warehouse.material.not.found.please.create.a.material.file.first")}</p>
                 )}
               </div>
             )}
@@ -249,42 +249,40 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             </div>
           )}
           <div className="order-items-title">
-            <strong>
-              物料明细 <span>{items.length}</span>
+            <strong>{translate("warehouse.material.details")}<span>{items.length}</span>
             </strong>
-            <small>再次扫描同一物料，数量自动加 1</small>
+            <small>{translate("warehouse.scan.the.same.material.again.and.the.quantity.will.be.automatically")}</small>
           </div>
           <div className="table-scroll form-table-wrap">
             <table className="data-table form-table">
               <thead>
                 <tr>
-                  <th>物料</th>
-                  <th style={{ width: 100 }}>数量</th>
-                  <th style={{ width: 110 }}>单价（{baseCurrency()}）</th>
-                  <th className="number-cell">小计</th>
+                  <th>{translate("warehouse.material")}</th>
+                  <th style={{ width: 100 }}>{translate("warehouse.quantity")}</th>
+                  <th style={{ width: 110 }}>{translate("warehouse.unit.price.3")}{baseCurrency()}）</th>
+                  <th className="number-cell">{translate("warehouse.subtotal")}</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {items.map((i) => {
                   const p = data.products.find((p) => p.id === i.product_id);
-                  if (!p) return <tr key={i.product_id}><td colSpan={4}>正在核对物料 #{i.product_id}；若物料已删除，请移除后重新选择。</td><td><AntButton type="text" htmlType="button" aria-label={`移除物料 #${i.product_id}`} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></AntButton></td></tr>;
+                  if (!p) return <tr key={i.product_id}><td colSpan={4}>{translate("warehouse.checking.material")}{i.product_id}{translate("warehouse.if.the.material.has.been.deleted.please.remove.it.and.select")}</td><td><AntButton type="text" htmlType="button" aria-label={translate("warehouse.remove.item", { v0: i.product_id })} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></AntButton></td></tr>;
                   return (
                     <tr key={i.product_id}>
                       <td>
                         <div className="product-info">
                           <ProductArt product={p} size="small" />
                           <div>
-                            <strong>{p.name}{p.active === 0 ? "（已停用）" : ""}</strong>
-                            <small>
-                              库存 {p.stock} {p.unit}
+                            <strong>{p.name}{p.active === 0 ? translate("warehouse.deactivated.2") : ""}</strong>
+                            <small>{translate("warehouse.stock")}{p.stock} {p.unit}
                             </small>
                           </div>
                         </div>
                       </td>
                       <td>
-                        <FormField value={i.quantity} required type="number" min="0.0001" max="99999999" label={`${p.name} 数量`}><AntInput
-                          aria-label={`${p.name} 数量`}
+                        <FormField value={i.quantity} required type="number" min="0.0001" max="99999999" label={translate("warehouse.quantity.2", { v0: p.name })}><AntInput
+                          aria-label={translate("warehouse.quantity.2", { v0: p.name })}
                           type="number"
                           min="0.0001"
                           max="99999999"
@@ -297,8 +295,8 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         /></FormField>
                       </td>
                       <td>
-                        <FormField value={i.price} required type="number" min="0" max="99999999" label={`${p.name} 单价`}><AntInput
-                          aria-label={`${p.name} 单价`}
+                        <FormField value={i.price} required type="number" min="0" max="99999999" label={translate("warehouse.unit.price.2", { v0: p.name })}><AntInput
+                          aria-label={translate("warehouse.unit.price.2", { v0: p.name })}
                           type="number"
                           min="0"
                           max="99999999"
@@ -316,7 +314,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                         <AntButton type="text"
                           htmlType="button"
                           className="icon-button"
-                          aria-label={`移除 ${p.name}`}
+                          aria-label={translate("warehouse.remove", { v0: p.name })}
                           onClick={() =>
                             setItems(
                               items.filter(
@@ -335,7 +333,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               {!!items.length && (
                 <tfoot>
                   <tr className="table-total-row">
-                    <td>总计 · {items.length} 种物料</td>
+                    <td>{translate("warehouse.total")}{" "}{items.length}{" "}{translate("warehouse.materials")}</td>
                     <td className="number-cell">{count(totalQuantity)}</td>
                     <td />
                     <td className="number-cell">{baseCurrencySymbol()} {moneyBase(total)}</td>
@@ -347,16 +345,14 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             {!items.length && (
               <div className="order-form-empty">
                 <ScanLine size={25} />
-                <span>扫码或搜索，添加第一件物料</span>
+                <span>{translate("warehouse.scan.the.qr.code.or.search.to.add.the.first.item.2")}</span>
               </div>
             )}
           </div>
-          <label className="note-label">
-            备注
-            <AntInput.TextArea
+          <label className="note-label">{translate("warehouse.remarks")}<AntInput.TextArea
               maxLength={500}
               rows={2}
-              placeholder="选填，记录本次入出库的补充信息"
+              placeholder={translate("warehouse.optional.record.the.supplementary.information.of.this.entry.and.exit")}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -370,23 +366,21 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
         </div>
         <div className="modal-footer order-form-footer">
           <div>
-            <small>物料种类</small>
+            <small>{translate("warehouse.material.type")}</small>
             <strong>
               {items.length}
-              <span> 种</span>
+              <span>{" "}{translate("warehouse.types")}</span>
             </strong>
           </div>
           <div>
-            <Button type="button" onClick={onClose} disabled={busy}>
-              取消
-            </Button>
+            <Button type="button" onClick={onClose} disabled={busy}>{translate("warehouse.cancel")}</Button>
             <Button
               type="submit"
               kind="primary"
               icon={Check} busy={busy}
               disabled={busy || templateAction.busy || !items.length}
             >
-              {busy ? "正在提交…" : `确认${type === "in" ? "入库" : "出库"}`}
+              {busy ? translate("warehouse.submitting") : translate("warehouse.confirm.2", { v0: type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out") })}
             </Button>
           </div>
         </div>

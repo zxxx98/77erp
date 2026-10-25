@@ -1,3 +1,5 @@
+import { t as translate, getFormatLocale } from '../i18n/index.js';
+import { useLocale } from '../i18n/react.jsx';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { CheckList, SearchBar } from 'antd-mobile';
 import { ChevronDown } from 'lucide-react';
@@ -6,8 +8,9 @@ import { FormField } from './FormField.jsx';
 import { Empty, Input, Spin } from './controls.jsx';
 
 export function MobileDropdown({ options, value, displayValue, onSelect, onChange, label, listLabel,
-  placeholder = '请选择', searchable, loading, disabled, required, className = '', id,
-  emptyText = '暂无可选项', noMatchesText, loadingText = '正在加载…', ...props }) {
+  placeholder = translate("extra.please.select"), searchable, loading, disabled, required, className = '', id,
+  emptyText = translate("extra.no.options.available.yet"), noMatchesText, loadingText = translate("extra.loading"), ...props }) {
+  useLocale();
   const generated = useId();
   const inputId = id || generated;
   const listId = `${inputId}-options`;
@@ -22,7 +25,7 @@ export function MobileDropdown({ options, value, displayValue, onSelect, onChang
   const filtered = options.filter(option => String(option.searchText || option.label).toLowerCase().includes(query.trim().toLowerCase()));
   const show = () => { if (!disabled) { setQuery(''); setOpen(true); } };
   useLayoutEffect(() => {
-    search.current?.nativeElement?.setAttribute('aria-label', `搜索${listLabel || label || '选项'}`);
+    search.current?.nativeElement?.setAttribute('aria-label', translate("extra.search", { v0: listLabel || label || translate("extra.options") }));
   });
   const attributes = {
     id: inputId, disabled, role: 'combobox', 'aria-label': name,
@@ -38,9 +41,9 @@ export function MobileDropdown({ options, value, displayValue, onSelect, onChang
   return <div className={`dropdown erp-mobile-select ${label ? 'dropdown-field' : ''} ${className}`}>
     {label && <label htmlFor={inputId}>{label}{required && <span> *</span>}</label>}
     {required ? <FormField value={fieldValue} required label={name}>{control}</FormField> : control}
-    {open && <Modal title={listLabel || label || '请选择'} className="erp-select-sheet" onClose={() => setOpen(false)}>
+    {open && <Modal title={listLabel || label || translate("extra.please.select")} className="erp-select-sheet" onClose={() => setOpen(false)}>
       <div className="form-body mw-stack">
-        {searchable && <SearchBar ref={search} placeholder={`搜索${listLabel || label || '选项'}`} value={query} onChange={setQuery} clearable />}
+        {searchable && <SearchBar ref={search} placeholder={translate("extra.search", { v0: listLabel || label || translate("extra.options") })} value={query} onChange={setQuery} clearable />}
         {loading ? <div role="status"><Spin />{loadingText}</div> : <div id={listId} role="listbox" aria-label={listLabel || name}>
           <CheckList value={selected ? [String(selected.value)] : []}>
             {filtered.map(option => <div key={option.value} role="option" data-value={String(option.value)}

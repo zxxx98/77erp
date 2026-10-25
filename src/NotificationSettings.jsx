@@ -1,3 +1,6 @@
+import { localizeError } from './i18n/errors.js';
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { ConfigProvider as AntConfigProvider } from 'antd';
 import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from './ui/controls.jsx';
 
@@ -5,10 +8,11 @@ import { LoadingStatus } from './Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { Select } from './Dropdown.jsx';
-import { notificationEvents, notificationFormats, notificationStatuses } from '../shared/notifications.js';
+import { notificationEvents, notificationFormats, notificationStatuses } from './i18n/display.js';
 import './notifications.css';
 
 export function NotificationSettings({ warehouses = [], active, onBusy, onDirty }) {
+  useLocale();
   const [config, setConfig] = useState(null), [saved, setSaved] = useState('');
   const [url, setUrl] = useState(''), [secret, setSecret] = useState('');
   const [clearUrl, setClearUrl] = useState(false), [clearSecret, setClearSecret] = useState(false);
@@ -23,7 +27,7 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
   useEffect(() => {
     if (!active || config) return;
     let live = true;
-    api('/settings/notifications').then(value => { if (live) { setConfig(value); setSaved(JSON.stringify(value)); } }).catch(e => { if (live) setError(e.message); });
+    api('/settings/notifications').then(value => { if (live) { setConfig(value); setSaved(JSON.stringify(value)); } }).catch(e => { if (live) setError(localizeError(e.message)); });
     return () => { live = false; };
   }, [active, config]);
   useEffect(() => {
@@ -37,7 +41,7 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
         const next = JSON.stringify(value);
         if (snapshot === null) { logsSnapshot.current = next; setLogs(value); }
         else setLogsChanged(next !== snapshot);
-      } catch (e) { if (live && snapshot === null) setError(e.message); }
+      } catch (e) { if (live && snapshot === null) setError(localizeError(e.message)); }
     };
     void load(); const timer = setInterval(load, 5000);
     return () => { live = false; clearInterval(timer); };
@@ -45,7 +49,7 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
   const run = async action => {
     if (lock.current) return;
     lock.current = true; setBusy(true); onBusy?.(true); setError(''); setNotice('');
-    try { await action(); } catch (e) { setError(e.message); }
+    try { await action(); } catch (e) { setError(localizeError(e.message)); }
     finally { lock.current = false; setBusy(false); onBusy?.(false); }
   };
   const field = (key, value) => { setConfig(c => ({ ...c, [key]: value })); setNotice(''); };
@@ -54,48 +58,48 @@ export function NotificationSettings({ warehouses = [], active, onBusy, onDirty 
     const value = await api('/settings/notifications/deliveries');
     logsSnapshot.current = JSON.stringify(value); setLogs(value); setLogsChanged(false);
   };
-  return <section className="notification-settings" aria-label="通知设置">
-    <div className="settings-section-heading"><h3>Webhook 通知</h3><p>选择需要接收的通知类型。配置由所有设备共用，仅管理员可修改。</p></div>
+  return <section className="notification-settings" aria-label={translate("system.notification.settings")}>
+    <div className="settings-section-heading"><h3>{translate("system.webhook.notification")}</h3><p>{translate("system.select.the.type.of.notifications.you.want.to.receive.the.configuration")}</p></div>
     {config ? <>
       <div className="notification-fields">
-        <AntCheckbox className="notification-choice" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)}><span><strong>启用 Webhook 通知</strong><small>取消勾选并保存后停止发送业务通知。</small></span></AntCheckbox>
-        <label>通知格式<Select aria-label="通知格式" value={config.format} disabled={busy} onChange={e => { field('format', e); setSecret(''); setClearSecret(false); }}>{notificationFormats.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}</Select></label>
-        <label>Webhook 地址<AntInput type="password" autoComplete="new-password" placeholder={config.has_url ? `已保存（${config.destination}），留空保留` : 'https://…'} maxLength={4096} value={url} disabled={busy || clearUrl} onChange={e => setUrl(e.target.value)} /></label>
-        <small>填写公网 HTTPS 地址。已保存的完整地址和密钥不会显示在页面或业务备份中。</small>
-        {config.has_url && <AntCheckbox className="notification-choice" checked={clearUrl} disabled={busy || config.enabled} onChange={e => setClearUrl(e.target.checked)}><span>清除已保存地址（需先取消启用）</span></AntCheckbox>}
+        <AntCheckbox className="notification-choice" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)}><span><strong>{translate("system.enable.webhook.notifications")}</strong><small>{translate("system.uncheck.and.save.to.stop.sending.business.notifications")}</small></span></AntCheckbox>
+        <label>{translate("system.notification.format")}<Select aria-label={translate("system.notification.format")} value={config.format} disabled={busy} onChange={e => { field('format', e); setSecret(''); setClearSecret(false); }}>{notificationFormats.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}</Select></label>
+        <label>{translate("system.webhook.address")}<AntInput type="password" autoComplete="new-password" placeholder={config.has_url ? translate("system.saved.leave.blank.to.retain", { v0: config.destination }) : 'https://…'} maxLength={4096} value={url} disabled={busy || clearUrl} onChange={e => setUrl(e.target.value)} /></label>
+        <small>{translate("system.fill.in.the.public.https.address.the.full.saved.address.and")}</small>
+        {config.has_url && <AntCheckbox className="notification-choice" checked={clearUrl} disabled={busy || config.enabled} onChange={e => setClearUrl(e.target.checked)}><span>{translate("system.clear.saved.addresses.need.to.be.deactivated.first")}</span></AntCheckbox>}
         {config.format !== 'wecom' && <>
-          <label>签名密钥（选填）<AntInput type="password" autoComplete="new-password" maxLength={4096} value={secret} disabled={busy || clearSecret} placeholder={keepsSecret ? '已保存，留空保留' : '机器人开启加签时填写密钥'} onChange={e => setSecret(e.target.value)} /></label>
-          <small>更换通知格式后，需重新填写签名密钥。</small>
-          {config.has_secret && <AntCheckbox className="notification-choice" checked={clearSecret} disabled={busy} onChange={e => setClearSecret(e.target.checked)}><span>清除已保存密钥</span></AntCheckbox>}
+          <label>{translate("system.signing.key.optional")}<AntInput type="password" autoComplete="new-password" maxLength={4096} value={secret} disabled={busy || clearSecret} placeholder={keepsSecret ? translate("system.saved.leave.blank.to.retain.2") : translate("system.fill.in.the.key.when.the.robot.starts.signing")} onChange={e => setSecret(e.target.value)} /></label>
+          <small>{translate("system.after.changing.the.notification.format.you.need.to.fill.in.the")}</small>
+          {config.has_secret && <AntCheckbox className="notification-choice" checked={clearSecret} disabled={busy} onChange={e => setClearSecret(e.target.checked)}><span>{translate("system.clear.saved.keys")}</span></AntCheckbox>}
         </>}
-        <AntConfigProvider componentDisabled={busy}><fieldset disabled={busy}><legend>通知类型</legend><div className="notification-choices">{notificationEvents.map(e => <AntCheckbox key={e.key} className="notification-choice" checked={config.events.includes(e.key)} onChange={() => toggle('events', e.key)}><span><strong>{e.label}</strong><small>{e.description}</small></span></AntCheckbox>)}</div></fieldset></AntConfigProvider>
-        <AntConfigProvider componentDisabled={busy}><fieldset disabled={busy}><legend>通知仓库</legend>
-          <AntCheckbox className="notification-choice" checked={!config.warehouse_ids.length} onChange={e => field('warehouse_ids', e.target.checked ? [] : warehouses.length ? [warehouses[0].id] : [])}><span>全部仓库（包含以后新增的仓库）</span></AntCheckbox>
+        <AntConfigProvider componentDisabled={busy}><fieldset disabled={busy}><legend>{translate("system.notification.type")}</legend><div className="notification-choices">{notificationEvents.map(e => <AntCheckbox key={e.key} className="notification-choice" checked={config.events.includes(e.key)} onChange={() => toggle('events', e.key)}><span><strong>{e.label}</strong><small>{e.description}</small></span></AntCheckbox>)}</div></fieldset></AntConfigProvider>
+        <AntConfigProvider componentDisabled={busy}><fieldset disabled={busy}><legend>{translate("system.notify.warehouse")}</legend>
+          <AntCheckbox className="notification-choice" checked={!config.warehouse_ids.length} onChange={e => field('warehouse_ids', e.target.checked ? [] : warehouses.length ? [warehouses[0].id] : [])}><span>{translate("system.all.warehouses.including.warehouses.added.in.the.future")}</span></AntCheckbox>
           <div className="notification-choices">{warehouses.map(w => <AntCheckbox key={w.id} className="notification-choice" checked={config.warehouse_ids.includes(w.id)} onChange={() => toggle('warehouse_ids', w.id)}><span>{w.name}</span></AntCheckbox>)}</div>
-          <small>未指定仓库时通知全部仓库。关键管理操作不受仓库筛选限制。</small>
+          <small>{translate("system.notify.all.warehouses.when.no.warehouse.is.specified.key.management.operations")}</small>
         </fieldset></AntConfigProvider>
-        <AntCheckbox className="notification-choice" checked={config.include_amounts} disabled={busy} onChange={e => field('include_amounts', e.target.checked)}><span><strong>通知中显示金额</strong><small>包含单据金额、收付款和每日汇总金额；请发往适合查看这些信息的渠道。</small></span></AntCheckbox>
-        {config.events.includes('daily_summary') && <div className="notification-schedule"><label>每日汇总时间<AntInput type="time" value={config.daily_time} disabled={busy} onChange={e => field('daily_time', e.target.value)} /></label><label>汇总时区<AntInput value={config.timezone} maxLength={100} placeholder="Asia/Shanghai" disabled={busy} onChange={e => field('timezone', e.target.value)} /></label><small>汇总当天零点至发送时的数据，每天一次。服务需运行；当天错过时间会在启动后补发，之前日期不补发。</small></div>}
-        <small>每次保存会取消旧配置尚未完成的通知。正在发送的请求可能已到达接收方。</small>
+        <AntCheckbox className="notification-choice" checked={config.include_amounts} disabled={busy} onChange={e => field('include_amounts', e.target.checked)}><span><strong>{translate("system.amount.shown.in.notification")}</strong><small>{translate("system.contains.document.amounts.receipts.and.payments.and.daily.summary.amounts.please")}</small></span></AntCheckbox>
+        {config.events.includes('daily_summary') && <div className="notification-schedule"><label>{translate("system.daily.summary.time")}<AntInput type="time" value={config.daily_time} disabled={busy} onChange={e => field('daily_time', e.target.value)} /></label><label>{translate("system.summary.time.zone")}<AntInput value={config.timezone} maxLength={100} placeholder="Asia/Shanghai" disabled={busy} onChange={e => field('timezone', e.target.value)} /></label><small>{translate("system.summarize.the.data.from.zero.o.clock.on.the.day.to")}</small></div>}
+        <small>{translate("system.each.save.will.cancel.the.notification.that.the.old.configuration.has")}</small>
         <div className="notification-actions"><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
           const value = await api('/settings/notifications', { method: 'PUT', body: { ...config, url, secret, clear_url: clearUrl, clear_secret: clearSecret } });
-          setConfig(value); setSaved(JSON.stringify(value)); setUrl(''); setSecret(''); setClearUrl(false); setClearSecret(false); setNotice('通知设置已保存。'); await refreshLogs();
-        })}>{busy ? <LoadingStatus size={20}>处理中…</LoadingStatus> : '保存通知设置'}</AntButton>
-        <AntButton type="default" htmlType="button" className="btn" disabled={busy || dirty || !config.has_url} onClick={() => void run(async () => { await api('/settings/notifications/test', { method: 'POST', body: { version: config.version } }); setNotice('测试通知已加入发送队列，请查看发送记录。'); await refreshLogs(); })}>发送测试通知</AntButton></div>
-        <small>先保存再测试；测试通知不受总开关、类型和仓库筛选限制。机器人关键词可配置为「77 ERP」。</small>
+          setConfig(value); setSaved(JSON.stringify(value)); setUrl(''); setSecret(''); setClearUrl(false); setClearSecret(false); setNotice(translate("system.notification.settings.saved")); await refreshLogs();
+        })}>{busy ? <LoadingStatus size={20}>{translate("system.processing")}</LoadingStatus> : translate("system.save.notification.settings")}</AntButton>
+        <AntButton type="default" htmlType="button" className="btn" disabled={busy || dirty || !config.has_url} onClick={() => void run(async () => { await api('/settings/notifications/test', { method: 'POST', body: { version: config.version } }); setNotice(translate("system.the.test.notification.has.been.added.to.the.sending.queue.please")); await refreshLogs(); })}>{translate("system.send.test.notification")}</AntButton></div>
+        <small>{translate("system.save.first.and.then.test.test.notifications.are.not.restricted.by")}</small>
       </div>
-      <div className="notification-log-heading"><h3>最近发送记录</h3><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => void run(refreshLogs)}>刷新记录</AntButton></div>
-      {logsChanged && <div className="data-update-notice" role="status">发送记录有变更，点击“刷新记录”查看。</div>}
-      <p className="notification-help">失败后自动重试，最多发送 5 次。显示最近 50 条，已发送及已取消记录保留 30 天。</p>
+      <div className="notification-log-heading"><h3>{translate("system.recently.sent.records")}</h3><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => void run(refreshLogs)}>{translate("system.refresh.record")}</AntButton></div>
+      {logsChanged && <div className="data-update-notice" role="status">{translate("system.if.there.are.changes.in.the.sending.record.click.refresh.record")}</div>}
+      <p className="notification-help">{translate("system.automatically.retry.after.failure.up.to.5.times.the.latest.50")}</p>
       <div className="notification-logs">{logs.length ? logs.map(log => <article key={log.id} data-delivery-id={log.id}>
         <div><strong>{labelsFor(log.event)}</strong><span>{notificationStatuses[log.status] || log.status}</span></div>
-        <small>{new Date(log.created_at).toLocaleString('zh-CN')} · 已尝试 {log.attempts} 次</small>
+        <small>{new Date(log.created_at).toLocaleString(getFormatLocale())}{" "}{translate("system.tried")}{" "}{log.attempts}{" "}{translate("system.times")}</small>
         {log.last_error && <p>{log.last_error}</p>}
-        {['failed', 'retry'].includes(log.status) && <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => void run(async () => { await api(`/settings/notifications/deliveries/${log.id}/retry`, { method: 'POST', body: {} }); await refreshLogs(); })}>重试发送</AntButton>}
-      </article>) : <p>暂无发送记录</p>}</div>
-    </> : !error && <p><LoadingStatus>正在读取通知设置…</LoadingStatus></p>}
+        {['failed', 'retry'].includes(log.status) && <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => void run(async () => { await api(`/settings/notifications/deliveries/${log.id}/retry`, { method: 'POST', body: {} }); await refreshLogs(); })}>{translate("system.retry.sending")}</AntButton>}
+      </article>) : <p>{translate("system.no.sending.record.yet")}</p>}</div>
+    </> : !error && <p><LoadingStatus>{translate("system.reading.notification.settings")}</LoadingStatus></p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
   </section>;
 }
-function labelsFor(event) { return notificationEvents.find(e => e.key === event)?.label || '测试通知'; }
+function labelsFor(event) { return notificationEvents.find(e => e.key === event)?.label || translate("system.test.notification"); }

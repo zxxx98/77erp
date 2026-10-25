@@ -1,3 +1,6 @@
+import { localizeError } from './i18n/errors.js';
+import { t as translate, getFormatLocale } from './i18n/index.js';
+import { useLocale } from './i18n/react.jsx';
 import { FormField } from './ui/FormField.jsx';
 import { Checkbox as AntCheckbox, Input as AntInput, Button as AntButton } from './ui/controls.jsx';
 
@@ -6,6 +9,7 @@ import { api } from './api.js';
 import './notifications.css';
 
 export function R2BackupSettings({ active, onBusy, onDirty }) {
+  useLocale();
   const [config, setConfig] = useState(null), [saved, setSaved] = useState(''), [credentials, setCredentials] = useState({});
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const lock = useRef(false);
@@ -14,39 +18,39 @@ export function R2BackupSettings({ active, onBusy, onDirty }) {
   useEffect(() => {
     if (!active || config) return;
     let live = true;
-    api('/settings/r2-backup').then(c => { if (live) { setConfig(c); setSaved(JSON.stringify(c)); } }).catch(e => { if (live) setError(e.message); });
+    api('/settings/r2-backup').then(c => { if (live) { setConfig(c); setSaved(JSON.stringify(c)); } }).catch(e => { if (live) setError(localizeError(e.message)); });
     return () => { live = false; };
   }, [active, config]);
   const run = async action => {
     if (lock.current) return;
     lock.current = true; setBusy(true); onBusy?.(true); setError(''); setNotice('');
-    try { await action(); } catch (e) { setError(e.message); }
+    try { await action(); } catch (e) { setError(localizeError(e.message)); }
     finally { lock.current = false; setBusy(false); onBusy?.(false); }
   };
   const field = (key, value) => setConfig(c => ({ ...c, [key]: value }));
-  return <section className="notification-settings r2-backup-settings" aria-label="R2 自动备份">
-    <div className="settings-section-heading"><h3>Cloudflare R2 自动备份</h3><p>完整 SQLite 在线备份，包含所有仓库、账号和系统凭据。请使用私有存储桶；图片文件仍需在图床保留。</p></div>
+  return <section className="notification-settings r2-backup-settings" aria-label={translate("system.r2.automatic.backup")}>
+    <div className="settings-section-heading"><h3>{translate("system.cloudflare.r2.automatic.backup")}</h3><p>{translate("system.full.sqlite.online.backup.including.all.repositories.accounts.and.system.credentials")}</p></div>
     {config && <div className="notification-fields">
-      <AntCheckbox className="notification-choice" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)}><span>启用定时备份</span></AntCheckbox>
-      {[['account_id', 'Cloudflare Account ID', '32 位账户 ID'], ['bucket', 'R2 存储桶', '预先创建的私有存储桶'], ['prefix', '备份目录前缀', '77erp'], ['cron', 'Cron 表达式（五段）', '0 2 * * *'], ['timezone', '执行时区', 'Asia/Shanghai']].map(([key, label, placeholder]) => <label key={key}>{label}<AntInput value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
-      <label>Excel 目录前缀<FormField value={config.excel_prefix || ''} required maxLength={200} label="Excel 目录前缀"><AntInput  value={config.excel_prefix || ''} maxLength={200} placeholder="excel" disabled={busy} onChange={e => field('excel_prefix', e.target.value)} /></FormField><small>验收单原始 Excel 使用此独立目录，复用上方 R2 连接；不参与数据库备份轮转。</small></label>
-      <small>Cron 顺序：分 时 日 月 周。例如 0 2 * * * 为每天 02:00，0 * * * * 为每小时。服务需保持运行；停机错过的计划不补跑。每次成功上传后自动保留当前目录内最新 10 个备份，超出的旧备份会被删除。</small>
+      <AntCheckbox className="notification-choice" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)}><span>{translate("system.enable.scheduled.backup")}</span></AntCheckbox>
+      {[['account_id', 'Cloudflare Account ID', translate("system.32.digit.account.id")], ['bucket', translate("system.r2.bucket"), translate("system.pre.created.private.bucket")], ['prefix', translate("system.backup.directory.prefix"), '77erp'], ['cron', translate("system.cron.expression.five.paragraphs"), '0 2 * * *'], ['timezone', translate("system.execution.time.zone"), 'Asia/Shanghai']].map(([key, label, placeholder]) => <label key={key}>{label}<AntInput value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
+      <label>{translate("system.excel.directory.prefix")}<FormField value={config.excel_prefix || ''} required maxLength={200} label={translate("system.excel.directory.prefix")}><AntInput  value={config.excel_prefix || ''} maxLength={200} placeholder="excel" disabled={busy} onChange={e => field('excel_prefix', e.target.value)} /></FormField><small>{translate("system.the.original.excel.of.the.acceptance.form.uses.this.independent.directory")}</small></label>
+      <small>{translate("system.cron.order.minute.hour.day.month.week.for.example.0.2")}</small>
       {[['access_key', 'R2 Access Key ID'], ['secret_key', 'R2 Secret Access Key']].map(([key, label]) => <React.Fragment key={key}>
-        <label>{label}<AntInput type="password" autoComplete="new-password" maxLength={4096} disabled={busy || credentials[`clear_${key}`]} value={credentials[key] || ''} placeholder={config[`has_${key}`] ? '已保存，留空保留' : '尚未配置'} onChange={e => setCredentials(c => ({ ...c, [key]: e.target.value }))} /></label>
-        {config[`has_${key}`] && <AntCheckbox className="notification-choice" disabled={busy} checked={!!credentials[`clear_${key}`]} onChange={e => setCredentials(c => ({ ...c, [`clear_${key}`]: e.target.checked }))}><span>清除{label}</span></AntCheckbox>}
+        <label>{label}<AntInput type="password" autoComplete="new-password" maxLength={4096} disabled={busy || credentials[`clear_${key}`]} value={credentials[key] || ''} placeholder={config[`has_${key}`] ? translate("system.saved.leave.blank.to.retain.2") : translate("system.not.configured.yet")} onChange={e => setCredentials(c => ({ ...c, [key]: e.target.value }))} /></label>
+        {config[`has_${key}`] && <AntCheckbox className="notification-choice" disabled={busy} checked={!!credentials[`clear_${key}`]} onChange={e => setCredentials(c => ({ ...c, [`clear_${key}`]: e.target.checked }))}><span>{translate("system.clear")}{label}</span></AntCheckbox>}
       </React.Fragment>)}
-      <small>R2 凭据需要目标存储桶的对象读写权限（含列举、删除）。如需备份结果通知，请在「通知设置」启用 Webhook 并勾选「数据库备份」。</small>
+      <small>{translate("system.r2.credentials.require.object.read.and.write.permissions.including.enumeration.deletion")}</small>
       <div className="notification-actions"><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
         const c = await api('/settings/r2-backup', { method: 'PUT', body: { ...config, ...credentials } });
-        setConfig(c); setSaved(JSON.stringify(c)); setCredentials({}); setNotice('R2 备份设置已保存。');
-      })}>保存备份设置</AntButton>
+        setConfig(c); setSaved(JSON.stringify(c)); setCredentials({}); setNotice(translate("system.r2.backup.settings.saved"));
+      })}>{translate("system.save.backup.settings")}</AntButton>
       <AntButton type="default" htmlType="button" className="btn" disabled={busy || dirty} onClick={() => void run(async () => {
         const result = await api('/settings/r2-backup/run', { method: 'POST', body: { version: config.version } });
-        setNotice(`备份成功：${result.object_key}${result.warning ? `；${result.warning}` : ""}`);
-      })}>{busy ? '处理中…' : '立即备份'}</AntButton></div>
-      <small>先保存再立即备份；关闭定时备份后仍可手动执行。</small>
+        setNotice(translate("system.backup.successful", { v0: result.object_key, v1: result.warning ? `；${result.warning}` : "" }));
+      })}>{busy ? translate("system.processing") : translate("system.back.up.now")}</AntButton></div>
+      <small>{translate("system.save.first.and.then.back.up.immediately.you.can.still.execute")}</small>
     </div>}
     {error && <p className="form-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
-    <p className="notification-help">恢复完整数据库需先停止服务，再替换数据库文件并处理旧 WAL/SHM 文件，详见部署文档。下方 JSON 恢复入口仅支持业务 JSON 备份。</p>
+    <p className="notification-help">{translate("system.to.restore.the.complete.database.you.need.to.stop.the.service")}</p>
   </section>;
 }
