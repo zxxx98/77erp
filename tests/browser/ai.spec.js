@@ -32,7 +32,11 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) test(`${device || 'desktop'
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
     await page.getByRole('button', { name: '查询物料数量', exact: true }).click();
     await expect(page.getByLabel('你的需求')).toHaveValue('当前仓库有多少种物料？');
-    await page.getByLabel('附加物料 Excel / CSV').setInputFiles(resolve('tests/fixtures/products.xlsx'));
+    await expect(page.getByLabel('附加物料 Excel / CSV')).toBeHidden();
+    const chooserOpened = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: '添加表格', exact: true }).click();
+    const chooser = await chooserOpened;
+    await chooser.setFiles(resolve('tests/fixtures/products.xlsx'));
     await expect(page.getByText('products.xlsx · 1 行')).toBeVisible();
     await page.getByLabel('你的需求').fill('导入上传表，新增物料档案，数量为期初库存。');
     const previewed = page.waitForResponse(response => response.url().endsWith('/api/ai/chat'));
