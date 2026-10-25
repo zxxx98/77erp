@@ -283,6 +283,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateCurrency(db);
   app.use("/api/backup", express.json({ limit: "100mb" }));
   app.use("/api/products/import", express.json({ limit: "1mb" }));
+  app.use('/api/ai/chat', express.json({ limit: '6mb' }));
   app.use("/api/ai", express.json({ limit: "1mb" }));
   app.use('/api/quality', express.json({ limit: '2mb' }));
   app.use(['/api/boms', '/api/production-orders'], express.json({ limit: '2mb' }));

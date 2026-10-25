@@ -7,6 +7,11 @@ export async function aiFetch(url, options) {
     const result=JSON.parse(last.content);
     message = { content: result.recommendations ? `当前有 ${result.acceptance_count} 张验收单，可生成：${result.recommendations.map(r=>r.name).join('、')}。${result.note}` : '已生成预览，请核对后确认。' };
   }
+  else if (Array.isArray(last.content)) {
+    const images = last.content.filter(part => part.type === 'image_url');
+    if (!images.length || images.some(part => !/^data:image\/webp;base64,/.test(part.image_url?.url))) throw new Error('Invalid image payload');
+    message = { content: `已收到 ${images.length} 张图片，可以继续说明需要核对的内容。` };
+  }
   else if (/^(图表|推荐图表)参数：/.test(last.content)) {
     const name=last.content.startsWith('推荐')?'quality_chart_data':'preview_quality_chart';
     message={content:null,tool_calls:[{id:name,type:'function',function:{name,arguments:last.content.split('参数：')[1]}}]};

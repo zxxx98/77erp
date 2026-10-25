@@ -1,8 +1,9 @@
 import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import ExcelJS from 'exceljs';
+import sharp from 'sharp';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -42,6 +43,114 @@ async function fixture(t, dbPath = ':memory:', historicalProduction = true) {
   const order = (type = 'in', quantity = 2, product_id = 1) => ({ warehouse_id: 1, type, partner: 'AI测试单位', items: [{ product_id, quantity, price: 12.5 }] });
   return { db, request, admin, staff, id, permissions, settings, calls, replies, use, chat, order };
 }
+
+async function imageAttachment(name = '物料照片.png') {
+  const bytes = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#2563eb' } }).png().toBuffer();
+  return { name, data_url: `data:image/png;base64,${bytes.toString('base64')}` };
+}
+
+test('AI images reach the model, survive tool calls and history, and remain private', async t => {
+  const f = await fixture(t), picture = await imageAttachment();
+  await f.permissions(['ai']);
+  f.use('count_products', { warehouse_id: 1 });
+  const response = await f.chat(f.staff, { message: '看看照片，对照库存', images: [picture] });
+  assert.equal(response.status, 200);
+  const user = response.data.messages.find(m => m.role === 'user');
+  assert.equal(user.images.length, 1);
+  assert.equal(user.images[0].name, picture.name);
+  assert.match(user.images[0].data_url, /^data:image\/webp;base64,/);
+  const outgoing = f.calls.at(-1).body.messages.find(m => m.role === 'user');
+  assert.deepEqual(outgoing.content, [{ type: 'text', text: '看看照片，对照库存' }, { type: 'image_url', image_url: { url: user.images[0].data_url } }]);
+  assert.equal(outgoing.images, undefined);
+  assert.equal(outgoing.attachment, undefined);
+  const id = response.data.conversation_id;
+  const history = await f.request(f.staff, `/ai/conversations/${id}`);
+  assert.deepEqual(history.data.messages[0].images, user.images);
+  assert.equal((await f.request(f.admin, `/ai/conversations/${id}`)).status, 404);
+  const list = await f.request(f.staff, '/ai/conversations');
+  assert.equal(list.data[0].title, '看看照片，对照库存');
+  assert.ok(!JSON.stringify(list.data).includes('data:image'));
+  await f.chat(f.staff, { message: '继续分析上一张图', conversation_id: id });
+  assert.deepEqual(f.calls.at(-1).body.messages.find(m => m.role === 'user').content, outgoing.content);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
+  assert.ok(!JSON.stringify(f.db.prepare('SELECT detail FROM ai_audit').all()).includes('data:image'));
+  await f.permissions([]);
+  assert.equal((await f.request(f.staff, `/ai/conversations/${id}`)).status, 403);
+});
+
+test('AI supports image-only messages and combined spreadsheet/image attachments', async t => {
+  const f = await fixture(t), picture = await imageAttachment();
+  const imageOnly = await f.chat(f.admin, { message: '', images: [picture] });
+  assert.equal(imageOnly.status, 200);
+  assert.equal(imageOnly.data.messages[0].content, '请帮我分析上传的图片。');
+  const combined = await f.chat(f.admin, { images: [picture], table: [['名称', '单位'], ['螺丝', '个']], table_name: '物料.csv' });
+  assert.equal(combined.status, 200);
+  assert.equal(combined.data.messages[0].attachment.name, '物料.csv');
+  assert.equal(combined.data.messages[0].images.length, 1);
+  assert.equal(f.calls.at(-1).body.messages.find(m => m.role === 'user').content[1].type, 'image_url');
+  assert.equal((await f.chat(f.admin, { message: '', images: [] })).status, 400);
+});
+
+test('AI rejects invalid, external, oversized and excessive images before contacting the model', async t => {
+  const f = await fixture(t), picture = await imageAttachment();
+  for (const images of [null, {}, [null], Array(4).fill(picture), [{ ...picture, name: '' }],
+    [{ ...picture, data_url: 'https://example.com/private.png' }],
+    [{ ...picture, data_url: 'data:image/svg+xml;base64,PHN2Zy8+' }],
+    [{ ...picture, data_url: 'data:image/png;base64,AAAA' }],
+    [{ ...picture, data_url: picture.data_url.replace('image/png', 'image/jpeg') }],
+    [{ ...picture, data_url: `data:image/png;base64,${Buffer.alloc(1024 * 1024 + 1).toString('base64')}` }]]) {
+    assert.equal((await f.chat(f.admin, { images })).status, 400);
+  }
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_conversations').get().n, 0);
+  let id;
+  for (let i = 0; i < 4; i++) {
+    const response = await f.chat(f.admin, { images: Array(3).fill(picture), ...(id ? { conversation_id: id } : {}) });
+    assert.equal(response.status, 200); id = response.data.conversation_id;
+  }
+  const count = f.calls.length;
+  const overflow = await f.chat(f.admin, { images: [picture], conversation_id: id });
+  assert.equal(overflow.status, 400);
+  assert.match(overflow.data.error, /12.*新对话/);
+  assert.equal(f.calls.length, count);
+  assert.equal((await f.chat(f.admin, { conversation_id: id, message: '只问文字' })).status, 200);
+});
+
+test('AI accepts bounded image requests above the old JSON limit and strips image metadata', async t => {
+  const f = await fixture(t);
+  const buffer = await sharp(randomBytes(1000 * 800 * 3), { raw: { width: 1000, height: 800, channels: 3 } }).jpeg({ quality: 75 }).toBuffer();
+  const picture = { name: 'photo.jpg', data_url: `data:image/jpeg;base64,${buffer.toString('base64')}` };
+  assert.ok(JSON.stringify(Array(3).fill(picture)).length > 1024 * 1024);
+  const response = await f.chat(f.admin, { images: Array(3).fill(picture) });
+  assert.equal(response.status, 200);
+  assert.equal(response.data.messages[0].images.length, 3);
+  const large = await sharp({ create: { width: 3000, height: 1800, channels: 3, background: '#fff' } }).withMetadata().png().toBuffer();
+  const normalized = await f.chat(f.admin, { images: [{ name: 'wide.png', data_url: `data:image/png;base64,${large.toString('base64')}` }] });
+  assert.equal(normalized.status, 200);
+  const metadata = await sharp(Buffer.from(normalized.data.messages[0].images[0].data_url.split(',')[1], 'base64')).metadata();
+  assert.equal(metadata.width, 2048);
+  assert.equal(metadata.exif, undefined);
+});
+
+test('AI preserves images on provider rejection and explains the model requirement', async t => {
+  const f = await fixture(t);
+  f.replies.push(() => new Response(JSON.stringify({ error: { message: 'This model does not support image input' } }), { status: 400 }));
+  const response = await f.chat(f.admin, { images: [await imageAttachment()] });
+  assert.equal(response.status, 200);
+  assert.match(response.data.error, /模型及接口支持图片输入/);
+  const history = await f.request(f.admin, `/ai/conversations/${response.data.conversation_id}`);
+  assert.equal(history.data.messages[0].images.length, 1);
+});
+
+test('AI checks quota before decoding more images and releases the lock after validation errors', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.chat(f.admin, { images: [null] })).status, 400);
+  assert.equal((await f.request(f.admin, '/settings/ai', { ...f.settings, daily_limit: 1 }, 'PUT')).status, 200);
+  assert.equal((await f.chat(f.admin, { images: [await imageAttachment()] })).status, 200);
+  const rejected = await f.chat(f.admin, { images: [null] });
+  assert.equal(rejected.status, 429);
+  assert.equal(f.calls.length, 1);
+});
 
 for (const lossMethod of ['internal', 'external']) test(`${lossMethod} BOM tools require independent permission, read actual single-level recipes and never write inventory`, async t => {
   const f = await fixture(t);

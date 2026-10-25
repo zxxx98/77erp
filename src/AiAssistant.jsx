@@ -7,7 +7,10 @@ import { orderLabel } from './order-utils.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { api, getWarehouseId } from './api.js';
 import { parseCSV } from './data-files.js';
-import { Sparkles, Plus, ArrowUp, ArrowUpRight, PackageSearch, ChartColumn, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { readAiImage } from './ai-images.js';
+import { ProductImage } from './ProductImage.jsx';
+import { AI_IMAGE_TYPES, AI_IMAGE_MAX_COUNT, AI_IMAGE_ONLY_MESSAGE } from '../shared/ai-images.js';
+import { Sparkles, Plus, ImagePlus, ArrowUp, ArrowUpRight, PackageSearch, ChartColumn, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './ai.css';
@@ -43,7 +46,7 @@ export function AiSettings({ onBusy = () => {} }) {
       <AntCheckbox  checked={!!form.clear_secret} disabled={busy} onChange={e => setForm({ ...form, clear_secret: e.target.checked })}>清除已保存密钥（请同时关闭助手）</AntCheckbox>
       <label>每人每日最多请求数<FormField value={form.daily_limit} type="number" min="1" max="10000" label="每人每日最多请求数"><AntInput type="number" min="1" max="10000" value={form.daily_limit} disabled={busy} onChange={e => setForm({ ...form, daily_limit: Number(e.target.value) })} /></FormField></label>
       <AntCheckbox  checked={form.writes} disabled={busy} onChange={e => setForm({ ...form, writes: e.target.checked })}>允许生成并确认写操作</AntCheckbox>
-      <p>查询所需数据及上传表格的表头和前5行会发送给配置的模型服务。完整导入数据由本系统校验处理。单批最多20张出入库单、合计100行；物料导入最多1000行。</p>
+      <p>查询所需数据、上传表格的表头和前5行及图片会发送给配置的模型服务。图片分析需要模型支持图片输入。完整导入数据由本系统校验处理。单批最多20张出入库单、合计100行；物料导入最多1000行。</p>
       <div className="ai-buttons"><AntButton type="primary" htmlType="button" className="btn primary" disabled={busy} onClick={() => run(false)}>保存 AI 设置</AntButton><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => run(true)}>保存并测试连接</AntButton></div>
     </div>}
     <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => api('/settings/ai/audit').then(setAudit).catch(e => setError(e.message))}>查看最近操作记录</AntButton>
@@ -123,17 +126,29 @@ function ActionPreview({ action, busy, confirm }) {
   </section>;
 }
 
-function UserMessage({ content, attachment }) {
+function ImageAttachments({ images, onRemove, busy }) {
+  return <div className="ai-image-attachments" role="group" aria-label={onRemove ? '待发送图片' : '消息图片'}>
+    {images.map((image, index) => <div className="ai-image-attachment" key={index}>
+      <ProductImage src={image.data_url} alt={image.name} className="ai-image-thumbnail" />
+      <span title={image.name}>{image.name}</span>
+      {onRemove && <AntButton type="text" htmlType="button" className="ai-image-remove" aria-label={`移除图片 ${image.name}`} disabled={busy} onClick={() => onRemove(index)}><X size={16} aria-hidden="true" /></AntButton>}
+    </div>)}
+  </div>;
+}
+
+function UserMessage({ content, attachment, images }) {
   return <>
     <p>{content}</p>
     {attachment && <div className="ai-message-attachment"><FileSpreadsheet size={15} /><span>{attachment.name} · {attachment.rows} 行</span></div>}
+    {!!images?.length && <ImageAttachments images={images} />}
   </>;
 }
 
 export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehouse' }) {
   const [text, setText] = useState(''), [thread, setThread] = useState({ messages: [], actions: [] }), [file, setFile] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [images, setImages] = useState([]), [readingImages, setReadingImages] = useState(false);
   const [history, setHistory] = useState([]), [historyError, setHistoryError] = useState(''), [showHistory, setShowHistory] = useState(false), [pending, setPending] = useState(''), [copied, setCopied] = useState(null), [stage, setStage] = useState(0);
-  const lock = useRef(false), input = useRef(null), prompt = useRef(null), feed = useRef(null), warehouse = useRef(getWarehouseId());
+  const lock = useRef(false), input = useRef(null), imageInput = useRef(null), prompt = useRef(null), feed = useRef(null), warehouse = useRef(getWarehouseId());
   useEffect(() => {
     if (!busy) { setStage(0); return; }
     const timer = setInterval(() => setStage(s => Math.min(s + 1, AI_STAGES.length - 1)), 2600);
@@ -176,16 +191,35 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
     if (table.some(row => row.some(v => v instanceof Date))) throw new Error('表格含日期格式，请将物料字段改为文本或数字格式。');
     setFile({ name: selected.name, table });
   });
+  const uploadImages = selected => {
+    const files = Array.from(selected || []);
+    if (!files.length) return;
+    return run(async () => {
+      if (images.length + files.length > AI_IMAGE_MAX_COUNT) throw new Error(`每次最多添加 ${AI_IMAGE_MAX_COUNT} 张图片，请先移除多余图片。`);
+      setReadingImages(true);
+      try {
+        const added = [];
+        for (const file of files) added.push(await readAiImage(file));
+        setImages(previous => [...previous, ...added]);
+      } finally { setReadingImages(false); }
+    });
+  };
+  const pasteImages = event => {
+    const files = Array.from(event.clipboardData?.items || []).filter(item => item.kind === 'file' && item.type.startsWith('image/')).map(item => item.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    event.preventDefault();
+    if (!lock.current) void uploadImages(files);
+  };
   const send = () => run(async () => {
-    if (!text.trim()) return;
-    const message = text, attachment = file;
-    setPending(attachment ? { content: message, attachment: { name: attachment.name, rows: attachment.table.length - 1 } } : message);
-    setText(''); setFile(null); if (input.current) input.current.value = '';
+    if (!text.trim() && !images.length) return;
+    const message = text.trim() ? text : AI_IMAGE_ONLY_MESSAGE, attachment = file, attachedImages = images;
+    setPending({ content: message, ...(attachment ? { attachment: { name: attachment.name, rows: attachment.table.length - 1 } } : {}), images: attachedImages });
+    setText(''); setFile(null); setImages([]); if (input.current) input.current.value = '';
     let result;
     try {
-      result = await api('/ai/chat', { method: 'POST', warehouseId: warehouse.current, body: { message, conversation_id: thread.conversation_id, ...(attachment ? { table: attachment.table, table_name: attachment.name } : {}) } });
+      result = await api('/ai/chat', { method: 'POST', warehouseId: warehouse.current, body: { message, conversation_id: thread.conversation_id, ...(attachment ? { table: attachment.table, table_name: attachment.name } : {}), ...(attachedImages.length ? { images: attachedImages } : {}) } });
     } catch (e) {
-      setText(message); setFile(attachment);
+      setText(text); setFile(attachment); setImages(attachedImages);
       throw e;
     }
     try { sessionStorage.setItem(storageKey, result.conversation_id); } catch { /* Storage is optional. */ }
@@ -197,7 +231,7 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
     setThread(t => ({ ...t, actions: t.actions.map(a => a.id === id ? { ...a, result } : a) }));
     await onChanged?.();
   });
-  const clearDraft = () => { setFile(null); setText(''); setError(''); setCopied(null); if (input.current) input.current.value = ''; };
+  const clearDraft = () => { setFile(null); setImages([]); setText(''); setError(''); setCopied(null); if (input.current) input.current.value = ''; };
   const newThread = () => {
     if (lock.current) return;
     try { sessionStorage.removeItem(storageKey); } catch { /* Storage is optional. */ }
@@ -250,23 +284,31 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
           {turn.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
             {m.role !== 'user' && <div className="ai-avatar"><Sparkles size={17} /></div>}
             <div className="ai-message-body">{m.role !== 'user' && <div className="ai-author">AI 助手</div>}
-              {m.role === 'user' ? <UserMessage content={m.content} attachment={m.attachment} /> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><AntButton type="text" htmlType="button" className="ai-copy" onClick={() => copy(m.content, `${turnIndex}:${i}`)}>{copied === `${turnIndex}:${i}` ? <Check size={13} /> : <Copy size={13} />}{copied === `${turnIndex}:${i}` ? '已复制' : '复制'}</AntButton></>}
+              {m.role === 'user' ? <UserMessage content={m.content} attachment={m.attachment} images={m.images} /> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label="查询结果"><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><AntButton type="text" htmlType="button" className="ai-copy" onClick={() => copy(m.content, `${turnIndex}:${i}`)}>{copied === `${turnIndex}:${i}` ? <Check size={13} /> : <Copy size={13} />}{copied === `${turnIndex}:${i}` ? '已复制' : '复制'}</AntButton></>}
             </div>
           </div>)}
           {!!turn.actions.length && <div className="ai-actions">{turn.actions.map(action => <ActionCard key={action.id} action={action} busy={busy} confirm={confirm}/>)}</div>}
           </div>)}
-          {pending && <div className="ai-message ai-user"><div className="ai-message-body">{typeof pending === 'object' ? <UserMessage content={pending.content} attachment={pending.attachment} /> : <p>{pending}</p>}</div></div>}
-          {busy && <div className="ai-processing" role="status"><LoaderCircle size={16} />{AI_STAGES[stage]}</div>}
+          {pending && <div className="ai-message ai-user"><div className="ai-message-body">{typeof pending === 'object' ? <UserMessage content={pending.content} attachment={pending.attachment} images={pending.images} /> : <p>{pending}</p>}</div></div>}
+          {busy && <div className="ai-processing" role="status"><LoaderCircle size={16} />{readingImages ? '正在处理图片…' : AI_STAGES[stage]}</div>}
         </div>
       </div>
       <div className="ai-compose-area">
         {error && <p className="form-error" role="alert">{error}</p>}
-        <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} className="ai-composer" onFinish={() => {  send(); }}>
+        <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} className="ai-composer" onPaste={pasteImages} onFinish={() => {  send(); }}>
           {file && <div className="ai-attachment"><FileSpreadsheet size={17} /><span>{file.name} · {file.table.length - 1} 行</span><AntButton type="text" htmlType="button" className="ai-icon" aria-label="移除附件" disabled={busy} onClick={() => { setFile(null); input.current.value = ''; }}><X size={15} /></AntButton></div>}
-          <AntInput.TextArea ref={prompt} aria-label="你的需求" rows={2} maxLength={4000} value={text} disabled={busy} placeholder="描述你的需求，或上传物料表格…" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
-          <div className="ai-composer-tools"><input hidden className="ai-file-input" ref={input} aria-label="附加物料 Excel / CSV" type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => upload(e.target.files?.[0])} /><AntButton type="text" className="ai-upload" htmlType="button" disabled={busy} onClick={() => input.current?.click()}><Plus size={19} /><span>添加表格</span></AntButton><span className="ai-shortcut">Ctrl / ⌘ + Enter 发送</span><AntButton type="text" htmlType="submit" className="ai-send" aria-label="发送" disabled={busy || !text.trim()}><ArrowUp size={21} /></AntButton></div>
+          {!!images.length && <ImageAttachments images={images} busy={busy} onRemove={index => setImages(items => items.filter((_, i) => i !== index))} />}
+          <AntInput.TextArea ref={prompt} aria-label="你的需求" rows={2} maxLength={4000} value={text} disabled={busy} placeholder="描述需求，或添加表格、图片…" onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
+          <div className="ai-composer-tools">
+            <input hidden className="ai-file-input" ref={input} aria-label="附加物料 Excel / CSV" type="file" accept=".xlsx,.csv" disabled={busy} onChange={e => upload(e.target.files?.[0])} />
+            <AntButton type="text" className="ai-upload" htmlType="button" disabled={busy} onClick={() => input.current?.click()}><Plus size={19} /><span>添加表格</span></AntButton>
+            <input hidden ref={imageInput} aria-label="附加图片" type="file" accept={AI_IMAGE_TYPES.join(',')} multiple disabled={busy} onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; void uploadImages(files); }} />
+            <AntButton type="text" className="ai-upload" htmlType="button" disabled={busy || images.length >= AI_IMAGE_MAX_COUNT} onClick={() => imageInput.current?.click()}><ImagePlus size={19} aria-hidden="true" /><span>添加图片</span></AntButton>
+            <span className="ai-shortcut">Ctrl / ⌘ + Enter 发送</span>
+            <AntButton type="text" htmlType="submit" className="ai-send" aria-label="发送" disabled={busy || (!text.trim() && !images.length)}><ArrowUp size={21} /></AntButton>
+          </div>
         </AntForm>
-        <details className="ai-upload-help"><summary>Excel / CSV 上传说明</summary><p>仅解析第一张工作表，最多1000行、5 MB；条码请设为文本以保留前导零。请说明数量是期初库存还是入出库数量。</p></details>
+        <details className="ai-upload-help"><summary>表格 / 图片上传说明</summary><p>Excel / CSV 仅解析第一张工作表，最多1000行、5 MB；条码请设为文本以保留前导零。请说明数量是期初库存还是入出库数量。</p><p>支持选择或粘贴 JPG、PNG、WebP 图片，每次最多3张，单张原图最多10 MB，自动压缩。图片会随对话保存并发送给配置的模型；识图需要模型支持图片输入，每个对话最多12张。</p></details>
         <p className="ai-safety"><ShieldCheck size={12} />涉及库存变更的操作，将在你确认后执行</p>
       </div>
     </section>
