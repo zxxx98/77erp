@@ -1,7 +1,8 @@
 .fullscreen-chart { min-width: 0; }
 .fullscreen-chart-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
-.chart-fullscreen-layer > .modal-backdrop { padding: 0; }
-.chart-fullscreen-layer .modal.chart-fullscreen-modal {
+/* Mobile Popup portals the dialog outside the original chart layer. */
+.modal-backdrop:has(> .chart-fullscreen-modal) { padding: 0; }
+.modal-backdrop > .modal.chart-fullscreen-modal {
   width: 100%;
   max-width: none;
   height: 100%;
@@ -13,7 +14,7 @@
   overflow: hidden;
   animation: none;
 }
-.chart-fullscreen-layer .chart-fullscreen-modal > .modal-header {
+.modal.chart-fullscreen-modal > .modal-header {
   flex-shrink: 0;
   padding-top: max(16px, env(safe-area-inset-top));
   padding-left: max(20px, env(safe-area-inset-left));

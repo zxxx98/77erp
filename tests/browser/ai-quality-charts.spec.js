@@ -44,6 +44,7 @@ for(const chartType of ['line','pie'])for(const device of [null,'Pixel 7','iPhon
       await expect.poll(async()=>{const box=await fullscreen.boundingBox();return Math.max(Math.abs(box.x),Math.abs(box.y),Math.abs(box.width-viewport.width),Math.abs(box.height-viewport.height));}).toBeLessThan(2);
       await expect(fullscreen.getByRole('button',{name:'退出全屏',exact:true})).toBeInViewport();
       expect(await fullscreen.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+      await page.screenshot({path:`output/ui-preview/ai-chart-fullscreen-${device||'desktop'}-${chartType}-${viewport.width}x${viewport.height}.png`});
     }
     await page.screenshot({path:`output/ui-preview/chart-fullscreen-${device||'desktop'}.png`});
     if(device)await page.goBack();

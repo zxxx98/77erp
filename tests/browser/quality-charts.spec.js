@@ -51,10 +51,17 @@ for(const platform of ['desktop','iPhone','Android PWA'])test(`${platform} confi
     const modal=view.getByRole('dialog',{name:title,exact:true});await modal.getByRole('button',{name:'全屏查看',exact:true}).click();
     const fullscreen=view.locator('.chart-fullscreen-modal'),svg=fullscreen.getByRole('img',{name:title,exact:true});
     await expect(svg.locator('circle')).toHaveCount(1);await expect(fullscreen.locator('.quality-pie-legend')).toContainText('100%');
-    expect(await fullscreen.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+    const portrait=view.viewportSize();
+    for(const viewport of [portrait,...(platform==='desktop'?[]:[{width:844,height:390},portrait])]){
+      await view.setViewportSize(viewport);
+      await expect.poll(async()=>{const box=await fullscreen.boundingBox();return Math.max(Math.abs(box.x),Math.abs(box.y),Math.abs(box.width-viewport.width),Math.abs(box.height-viewport.height));}).toBeLessThan(2);
+      await expect(fullscreen.getByRole('button',{name:'退出全屏',exact:true})).toBeInViewport();
+      expect(await fullscreen.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+    }
     if(platform==='desktop')await svg.getByRole('button',{name:/查看来源/}).press('Enter');
     else await fullscreen.locator('.quality-pie-legend').getByRole('button',{name:/查看来源/}).click();
     const source=view.getByRole('dialog',{name:'图表数据来源',exact:true});await expect(source).toContainText(f.acceptance.number);
+    if(platform!=='desktop')expect((await source.boundingBox()).height).toBeLessThan(portrait.height);
     await source.getByRole('button',{name:'关闭弹窗',exact:true}).click();await fullscreen.getByRole('button',{name:'退出全屏',exact:true}).click();
     await modal.screenshot({path:`output/ui-preview/quality-pie-${platform}.png`});
     expect(await view.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);
