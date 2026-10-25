@@ -1,4 +1,5 @@
 import { ProductionOnlyShell } from './ProductionOnlyShell.jsx';
+import { PreferenceProvider } from '../preferences.jsx';
 import { Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
@@ -70,6 +71,7 @@ import {
   ChangePassword,
   BusinessTools,
   SettingsForm,
+  UserPreferences,
 } from '../LazyComponents.jsx';
 import { Select } from '../Dropdown.jsx';
 import { stockStatus } from './format.js';
@@ -670,7 +672,8 @@ function StandardApp({ admin, onLogout }) {
         />
       )}
       {can('ai') && modal?.kind === 'ai' && <Modal title="AI 助手" subtitle="库存与业务，随时问我" className="ai-modal" wide onClose={() => setModal(null)}><AiAssistant key={`${user.id}:${user.permissions_version}:${user.production_group_id}:${user.access_mode}`} mode={mode} userId={user.id} warehouseName={data.settings.warehouse_name} onChanged={reload} /></Modal>}
-      {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{user.name || user.username}（{user.username}） · {isAdmin ? '管理员' : '员工'}</p><ChangePassword onChanged={onLogout} /></div></Modal>}
+      {modal?.kind === "account" && <Modal title="账户设置" onClose={() => setModal(null)}><div className="form-body"><p>{user.name || user.username}（{user.username}） · {isAdmin ? '管理员' : '员工'}</p><UserPreferences /><ChangePassword onChanged={onLogout} /></div></Modal>}
+      {modal?.kind === 'preferences' && <Modal title="用户习惯" onClose={() => setModal(null)}><div className="form-body"><UserPreferences showTitle={false} /></div></Modal>}
       {modal?.kind === 'businessTools' && <Modal title="业务管理" subtitle="管理业务资料、财务、盘点与物料导入" wide className="business-modal" onClose={() => setModal(null)}>
         <div className="form-body"><BusinessTools data={data} warehouses={data.warehouses} warehouseId={data.warehouse_id} onSaved={saved} initialTab={modal.initialTab}
           onUse={template => openOrder(template.type, undefined, template)} onRefresh={reload} /></div>
@@ -763,5 +766,5 @@ function StandardApp({ admin, onLogout }) {
   );
 }
 
-function App(props) { return isProductionOnly(props.admin) ? <ProductionOnlyShell {...props} /> : <StandardApp {...props} />; }
+function App(props) { return <PreferenceProvider key={props.admin.id ?? props.admin.username} user={props.admin}>{isProductionOnly(props.admin) ? <ProductionOnlyShell {...props} /> : <StandardApp {...props} />}</PreferenceProvider>; }
 export { App };

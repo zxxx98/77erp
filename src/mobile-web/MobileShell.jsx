@@ -317,6 +317,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('bom')}>BOM · 备料测算</Button></section>}
     {mode === 'production' && canViewProduction(user) && <section className="mw-card"><Button onClick={() => navigate('production')}>生产单 · 批次登记</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>商户与仓库设置</Button>}</section>
+    <Button icon={Settings} onClick={() => openModal({ kind: 'preferences' })}>用户习惯</Button>
     <Button onClick={() => openModal({ kind: 'account' })}>修改密码</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>业务管理</Button>
     {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>出入库二维码</Button>}
     <Button icon={FilePenLine} onClick={() => openModal({ kind: 'drafts' })}>本地草稿</Button>

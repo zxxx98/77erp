@@ -15,6 +15,7 @@ import { version as appVersion } from '../../package.json';
 import { CURRENCY_LABELS, CURRENCY_SYMBOLS } from '../currency.js';
 import {
   UserManager,
+  UserPreferences,
   PositionManager,
   ChangePassword,
   AiSettings,
@@ -139,7 +140,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => { if (section === "general") void submit(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["ai", "AI 助手", Settings, "模型连接与操作范围"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["groups", "生产小组", ShieldCheck, "生产班组与员工归属"], ["positions", "岗位配置", ShieldCheck, "岗位权限与关联员工"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
+            {[["general", "基础设置", Settings, "名称、仓库与计量单位"], ["preferences", "用户习惯", Settings, "弹窗与抽屉的关闭方式"], ["ai", "AI 助手", Settings, "模型连接与操作范围"], ["imagebed", "图床配置", Camera, "物料图片上传与认证"], ["notifications", "通知设置", Bell, "Webhook 与通知类型"], ["data", "备份与恢复", Warehouse, "业务备份、恢复与重置"], ["groups", "生产小组", ShieldCheck, "生产班组与员工归属"], ["positions", "岗位配置", ShieldCheck, "岗位权限与关联员工"], ["users", "用户管理", ShieldCheck, "账号、角色与密码"]].map(([id, title, Icon, caption]) => (
               <AntButton type="text" key={id} htmlType="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); setVisited(current => new Set([...current, id])); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
               </AntButton>
@@ -237,6 +238,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           </div>
           <div className="info-box"><ShieldCheck size={17} /><p>物料和单据保存在服务端数据库中，支持单商户管理多个仓库。</p></div>
           </div>
+          {section === 'preferences' && <UserPreferences disabled={busy} />}
           {section === "groups" && <div className="settings-section"><ProductionGroupManager onChanged={onRefresh} /></div>}
           {section === "positions" && <div className="settings-section"><PositionManager Modal={Modal} onChanged={onRefresh} /></div>}
           {section === "users" && <div className="settings-section"><UserManager Modal={Modal} onChanged={onRefresh} /><ChangePassword onChanged={onPasswordChanged} /></div>}
@@ -265,9 +267,9 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
         </div>
         </div>
         <div className="modal-footer">
-          <span className="settings-footer-note">{section === "general" ? "修改名称或计量单位后，点击保存设置。" : "各项操作在对应区域单独确认。"}</span>
+          <span className="settings-footer-note">{section === "general" ? "修改名称或计量单位后，点击保存设置。" : section === 'preferences' ? "用户习惯修改后即时生效，自动保存在此浏览器。" : "各项操作在对应区域单独确认。"}</span>
           <Button type="button" onClick={closeSettings} disabled={busy}>
-            取消
+            {section === 'preferences' ? '完成' : '取消'}
           </Button>
           {section === "general" && <Button kind="primary" type="submit" icon={Check} busy={busy} disabled={notificationDirty}>
             {busy ? "保存中…" : "保存设置"}

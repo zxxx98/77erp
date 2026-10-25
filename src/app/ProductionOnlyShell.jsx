@@ -1,14 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, setWarehouseId } from '../api.js';
 import { PermissionContext } from '../permissions.jsx';
-import { Production, ChangePassword } from '../LazyComponents.jsx';
-import { Button } from '../components/common.jsx';
+import { Production, ChangePassword, UserPreferences } from '../LazyComponents.jsx';
+import { Button, Modal } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { useDataUpdates, DataUpdateNotice } from '../DataUpdates.jsx';
 import { LoadingIndicator } from '../Loading.jsx';
+import { mobileDevice } from '../device.js';
 import './production-only.css';
 
 export function ProductionOnlyShell({ admin, onLogout }) {
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  useEffect(() => {
+    if (!mobileDevice || !preferencesOpen) return;
+    const marker = `preferences-${Date.now()}`;
+    history.pushState({ ...history.state, erpPreferences: marker }, '', location.href);
+    const back = event => {
+      if (history.state?.erpPreferences === marker) return;
+      event.stopImmediatePropagation();
+      setPreferencesOpen(false);
+    };
+    window.addEventListener('popstate', back, true);
+    return () => {
+      window.removeEventListener('popstate', back, true);
+      if (history.state?.erpPreferences === marker) history.back();
+    };
+  }, [preferencesOpen]);
   const [data, setData] = useState(null), [error, setError] = useState(''), [password, setPassword] = useState(false), [busy, setBusy] = useState(false);
   const generation = useRef(0);
   const load = async () => {
@@ -38,9 +55,11 @@ export function ProductionOnlyShell({ admin, onLogout }) {
   const updatesAvailable = useDataUpdates(data || {}, admin.id);
   return <PermissionContext.Provider value={user}><div className="production-only-shell">
     <header className="production-only-header"><div><strong>77 ERP · 仅生产作业</strong><p>{user.name || user.username} · {user.production_group_name || '未分组'}</p></div><div className="production-only-actions">
+      <Button onClick={() => setPreferencesOpen(true)}>用户习惯</Button>
       {data && <label>当前仓库<Select aria-label="当前仓库" disabled={busy} value={data.warehouse_id} onChange={async value => { if (!window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return; setWarehouseId(Number(value)); await load(); }} >{data.warehouses?.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</Select></label>}
       <Button disabled={busy} onClick={() => { if (window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) setPassword(!password); }}>{password ? '返回生产单' : '修改密码'}</Button><Button onClick={async () => { if (window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) { try { await onLogout(); } catch (e) { setError(e.message); } } }}>退出登录</Button>
     </div></header>
     <main>{updatesAvailable && <DataUpdateNotice onRefresh={load} busy={busy} />}{error && <p role="alert" className="form-error">{error}</p>}{!data ? <div role="status"><LoadingIndicator />正在读取生产工作空间…<Button onClick={load} disabled={busy}>重新连接</Button></div> : password ? <section className="panel bom-section"><ChangePassword onChanged={onLogout} /></section> : <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} onChanged={load} onSwitchWarehouse={switchWarehouse} />}</main>
+    {preferencesOpen && <Modal title="用户习惯" onClose={() => setPreferencesOpen(false)}><div className="form-body"><UserPreferences showTitle={false} /></div></Modal>}
   </div></PermissionContext.Provider>;
 }

@@ -7,6 +7,7 @@ import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
 import { ProductImage } from '../ProductImage.jsx';
 import { useId, useRef, useEffect, useState } from 'react';
 import { mobileDevice } from '../device.js';
+import { usePreferences } from '../preferences.jsx';
 import { X, Package, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { categoryBranch } from '../catalog.js';
 
@@ -189,10 +190,29 @@ function ProductArt({ product, size = "normal", preview = true }) {
 function Modal({ title, subtitle, children, onClose, wide = false, className = "", headerActions, closeLabel = '关闭弹窗',
   presentation = 'dialog', drawerSize = 'standard', headerNavigation, footer }) {
   const drawer = presentation === 'drawer' && !mobileDevice;
+  const { preferences } = usePreferences();
+  const closeOnBackdrop = mobileDevice || drawer ? preferences.closeDrawerOnBackdrop : preferences.closeModalOnBackdrop;
+  const pressedBackdrop = useRef(false);
   const titleId = useId();
   const ref = useRef();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const closeBackdrop = () => {
+    if (!closeOnBackdrop || document.querySelector('.image-viewer, .camera-scanner-immersive')) return;
+    if ([...document.querySelectorAll('.modal[role="dialog"]')].at(-1) !== ref.current) return;
+    closeRef.current();
+  };
+  const backdropEvents = {
+    onPointerDown: event => { pressedBackdrop.current = event.target === event.currentTarget && event.button === 0; },
+    onPointerCancel: () => { pressedBackdrop.current = false; },
+    onClick: event => {
+      const pressed = pressedBackdrop.current;
+      pressedBackdrop.current = false;
+      if (event.target !== event.currentTarget) return;
+      event.stopPropagation();
+      if (pressed) closeBackdrop();
+    },
+  };
   useEffect(() => {
     const old = document.activeElement;
     const overflow = document.body.style.overflow;
@@ -289,11 +309,11 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
         {drawer && footer}
       </section>;
   if (mobileDevice) return <Popup visible forceRender position="bottom" closeOnMaskClick={false}
-    disableBodyScroll={false} onClose={onClose} className="erp-mobile-popup"
+    disableBodyScroll={false} onClose={onClose} onMaskClick={closeBackdrop} className="erp-mobile-popup"
     bodyClassName="erp-mobile-popup-body" maskClassName="erp-mobile-popup-mask">
-    <div className="modal-backdrop erp-mobile-popup-layout">{content}</div>
+    <div className="modal-backdrop erp-mobile-popup-layout" {...backdropEvents}>{content}</div>
   </Popup>;
-  return <div className={`modal-backdrop${drawer ? ' drawer-backdrop' : ''}`}>{content}</div>;
+  return <div className={`modal-backdrop${drawer ? ' drawer-backdrop' : ''}`} {...backdropEvents}>{content}</div>;
 }
 
 function Empty({ title = '暂无记录', description = '新的记录会出现在这里。', action }) {

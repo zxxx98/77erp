@@ -5,6 +5,7 @@
 - `src/pages/` 是桌面业务页面；`src/features/` 是业务弹窗；`src/mobile-web/` 是移动端视图。公共组件位于 `src/components/common.jsx`。
 - 格式化、下载、单据标签和提交逻辑分别位于 `format.js`、`download.js`、`src/order-utils.js`、`src/business-api.js`。公共逻辑不得反向导入页面或业务组件，以免带入整个页面包。
 - 设置子面板首次访问时加载，访问过的图床、通知和备份面板保持挂载，以保留未保存内容。
+- `src/preferences.jsx` 按当前账号保存浏览器内的用户习惯，并同步同源标签页。两个遮罩关闭开关默认关闭；桌面弹窗使用弹窗开关，侧边抽屉、BOM 详情及移动端底部面板使用抽屉开关。关闭必须调用原有 `onClose`，保留各业务的忙碌和未保存检查。`src/UserPreferences.jsx` 为管理员、员工及仅生产账号复用设置界面，不写入全局工作空间配置。
 
 新增低频功能时从 `LazyComponents.jsx` 注册入口，并在需要时才渲染。PWA 仍预缓存发布资源以支持离线打开；资源预缓存与界面模块的按需执行分别处理。浏览器模块请求验收使用禁用 Service Worker 的上下文，PWA 离线行为由专门用例覆盖。
 

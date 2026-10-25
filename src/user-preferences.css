@@ -1,0 +1,11 @@
+.user-preferences { display: grid; gap: 20px; min-width: 0; }
+.preference-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 0; border-bottom: 1px solid #e9ecf1; }
+.preference-row:first-child { padding-top: 0; }
+.preference-row > div { min-width: 0; }
+.preference-row label { display: block; margin: 0; font-size: 14px; font-weight: 600; color: #253858; cursor: pointer; }
+.preference-row p, .preference-hint { margin: 8px 0 0; color: #647084; font-size: 13px; line-height: 1.65; }
+.preference-row .ant-switch { flex-shrink: 0; }
+.mobile-device .preference-row { min-height: 64px; gap: 16px; }
+.mobile-device .preference-row label { padding: 10px 0; }
+.mobile-device .preference-row p { margin-top: 0; }
+.mobile-device .preference-row .ant-switch::after { content: ''; position: absolute; inset: -11px -2px; }

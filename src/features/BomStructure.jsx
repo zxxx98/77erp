@@ -3,6 +3,7 @@ import { Drawer } from 'antd';
 import { ArrowLeft, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { Input } from '../ui/controls.jsx';
 import { mobileDevice } from '../device.js';
+import { usePreferences } from '../preferences.jsx';
 import { calculateBomNodes, bomUsageLabels } from '../../shared/bom-expansion.js';
 import { bomLossMethodLabels } from '../../shared/bom.js';
 import './bom-structure.css';
@@ -46,6 +47,7 @@ export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, ac
 }
 
 function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
+  const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
   const [expanded, setExpanded] = useState(() => new Set());
   const [scope, setScope] = useState(''), [query, setQuery] = useState(''), [productFilter, setProductFilter] = useState(null);
@@ -177,6 +179,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
     <p className="bom-hint">按毛需求展开，中间半成品库存未抵扣。各路径显示值之和可能略大于汇总值；缺料以领料汇总为准。</p>
     {/* Retain the drawer shell so closing during its opening animation still restores focus. */}
     {narrow && <Drawer title="物料详情" placement="bottom" size="80vh" open={!!selected && active} onClose={closeDetails}
+      mask={{ closable: preferences.closeDrawerOnBackdrop }}
       afterOpenChange={open => { if (!open && active) restoreDetailFocus(); }} focusable={{ focusTriggerAfterClose: false }} closable={false}>
       {selected && <NodeDetails node={selected} path={fullPath(selected)} onClose={closeDetails} />}
     </Drawer>}

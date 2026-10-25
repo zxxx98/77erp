@@ -36,6 +36,7 @@ export const ReduceStockModal = deferred(() => import('./features/ProductDialogs
 export const OrderForm = deferred(() => import('./features/OrderForm.jsx'), 'OrderForm');
 export const OrderDetail = deferred(() => import('./features/OrderDetail.jsx'), 'OrderDetail');
 export const SettingsForm = deferred(() => import('./features/Settings.jsx'), 'SettingsForm');
+export const UserPreferences = deferred(() => import('./UserPreferences.jsx'), 'UserPreferences');
 export const BusinessTools = deferred(() => import('./Commerce.jsx'), 'BusinessTools');
 export const ChangePassword = deferred(() => import('./Users.jsx'), 'ChangePassword');
 export const MobileShell = deferred(() => import('./mobile-web/MobileShell.jsx'), 'MobileShell');
