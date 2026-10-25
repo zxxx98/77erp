@@ -13,6 +13,14 @@
 /* Business navigation and item cards can contain multiple lines. */
 .ant-btn.ant-btn { height: auto; min-height: 36px; }
 .mobile-device .ant-btn.ant-btn { min-height: 44px; }
+/* The account avatar is a fixed circle, not a multiline business button. */
+.ant-btn.ant-btn.avatar-small {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+}
 input[hidden] { display: none !important; }
 .form-body .product-fixed-asset .ant-checkbox-label { display: flex; flex-direction: column; gap: 4px; }
 .form-body .product-fixed-asset .ant-checkbox-label > small { color: var(--muted); font-size: 12px; font-weight: 400; }
