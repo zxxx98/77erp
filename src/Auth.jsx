@@ -4,9 +4,11 @@ import { Spin, Button as AntButton, Input as AntInput } from './ui/controls.jsx'
 
 import { LoadingIndicator } from './Loading.jsx';
 import { useEffect, useState } from "react";
-import { ArrowRight, Boxes, Eye, EyeOff, LockKeyhole, PackageCheck, ShieldCheck, TriangleAlert, UserRound, Warehouse } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck, TriangleAlert, UserRound } from "lucide-react";
 import { api } from "./api.js";
 import "./auth.css";
+import warehouseIllustration from './assets/auth-warehouse.webp';
+import warehouseIllustrationSmall from './assets/auth-warehouse-small.webp';
 import { clearUserDrafts } from './pwa/drafts.js';
 
 export function AuthGate({ children }) {
@@ -107,20 +109,13 @@ function AuthPage({ setup, notice, onSuccess, onConflict }) {
           <div><strong>77 <span>ERP</span></strong><small>轻量进销存</small></div>
         </div>
         <div className="auth-intro-content">
-          <span className="auth-eyebrow">工作空间</span>
           <h2>物料、库存与单据<br />集中管理</h2>
           <p>记录每一次入库与出库，掌握当前库存。</p>
-          <div className="auth-workflow" aria-hidden="true">
-            <div className="auth-workflow-heading"><Warehouse size={20} /><span>库存工作空间</span><span className="auth-workflow-dot" /></div>
-            <div className="auth-workflow-steps">
-              <span><PackageCheck size={25} /><small>入库</small></span>
-              <ArrowRight size={18} />
-              <span className="auth-workflow-stock"><Boxes size={30} /><small>库存管理</small></span>
-              <ArrowRight size={18} />
-              <span><PackageCheck size={25} /><small>出库</small></span>
-            </div>
-            <div className="auth-workflow-footer"><ShieldCheck size={15} />账号登录后访问</div>
-          </div>
+          <img className="auth-warehouse-illustration"
+            src={warehouseIllustration}
+            srcSet={`${warehouseIllustrationSmall} 768w, ${warehouseIllustration} 1536w`}
+            sizes="(max-width: 760px) 1px, (min-width: 2464px) 1040px, 42vw"
+            width="1536" height="1024" alt="" loading="lazy" decoding="async" />
         </div>
         <span className="auth-intro-footer">77 ERP · 轻量进销存系统</span>
       </section>

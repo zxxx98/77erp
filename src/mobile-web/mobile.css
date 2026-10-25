@@ -153,8 +153,11 @@
 .mobile-device .mw-shell .scan-result-actions button {min-height:48px;}
 .mobile-device .mw-shell .scanner-ready {display:none;}
 .mobile-device .mw-shell .scan-stats {grid-template-columns:repeat(auto-fit,minmax(120px,1fr));}
-.mobile-device .auth-intro {display:none;}
-.mobile-device .auth-page {grid-template-columns:1fr;min-height:100dvh;}
+.mobile-device .auth-intro {display:flex;padding:24px max(20px,env(safe-area-inset-right)) 24px max(20px,env(safe-area-inset-left));}
+.mobile-device .auth-intro-content,.mobile-device .auth-intro-footer {display:none;}
+.mobile-device .auth-brand {justify-content:flex-start;}
+.mobile-device .auth-page {display:flex;flex-direction:column;min-height:100dvh;}
+.mobile-device .auth-form-panel {flex:1;}
 .mobile-device .auth-form-panel {padding:24px max(20px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));}
 :where(.mobile-device .auth-form input) {min-height:48px;}
 .mobile-device .auth-submit {min-height:48px;}
