@@ -3,6 +3,6 @@
 .mode-switch button[aria-pressed="true"] { background:#fff; color:#2563eb; box-shadow:0 1px 4px #162b491a; }
 .mode-switch button:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
 .mode-switch button:disabled { opacity:.55; cursor:default; }
-.mw-mode-bar { position:sticky; top:calc(60px + env(safe-area-inset-top)); z-index:39; padding:8px 12px; background:#fff; border-bottom:1px solid #e9ecf1; }
+.mw-mode-bar { padding:8px 12px; background:#fff; border-bottom:1px solid #e9ecf1; }
 .mw-mode-bar .mode-switch { margin:0; }
 @media(max-width:760px) { .sidebar .mode-switch { flex-direction:column; } }

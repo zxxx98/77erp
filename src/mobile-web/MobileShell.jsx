@@ -14,7 +14,7 @@ import { ModeSwitch } from '../app/ModeSwitch.jsx';
 import { useQuery, usePagedQuery, queryPath } from '../queries.js';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, FilePenLine, History, LayoutDashboard, LogOut, Megaphone, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, ChevronDown, FilePenLine, History, LayoutDashboard, LogOut, Megaphone, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
 import { flattenCategories } from '../catalog.js';
 import { api } from '../api.js';
@@ -68,16 +68,22 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
   }, []);
   const ready = !!data.warehouse_id;
   return <div className="mw-shell">
-    <header className="mw-header" inert={switching}>
-      {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label={translate("warehouse.return.to.workbench")} onClick={() => navigate('overview')} /><strong className="mw-modal-title">{translate("warehouse.scanning.workbench")}</strong></> : <>
-        <strong className="mw-wordmark">77 <span>ERP</span></strong>
-        <AntButton type="text" htmlType="button" className="mw-warehouse" disabled={!ready || loading || switching} aria-label={translate("warehouse.switch.warehouse")} onClick={() => openModal({ kind: 'warehousePicker' })}>{data.settings.warehouse_name} ▾</AntButton>
-        <AntButton type="text" htmlType="button" className="mw-icon announcement-entry" aria-label={translate("warehouse.announcement.center")} onClick={() => navigate('announcements')} disabled={!ready}><Megaphone size={22} />{announcementCount > 0 && <span className="announcement-entry-count" aria-label={translate("warehouse.unread.announcements", { v0: announcementCount })}>{announcementCount > 99 ? '99+' : announcementCount}</span>}</AntButton>
-        <MobileIcon icon={ScanLine} label={translate("warehouse.open.the.qr.code.scanning.workbench")} onClick={() => navigate('scanner')} disabled={!ready} />
-      </>}
-      <LanguageSwitcher compact />
-    </header>
-    <div className="mw-mode-bar"><ModeSwitch mode={mode} onChange={switchMode} disabled={switching || !ready} /></div>
+    <div className="mw-topbar">
+      <header className="mw-header" inert={switching}>
+        <div className="mw-header-main">
+          {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label={translate("warehouse.return.to.workbench")} onClick={() => navigate('overview')} /><strong className="mw-modal-title">{translate("warehouse.scanning.workbench")}</strong></> : <>
+            <strong className="mw-wordmark">77 <span>ERP</span></strong>
+            <AntButton type="text" htmlType="button" className="mw-icon announcement-entry" aria-label={translate("warehouse.announcement.center")} onClick={() => navigate('announcements')} disabled={!ready}><Megaphone size={22} />{announcementCount > 0 && <span className="announcement-entry-count" aria-label={translate("warehouse.unread.announcements", { v0: announcementCount })}>{announcementCount > 99 ? '99+' : announcementCount}</span>}</AntButton>
+            <MobileIcon icon={ScanLine} label={translate("warehouse.open.the.qr.code.scanning.workbench")} onClick={() => navigate('scanner')} disabled={!ready} />
+          </>}
+          <LanguageSwitcher iconOnly />
+        </div>
+        {page !== 'scanner' && <AntButton type="text" htmlType="button" className="mw-warehouse" disabled={!ready || loading || switching} aria-label={translate("warehouse.switch.warehouse")} title={data.settings.warehouse_name} onClick={() => openModal({ kind: 'warehousePicker' })}>
+          <Warehouse size={17} aria-hidden="true" /><span className="mw-warehouse-name">{data.settings.warehouse_name}</span><ChevronDown size={16} aria-hidden="true" />
+        </AntButton>}
+      </header>
+      <div className="mw-mode-bar"><ModeSwitch mode={mode} onChange={switchMode} disabled={switching || !ready} /></div>
+    </div>
     <OfflineNotice />
     <main className="mw-content" inert={switching}>
       {updateNotice}

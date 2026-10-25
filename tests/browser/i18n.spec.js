@@ -50,7 +50,7 @@ test('desktop language change preserves the current page and search, and synchro
 });
 
 test('mobile Vietnamese header remains usable at 360px and keyboard can open the language menu', async ({ browser }) => {
-  const context = await browser.newContext({ ...devices['Pixel 7'], viewport: { width: 360, height: 800 }, locale: 'zh-CN' });
+  const context = await browser.newContext({ ...devices['Pixel 7'], viewport: { width: 360, height: 800 }, locale: 'zh-CN', reducedMotion: 'reduce' });
   await context.request.post('http://127.0.0.1:3199/api/auth/login', { data: credentials });
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:3199/#overview');
@@ -79,7 +79,11 @@ test('cached PWA switches languages offline and synchronizes the selection on re
   await context.setOffline(true);
   await switchTo(page, 'Tiếng Việt');
   await expect(page.locator('html')).toHaveAttribute('lang', 'vi');
-  await expect(page.locator('.language-trigger img')).toHaveJSProperty('complete', true);
+  await page.locator('.language-trigger').click();
+  const flag = page.getByRole('menuitem', { name: 'Tiếng Việt', exact: true }).locator('img');
+  await expect(flag).toHaveJSProperty('complete', true);
+  expect(await flag.evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
+  await page.keyboard.press('Escape');
   await context.setOffline(false);
   await expect.poll(async () => (await (await context.request.get('http://127.0.0.1:3199/api/auth/status')).json()).language).toBe('vi');
   await context.close();

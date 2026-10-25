@@ -11,8 +11,12 @@
 .language-switcher-compact .language-name { display: none; }
 .language-switcher-compact .language-short { display: inline; }
 .language-switcher-compact .language-trigger { min-height: 44px; padding-inline: 7px; gap: 5px; }
-.mw-header > .language-switcher { margin-inline-start: auto; }
-.mw-header .mw-warehouse { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.language-switcher-icon-only .language-trigger { width: 48px; height: 48px; padding: 0; border: 0; background: transparent; }
+.language-switcher-icon-only .language-trigger:hover { background: var(--surface-alt, #f2f5f9); }
+@media (prefers-reduced-motion: reduce) {
+  /* Popup alignment measures temporary coordinates; these must update immediately. */
+  .language-menu { transition: none !important; }
+}
 @media (max-width: 760px) {
   .auth-language { top: max(12px, env(safe-area-inset-top)); right: 16px; }
   .auth-language .language-trigger { min-height: 44px; }

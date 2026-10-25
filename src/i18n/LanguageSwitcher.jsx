@@ -1,5 +1,5 @@
 import { Dropdown } from 'antd';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Languages } from 'lucide-react';
 import { useLocale, useLanguageSyncError } from './react.jsx';
 import './language-switcher.css';
 
@@ -9,13 +9,13 @@ const languages = [
   { key: 'vi', name: 'Tiếng Việt', short: 'VI', flag: 'vn' },
 ];
 
-export function LanguageSwitcher({ compact = false }) {
+export function LanguageSwitcher({ compact = false, iconOnly = false }) {
   const { locale, setLocale, t } = useLocale();
   const error = useLanguageSyncError();
   const current = languages.find(language => language.key === locale) || languages[0];
   const flag = language => <img src={`/flags/${language.flag}.svg`} width="24" height="16" alt="" aria-hidden="true" />;
-  return <div className={`language-switcher${compact ? ' language-switcher-compact' : ''}`}>
-    <Dropdown trigger={['click']} placement="bottomRight" menu={{
+  return <div className={`language-switcher${compact ? ' language-switcher-compact' : ''}${iconOnly ? ' language-switcher-icon-only' : ''}`}>
+    <Dropdown trigger={['click']} placement="bottomRight" classNames={{ root: 'language-menu' }} menu={{
       selectable: true, selectedKeys: [locale],
       onClick: ({ key }) => { void setLocale(key); },
       items: languages.map(language => ({ key: language.key, label: <span className="language-option" lang={language.key}>
@@ -23,7 +23,7 @@ export function LanguageSwitcher({ compact = false }) {
       </span> })),
     }}>
       <button type="button" className="language-trigger" aria-label={`${t('language.change')}: ${current.name}`} title={t('language.change')}>
-        {flag(current)}<span className="language-name" lang={locale}>{current.name}</span><span className="language-short" lang={locale}>{current.short}</span><ChevronDown size={14} aria-hidden="true" />
+        {iconOnly ? <Languages size={22} aria-hidden="true" /> : <>{flag(current)}<span className="language-name" lang={locale}>{current.name}</span><span className="language-short" lang={locale}>{current.short}</span><ChevronDown size={14} aria-hidden="true" /></>}
       </button>
     </Dropdown>
     {error && <span className="language-sync-error" role="status">{t(error)}</span>}

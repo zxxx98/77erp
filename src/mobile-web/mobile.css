@@ -1,10 +1,14 @@
 .mobile-device {font-size:15px;--muted:#647084;--green:#16866d;--orange:#a56b12;--red:#c63f4a;}
 .mobile-device body {background:#f7f8fa;}
 .mw-shell {min-height:100dvh;background:#f7f8fa;font-size:15px;line-height:1.5;}
-.mw-header {position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:8px;min-height:calc(60px + env(safe-area-inset-top));padding:env(safe-area-inset-top) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));background:#fff;border-bottom:1px solid #e9ecf1;}
-.mw-wordmark {font-size:23px;font-weight:800;padding:0 7px;letter-spacing:-.5px;white-space:nowrap;}
+.mw-topbar {position:sticky;top:0;z-index:40;background:#fff;}
+.mw-header {display:flex;flex-direction:column;align-items:stretch;padding:env(safe-area-inset-top) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));background:#fff;border-bottom:1px solid #e9ecf1;}
+.mw-header-main {display:flex;align-items:center;gap:8px;min-height:56px;min-width:0;}
+.mw-wordmark {margin-inline-end:auto;font-size:23px;font-weight:800;padding:0 7px;letter-spacing:-.5px;white-space:nowrap;}
 .mw-wordmark span {color:#2563eb;}
-.mw-warehouse {flex:1;min-width:0;min-height:48px;display:block;text-align:left;border:0;background:transparent;color:#647084;font-size:13px;overflow-wrap:anywhere;}
+.mobile-device .mw-warehouse {width:100%;min-width:0;min-height:44px;height:44px;margin-bottom:8px;padding:0 12px;display:flex;align-items:center;text-align:left;border:0;border-radius:8px;background:#f7f8fa;color:#647084;font-size:13px;}
+.mobile-device .mw-warehouse>span {flex-wrap:nowrap;}
+.mw-warehouse-name {flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mw-content {width:100%;max-width:760px;margin:0 auto;padding:20px max(20px,env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));}
 .mw-shell h1 {font-size:27px;font-weight:700;letter-spacing:-.5px;line-height:1.25;overflow-wrap:anywhere;}
 .mw-shell h2,.mobile-device .mw-card h2,.mobile-device .mw-stack>h2 {font-size:18px;font-weight:600;line-height:1.4;}
@@ -192,7 +196,4 @@
 .mw-batch-clear {border:0;background:transparent;color:#2563eb;font-size:13px;padding:4px 8px;}
 .mw-batch-buttons {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
 
-/* Keep language selection available on every mobile route, including scanner. */
-.mw-header > .language-switcher { margin-left:auto;flex-shrink:0; }
 .mw-header .mw-modal-title { min-width:0;overflow-wrap:anywhere; }
-@media(max-width:380px) { .mw-header { gap:2px;padding-left:max(6px,env(safe-area-inset-left));padding-right:max(6px,env(safe-area-inset-right)); } .mw-header .mw-wordmark {font-size:19px;padding:0 3px;} .mw-header .mw-icon {min-width:40px;width:40px;} }
