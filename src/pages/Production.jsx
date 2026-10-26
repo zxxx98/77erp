@@ -1,4 +1,5 @@
 import { ProductionOperations, OperationWorkerSelect } from '../features/ProductionOperations.jsx';
+import { ProcessFlowStrip } from '../features/ProcessGraph.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { bomLossMethodLabels, bomLossMethodFormulas, productionStatusLabels } from '../i18n/production-display.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
@@ -439,7 +440,16 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.material_documents?.some(doc => doc.status === 'pending') && <p className="bom-hint">{pt("production.aMaterialRequestIsPendingHaveTheWarehouse")}</p>}
       <MaterialDocumentList documents={detail.material_documents || []} busy={action.busy} onCancel={management && detail.status !== 'void' ? cancelMaterialRequest : undefined} />
     </section>}
-    {!detail.stage_workflow && !!detail.operation_routes?.length && <section className="panel bom-section"><h2>{pt('route.progress')}</h2><Button disabled={action.busy} onClick={() => begin({ kind: 'operations' })}>{pt('route.viewProgress')}</Button></section>}
+    {!detail.stage_workflow && !!detail.operation_routes?.length && <section className="panel bom-section process-order-summary-panel">
+      <div className="bom-section-heading">
+        <div>
+          <h2>{pt('route.progress')}</h2>
+          <p className="bom-hint">{detail.operation_routes[0].route_name} · {pt('route.version', { version: detail.operation_routes[0].route_version })}</p>
+        </div>
+        <Button disabled={action.busy} onClick={() => begin({ kind: 'operations' })}>{pt('route.viewProgress')}</Button>
+      </div>
+      <ProcessFlowStrip graph={detail.operation_routes[0].graph} operations={detail.operation_routes[0].operations} />
+    </section>}
     {!!detail.stage_workflow && <ProductionStageSummary order={detail} disabled={action.busy} onOpen={() => begin({ kind: 'stages' })} />}
     {!!detail.stage_workflow && management && can('finance') && <section className="panel bom-section"><h2>{pt("production.materialCostsByLevel")}</h2>
       <div className="material-balance"><div><small>{pt("production.rawMaterialCostInvestedInAllLevels")}</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>{pt("production.remainingSemiFinishedCostInOrder")}</small><span>{money(detail.work_in_progress_cost_cents)}</span></div></div>

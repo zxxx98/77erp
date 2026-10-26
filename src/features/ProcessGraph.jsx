@@ -1,25 +1,84 @@
 import { useId, useRef } from 'react';
+import { ArrowRight } from 'lucide-react';
 import { t } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import './process-routes.css';
 
-export function ProcessGraph({ graph, selected, onSelect, onChange, operations = [], disabled = false }) {
+export function orderProcessNodes(graph) {
+  if (!graph?.nodes?.length) return [];
+  const ids = new Set(graph.nodes.map(n => n.id));
+  const incoming = new Map(graph.nodes.map(n => [n.id, []])), outgoing = new Map(graph.nodes.map(n => [n.id, []]));
+  for (const edge of graph.edges || []) {
+    if (ids.has(edge.from) && ids.has(edge.to) && edge.from !== edge.to) {
+      incoming.get(edge.to).push(edge.from);
+      outgoing.get(edge.from).push(edge.to);
+    }
+  }
+  const remaining = new Map([...incoming].map(([id, parents]) => [id, parents.length]));
+  const queue = graph.nodes.filter(n => remaining.get(n.id) === 0).map(n => n.id), orderedIds = [];
+  for (let i = 0; i < queue.length; i++) {
+    const id = queue[i]; orderedIds.push(id);
+    for (const child of outgoing.get(id) || []) {
+      remaining.set(child, remaining.get(child) - 1);
+      if (remaining.get(child) === 0) queue.push(child);
+    }
+  }
+  for (const node of graph.nodes) if (!orderedIds.includes(node.id)) orderedIds.push(node.id);
+  return orderedIds.map((id, index) => {
+    const node = graph.nodes.find(n => n.id === id);
+    const parents = incoming.get(id) || [], children = outgoing.get(id) || [];
+    return { ...node, step: index + 1, isStart: parents.length === 0, isOutput: children.length === 0, parents, children };
+  });
+}
+
+export function ProcessFlowStrip({ graph, operations = [], limit = 6 }) {
+  useLocale();
+  const ordered = orderProcessNodes(graph);
+  if (!ordered.length) return null;
+  const visible = ordered.slice(0, limit), hiddenCount = Math.max(0, ordered.length - visible.length);
+  return <div className="process-flow-strip" aria-label={t('route.operations')}>
+    {visible.map((node, index) => {
+      const op = operations.find(item => item.id === node.id);
+      return <div className="process-flow-step-wrap" key={node.id}>
+        {index > 0 && <ArrowRight size={13} className="process-flow-arrow" aria-hidden="true" />}
+        <span className={`process-flow-pill${node.isOutput ? ' is-output' : node.isStart ? ' is-start' : ''}`}>
+          <em className="process-flow-index">{node.step}</em>
+          <strong className="process-flow-name">{node.name}</strong>
+          {op !== undefined && <small className="process-flow-qty">{op.completed_quantity}</small>}
+          {node.isOutput && <i className="process-flow-tag">{t('route.output')}</i>}
+        </span>
+      </div>;
+    })}
+    {hiddenCount > 0 && <span className="process-flow-more">+{hiddenCount}</span>}
+  </div>;
+}
+
+export function ProcessGraph({ graph, selected, connectingSource = null, onSelect, onChange, operations = [], disabled = false }) {
   useLocale();
   const marker = useId().replace(/:/g, ''), drag = useRef(null);
-  const width = Math.max(600, ...graph.nodes.map(n => n.x + 220)), height = Math.max(240, ...graph.nodes.map(n => n.y + 115));
+  const ordered = orderProcessNodes(graph);
+  const metaById = new Map(ordered.map(n => [n.id, n]));
+  const width = Math.max(620, ...graph.nodes.map(n => n.x + 228)), height = Math.max(240, ...graph.nodes.map(n => n.y + 124));
   return <div className="process-canvas-scroll" role="region" aria-label={t('route.graph')} tabIndex={0}>
     <div className="process-canvas" style={{ width, height }}>
-      <svg width={width} height={height} aria-hidden="true" className="process-edges"><defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="currentColor" /></marker></defs>
+      <svg width={width} height={height} aria-hidden="true" className="process-edges">
+        <defs>
+          <marker id={marker} markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1L7 4L0 7Z" fill="currentColor" /></marker>
+          <marker id={`${marker}-active`} markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1L7 4L0 7Z" fill="var(--accent, #2563eb)" /></marker>
+        </defs>
         {graph.edges.map(edge => {
           const from = graph.nodes.find(n => n.id === edge.from), to = graph.nodes.find(n => n.id === edge.to);
           if (!from || !to) return null;
-          const x1 = from.x + 180, y1 = from.y + 36, x2 = to.x, y2 = to.y + 36, bend = Math.max(25, Math.abs(x2 - x1) / 2);
-          return <path key={`${edge.from}:${edge.to}`} d={`M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`} fill="none" stroke="currentColor" strokeWidth="1.5" markerEnd={`url(#${marker})`} />;
+          const active = selected && (edge.from === selected || edge.to === selected);
+          const x1 = from.x + 184, y1 = from.y + 41, x2 = to.x, y2 = to.y + 41, bend = Math.max(28, Math.abs(x2 - x1) / 2);
+          return <path key={`${edge.from}:${edge.to}`} className={active ? 'process-edge-active' : undefined} d={`M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`} fill="none" stroke={active ? 'var(--accent, #2563eb)' : 'currentColor'} strokeWidth={active ? '2' : '1.6'} markerEnd={`url(#${active ? `${marker}-active` : marker})`} />;
         })}
       </svg>
       {graph.nodes.map(node => {
-        const progress = operations.find(n => n.id === node.id), output = !graph.edges.some(e => e.from === node.id);
-        return <button key={node.id} type="button" className={`process-node${selected === node.id ? ' selected' : ''}`} style={{ left: node.x, top: node.y }} aria-pressed={selected === node.id}
+        const progress = operations.find(n => n.id === node.id), meta = metaById.get(node.id) || {};
+        const output = !graph.edges.some(e => e.from === node.id), isStart = !graph.edges.some(e => e.to === node.id);
+        const isConnectingFrom = connectingSource === node.id;
+        return <button key={node.id} type="button" className={`process-node${selected === node.id ? ' selected' : ''}${output ? ' is-output' : isStart ? ' is-start' : ''}${isConnectingFrom ? ' is-connecting' : ''}`} style={{ left: node.x, top: node.y }} aria-pressed={selected === node.id}
           onClick={() => !disabled && onSelect?.(node.id)}
           onPointerDown={event => {
             if (!onChange || disabled || event.button !== 0) return;
@@ -32,7 +91,19 @@ export function ProcessGraph({ graph, selected, onSelect, onChange, operations =
             const x = Math.min(10000, Math.max(0, Math.round(active.x + event.clientX - active.px))), y = Math.min(10000, Math.max(0, Math.round(active.y + event.clientY - active.py)));
             if (Math.abs(x - active.x) + Math.abs(y - active.y) > 3) onChange({ ...graph, nodes: graph.nodes.map(n => n.id === node.id ? { ...n, x, y } : n) });
           }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
-          <strong>{node.name}</strong><span>{progress ? `${t('route.completed')} ${progress.completed_quantity}` : output ? t('route.output') : t('route.operations')}</span>
+          {!isStart && <i className="process-node-port in" aria-hidden="true" />}
+          {!output && <i className="process-node-port out" aria-hidden="true" />}
+          <div className="process-node-header">
+            <small className="process-node-step">#{meta.step || 1}</small>
+            <em className={`process-node-role${output ? ' role-output' : isStart ? ' role-start' : ''}`}>
+              {t(output ? 'route.output' : isStart ? 'route.start' : 'route.operations')}
+            </em>
+          </div>
+          <strong>{node.name}</strong>
+          {progress ? <span className="process-node-metrics">
+            <b>{t('route.completed')} {progress.completed_quantity}</b>
+            {progress.available_quantity !== null && <b className={progress.available_quantity > 0 ? 'has-available' : ''}>{t('route.available')} {progress.available_quantity}</b>}
+          </span> : <span>{node.note || (output ? t('route.output') : isStart ? t('route.noPredecessors') : t('route.operations'))}</span>}
         </button>;
       })}
     </div>
