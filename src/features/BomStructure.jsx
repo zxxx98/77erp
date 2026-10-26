@@ -1,6 +1,6 @@
 import { productionMessage } from '../i18n/production-errors.js';
 import { bomLossMethodLabels, bomUsageLabels } from '../i18n/production-display.js';
-import { t as pt, getFormatLocale } from '../i18n/index.js';
+import { t as pt, getFormatLocale, translateText } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Drawer } from 'antd';
@@ -13,6 +13,8 @@ import { calculateBomNodes } from '../../shared/bom-expansion.js';
 import './bom-structure.css';
 
 const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const nodeLevel = node => pt('production.structureLevelValue', { level: node.path.split('.').length });
+const productionType = node => translateText(node.current_production_type) || pt('production.productionTypeNotSet');
 const emptyNodes = [];
 const narrowQuery = '(max-width: 760px)';
 const subscribeSize = callback => {
@@ -30,6 +32,8 @@ function NodeDetails({ node, path, onClose }) {
     <p className="bom-node-path">{path}</p>
     <dl>
       <dt>{pt("production.materialCode")}</dt><dd>{node.barcode || '—'}</dd>
+      <dt>{pt("production.currentProductionType")}</dt><dd>{productionType(node)}</dd>
+      <dt>{pt("production.structureLevel")}</dt><dd>{nodeLevel(node)}</dd>
       <dt>{pt("production.structurePath")}</dt><dd>{node.path}</dd>
       <dt>{pt("production.currentRequirement")}</dt><dd>{count(node.required)} {node.unit}</dd>
       <dt>{pt("production.materialSupplyMethod")}</dt><dd>{bomUsageLabels[node.usage_mode]}</dd>
@@ -44,15 +48,15 @@ function NodeDetails({ node, path, onClose }) {
   </section>;
 }
 
-export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true }) {
+export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true, isSnapshot = false }) {
   useLocale();
   // Changing production quantity keeps the current view. Replacing a recipe or
   // snapshot starts at its root, since positional paths can name different goods.
   const identity = useMemo(() => JSON.stringify(nodes.map(node => [node.path, node.product_id, node.bom_id, node.bom_version, node.usage_mode, node.child_bom_id])), [nodes]);
-  return <StructureBrowser key={identity} nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={active} />;
+  return <StructureBrowser key={identity} nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={active} isSnapshot={isSnapshot} />;
 }
 
-function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
+function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot }) {
   useLocale();
   const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
@@ -146,6 +150,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
   if (error) return <p className="bom-warning" role="alert">{productionMessage(error)}</p>;
 
   return <div className={`bom-structure${narrow ? ' is-drill' : ''}`} onKeyDown={event => { if (event.key === 'Escape' && selected) { event.stopPropagation(); closeDetails(); } }}>
+    <p className="bom-structure-metadata-hint">{pt(isSnapshot ? 'production.snapshotMetadataHint' : 'production.structureMetadataHint')}</p>
     <div className="bom-structure-toolbar">
       <Input type="search" aria-label={pt("production.searchStructureMaterials")} placeholder={pt("production.searchMaterialNamesOrCodesAcrossTheRecipe")} maxLength={100} value={query}
         onChange={event => { setQuery(event.target.value); setProductFilter(null); }} />
@@ -170,6 +175,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active }) {
             <td><div className="bom-tree-name" style={{ '--bom-indent': `${level * 16}px` }}>
               {!narrow && <span className="bom-tree-toggle">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-icon" disabled={searching} aria-label={`${expanded.has(node.path) || searching ? pt("production.collapse") : pt("production.expand")} ${node.name}`} aria-expanded={searching || expanded.has(node.path)} onClick={() => toggle(node.path)}>{expanded.has(node.path) || searching ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}</span>}
               <div><button type="button" className="bom-node-name" aria-label={pt("production.viewDetails2", { v0: node.name })} onClick={event => { detailTrigger.current = event.currentTarget; setSelectedPath(node.path); }}>{node.name}</button>
+                <div className="bom-node-tags"><span className="bom-node-type">{productionType(node)}</span><span>{nodeLevel(node)}</span></div>
                 <small>{node.barcode}</small>{narrow && <span className="bom-tree-mobile-mode">{bomUsageLabels[node.usage_mode]}</span>}
                 {searching && narrow && <small className="bom-search-path">{fullPath(node)}</small>}
               </div>

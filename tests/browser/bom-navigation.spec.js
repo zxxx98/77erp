@@ -19,6 +19,7 @@ async function fixture(page, wide = false) {
   const products = [];
   for (let i = 0; i < 11; i++) products.push(await post('/products', {
     name: i === 0 ? '十层成品' : i === 10 ? '共用原料' : `第${i}层半成品`, barcode: `NAV-${i}`, unit: '件', category: '生产', cost: 1, price: 2, threshold: 0,
+    production_type: i === 0 ? '成品' : i === 10 ? '原料' : '半成品',
   }));
   const extras = [];
   if (wide) for (let i = 0; i < 24; i++) extras.push(await post('/products', {
@@ -35,7 +36,7 @@ async function fixture(page, wide = false) {
     });
     recipes.push(child);
   }
-  return { base, post, root: child, products, recipes, close: async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); } };
+  return { base, post, db, root: child, products, recipes, close: async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); } };
 }
 
 for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} navigates ten BOM levels, searches repeated paths and preserves views`, async ({ page: defaultPage, browser }) => {
@@ -60,6 +61,8 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} nav
     await page.getByRole('tab', { name: '配方结构', exact: true }).click();
     const rows = page.locator('.bom-structure-row');
     await expect(rows).toHaveCount(2);
+    await expect(rows.first().locator('.bom-node-tags')).toHaveText('半成品第 1 级');
+    await expect(rows.last().locator('.bom-node-tags')).toHaveText('原料第 1 级');
     if (profile === 'desktop') {
       await page.getByRole('button', { name: '展开到第 3 层', exact: true }).click();
       await expect(rows).toHaveCount(4);
@@ -71,11 +74,14 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} nav
     for (let i = 1; i <= 9; i++) await page.getByRole('button', { name: `进入分支 第${i}层半成品`, exact: true }).click();
     await expect(rows).toHaveCount(1);
     await expect(rows).toContainText('共用原料');
+    await expect(rows.locator('.bom-node-tags')).toHaveText('原料第 10 级');
     await page.getByRole('button', { name: '查看详情 共用原料', exact: true }).click();
     const details = page.getByRole('region', { name: '节点详情', exact: true });
     await expect(details).toContainText('层级配方9');
     await expect(details).toContainText('十层成品');
     await expect(details).toContainText('第9层半成品');
+    await expect(details).toContainText('当前生产类型原料');
+    await expect(details).toContainText('结构层级第 10 级');
     await page.screenshot({ path: test.info().outputPath(`${profile}-deep-detail.png`), fullPage: profile === 'desktop', animations: 'disabled' });
     await page.getByRole('button', { name: '关闭节点详情', exact: true }).click();
     await page.getByRole('navigation', { name: 'BOM路径' }).getByRole('button', { name: '十层成品', exact: true }).click();
@@ -84,6 +90,8 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} nav
     await search.fill('NAV-10');
     await expect(page.getByRole('status').filter({ hasText: '找到 2 处匹配' })).toBeVisible();
     await expect(page.getByRole('button', { name: '查看详情 共用原料', exact: true })).toHaveCount(2);
+    const repeated = rows.filter({ has: page.getByRole('button', { name: '查看详情 共用原料', exact: true }) });
+    await expect(repeated.locator('.bom-node-tags')).toHaveText(['原料第 10 级', '原料第 1 级']);
     await page.screenshot({ path: test.info().outputPath(`${profile}-search.png`), fullPage: profile === 'desktop', animations: 'disabled' });
     await search.fill('不存在的物料');
     await expect(page.getByText('没有匹配的物料，请更换名称或编码。')).toBeVisible();
@@ -112,11 +120,15 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} resto
   const f = await fixture(page, true);
   try {
     const plan = await f.post(`/boms/${f.root.id}/calculate`, { schema_version: 2, production_quantity: 2 });
-    await f.post('/production-orders', { schema_version: 2, bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 2, structure_token: plan.structure_token, note: '' });
+    await f.post('/production-orders', { schema_version: 2, stage_schema_version: 1, bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 2, structure_token: plan.structure_token, note: '' });
     // The saved production snapshot must survive later root/child recipe edits.
     await f.post(`/boms/${f.root.id}`, { ...f.root, items: f.root.items.map(item => item.product_id === f.products[10].id ? { ...item, quantity: 9 } : item) });
+    f.db.prepare('UPDATE products SET production_type=? WHERE id=?').run('成品', f.products[10].id);
     await page.goto(f.base + '/#production');
     await page.getByRole('button', { name: /^查看生产单 / }).click();
+    await expect(page.getByText('结构及用量为保存时快照，生产类型显示物料档案当前值；根配方产物为第 0 级。')).toBeVisible();
+    await expect(page.locator('.bom-structure-row').first().locator('.bom-node-tags')).toHaveText('类型未设置第 1 级');
+    await expect(page.locator('.bom-structure-row').last().locator('.bom-node-tags')).toHaveText('成品第 1 级');
     const list = page.locator('.bom-structure-scroll');
     const enter = page.getByRole('button', { name: '进入分支 第1层半成品', exact: true });
     await enter.scrollIntoViewIfNeeded();
@@ -128,6 +140,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} resto
     await expect.poll(() => list.evaluate(element => element.scrollTop)).toBe(before);
     await page.getByRole('button', { name: '查看详情 共用原料', exact: true }).click();
     await expect(page.getByRole('region', { name: '节点详情' })).toContainText('4 件');
+    await expect(page.getByRole('region', { name: '节点详情' })).toContainText('当前生产类型成品');
     await page.getByRole('button', { name: '关闭节点详情', exact: true }).click();
     await expect(page.getByRole('button', { name: '查看详情 共用原料', exact: true })).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

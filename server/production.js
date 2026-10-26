@@ -4,7 +4,7 @@ import { isGroupProductionWorker, assertProductionReader, assertProductionOrderA
 import { rebuildTable } from './table-migration.js';
 import { BOM_NODE_COLUMNS, validateSnapshotNodes, validateExpansionScraps, calculateBomNodes } from '../shared/bom-expansion.js';
 import { randomUUID } from 'node:crypto';
-import { getBom, listBoms, calculateBom } from './bom.js';
+import { getBom, listBoms, calculateBom, withCurrentProductionTypes } from './bom.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 import { moveInventory, allocate } from './commerce.js';
 import { migrateProductionMaterials, productionMaterialTables, materialDocuments, materialBalances, installProductionMaterials, assertNoPendingMaterials } from './production-materials.js';
@@ -187,7 +187,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     order.scraps = db.prepare('SELECT * FROM production_scraps WHERE production_id=? ORDER BY position,id').all(id).map(row => ({
       ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id)),
     }));
-    order.nodes = db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(id);
+    order.nodes = withCurrentProductionTypes(db, warehouseId, db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(id));
     const standardCache = new Map();
     const standardsFor = quantity => {
       if (order.snapshot_format !== 2) return undefined;

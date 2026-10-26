@@ -5515,6 +5515,36 @@ export default {
     "Structure path",
     "Đường dẫn cấu trúc"
   ],
+  "production.currentProductionType": [
+    "当前生产类型",
+    "Current production type",
+    "Loại sản xuất hiện tại"
+  ],
+  "production.productionTypeNotSet": [
+    "类型未设置",
+    "Type not set",
+    "Chưa đặt loại"
+  ],
+  "production.structureLevel": [
+    "结构层级",
+    "Structure level",
+    "Cấp cấu trúc"
+  ],
+  "production.structureLevelValue": [
+    "第 {{level}} 级",
+    "Level {{level}}",
+    "Cấp {{level}}"
+  ],
+  "production.snapshotMetadataHint": [
+    "结构及用量为保存时快照，生产类型显示物料档案当前值；根配方产物为第 0 级。",
+    "Structure and usage are saved snapshots. Production types reflect current material records; the root recipe product is level 0.",
+    "Cấu trúc và định mức là bản chụp khi lưu. Loại sản xuất lấy từ hồ sơ vật tư hiện tại; sản phẩm của công thức gốc ở cấp 0."
+  ],
+  "production.structureMetadataHint": [
+    "生产类型显示物料档案当前值；层级以根配方产物为第 0 级。",
+    "Production types reflect current material records; levels start at 0 for the root recipe product.",
+    "Loại sản xuất lấy từ hồ sơ vật tư hiện tại; cấp được tính từ sản phẩm của công thức gốc ở cấp 0."
+  ],
   "production.currentRequirement": [
     "本次需求",
     "Current requirement",

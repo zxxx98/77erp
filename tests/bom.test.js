@@ -71,6 +71,49 @@ test('BOM maintenance is idempotent, warehouse-scoped, searchable and does not c
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM stock_adjustments').get().n, 0);
 });
 
+test('structure metadata uses current material types while production recipe snapshots and tokens stay frozen', async t => {
+  const f = await fixture(t);
+  const raw = await f.product('RAW', 1, { production_type: '原料' });
+  const unset = await f.product('UNSET');
+  f.db.prepare('UPDATE products SET production_type=? WHERE id=?').run('半成品', f.material);
+  const child = await f.create({ name: '子配方', product_id: f.material,
+    items: [{ product_id: raw, quantity: 3, unit: '个', note: '' }] });
+  const root = await f.create({ items: [
+    { product_id: f.material, quantity: 2, unit: '个', note: '', usage_mode: 'explode', child_bom_id: child.id },
+    { product_id: raw, quantity: 1, unit: '个', note: '' },
+    { product_id: unset, quantity: 1, unit: '个', note: '' },
+  ] });
+  const calculate = async () => {
+    const result = await f.request(`/boms/${root.id}/calculate`, { schema_version: 2, production_quantity: 2 });
+    assert.equal(result.status, 200, JSON.stringify(result.data)); return result.data;
+  };
+  const plan = await calculate();
+  assert.deepEqual(plan.nodes.map(n => [n.path, n.current_production_type]), [['1', '半成品'], ['1.1', '原料'], ['2', '原料'], ['3', '']]);
+  const saved = await f.command('/production-orders', { schema_version: 2, stage_schema_version: 1,
+    bom_id: root.id, bom_version: root.version, planned_quantity: 2, structure_token: plan.structure_token, note: '' });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const stored = () => f.db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(saved.data.id);
+  const frozen = stored();
+  assert.ok(frozen.every(node => !Object.hasOwn(node, 'current_production_type')));
+  f.db.prepare('UPDATE products SET production_type=? WHERE id=?').run('成品', raw);
+  f.db.prepare('UPDATE products SET production_type=?,active=0 WHERE id=?').run('', f.material);
+  const detail = (await f.request(`/production-orders/${saved.data.id}`)).data;
+  assert.deepEqual(detail.nodes.map(n => [n.path, n.current_production_type]), [['1', ''], ['1.1', '成品'], ['2', '成品'], ['3', '']]);
+  assert.deepEqual(stored(), frozen);
+  assert.equal(detail.nodes[1].quantity, 3);
+  f.db.prepare('UPDATE products SET active=1 WHERE id=?').run(f.material);
+  const refreshed = await calculate();
+  assert.equal(refreshed.structure_token, plan.structure_token, 'display-only type changes must not invalidate the recipe');
+  assert.deepEqual(refreshed.rows, plan.rows);
+  const prepared = await f.request('/production-orders/prepare', { schema_version: 2,
+    bom_id: root.id, bom_version: root.version, planned_quantity: 2 });
+  assert.equal(prepared.status, 200, JSON.stringify(prepared.data));
+  assert.equal(prepared.data.nodes[1].current_production_type, '成品');
+  const backup = (await f.request('/backup')).data;
+  const preview = await f.request('/backup/preview', { backup });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+});
+
 test('standard loss uses gross-input percentages and combines exact fractions before a single upward rounding', () => {
   assert.equal(bomRequiredQuantity(90, 1, 1, '', 10), 100);
   assert.equal(bomRequiredQuantity(100, 1, 1, '', 5), 105.2632);

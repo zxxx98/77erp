@@ -365,7 +365,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}
           {(source.multi_level || source.snapshot_format === 2) && <>
             <p className="bom-warning">{pt("production.expandedByGrossRequirementsWithoutDeductingIntermediateStock")}</p>
-            <BomStructure nodes={source.nodes} quantity={planning ? editor.planned_quantity : editor.completed_quantity || source.planned_quantity} />
+            <BomStructure nodes={source.nodes} quantity={planning ? editor.planned_quantity : editor.completed_quantity || source.planned_quantity} isSnapshot={source.snapshot_format === 2} />
           </>}
           <Materials rows={rows} issued={!!source.material_workflow && editor.kind === 'complete'} nodes={source.snapshot_format === 2 || source.multi_level ? source.nodes : undefined} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity} lossMethod={source.loss_method}
             onReason={(id, variance_reason) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, variance_reason } : item) })} complete={editor.kind === 'complete'} disabled={action.busy}
@@ -463,7 +463,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       })}>{pt("production.enableLevelRegistration")}</Button>}
     </section>}
     {detail.snapshot_format === 2 && <section className="panel bom-section"><h2>{pt("production.recipeStructureSnapshot")}</h2>
-      <BomStructure nodes={detail.nodes} quantity={detail.planned_quantity} />
+      <BomStructure nodes={detail.nodes} quantity={detail.planned_quantity} isSnapshot />
     </section>}
     <ProductionBatches key={detail.id} order={detail} costs={management && can('finance')} canVoid={management && can('corrections') && !detail.stage_workflow} canReceive={can('purchase')} disabled={action.busy}
       onVoid={batch => begin({ kind: 'void_batch', batchId: batch.id, reason: '' })} />

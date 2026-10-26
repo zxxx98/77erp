@@ -1128,6 +1128,8 @@ test('AI distinguishes partial production, reports active batch facts and hides 
 test('AI queries explicit alternate and multilevel recipes, exposes snapshot sources without writes or financial values', async t => {
   const f = await fixture(t, ':memory:', false);
   const [parent, intermediate, raw] = f.db.prepare('SELECT * FROM products ORDER BY id LIMIT 3').all();
+  f.db.prepare('UPDATE products SET production_type=? WHERE id=?').run('半成品', intermediate.id);
+  f.db.prepare('UPDATE products SET production_type=? WHERE id=?').run('原料', raw.id);
   const save = async body => {
     const response = await f.request(f.admin, '/boms', { request_id: randomUUID(), base_quantity: 1, note: '', enabled: 1, ...body });
     assert.equal(response.status, 200, JSON.stringify(response.data)); return response.data;
@@ -1147,9 +1149,13 @@ test('AI queries explicit alternate and multilevel recipes, exposes snapshot sou
   f.use('calculate_bom', { bom_id: root.id, production_quantity: 2 });
   const calculation = await f.chat(f.staff); assert.deepEqual(calculation.data.actions, []);
   assert.equal(result().rows[0].product_id, raw.id); assert.equal(result().rows[0].required, 6); assert.equal(result().nodes[1].bom_id, child.id);
+  assert.equal(result().nodes[0].current_production_type, '半成品');
+  assert.equal(result().nodes[1].current_production_type, '原料');
+  assert.match(f.calls.at(-1).body.tools.find(tool => tool.function.name === 'calculate_bom').function.description, /生产类型不决定供料方式/);
   const plan = result();
   const created = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), schema_version: 2, stage_schema_version: 1, bom_id: root.id, bom_version: root.version, planned_quantity: 2, note: '', structure_token: plan.structure_token });
   assert.equal(created.status, 200, JSON.stringify(created.data));
+  f.db.prepare('UPDATE products SET production_type=? WHERE id=?').run('成品', raw.id);
   f.db.prepare('UPDATE products SET stock=100,inventory_value_cents=10000 WHERE id=?').run(raw.id);
   const command = async (path, body) => {
     const response = await f.request(f.admin, path, { request_id: randomUUID(), schema_version: 2, stage_schema_version: 1, ...body });
@@ -1163,6 +1169,8 @@ test('AI queries explicit alternate and multilevel recipes, exposes snapshot sou
     items: [{ path: '1.1', quantity: 3 }], scraps: [], note: '', finish_order: false });
   f.use('get_production_order', { production_id: created.data.id }); await f.chat(f.staff);
   assert.equal(result().nodes[1].quantity, 3); assert.equal(result().items[0].base_quantity, null);
+  assert.equal(result().nodes[1].current_production_type, '成品');
+  assert.match(f.calls.at(-1).body.tools.find(tool => tool.function.name === 'get_production_order').function.description, /不是保存时类型/);
   assert.equal(result().stage_workflow, 1);
   assert.equal(result().stages.find(stage => stage.path === '1').available_quantity, 1);
   assert.equal(result().items[0].direct_consumed_quantity, 3);
