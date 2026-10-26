@@ -276,6 +276,7 @@ const routeRoles = new Map(Object.entries({
   // BOM access is opt-in; legacy employees do not inherit its permission.
   'get /api/process-routes': 'employee', 'get /api/process-routes/:id': 'employee',
   'post /api/process-routes': 'bom', 'post /api/process-routes/:id': 'bom', 'post /api/process-routes/:id/status': 'bom',
+  'post /api/process-routes/:id/delete': 'bom',
   'get /api/production-orders/:id/operation-workers': 'production', 'get /api/production-orders/:id/operations/reports': 'production',
   'post /api/production-orders/:id/operations/report': 'production', 'post /api/production-orders/:id/operations/:reportId/void': 'production',
   'get /api/boms': 'bom', 'get /api/boms/:id': 'bom', 'post /api/boms': 'bom',

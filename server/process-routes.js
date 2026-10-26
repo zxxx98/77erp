@@ -116,6 +116,16 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     db.prepare('UPDATE process_routes SET enabled=?,updated_by_name=?,updated_at=? WHERE id=?').run(req.body.enabled, actor(req), new Date().toISOString(), current.id);
     return get(req.warehouse.id, current.id);
   }, true));
+  app.post('/api/process-routes/:id/delete', route(req => {
+    const current = get(req.warehouse.id, req.params.id);
+    if (req.body.version !== current.version) fail('工艺路线已变化，请刷新后操作。', 409);
+    if (current.products.length) fail('此工艺路线已被物料引用，请先解除关联，或改为停用。', 409);
+    if (current.boms.length) fail('此工艺路线已被BOM引用，请先解除关联，或改为停用。', 409);
+    if (db.prepare('SELECT 1 FROM production_routes WHERE route_id=? LIMIT 1').get(current.id))
+      fail('此工艺路线已被生产单引用，不能删除，可改为停用。', 409);
+    db.prepare('DELETE FROM process_routes WHERE id=?').run(current.id);
+    return { ok: true };
+  }, true));
 }
 
 export function captureProductionRoutes(db, order) {

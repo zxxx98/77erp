@@ -72,6 +72,15 @@ export function ProcessRoutes({ data }) {
               <Button onClick={() => open(route)}>{t('route.edit')}</Button>
               <Button onClick={() => open(route, true)}>{t('route.copy')}</Button>
               <Button disabled={action.busy} onClick={() => action.run(async () => { await action.send(`/process-routes/${route.id}/status`, { version: route.version, enabled: route.enabled ? 0 : 1 }, { warehouseId: data.warehouse_id }); setRevision(n => n + 1); })}>{t(route.enabled ? 'route.disabled' : 'route.enabled')}</Button>
+              <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => {
+                if (!window.confirm(t('route.deleteConfirm', { name: route.name, id: route.id }))) return;
+                action.run(async () => {
+                  setMessage('');
+                  await action.send(`/process-routes/${route.id}/delete`, { version: route.version }, { warehouseId: data.warehouse_id });
+                  if (list.result.routes.length === 1 && offset > 0) setOffset(n => Math.max(0, n - 30));
+                  setRevision(n => n + 1); setMessage(t('route.deleted'));
+                });
+              }}>{t('route.delete')}</Button>
             </div>
           </div>
           <ProcessFlowStrip graph={route.graph} />

@@ -45,6 +45,50 @@ for(const device of ['desktop','iPhone 13']) test(`${device} creates and edits a
   }finally{await f.close();await context.close();}
 });
 
+for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} confirms route deletion, rejects references and stale versions, and returns from an empty last page`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    const unused = await f.post('/process-routes', { name: '待删除路线', note: '', enabled: 1, graph });
+    await page.goto(`${f.base}/#process-routes`);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    const card = name => page.locator('.process-route-card').filter({ has: page.getByRole('heading', { name, exact: true }) });
+    await expect(card(unused.name)).toBeVisible();
+    page.once('dialog', async dialog => { expect(dialog.message()).toContain(`「${unused.name}」(#${unused.id})`); await dialog.dismiss(); });
+    await card(unused.name).getByRole('button', { name: '删除路线', exact: true }).click();
+    expect(f.db.prepare('SELECT id FROM process_routes WHERE id=?').get(unused.id)).toBeTruthy();
+    page.once('dialog', dialog => dialog.accept());
+    await card(f.route.name).getByRole('button', { name: '删除路线', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('已被物料引用');
+    // Change the version after the list loads, without refreshing the browser.
+    f.db.prepare("UPDATE process_routes SET note='其他用户修改' WHERE id=?").run(unused.id);
+    page.once('dialog', dialog => dialog.accept());
+    await card(unused.name).getByRole('button', { name: '删除路线', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('工艺路线已变化');
+    await page.reload();
+    page.once('dialog', dialog => dialog.accept());
+    await card(unused.name).getByRole('button', { name: '删除路线', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: '工艺路线已删除' })).toBeVisible();
+    await expect(card(unused.name)).toHaveCount(0);
+    expect(f.db.prepare('SELECT id FROM process_routes WHERE id=?').get(unused.id)).toBeUndefined();
+    // Leave exactly one item on the second page, then delete it.
+    for (let index = 0; index < 30; index++) await f.post('/process-routes', { name: `分页路线 ${index}`, note: '', enabled: 1, graph });
+    const finalRoute = f.db.prepare("SELECT * FROM process_routes WHERE name='分页路线 0'").get();
+    f.db.prepare("UPDATE process_routes SET updated_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(finalRoute.id);
+    await page.reload();
+    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    await expect(page.locator('.process-route-card')).toHaveCount(1);
+    await expect(card(finalRoute.name)).toBeVisible();
+    page.once('dialog', dialog => dialog.accept());
+    await card(finalRoute.name).getByRole('button', { name: '删除路线', exact: true }).click();
+    await expect(page.locator('.process-route-card')).toHaveCount(30);
+    await expect(page.getByRole('button', { name: '上一页', exact: true })).toBeDisabled();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context.close(); }
+});
+
 for(const mode of ['desktop','mobile','pwa']) test(`${mode} scans to operations and registers intermediate work then final output`,async({browser})=>{
   const context=await browser.newContext({locale:'zh-CN',...(mode==='desktop'?{}:devices['iPhone 13']),serviceWorkers:mode==='pwa'?'allow':'block'});const page=await context.newPage(),f=await fixture(page),errors=[];page.on('pageerror',error=>errors.push(error.message));
   try{

@@ -40,6 +40,64 @@ test('route graph rejects loops, disconnected outputs and malformed nodes and ar
   assert.equal(new Set(arrangeProcessGraph(parallel).nodes.map(n=>`${n.x},${n.y}`)).size,3);
 });
 
+test('route deletion checks versions, warehouse and permissions, and supports safe request replay', async t => {
+  const f = await fixture(t, { routed: false });
+  const path = `/process-routes/${f.route.id}/delete`;
+  assert.equal((await f.request(path, { version: f.route.version })).status, 400);
+  assert.equal((await f.command(path)).status, 409);
+  assert.equal((await f.command(path, { version: String(f.route.version) })).status, 409);
+  const warehouse = f.ok(await f.request('/warehouses', { name: '删除隔离仓' }));
+  assert.equal((await f.command(path, { version: f.route.version }, { warehouseId: warehouse.id })).status, 404);
+  const position = f.ok(await f.command('/positions', { name: '工艺只读', permissions: ['products', 'production'] }));
+  f.ok(await f.command('/users', { username: 'routereader', password: 'Reader-test-123', role: 'employee', position_id: position.id }));
+  const login = await f.request('/auth/login', { username: 'routereader', password: 'Reader-test-123' }, { cookie: 'no-session' });
+  const readOnly = { cookie: login.cookie };
+  assert.equal((await f.request(`/process-routes/${f.route.id}`, undefined, readOnly)).status, 200);
+  assert.equal((await f.command(path, { version: f.route.version }, readOnly)).status, 403);
+  const changed = f.ok(await f.command(`/process-routes/${f.route.id}/status`, { version: f.route.version, enabled: 0 }));
+  assert.equal((await f.command(path, { version: f.route.version })).status, 409);
+  const body = { request_id: randomUUID(), version: changed.version };
+  const revision = f.ok(await f.request('/updates')).revision;
+  assert.deepEqual(f.ok(await f.command(path, body)), { ok: true });
+  assert.notEqual(f.ok(await f.request('/updates')).revision, revision);
+  assert.equal((await f.request(`/process-routes/${f.route.id}`)).status, 404);
+  assert.deepEqual(f.ok(await f.command(path, body)), { ok: true });
+  assert.equal((await f.command(path, { version: changed.version })).status, 404);
+  const recreated = f.ok(await f.command('/process-routes', { name: f.route.name, note: '', enabled: 1, graph: serial }));
+  assert.ok(recreated.version > changed.version);
+  assert.equal((await f.command(`/process-routes/${recreated.id}/delete`, { version: changed.version })).status, 409);
+  f.ok(await f.command(`/process-routes/${recreated.id}/delete`, { version: recreated.version }));
+  // Permission is checked before a successful deletion can be replayed.
+  f.db.prepare("UPDATE users SET role='employee',position_id=? WHERE username='routeadmin'").run(position.id);
+  assert.equal((await f.command(path, body)).status, 403);
+});
+
+test('route deletion preserves inactive bindings and all production snapshots including voided orders', async t => {
+  const f = await fixture(t);
+  let order = await f.create();
+  const path = `/process-routes/${f.route.id}/delete`;
+  const remove = () => f.command(path, { version: f.route.version });
+  f.db.prepare('UPDATE products SET active=0 WHERE id=?').run(f.half);
+  let result = await remove();
+  assert.equal(result.status, 409); assert.match(result.data.error, /物料引用/);
+  f.db.prepare('UPDATE products SET active=1,default_route_id=NULL WHERE id=?').run(f.half);
+  f.db.prepare('UPDATE boms SET enabled=0,route_override_id=? WHERE id=?').run(f.route.id, f.root.id);
+  result = await remove();
+  assert.equal(result.status, 409); assert.match(result.data.error, /BOM引用/);
+  f.db.prepare('UPDATE boms SET enabled=1 WHERE id=?').run(f.root.id);
+  f.db.prepare('UPDATE boms SET route_override_id=NULL WHERE id=?').run(f.root.id);
+  result = await remove();
+  assert.equal(result.status, 409); assert.match(result.data.error, /生产单引用/);
+  order = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: order.version, reason: '取消生产' }));
+  assert.equal(order.status, 'void');
+  result = await remove();
+  assert.equal(result.status, 409); assert.match(result.data.error, /生产单引用/);
+  assert.deepEqual((await f.get(order.id)).operation_routes[0].graph, serial);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.raw).stock, 1000);
+  const backup = f.ok(await f.request('/backup'));
+  f.ok(await f.command('/backup/preview', { backup }));
+});
+
 test('serial reports constrain later operations, remain separate from inventory, and atomically register final output',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());
   assert.equal(order.operation_routes[0].route_id,f.route.id);
