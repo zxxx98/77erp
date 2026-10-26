@@ -1,4 +1,5 @@
 export const permissionOptions = [
+  { key: 'basic_view', label: '查看基础页面', description: '查看仪表盘、物料、库存、出入库记录、扫码查询和公告；业务操作仍需对应权限' },
   { key: 'ai', label: 'AI 助手', description: '使用 AI 查询及生成操作预览，执行仍需对应业务权限' },
   { key: 'products', label: '物料管理', description: '物料档案、校验、启停、删除、分类、图片及跨仓库同步' },
   { key: 'purchase', label: '入库', description: '入库开单、扫码入库、生产退料确认及成品入库审批' },
@@ -27,4 +28,9 @@ export function canManage(user, key) {
 }
 export function canManageTemplates(user) {
   return hasPermission(user, 'business') || !!user?.legacy_permissions;
+}
+
+// A standard position with only group registration uses the same isolated workspace.
+export function usesProductionWorkspace(user) {
+  return isProductionOnly(user) || (user?.role !== 'admin' && user?.permissions?.length === 1 && user.permissions[0] === 'production_register');
 }

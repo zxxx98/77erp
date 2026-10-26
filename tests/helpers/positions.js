@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { legacyPermissions } from '../../shared/permissions.js';
 
 export function readonlyPositionId(db) {
-  const row = db.prepare("SELECT id FROM positions WHERE legacy_permissions=0 AND permissions='[]' ORDER BY id LIMIT 1").get();
+  const row = db.prepare("SELECT id FROM positions WHERE legacy_permissions=0 AND permissions=? ORDER BY id LIMIT 1").get(JSON.stringify(['basic_view']));
   assert.ok(row, 'startup creates a readonly position');
   return row.id;
 }
@@ -20,6 +20,6 @@ export async function grantPosition(db, request, userId, permissions) {
 
 // Explicitly model a migrated legacy position; users.permissions is no longer authoritative.
 export function legacyPosition(db, userId) {
-  const position = db.prepare("INSERT INTO positions(name,description,permissions,legacy_permissions,created_at,updated_at) VALUES(?, '', ?, 1, ?, ?)").run(`Legacy ${randomUUID()}`, JSON.stringify(legacyPermissions), new Date().toISOString(), new Date().toISOString());
+  const position = db.prepare("INSERT INTO positions(name,description,permissions,legacy_permissions,created_at,updated_at) VALUES(?, '', ?, 1, ?, ?)").run(`Legacy ${randomUUID()}`, JSON.stringify(['basic_view', ...legacyPermissions]), new Date().toISOString(), new Date().toISOString());
   db.prepare('UPDATE users SET position_id=? WHERE id=?').run(position.lastInsertRowid, userId);
 }

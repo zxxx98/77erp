@@ -34,7 +34,7 @@ async function fixture(t, dbPath = ':memory:', historicalProduction = true) {
   const id = (await request(admin, '/users', { position_id: readonlyPositionId(db), username: 'staff', password: 'Strong-password-123' })).data.id;
   const staff = (await request(null, '/auth/login', { username: 'staff', password: 'Strong-password-123' })).cookie;
   const permissions = async values => {
-    assert.equal((await grantPosition(db, (path, body, method) => request(admin, path, body, method), id, values)).status, 200);
+    assert.equal((await grantPosition(db, (path, body, method) => request(admin, path, body, method), id, ['basic_view', ...values])).status, 200);
   };
   const settings = { enabled: true, writes: true, base_url: 'https://model.example/v1', model: 'test-model', secret: 'secret-test-key', daily_limit: 100 };
   assert.equal((await request(admin, '/settings/ai', settings, 'PUT')).status, 200);
@@ -1270,4 +1270,17 @@ test('AI registration production tools are offered and group changes invalidate 
   // Digest detects membership changes even if the permission version is accidentally unchanged.
   f.db.prepare('UPDATE users SET production_group_id=? WHERE id=?').run(other.id,f.id);
   assert.equal((await f.request(f.staff,`/ai/conversations/${response.data.conversation_id}`)).status,403);
+});
+
+test('AI basic queries require basic page permission even when the model forces a hidden tool', async t => {
+  const f = await fixture(t);
+  await grantPosition(f.db, (path, body, method) => f.request(f.admin, path, body, method), f.id, ['ai']);
+  f.use('search_products', { warehouse_id: 1, query: '' });
+  const response = await f.chat(f.staff);
+  assert.equal(response.status, 403);
+  const offered = (f.calls[0].tools || []).map(tool => tool.function.name);
+  for (const name of ['search_products', 'count_products', 'search_contacts', 'compare_stock', 'search_orders', 'categories', 'search_inspections'])
+    assert.equal(offered.includes(name), false, name);
+  assert.match(response.data.error, /没有此业务操作的权限/);
+  assert.equal(f.calls.length, 1);
 });

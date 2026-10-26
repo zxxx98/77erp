@@ -166,3 +166,21 @@ export function installPositions(app, db) {
     return {ok:true};
   }, {write:true}));
 }
+
+// Preserve existing access once; newly created positions must explicitly opt in.
+export function migrateBasicView(db) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!db.prepare("SELECT 1 FROM app_metadata WHERE key='position_basic_view_v1'").get()) {
+      for (const row of db.prepare("SELECT id,permissions FROM positions WHERE access_mode='standard'").all()) {
+        const permissions = JSON.parse(row.permissions);
+        if (permissions.includes('basic_view')) continue;
+        db.prepare('UPDATE positions SET permissions=?,version=version+1 WHERE id=?')
+          .run(JSON.stringify(['basic_view', ...permissions]), row.id);
+        db.prepare("UPDATE users SET permissions_version=permissions_version+1 WHERE position_id=? AND role='employee'").run(row.id);
+      }
+      db.prepare('INSERT INTO app_metadata(key,value) VALUES(?,?)').run('position_basic_view_v1', '1');
+    }
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+}

@@ -1,5 +1,8 @@
 // Display labels only; shared business codes and values stay unchanged.
 export default {
+  "shared-ui.basic.view": ["查看基础页面", "View basic pages", "Xem trang cơ bản"],
+  "shared-ui.basic.view.description": ["查看仪表盘、物料、库存、出入库记录、扫码查询和公告；业务操作仍需对应权限", "View the dashboard, materials, inventory, stock documents, QR queries and announcements; operations require their corresponding permissions", "Xem tổng quan, vật tư, tồn kho, chứng từ nhập xuất, tra cứu QR và thông báo; thao tác cần quyền tương ứng"],
+
   "shared.generic.webhook.json": [
     "通用 Webhook（JSON）",
     "Generic webhook (JSON)",

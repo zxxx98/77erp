@@ -31,14 +31,14 @@ export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onU
   const { can, manage } = usePermissions();
   const available = [
     ...(can('business') ? [['contacts', translate("warehouse.business.partner")]] : []),
-    ['templates', translate("warehouse.document.template")],
+    ...(can('basic_view') || can('business') ? [['templates', translate("warehouse.document.template")]] : []),
     ...(can('finance') ? [['finance', translate("warehouse.payments.and.balances")], ['profit', translate("warehouse.cost.and.gross.profit")]] : []),
     ...(can('transfer') ? [['transfer', translate("warehouse.warehouse.transfer")]] : []),
     ...(can('stocktake') ? [['stocktake', translate("warehouse.stocktake")], ['multi-stocktake', translate("warehouse.multi.warehouse.stocktake")]] : []),
     ...(manage('data_io') ? [['import', translate("warehouse.batch.import")], ['export', translate("warehouse.batch.export")]] : []),
   ];
-  const [tab, setTab] = useState(initialTab || available[0][0]);
-  const active = available.some(([id]) => id === tab) ? tab : available[0][0];
+  const [tab, setTab] = useState(initialTab || available[0]?.[0]);
+  const active = available.some(([id]) => id === tab) ? tab : available[0]?.[0];
   const [visited, setVisited] = useState(() => new Set([tab]));
   return (
     <section className="operation-panel">

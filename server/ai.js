@@ -271,6 +271,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
       const {payload,display}=aiChartPreview(db,req.warehouse.id,args);
       return preview(req,cid,'quality_chart',payload,display);
     }
+    if (['warehouses', 'categories', 'search_contacts', 'count_products', 'search_products', 'search_orders', 'compare_stock', 'search_inspections'].includes(name)) requirePermission(req, 'basic_view');
     if (name === 'warehouses') return db.prepare('SELECT id,name FROM warehouses ORDER BY id').all();
     if (name === 'categories') {
       warehouse(args.warehouse_id);
@@ -659,7 +660,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
             if (['search_boms', 'get_bom', 'calculate_bom'].includes(name)) return hasPermission(req.user, 'bom');
             if(['quality_chart_templates','quality_chart_data','preview_quality_chart'].includes(name))return hasPermission(req.user,'quality')&&(!name.startsWith('preview_')||!!config().writes);
             if (['read_import_table', 'replace_import_table'].includes(name)) return hasPermission(req.user, 'data_io');
-            if (!name.startsWith('preview_')) return true;
+            if (!name.startsWith('preview_')) return hasPermission(req.user, 'basic_view');
             if (!config().writes) return false;
             return name === 'preview_orders' ? hasPermission(req.user, 'purchase') || hasPermission(req.user, 'sale')
               : hasPermission(req.user, { preview_import: 'data_io', preview_transfer: 'transfer', preview_stocktake: 'stocktake', preview_inspection: 'products', preview_mark_inspected: 'products' }[name]);

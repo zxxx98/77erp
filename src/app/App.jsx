@@ -37,7 +37,7 @@ import './mode-switch.css';
 import { mobileDevice } from '../device.js';
 import { useState, useEffect, useRef } from 'react';
 import { api, setWarehouseId, getWarehouseId } from '../api.js';
-import { hasPermission, canManage, isProductionOnly, canViewProduction } from '../../shared/permissions.js';
+import { hasPermission, canManage, usesProductionWorkspace, canViewProduction } from '../../shared/permissions.js';
 import { useQuery } from '../queries.js';
 import { DataUpdateNotice, useDataUpdates } from '../DataUpdates.jsx';
 import { announcementsChanged, useAnnouncementQuery } from '../announcement-query.js';
@@ -103,7 +103,9 @@ function StandardApp({ admin, onLogout }) {
   const [productionBom, setProductionBom] = useState(null);
   const modeRef = useRef(mode);
   const lastPages = useRef(initialNavigation.pages);
-  const [page, setPage] = useState(initialNavigation.page);
+  const [requestedPage, setPage] = useState(initialNavigation.page);
+  const allowedPages = modeItems(mode, key => key === 'production_view' ? canViewProduction(admin) : hasPermission(admin, key));
+  const page = allowedPages.some(item => item.id === requestedPage) ? requestedPage : (allowedPages.find(item => item.id !== 'more')?.id || 'more');
   const acceptedHash = useRef(location.hash || navigationHash(page, mode));
   useEffect(() => {
     lastPages.current[mode] = page;
@@ -293,8 +295,8 @@ function StandardApp({ admin, onLogout }) {
   const user = data.user || admin;
   const can = key => key === 'production_view' ? canViewProduction(user) : hasPermission(user, key);
   const manage = key => canManage(user, key);
-  const summaryQuery = useQuery(mobileDevice || isProductionOnly(user) ? null : '/dashboard', data);
-  const announcementQuery = useAnnouncementQuery(isProductionOnly(user) ? null : '/announcements/unread-count', data);
+  const summaryQuery = useQuery(mobileDevice || !can('basic_view') ? null : '/dashboard', data);
+  const announcementQuery = useAnnouncementQuery(!can('basic_view') ? null : '/announcements/unread-count', data);
   const announcementCount = announcementQuery.result?.count || 0;
   const announcementSaved = async message => { announcementsChanged(); await saved(message); };
   const low = summaryQuery.result?.products.low_stock_products || [];
@@ -320,7 +322,7 @@ function StandardApp({ admin, onLogout }) {
   const visibleNav = modeItems(mode, can);
   const currentNav = navItems.find((n) => n.id === page);
   const updateNotice = updatesAvailable ? <DataUpdateNotice onRefresh={reload} busy={refreshing} disabled={!!modal} /> : null;
-  if (isProductionOnly(user)) return <ProductionOnlyShell admin={user} onLogout={onLogout} />;
+  if (usesProductionWorkspace(user)) return <ProductionOnlyShell admin={user} onLogout={onLogout} />;
   return (
     <PermissionContext.Provider value={user}><div className="app-shell">
       {switching && <div className="warehouse-switch-loading" role="status"><LoadingIndicator size={48} />{translate("system.switching.warehouses")}</div>}
@@ -408,7 +410,7 @@ function StandardApp({ admin, onLogout }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          {mode === 'warehouse' && <div className="sidebar-tip">
+          {mode === 'warehouse' && can('basic_view') && <div className="sidebar-tip">
             <span className="tip-icon">
               <ScanLine size={19} />
             </span>
@@ -452,7 +454,7 @@ function StandardApp({ admin, onLogout }) {
               <i />
               {refreshing ? translate("system.refreshing") : updatesAvailable ? translate("system.there.are.data.changes") : translate("system.data.has.been.read")}
             </div>
-            <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }}
+            {can('basic_view') && <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }}
               className="global-search"
               onFinish={() => {
 
@@ -466,8 +468,8 @@ function StandardApp({ admin, onLogout }) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-            </AntForm>
-            <div className="notification-wrap">
+            </AntForm>}
+            {can('basic_view') && <div className="notification-wrap">
               <AntButton type="text" htmlType="button"
                 className={`icon-button notification-button ${notification ? "selected" : ""}`}
                 aria-label={translate("system.inventory.reminder")}
@@ -507,7 +509,7 @@ function StandardApp({ admin, onLogout }) {
                   <div className="popover-footer">{translate("system.real.time.reminder.of.safety.stock.set.by.material")}</div>
                 </div>
               )}
-            </div>
+            </div>}
             <AntButton type="text" htmlType="button"
               className="icon-button help-button"
               aria-label={translate("system.help")}
@@ -552,6 +554,7 @@ function StandardApp({ admin, onLogout }) {
             </div>
           ) : (
             <>
+              {page === 'more' && <div className="info-box">{translate("system.basic.pages.require.permission")}</div>}
               {page === "overview" && (
                 <Dashboard
                   data={data}
@@ -762,5 +765,5 @@ function StandardApp({ admin, onLogout }) {
 }
 
 function App(props) {
-  useLocale(); return <PreferenceProvider key={props.admin.id ?? props.admin.username} user={props.admin}>{isProductionOnly(props.admin) ? <ProductionOnlyShell {...props} /> : <StandardApp {...props} />}</PreferenceProvider>; }
+  useLocale(); return <PreferenceProvider key={props.admin.id ?? props.admin.username} user={props.admin}>{usesProductionWorkspace(props.admin) ? <ProductionOnlyShell {...props} /> : <StandardApp {...props} />}</PreferenceProvider>; }
 export { App };

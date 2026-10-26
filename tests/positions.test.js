@@ -69,7 +69,7 @@ test('deployment migrates equal permissions together without merging legacy beha
     assert.equal(positions.length, 5);
     for (const user of users.slice(1)) {
       const p = positions.find(p => p.id === user.position_id);
-      assert.deepEqual([...JSON.parse(p.permissions)].sort(), [...(user.permissions == null ? legacyPermissions : JSON.parse(user.permissions))].sort());
+      assert.deepEqual([...JSON.parse(p.permissions)].sort(), ['basic_view', ...(user.permissions == null ? legacyPermissions : JSON.parse(user.permissions))].sort());
       assert.equal(!!p.legacy_permissions, user.permissions == null);
     }
     assert.equal(db.prepare("SELECT value FROM app_metadata WHERE key='employee_positions_v1'").get().value, '1');
@@ -230,7 +230,7 @@ test('existing login sessions and pre-upgrade user revision triggers keep follow
   const cookie = `77erp_session=${token}`;
   const before = (await f.request(cookie, '/auth/status')).data;
   assert.equal(before.authenticated, true);
-  assert.deepEqual(before.permissions, ['purchase','sale']);
+  assert.deepEqual(before.permissions, ['basic_view','purchase','sale']);
   const revision = (await f.request(cookie, '/updates')).data.revision;
   const position = (await f.request(f.admin, '/positions')).data.find(p => p.id === before.position_id);
   assert.equal((await f.request(f.admin, `/positions/${position.id}`, {...position,permissions:['purchase']}, 'PUT')).status, 200);

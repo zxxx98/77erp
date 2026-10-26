@@ -13,7 +13,7 @@ export function EffectivePermissions({ permissions = [], legacy = false, accessM
   useLocale();
   return <div className="effective-permissions">
     {legacy && <p className="info-box">{translate("system.inherit.the.old.employee.permissions.retain.historical.operation.restrictions.the.following")}</p>}
-    <p className="muted">{accessMode === 'production_only' ? translate("system.production.operations.only.only.view.the.production.orders.and.registration.batches") : translate("system.materials.inventory.historical.documents.and.qr.code.queries.can.be.viewed")}</p>
+    <p className="muted">{accessMode === 'production_only' ? translate("system.production.operations.only.only.view.the.production.orders.and.registration.batches") : permissions.includes('basic_view') ? translate("system.materials.inventory.historical.documents.and.qr.code.queries.can.be.viewed") : translate("system.basic.pages.require.permission")}</p>
     {permissions.length ? <ul>{permissionOptions.filter(option => permissions.includes(option.key)).map(option => <li key={option.key}><strong>{option.label}</strong>{!legacy && <small>{option.description}</small>}</li>)}</ul> : <p>{translate("system.read.only.position.no.additional.business.operation.permissions")}</p>}
   </div>;
 }

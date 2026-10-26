@@ -2,9 +2,9 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { isSupportedLanguage } from './i18n.js';
 
-import { permissionKeys, hasPermission, isProductionOnly } from '../shared/permissions.js';
+import { permissionKeys, hasPermission, usesProductionWorkspace } from '../shared/permissions.js';
 import { queueNotification } from './notifications.js';
-import { migratePositions, positionAuthorization, requirePosition, installPositions, recordPositionChange } from './positions.js';
+import { migratePositions, migrateBasicView, positionAuthorization, requirePosition, installPositions, recordPositionChange } from './positions.js';
 import { migrateProductionGroups, installProductionGroups, requireProductionGroup } from './production-groups.js';
 
 const deriveKey = promisify(scrypt);
@@ -48,6 +48,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   );`);
   migratePositions(db);
   migrateProductionGroups(db);
+  migrateBasicView(db);
   // installAuth runs after the business migrations, so orders and templates already exist here.
   for (const table of ['orders', 'templates']) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -253,7 +254,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const post = req.method === 'POST';
     const groupProductionRoute = (read && (path === '/production-orders' || /^\/production-orders\/\d+(?:\/pdf|\/stages\/batches)?$/.test(path))) ||
       (post && /^\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path));
-    if (isProductionOnly(req.user)) {
+    if (usesProductionWorkspace(req.user)) {
       if (read && ['/workspace','/style','/updates'].includes(path) || groupProductionRoute && hasPermission(req.user,'production_register')) return next();
       return res.status(403).json({error:'此岗位仅允许查看本组生产单并登记。'});
     }
@@ -266,9 +267,9 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     if (/^\/production-material-documents(?:\/|$)/.test(path) &&
         (hasPermission(req.user, 'purchase') || hasPermission(req.user, 'sale') || post && /\/cancel$/.test(path) && hasPermission(req.user, 'production'))) return next();
     if (/^\/production-receipts(?:\/|$)/.test(path) && hasPermission(req.user, 'purchase')) return next();
-    if (read && path === '/updates') return next();
-    if ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
-        (post && /^\/announcements\/\d+\/read$/.test(path))) return next();
+    if (read && ['/workspace', '/style', '/updates'].includes(path)) return next();
+    if (hasPermission(req.user, 'basic_view') && ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
+        (post && /^\/announcements\/\d+\/read$/.test(path)))) return next();
     if ((read && (path === '/ai/conversations' || /^\/ai\/conversations\/[0-9a-f-]+$/.test(path)) ||
          post && ['/ai/chat', '/ai/confirm'].includes(path)) && hasPermission(req.user, 'ai')) return next();
     const legacyAllowed = (read && (
@@ -282,14 +283,14 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       (post && /^\/templates\/\d+\/delete$/.test(path)) ||
       (post && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path)));
     if (req.user.legacy_permissions) {
-      if (legacyAllowed) return next();
+      if (legacyAllowed && (!read || hasPermission(req.user, 'basic_view'))) return next();
     } else {
       const basicRead = read && (
         ['/workspace','/data','/style','/warehouses','/categories','/contacts','/templates','/products','/orders','/dashboard'].includes(path) ||
         /^\/products\/barcode\/[^/]+$/.test(path) || /^\/products\/\d+$/.test(path) ||
         /^\/orders\/\d+$/.test(path) ||
         /^\/products\/\d+\/(other-warehouses|history)$/.test(path));
-      if (basicRead) return next();
+      if (basicRead && hasPermission(req.user, 'basic_view')) return next();
       let permission;
       if ((post && ['/products','/uploads/product-image','/products/batch/status','/products/batch/delete/preview','/products/batch/delete'].includes(path)) ||
           (req.method === 'PUT' && /^\/products\/\d+$/.test(path)) ||

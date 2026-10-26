@@ -1,5 +1,7 @@
 // System, account, authentication and AI interface text.
 export default {
+  "system.basic.pages.require.permission": ["基础页面需勾选「查看基础页面」权限；修改自己的密码始终开放。", "Basic pages require the View basic pages permission. You can always change your own password.", "Các trang cơ bản yêu cầu quyền Xem trang cơ bản. Bạn luôn có thể đổi mật khẩu của mình."],
+
   "system.currently.offline.please.log.in.after.connecting.to.the.internet": [
     "当前离线，请联网后登录。",
     "Currently offline, please log in after connecting to the Internet.",
@@ -1626,14 +1628,14 @@ export default {
     "Chỉ hoạt động sản xuất: Chỉ xem các đơn đặt hàng sản xuất và lô đăng ký của nhóm này và bạn có thể sửa đổi mật khẩu của riêng mình."
   ],
   "system.materials.inventory.historical.documents.and.qr.code.queries.can.be.viewed": [
-    "物料、库存、历史单据及扫码查询默认可查看，修改自己的密码始终开放。",
-    "Materials, inventory, historical documents and QR code queries can be viewed by default, and it is always open to modify your own password.",
-    "Chứng từ, hàng tồn kho, chứng từ lịch sử và truy vấn mã QR có thể được xem theo mặc định và nó luôn mở để sửa đổi mật khẩu của riêng bạn."
+    "勾选「查看基础页面」后可查看物料、库存、历史单据及扫码查询；修改自己的密码始终开放。",
+    "The View basic pages permission allows viewing materials, inventory, document history and QR queries. You can always change your own password.",
+    "Quyền Xem trang cơ bản cho phép xem vật tư, tồn kho, lịch sử chứng từ và tra cứu mã QR. Bạn luôn có thể đổi mật khẩu."
   ],
   "system.read.only.position.no.additional.business.operation.permissions": [
-    "只读岗位，无额外业务操作权限。",
-    "Read-only position, no additional business operation permissions.",
-    "Vị trí chỉ đọc, không có quyền hoạt động kinh doanh bổ sung."
+    "未配置页面或业务操作权限。",
+    "No page or business operation permissions configured.",
+    "Chưa cấu hình quyền xem trang hoặc thao tác nghiệp vụ."
   ],
   "system.this.position.has.been.deleted.please.close.editing.and.select.the": [
     "该岗位已被删除，请关闭编辑并重新选择岗位。",
@@ -1811,9 +1813,9 @@ export default {
     "Chỉ có đơn đặt hàng sản xuất và đăng ký lô cho nhóm này mới được mở. Các quyền được cố định đối với đăng ký sản xuất và các trang kinh doanh khác không được mở."
   ],
   "system.when.the.business.module.is.not.checked.this.position.is.a": [
-    "不勾选业务模块时，该岗位为只读岗位。",
-    "When the business module is not checked, this position is a read-only position.",
-    "Khi mô-đun kinh doanh không được chọn, vị trí này là vị trí chỉ đọc."
+    "仅勾选「查看基础页面」时，该岗位为只读岗位；全部不勾选时不开放业务页面。",
+    "Select only View basic pages for read-only access. No permissions means no business pages.",
+    "Chỉ chọn Xem trang cơ bản để có quyền chỉ đọc. Không chọn quyền nào thì không mở trang nghiệp vụ."
   ],
   "system.refresh.version.and.preserve.input": [
     "刷新版本并保留输入",

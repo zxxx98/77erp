@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { createApp } from '../../server/app.js';
 import { randomUUID } from 'node:crypto';
 
-async function fixture(page) {
+async function fixture(page, accessMode = 'production_only') {
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -11,7 +11,7 @@ async function fixture(page) {
   await post('/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' });
   const group = await post('/production-groups', { name: '装配一组', description: '装配登记' });
   const second = await post('/production-groups', { name: '装配二组' });
-  const position = await post('/positions', { name: '仅生产岗位', access_mode: 'production_only', permissions: ['production_register'] });
+  const position = await post('/positions', { name: '仅生产岗位', access_mode: accessMode, permissions: ['production_register'] });
   const worker = await post('/users', { username: 'worker', password: 'Worker-password-123', role: 'employee', position_id: position.id, production_group_id: group.id });
   const products = [];
   for (const [name, barcode] of [['组内成品', 'GROUP-FINISH'], ['登记材料', 'GROUP-MATERIAL']]) products.push(await post('/products', { name, barcode, unit: '件', category: '生产', cost: 1, price: 2, threshold: 0 }));
@@ -26,12 +26,12 @@ async function fixture(page) {
   await post('/auth/logout', {}); await post('/auth/login', { username: 'worker', password: 'Worker-password-123' });
   return { base, db, worker, group, second, order, close: async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); } };
 }
-for (const {width, pwa} of [{width:1440}, {width:390}, {width:390,pwa:true}]) test.describe(`production groups ${width}${pwa ? ' PWA' : ''}`, () => {
+for (const accessMode of ['standard', 'production_only']) for (const {width, pwa} of [{width:1440}, {width:390}, {width:390,pwa:true}]) test.describe(`production groups ${accessMode} ${width}${pwa ? ' PWA' : ''}`, () => {
   test.use({ serviceWorkers: pwa ? 'allow' : 'block' });
   test(`production-only shell isolates navigation and clears dirty views at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   if (width < 640) await page.addInitScript(() => Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' }));
-  const f = await fixture(page), errors = [], businessRequests = [];
+  const f = await fixture(page, accessMode), errors = [], businessRequests = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('request', request => { if (/\/api\/(dashboard|announcements|products|ai|orders)(?:[/?]|$)/.test(request.url())) businessRequests.push(request.url()); });
   try {
@@ -114,5 +114,32 @@ test('admin configures groups, strict positions, optional employee membership an
     await choose(page, page.getByRole('combobox', { name: '派工生产小组', exact: true }), '新装配组');
     await page.getByRole('button', { name: '派工', exact: true }).click();
     await expect(page.getByText('生产小组：新装配组', { exact: true })).toBeVisible();
+  } finally { await f.close(); }
+});
+
+for (const width of [1440, 390]) test(`basic page grants and revocations switch the standard workspace at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  if (width < 640) await page.addInitScript(() => Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' }));
+  const f = await fixture(page, 'standard');
+  const setPermissions = permissions => {
+    f.db.prepare('UPDATE positions SET permissions=?,version=version+1 WHERE id=(SELECT position_id FROM users WHERE id=?)').run(JSON.stringify(permissions), f.worker.id);
+    f.db.prepare('UPDATE users SET permissions_version=permissions_version+1 WHERE id=?').run(f.worker.id);
+  };
+  try {
+    setPermissions(['basic_view', 'production_register']);
+    await page.goto(f.base + '/#products');
+    await expect(page.getByRole('heading', { name: '物料管理', exact: true })).toBeVisible();
+    await expect(page.locator('.production-only-shell')).toHaveCount(0);
+    setPermissions(['production_register']);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.locator('.production-only-shell')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '生产单', exact: true })).toBeVisible();
+    expect((await page.request.get(f.base + '/api/products')).status()).toBe(403);
+    setPermissions(['basic_view', 'production_register']);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(page.locator('.production-only-shell')).toHaveCount(0);
+    await page.goto(f.base + '/#products');
+    await expect(page.getByRole('heading', { name: '物料管理', exact: true })).toBeVisible();
+    expect((await page.request.get(f.base + '/api/products')).status()).toBe(200);
   } finally { await f.close(); }
 });

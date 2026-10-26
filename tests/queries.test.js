@@ -26,7 +26,7 @@ async function fixture(t) {
   const staffId = (await request(admin, '/users', 'POST', { position_id: readonlyPositionId(db), username: 'staff', password: 'Test-password-123' })).data.id;
   const staff = (await request(null, '/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' })).cookie;
   const grant = async (permissions) => {
-    const result = await grantPosition(db, (path, body, method) => request(admin, path, method, body), staffId, permissions);
+    const result = await grantPosition(db, (path, body, method) => request(admin, path, method, body), staffId, ['basic_view', ...permissions]);
     assert.equal(result.status, 200);
   };
   const command = (cookie, path, body, warehouse = 1) => request(cookie, path, 'POST', { request_id: randomUUID(), ...body }, warehouse);
@@ -84,7 +84,7 @@ test('update checks are read-only, warehouse-scoped and ignore sessions and roll
 test('update checks include team announcements and only the current user permissions and read receipts', async (t) => {
   const f = await fixture(t);
   const revision = async cookie => (await f.request(cookie, '/updates')).data.revision;
-  const position = await f.request(f.admin, '/positions', 'POST', { name: 'Warehouse', description: '', permissions: ['purchase'] });
+  const position = await f.request(f.admin, '/positions', 'POST', { name: 'Warehouse', description: '', permissions: ['basic_view', 'purchase'] });
   assert.equal(position.status, 201);
   const staff = (await f.request(f.admin, '/users')).data.find(user => user.username === 'staff');
   const adminBefore = await revision(f.admin), staffBefore = await revision(f.staff);

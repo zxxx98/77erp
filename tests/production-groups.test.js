@@ -66,7 +66,7 @@ test('production-only positions deny all other business endpoints and expose min
   assert.equal(workspace.data.settings.r2_secret_access_key,undefined);
   assert.equal((await f.request(worker.cookie,'/updates')).status,200);
   assert.equal((await f.request(worker.cookie,'/style')).status,200);
-  const basic=await f.position('基础读取',[]), standard=await f.user('reader',basic.id);
+  const basic=await f.position('基础读取',['basic_view']), standard=await f.user('reader',basic.id);
   assert.equal((await f.request(standard.cookie,'/products')).status,200);
   assert.equal((await f.request(f.admin,`/positions/${basic.id}`,{name:basic.name,permissions:['production_register'],access_mode:'production_only',version:basic.version},'PUT')).status,200);
   assert.equal((await f.request(standard.cookie,'/products')).status,403);
@@ -109,4 +109,51 @@ test('interrupted group migration rolls back its entire schema and can retry wit
     assert.equal(db.prepare('SELECT permissions FROM positions WHERE id=1').get().permissions,'["production"]');
     assert.equal(db.prepare('SELECT permissions_version FROM users WHERE id=1').get().permissions_version,7);
   } finally { db.close(); }
+});
+
+test('standard group registration without basic view matches isolated production access; grants and revocations apply immediately', async t => {
+  const f = await fixture(t), group = await f.group('登记组');
+  const position = await f.position('普通登记', ['production_register']);
+  const worker = await f.user('standard-worker', position.id, group.id);
+  assert.equal(worker.access_mode, 'standard');
+  for (const path of ['/data', '/products', '/products/1', '/products/1/history', '/orders', '/orders/1', '/dashboard', '/categories', '/contacts', '/templates', '/warehouses', '/announcements', '/announcements/unread-count']) {
+    assert.equal((await f.request(worker.cookie, path)).status, 403, path);
+  }
+  assert.equal((await f.request(worker.cookie, '/production-orders')).status, 200);
+  const workspace = (await f.request(worker.cookie, '/workspace')).data;
+  assert.deepEqual(workspace.categories, []);
+  assert.equal(workspace.settings.stock_expression, undefined);
+  assert.deepEqual(Object.keys(workspace.warehouses[0]).sort(), ['id', 'name']);
+  const granted = await f.request(f.admin, `/positions/${position.id}`, {
+    name: position.name, version: position.version, permissions: ['basic_view', 'production_register']
+  }, 'PUT');
+  assert.equal(granted.status, 200);
+  for (const path of ['/data', '/products', '/orders', '/dashboard', '/announcements'])
+    assert.equal((await f.request(worker.cookie, path)).status, 200, path);
+  assert.equal((await f.request(worker.cookie, '/products', {})).status, 403);
+  const revoked = await f.request(f.admin, `/positions/${position.id}`, {
+    name: position.name, version: granted.data.version, permissions: []
+  }, 'PUT');
+  assert.equal(revoked.status, 200);
+  assert.equal((await f.request(worker.cookie, '/products')).status, 403);
+  assert.equal((await f.request(worker.cookie, '/production-orders')).status, 403);
+  assert.equal((await f.request(worker.cookie, '/workspace')).status, 200);
+});
+
+test('basic page migration preserves standard access once and never expands production-only positions', async t => {
+  const f = await fixture(t);
+  const standard = await f.position('旧普通岗位', ['production_register']);
+  const isolated = await f.position('旧生产岗位', ['production_register'], 'production_only');
+  const user = await f.user('migration-worker', standard.id);
+  f.db.prepare("DELETE FROM app_metadata WHERE key='position_basic_view_v1'").run();
+  const { migrateBasicView } = await import('../server/positions.js');
+  migrateBasicView(f.db);
+  const current = f.db.prepare('SELECT * FROM positions WHERE id=?').get(standard.id);
+  assert.deepEqual(JSON.parse(current.permissions), ['basic_view', 'production_register']);
+  assert.equal(current.version, standard.version + 1);
+  assert.deepEqual(JSON.parse(f.db.prepare('SELECT permissions FROM positions WHERE id=?').get(isolated.id).permissions), ['production_register']);
+  assert.ok((await f.request(user.cookie, '/auth/status')).data.permissions_version > user.permissions_version);
+  f.db.prepare("UPDATE positions SET permissions='[]' WHERE id=?").run(standard.id);
+  migrateBasicView(f.db);
+  assert.equal(f.db.prepare('SELECT permissions FROM positions WHERE id=?').get(standard.id).permissions, '[]');
 });

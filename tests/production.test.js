@@ -422,7 +422,7 @@ test('production permission is independent of BOM, writes and financial reads ar
   assert.equal((await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }, asStaff)).status, 403);
   await permissions(['production', 'corrections']);
   assert.deepEqual(f.ok(await f.command(`/production-orders/${order.id}/delete`, { version: voided.version }, asStaff)), { ok: true });
-  await permissions([]);
+  await permissions(['basic_view']);
   assert.deepEqual(f.ok(await f.request(`/products/${f.parent}/history`, undefined, asStaff)).records, []);
 });
 

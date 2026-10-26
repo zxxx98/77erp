@@ -49,7 +49,7 @@ const probes = {
 
 test('new employees are read-only, keep password access, and only admins can configure employee permissions', async t => {
   const f = await fixture(t);
-  assert.deepEqual((await f.request(f.cookie, '/auth/status')).data.permissions, []);
+  assert.deepEqual((await f.request(f.cookie, '/auth/status')).data.permissions, ['basic_view']);
   for (const path of ['/data', '/products/barcode/6901234560010', '/warehouses', '/categories', '/contacts', '/templates'])
     assert.notEqual((await f.request(f.cookie, path)).status, 403, path);
   const data = (await f.request(f.cookie, '/data')).data;
@@ -62,8 +62,8 @@ test('new employees are read-only, keep password access, and only admins can con
     assert.equal((await f.request(f.admin, '/positions', { name: 'Invalid', description: '', permissions })).status, 400);
   const before = f.db.prepare('SELECT permissions_version FROM users WHERE id=?').get(f.id).permissions_version;
   const auditBefore = f.db.prepare('SELECT COUNT(*) AS n FROM position_changes WHERE user_id=?').get(f.id).n;
-  await f.set(['sale']);
-  assert.deepEqual((await f.request(f.cookie, '/data')).data.user.permissions, ['sale']);
+  await f.set(['basic_view', 'sale']);
+  assert.deepEqual((await f.request(f.cookie, '/data')).data.user.permissions, ['basic_view', 'sale']);
   assert.equal((await f.request(f.admin, `/users/${f.id}/position`, { position_id: readonlyPositionId(f.db), version: before }, 'PUT')).status, 409);
   assert.equal((await f.request(f.admin, `/users/${f.id}/permissions`, { permissions: ['purchase'], version: before }, 'PUT')).status, 409);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM position_changes WHERE user_id=?').get(f.id).n, auditBefore + 1);
@@ -128,7 +128,7 @@ test('legacy employees keep their former capabilities until configuration is sav
   assert.equal((await f.request(f.cookie, '/categories', {})).status, 403);
   assert.equal((await f.request(f.cookie, '/orders/export')).status, 200);
   assert.notEqual((await f.request(f.cookie, '/templates', {})).status, 403);
-  await f.set(['products']);
+  await f.set(['basic_view', 'products']);
   assert.equal((await f.request(f.cookie, '/data')).data.user.legacy_permissions, false);
   assert.equal((await f.request(f.cookie, '/templates', {})).status, 403);
   const category = await f.request(f.cookie, '/categories', { name: '员工维护分类' });

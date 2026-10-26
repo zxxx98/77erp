@@ -70,13 +70,13 @@ test('price audit captures actual before/after values and actor atomically, incl
 test('price history is restricted to finance permission and records the authenticated employee', async t => {
   const f = await fixture(t);
   const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'editor', password: 'Test-staff-123' })).data.id;
-  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['products'])).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['basic_view', 'products'])).status, 200);
   const auth = (await f.request('/auth/login', { username: 'editor', password: 'Test-staff-123' }, 'POST', 1, null)).cookie;
   const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
   assert.equal((await f.request(`/products/${f.product}`, { ...product, price: 0, created_by_name: 'forged' }, 'PUT', 1, auth)).status, 200);
   const path = `/products/${f.product}/history`;
   assert.deepEqual((await f.request(path, undefined, 'GET', 1, auth)).data.records, []);
-  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['products', 'finance'])).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['basic_view', 'products', 'finance'])).status, 200);
   const record = (await f.request(path, undefined, 'GET', 1, auth)).data.records[0];
   assert.equal(record.operator, 'editor');
   assert.equal(record.before_price, 20);
@@ -168,6 +168,6 @@ test('history requires login, keeps stocktake permissions and omits financial fi
   const history = (await f.request(path, undefined, 'GET', 1, cookie)).data.records;
   assert.equal(history.length, 1);
   for (const key of ['price', 'cost_cents', 'total', 'amount_cents', 'inventory_value_cents']) assert.equal(Object.hasOwn(history[0], key), false);
-  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['stocktake'])).status, 200);
+  assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['basic_view', 'stocktake'])).status, 200);
   assert.equal((await f.request(path, undefined, 'GET', 1, cookie)).data.records.length, 2);
 });
