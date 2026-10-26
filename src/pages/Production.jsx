@@ -1,3 +1,4 @@
+import { ProductionOperations, OperationWorkerSelect } from '../features/ProductionOperations.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { bomLossMethodLabels, bomLossMethodFormulas, productionStatusLabels } from '../i18n/production-display.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
@@ -130,7 +131,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const [stageActivity, setStageActivity] = useState(null);
   const stageSession = useRef(0);
   const action = useBusiness();
-  const send = (path, body, options) => action.send(path, { schema_version: 2, stage_schema_version: 1, ...body }, options);
+  const send = (path, body, options) => action.send(path, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, ...body }, options);
   const listData = useMemo(() => ({ ...data, productionRevision: revision }), [data, revision]);
   const list = useQuery(queryPath('/production-orders', { q, status, offset }), listData, 150);
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
@@ -200,6 +201,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   };
   const beginCompletion = () => action.run(async () => {
     if (detail.stage_workflow) { begin({ kind: 'stages' }); return; }
+    if (detail.operation_routes?.length) { begin({ kind: 'operations' }); return; }
     const remaining = Math.max(0, quantityUnits(detail.planned_quantity) - quantityUnits(detail.completed_quantity ?? 0)) / QUANTITY_SCALE;
     const quantity = remaining || 1;
     begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity) });
@@ -208,6 +210,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     setDetail(order); setAssignment(order.production_group_id ?? ''); setEditor(null); setMessage(''); action.setError('');
     if (order.status === 'in_progress' || !order.material_workflow && order.status === 'draft') {
       if (order.stage_workflow) { begin({ kind: 'stages' }); return; }
+      if (order.operation_routes?.length) { begin({ kind: 'operations' }); return; }
       const quantity = Math.max(0, quantityUnits(order.planned_quantity) - quantityUnits(order.completed_quantity ?? 0)) / QUANTITY_SCALE || 1;
       begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity, order) });
     } else {
@@ -242,7 +245,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         else body.version = detail.version;
         await saved(await send(path, body, options), pt("production.productionDraftSavedStockUnchanged"));
       } else if (editor.kind === 'complete') {
-        const body = { version: detail.version, completed_quantity: materialQuantity(parseQuantity(editor.completed_quantity, true), detail), finish_order: finishOrder, note: editor.note,
+        const body = { version: detail.version, ...(editor.operation_node_id ? { operation_node_id: editor.operation_node_id, worker_id: editor.worker_id } : {}), completed_quantity: materialQuantity(parseQuantity(editor.completed_quantity, true), detail), finish_order: finishOrder, note: editor.note,
           items: editor.items.map(row => ({ product_id: row.product_id, quantity: materialQuantity(parseQuantity(row.quantity), row), variance_reason: row.variance_reason })),
           scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: materialQuantity(parseQuantity(row.quantity), row), disposition: row.disposition })) };
         validateProductionCompletion(body, detail.items);
@@ -268,6 +271,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{label}</Button>
   </PageHeading>;
   const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}</>;
+
+  if (editor?.kind === 'operations') return <div className="bom-page production-page"><ProductionOperations order={detail} data={listData} canRegister={detail.status === 'in_progress'} onActivity={setStageActivity} onSaved={(order, text) => saved(order, text, true)} onBack={back} onOutput={(node, worker_id) => {
+    const quantity = node.available_quantity ?? (Math.max(0, detail.planned_quantity - (detail.completed_quantity || 0)) || 1);
+    begin({ kind: 'complete', operation_node_id: node.id, worker_id, completed_quantity: String(quantity || 1), note: '', ...batchDefaults(quantity || 1) });
+  }} />{notices}</div>;
 
   if (editor?.kind === 'stages') return <div className="bom-page production-page">
     <ProductionStages key={`${detail.id}:${editor.session}`} order={detail} data={listData} canRegister={detail.status === 'in_progress'} canVoid={management && can('corrections')} canReceive={can('purchase')} management={management}
@@ -337,6 +345,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           </> : editor.kind === 'complete' ? <>
             <p className="bom-hint">{pt("production.plannedOutput2")} {count(detail.planned_quantity)} {unit}{pt("production.acceptedToDate")} {count(detail.completed_quantity ?? 0)} {unit}{pt("production.enterThisBatchOnlyActualUsageDefaultsFrom")}</p>
             <label className="production-output">{pt("production.acceptedProductQuantity")}{unit}）<FormField value={editor.completed_quantity} required label={pt("production.acceptedProductQuantity2")}><AntInput aria-label={pt("production.acceptedProductQuantity2")} inputMode="decimal"  disabled={action.busy} value={editor.completed_quantity} onBlur={() => { if (validQuantity(Number(editor.completed_quantity), true)) update({ completed_quantity: String(materialQuantity(Number(editor.completed_quantity), detail)) }); }} onChange={e => update({ completed_quantity: e.target.value })} /></FormField></label>
+            {editor.operation_node_id && <OperationWorkerSelect order={detail} warehouseId={data.warehouse_id} value={editor.worker_id} onChange={worker_id => setEditor(previous => ({ ...previous, worker_id }))} disabled={action.busy} />}
             <p className="bom-hint">{pt("production.registerAcceptedOutputToCreateAPendingReceipt")}</p>
             {detail.material_workflow === 1 && <p className="bom-hint">{pt("production.usageIsRecordedAgainstIssuedMaterialsWithoutDeducting")}</p>}
             <Button type="button" disabled={action.busy} onClick={() => action.run(async () => {
@@ -430,6 +439,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.material_documents?.some(doc => doc.status === 'pending') && <p className="bom-hint">{pt("production.aMaterialRequestIsPendingHaveTheWarehouse")}</p>}
       <MaterialDocumentList documents={detail.material_documents || []} busy={action.busy} onCancel={management && detail.status !== 'void' ? cancelMaterialRequest : undefined} />
     </section>}
+    {!detail.stage_workflow && !!detail.operation_routes?.length && <section className="panel bom-section"><h2>{pt('route.progress')}</h2><Button disabled={action.busy} onClick={() => begin({ kind: 'operations' })}>{pt('route.viewProgress')}</Button></section>}
     {!!detail.stage_workflow && <ProductionStageSummary order={detail} disabled={action.busy} onOpen={() => begin({ kind: 'stages' })} />}
     {!!detail.stage_workflow && management && can('finance') && <section className="panel bom-section"><h2>{pt("production.materialCostsByLevel")}</h2>
       <div className="material-balance"><div><small>{pt("production.rawMaterialCostInvestedInAllLevels")}</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>{pt("production.remainingSemiFinishedCostInOrder")}</small><span>{money(detail.work_in_progress_cost_cents)}</span></div></div>

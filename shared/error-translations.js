@@ -1,6 +1,8 @@
+import { processRouteMessages } from './process-route-messages.js';
 import { createValidationTranslator } from './error-translation-runtime.js';
 // System validation text only; never include stored business values in this catalog.
 export const validationMessages = {
+  ...processRouteMessages,
   "VALIDATION_AI_IMAGES_135A43E060": [
     "每次最多添加 {p0} 张图片。",
     "A maximum of {p0} images can be added at a time.",

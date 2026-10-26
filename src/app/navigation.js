@@ -10,6 +10,7 @@ export const navItems = [
   { id: 'scanner', permission: 'basic_view', get name() { return translate("system.scanner"); }, icon: ScanLine, mode: 'warehouse', group: 'tools' },
   { id: 'history', permission: 'basic_view', get name() { return translate("system.activity.history"); }, icon: History, mode: 'warehouse', group: 'tools', get mobile() { return translate("system.document"); } },
   { id: 'quality', get name() { return translate("system.quality.management"); }, icon: PackageCheck, mode: 'production', group: 'main', get mobile() { return translate("system.quality"); }, permission: 'quality' },
+  { id: 'process-routes', get name() { return translate('route.title'); }, icon: ListTree, mode: 'production', group: 'main', get mobile() { return translate('route.title'); }, permission: 'bom' },
   { id: 'bom', name: 'BOM', icon: ListTree, mode: 'production', group: 'main', mobile: 'BOM', permission: 'bom' },
   { id: 'production', get name() { return translate("system.production.orders"); }, icon: ClipboardList, mode: 'production', group: 'main', get mobile() { return translate("system.production.orders"); }, permission: 'production_view' },
   { id: 'announcements', permission: 'basic_view', get name() { return translate("system.announcements"); }, icon: Megaphone, group: 'tools' },

@@ -1,3 +1,4 @@
+import { routeBinding } from './process-routes.js';
 import { validQuantity } from '../shared/quantity.js';
 import { createHash } from 'node:crypto';
 import { rebuildTable } from './table-migration.js';
@@ -9,7 +10,7 @@ import { operationRequest, saveOperationRequest } from './operations.js';
 export const bomTables = ['boms', 'bom_items', 'bom_scraps'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
-const publicProduct = product => Object.fromEntries(['id', 'name', 'barcode', 'specification', 'unit', 'active', 'stock', 'unit_round_up'].map(key => [key, product[key]]));
+const publicProduct = product => Object.fromEntries(['id', 'name', 'barcode', 'specification', 'unit', 'active', 'stock', 'unit_round_up', 'default_route_id'].map(key => [key, product[key]]));
 
 function readSnapshot(db, fn) {
   if (db.isTransaction) return fn();
@@ -125,13 +126,18 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
       return { ...row, stock: product.stock, shortage: bomShortage(row.required, product.stock) };
     });
     const instance = db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
+    const routeFingerprints = [...cache.values()].map(b => {
+      const binding = db.prepare('SELECT COALESCE(b.route_override_id,p.default_route_id) id FROM boms b JOIN products p ON p.id=b.product_id WHERE b.id=?').get(b.id);
+      const route = binding?.id ? db.prepare('SELECT id,version,enabled FROM process_routes WHERE id=?').get(binding.id) : null;
+      return [b.id, route];
+    });
     const fingerprints = [...cache.values()].sort((a, b) => a.id - b.id).map(b => [b.id, b.version, b.name, b.enabled, b.base_quantity, b.base_unit, b.loss_method,
       b.product.id, b.product.name, b.product.barcode, b.product.specification, b.product.active, b.product.unit, b.product.unit_round_up,
       [...b.items, ...b.scraps].map(row => [row.product_id, row.quantity, row.quantity_fraction, row.loss_rate, row.usage_mode, row.child_bom_id, row.note, row.method, row.source_product_id,
         row.product.name, row.product.barcode, row.product.specification, row.product.active, row.product.unit, row.product.unit_round_up])]);
     return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity, loss_method: bom.loss_method,
       schema_version: 2, multi_level: result.multi_level, nodes: result.nodes,
-      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints])).digest('hex'),
+      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints, routeFingerprints])).digest('hex'),
       scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
         planned_quantity: scrapExpectedQuantity({ ...row, unit_round_up: row.product.unit_round_up }, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
       quantity_decimals: 4, production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
@@ -247,6 +253,8 @@ export function installBom(app, db) {
       db.prepare('DELETE FROM bom_items WHERE bom_id=?').run(id);
     } else id = Number(db.prepare('INSERT INTO boms(warehouse_id,product_id,name,base_quantity,base_unit,loss_method,note,enabled,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
       .run(req.warehouse.id, body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.loss_method, body.note.trim(), body.enabled, owner, owner, at, at).lastInsertRowid);
+    const routeId = routeBinding(db, req.warehouse.id, req.body.route_override_id, existing?.route_override_id ?? null);
+    db.prepare('UPDATE boms SET route_override_id=? WHERE id=?').run(routeId, id);
     const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,loss_rate,unit,note,position,usage_mode,child_bom_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
     body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.loss_rate, item.unit, item.note.trim(), index, item.usage_mode, item.child_bom_id));
     const insertScrap = db.prepare('INSERT INTO bom_scraps(bom_id,product_id,method,source_product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?,?,?)');

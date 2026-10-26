@@ -6,6 +6,7 @@ import { ProductImage } from './ProductImage.jsx';
 const fields = () => [
   ['name', translate("system.material.name")], ['barcode', translate("system.material.barcode.2")], ['category', translate("system.material.categories")],
   ['production_type', translate("system.production.type")],
+  ['default_route_id', translate('route.default')],
   ['unit', translate("system.unit.of.measurement")], ['unit_round_up', translate("system.round.quantities.to.whole.units")], ['cost', translate("system.reference.purchase.price")], ['price', translate("system.reference.sales.price")],
   ['threshold', translate("system.safety.stock")], ['specification', translate("system.specifications.and.models")], ['note', translate("system.material.remarks")], ['image', translate("system.material.pictures")],
   ['inspection_date', translate("system.verification.date")], ['inspection_interval', translate("system.inspection.cycle")], ['inspection_unit', translate("system.period.unit")], ['last_inspected_on', translate("system.last.check")],

@@ -1284,3 +1284,26 @@ test('AI basic queries require basic page permission even when the model forces 
   assert.match(response.data.error, /没有此业务操作的权限/);
   assert.equal(f.calls.length, 1);
 });
+
+test('AI reads process routes and operation snapshots without granting route writes or exposing costs', async t => {
+  const f = await fixture(t, ':memory:', false);
+  const graph = { nodes: [{id:'cut',name:'切割',note:'按图切割',x:24,y:24},{id:'out',name:'检验',note:'',x:244,y:24}], edges:[{from:'cut',to:'out'}] };
+  const route = (await f.request(f.admin,'/process-routes',{request_id:randomUUID(),name:'AI工艺路线',note:'',enabled:1,graph})).data;
+  assert.ok(route.id);
+  f.db.prepare('UPDATE products SET default_route_id=? WHERE id=1').run(route.id);
+  const parent=f.db.prepare('SELECT * FROM products WHERE id=1').get(), raw=f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const bom=(await f.request(f.admin,'/boms',{request_id:randomUUID(),name:'工序配方',product_id:parent.id,base_quantity:1,base_unit:parent.unit,note:'',enabled:1,items:[{product_id:raw.id,quantity:1,unit:raw.unit,note:''}]})).data;
+  const order=(await f.request(f.admin,'/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:2,note:''})).data;
+  await f.permissions(['ai','bom','production']);
+  f.use('search_process_routes',{query:'AI工艺'});assert.equal((await f.chat(f.staff)).status,200);
+  let result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.routes[0].id,route.id);
+  f.use('get_process_route',{route_id:route.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.deepEqual(result.graph,graph);
+  f.use('get_production_order',{production_id:order.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.operation_routes[0].operations[0].name,'切割');assert.ok(!JSON.stringify(result).includes('cost_cents'));
+  assert.match(f.calls.at(-1).body.messages[0].content,/中间工序不扣料/);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool=>/^(?:preview|save|report|void).*route/.test(tool.function.name)));
+  const other=(await f.request(f.admin,'/warehouses',{name:'AI工艺隔离仓'})).data;
+  f.use('get_process_route',{route_id:route.id});
+  const scoped=await f.request(f.admin,'/ai/chat',{message:'查询路线'},'POST',other.id);assert.equal(scoped.status,200);
+  assert.match(JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content).error,/当前仓库/);
+  await f.permissions(['ai']);await f.chat(f.staff);assert.ok(!f.calls.at(-1).body.tools.some(tool=>tool.function.name==='get_process_route'));
+});

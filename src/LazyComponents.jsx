@@ -22,6 +22,7 @@ export const StockQrExecution = deferred(() => import('./StockQr.jsx'), 'StockQr
 export const Dashboard = deferred(() => import('./pages/Dashboard.jsx'), 'Dashboard');
 export const Announcements = deferred(() => import('./pages/Announcements.jsx'), 'Announcements');
 export const Quality = deferred(() => import('./pages/Quality.jsx'), 'Quality');
+export const ProcessRoutes = deferred(() => import('./pages/ProcessRoutes.jsx'), 'ProcessRoutes');
 export const Bom = deferred(() => import('./pages/Bom.jsx'), 'Bom');
 export const Production = deferred(() => import('./pages/Production.jsx'), 'Production');
 export const ProductQualityCharts = deferred(() => import('./pages/ProductQualityCharts.jsx'), 'ProductQualityCharts');

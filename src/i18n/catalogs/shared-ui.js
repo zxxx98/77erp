@@ -169,9 +169,9 @@ export default {
     "Cấu hình mẫu chấp nhận trên máy tính để bàn, phân tích biểu mẫu chấp nhận và ràng buộc tài liệu, biểu đồ chất lượng và tải xuống Excel gốc"
   ],
   "shared.maintenance.start.stop.material.preparation.calculation.scrap.output.rules.and.export.of": [
-    "单层 BOM 的维护、启停、备料测算、废料产出规则及导出",
-    "Maintenance, start-stop, material preparation calculation, scrap output rules and export of single-layer BOM",
-    "Bảo trì, khởi động-dừng, tính toán chuẩn bị nguyên liệu, quy định xuất phế liệu và xuất BOM một lớp"
+    "BOM 与工艺路线的维护、启停、备料测算、废料产出规则及导出",
+    "Maintain BOMs and process routes, enable or disable, calculate material requirements, configure scrap rules and export",
+    "Quản lý BOM và quy trình, bật tắt, tính nguyên liệu, cấu hình phế liệu và xuất dữ liệu"
   ],
   "shared.production.management": [
     "生产管理",

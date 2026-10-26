@@ -1,3 +1,4 @@
+import { RoutePicker } from '../features/RoutePicker.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { bomLossMethodLabels, bomLossMethodFormulas } from '../i18n/production-display.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
@@ -179,7 +180,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
   const open = (id, kind) => action.run(async () => {
     const bom = await api(`/boms/${id}`, { warehouseId: data.warehouse_id });
     if (kind === 'calculate') { setCalculation(bom); action.setError(''); setMessage(''); }
-    else if (kind === 'copy') apply({ ...newBom(bom.product), name: pt("production.copy", { v0: bom.name.slice(0, 98) }), base_quantity: bom.base_quantity, base_unit: bom.base_unit, loss_method: bom.loss_method, note: bom.note, items: editable(bom).items, scraps: editable(bom).scraps });
+    else if (kind === 'copy') apply({ ...newBom(bom.product), name: pt("production.copy", { v0: bom.name.slice(0, 98) }), base_quantity: bom.base_quantity, base_unit: bom.base_unit, loss_method: bom.loss_method, route_override_id: bom.route_override_id, note: bom.note, items: editable(bom).items, scraps: editable(bom).scraps });
     else apply(bom);
   });
   const update = change => { setEditor(previous => ({ ...previous, ...change })); action.setError(''); };
@@ -187,7 +188,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
 
     action.run(async () => {
       const body = { name: editor.name, product_id: editor.product_id, base_quantity: parseQuantity(editor.base_quantity, true),
-        base_unit: editor.product?.unit || '', loss_method: editor.loss_method, note: editor.note, enabled: editor.enabled,
+        route_override_id: editor.route_override_id ?? null, base_unit: editor.product?.unit || '', loss_method: editor.loss_method, note: editor.note, enabled: editor.enabled,
         items: editor.items.map(item => ({ product_id: item.product_id, ...parseBomQuantity(item.quantity), loss_rate: parseLossRate(item.loss_rate), unit: item.product.unit, note: item.note, usage_mode: item.usage_mode ?? 'stock', child_bom_id: item.usage_mode === 'explode' ? item.child_bom_id : null })),
         scraps: editor.scraps.map(row => ({ product_id: row.product_id, method: row.method, source_product_id: row.source_product_id,
           ...parseBomQuantity(row.quantity), unit: row.product.unit, note: row.note })),
@@ -217,6 +218,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
         <label className="bom-note">{pt("production.note")}<AntInput.TextArea rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label>
         <AntCheckbox className="bom-checkbox" checked={!!editor.enabled} disabled={action.busy} onChange={e => update({ enabled: e.target.checked ? 1 : 0 })}>{pt("production.enableThisBom")}</AntCheckbox>
       </section>
+      <section className="panel bom-section"><h2>{pt('route.override')}</h2><RoutePicker warehouseId={data.warehouse_id} inherit inheritedValue={editor.product?.default_route_id} value={editor.route_override_id} onChange={value => update({ route_override_id: value })} disabled={action.busy} /></section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>{pt("production.materialUsage")}</h2><span className="bom-hint">{pt("production.added")} {editor.items.length} / {BOM_MAX_ITEMS} {pt("production.types")}</span></div>
         <p className="bom-hint">{pt("production.enterTheNetMaterialsNeededToProduce")} {editor.base_quantity || '…'} {editor.product?.unit || pt("production.unitsOfFinishedProduct")} {pt("production.materialsMayBeIssuedDirectlyOrExpandedUsing")}</p>
         <label className="bom-loss-method">{pt("production.standardLossCalculation")}<Select aria-label={pt("production.standardLossCalculation")} aria-describedby="bom-loss-help" value={editor.loss_method} disabled={action.busy}

@@ -1,3 +1,4 @@
+import { recordOperationOutput, voidOperationOutput } from './process-routes.js';
 import { deriveProductionStages, stageDisplayStandardQuantity } from '../shared/production-stages.js';
 import { addQuantity, materialQuantity, validQuantity, validStoredQuantity, quantityUnits, QUANTITY_SCALE } from '../shared/quantity.js';
 import { allocate } from './commerce.js';
@@ -183,6 +184,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
       for(const rule of o.scraps){const actual=req.body.scraps.find(a=>a.product_id===rule.product_id),quantity=materialQuantity(actual.quantity,rule);db.prepare('INSERT INTO production_batch_scraps(batch_id,product_id,expected_quantity,actual_quantity,disposition) VALUES (?,?,?,?,?)').run(rootId,rule.product_id,scrapExpectedQuantity(rule,q,o.base_quantity,actuals.filter(a=>a.usage_mode==='stock').map(a=>({product_id:a.product_id,quantity:a.quantity})),o.quantity_decimals),quantity,actual.disposition);}
       db.prepare('UPDATE production_stage_batches SET root_batch_id=? WHERE id=?').run(rootId,id);createProductionReceipt(db,req,o,rootId);updateBatchTotals(db,o,'draft',owner,at);
     }else db.prepare('UPDATE production_orders SET updated_by_name=?,updated_at=? WHERE id=?').run(owner,at,o.id);
+    recordOperationOutput(db,req,o,s.path,q,'stage',id);
     if(req.body.finish_order){const fresh=current(req);assertNoPendingMaterials(db,fresh);assertStagesFinished(fresh);db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?").run(owner,at,o.id);}
     return current(req);
   },true));
@@ -196,6 +198,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if(dependents.length)fail(`此批次已被上层使用，请先作废上层批次：${dependents.map(d=>`［${d.path||'根层'}］第 ${d.batch_number} 批`).join('、')}。`,409);
     const at=new Date().toISOString(),owner=actor(req),why=req.body.reason.trim();
     if(b.root_batch_id){const root=o.batches.find(r=>r.id===b.root_batch_id),before=stockBefore(o);units(o,false);reverseBatch(req,o,root);voidProductionReceipt(db,root.id,owner,at,why);db.prepare("UPDATE production_batches SET status='void',voided_by_name=?,voided_at=?,void_reason=? WHERE id=?").run(owner,at,why,root.id);notifyStockChanges(db,req,before,{production_id:o.id,number:o.number,batch_id:root.id});}
+    voidOperationOutput(db,'stage',b.id,owner,at,why);
     db.prepare("UPDATE production_stage_batches SET status='void',voided_by_name=?,voided_at=?,void_reason=? WHERE id=?").run(owner,at,why,b.id);updateBatchTotals(db,o,'draft',owner,at);return current(req);
   },true,req=>{if(!hasPermission(req.user,'production')||!hasPermission(req.user,'corrections'))fail('需要生产管理和单据纠正权限。',403);const o=stageOrder(req),b=stageBatch(o,req.params.batchId);if(b.root_batch_id)assertReceiptReversalPermission(db,req,o.batches.find(r=>r.id===b.root_batch_id));}));
 }

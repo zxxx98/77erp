@@ -1,3 +1,4 @@
+import { migrateProcessRoutes, installProcessRoutes, routeBinding, clearProcessRoutes } from './process-routes.js';
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { installR2Backup } from './r2-backup.js';
 import { migrateBom, installBom, clearBom } from './bom.js';
@@ -276,11 +277,12 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateUnits(db);
   migrateImagebed(db);
   migrateStockQr(db);
-  migrateProductVersions(db);
   migrateOrderIndexes(db);
   migrateNotifications(db);
   migrateBom(db);
   migrateProduction(db);
+  migrateProcessRoutes(db);
+  migrateProductVersions(db);
   migrateCurrency(db);
   app.use('/api', installResponseLanguage);
   app.use("/api/backup", express.json({ limit: "100mb" }));
@@ -288,7 +290,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   app.use('/api/ai/chat', express.json({ limit: '6mb' }));
   app.use("/api/ai", express.json({ limit: "1mb" }));
   app.use('/api/quality', express.json({ limit: '2mb' }));
-  app.use(['/api/boms', '/api/production-orders'], express.json({ limit: '2mb' }));
+  app.use(['/api/boms', '/api/production-orders', '/api/process-routes'], express.json({ limit: '2mb' }));
   app.use(express.json({ limit: "100kb" }));
   let sessionUser;
   try { ({ sessionUser } = installAuth(app, db, options)); }
@@ -302,6 +304,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   const r2Backup = installR2Backup(app, db, options);
   migrateQuality(db);
   installQuality(app, db, { ...options, sessionUser });
+  installProcessRoutes(app, db, { operationRequest, saveOperationRequest });
   installBom(app, db);
   installProduction(app, db);
   installImagebed(app, db, options);
@@ -455,6 +458,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
           "INSERT INTO products (name,barcode,category,unit,cost,price,threshold,category_id,image,specification,note,is_fixed_asset,unit_round_up,inspection_date,inspection_interval,inspection_unit,customer_part_numbers,production_type,created_at,warehouse_id,sync_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(...v, ...catalog.values, new Date().toISOString(), req.warehouse.id, randomUUID());
+      const defaultRouteId = routeBinding(db, req.warehouse.id, req.body.default_route_id);
+      db.prepare('UPDATE products SET default_route_id=? WHERE id=?').run(defaultRouteId, result.lastInsertRowid);
       syncProduct(db, Number(result.lastInsertRowid), req.body.sync_warehouse_ids, req.user);
       const saved = db.prepare('SELECT version FROM products WHERE id=?').get(result.lastInsertRowid);
       db.exec("COMMIT");
@@ -502,6 +507,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       db.prepare(
         "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,unit_round_up=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=?,production_type=? WHERE id=? AND version=?",
       ).run(...v, ...catalog.values, req.params.id, existing.version);
+      const defaultRouteId = routeBinding(db, req.warehouse.id, req.body.default_route_id, existing.default_route_id);
+      db.prepare('UPDATE products SET default_route_id=? WHERE id=?').run(defaultRouteId, existing.id);
       recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
       syncProduct(db, existing.id, req.body.sync_warehouse_ids, req.user);
       const saved = db.prepare('SELECT version FROM products WHERE id=?').get(existing.id);
@@ -749,6 +756,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       clearQuality(db);
       clearProduction(db);
       clearBom(db);
+      clearProcessRoutes(db);
       db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
       db.exec("PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM product_changes; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM operation_requests;");
       queueNotification(db, req, 'admin_action', counts, { global: true });

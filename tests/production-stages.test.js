@@ -99,7 +99,7 @@ test('untouched historic drafts explicitly enable from saved snapshot; plans ref
 test('backup roundtrip retains WIP and rejects cross-source, quantity and cost corruption',async t=>{
   const f=await fixture(t); let o=await f.active();
   o=f.ok(await f.complete(o,'1',12,[['1.1',36]]));
-  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version,38);
+  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 39);
   let preview=f.ok(await f.request('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
   o=await f.get(o.id);assert.equal(o.stages[1].available_quantity,12);

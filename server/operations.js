@@ -1,3 +1,4 @@
+import { processRouteTables, productionOperationTables, clearProcessRoutes, validateProcessRouteBackup } from './process-routes.js';
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
 import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from '../shared/quantity.js';
@@ -415,7 +416,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     ),
   );
 
-  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "product_changes", "templates", "payments", ...stockQrTables, ...qualityTables, ...bomTables, ...productionTables];
+  const tables = ["warehouses", "categories", "contacts", "products", "orders", "order_items", "stock_adjustments", "product_changes", "templates", "payments", ...stockQrTables, ...qualityTables, ...processRouteTables, ...bomTables, ...productionTables];
   const columns = Object.fromEntries(
     tables.map((table) => [
       table,
@@ -434,7 +435,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 38,
+    version: 39,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -443,11 +444,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 39) {
+      for (const table of [...processRouteTables, ...productionOperationTables]) data[table] = [];
+      for (const row of data.products || []) row.default_route_id = null;
+      for (const row of data.boms || []) row.route_override_id = null;
+    }
     if (value.version < 38) {
       for (const table of productionStageTables) data[table] = [];
       for (const order of data.production_orders || []) order.stage_workflow = 0;
@@ -798,6 +804,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     validateProductionMaterialBackup(data);
     validateProductionReceiptBackup(data);
     validateProductionStageBackup(data);
+    validateProcessRouteBackup(data);
     return data;
   }
   app.get(
@@ -817,6 +824,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         adjustments: data.stock_adjustments.length,
         contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
         quality_templates: data.quality_templates.length, quality_acceptances: data.quality_acceptances.length, quality_charts: data.quality_charts.length, quality_files: data.quality_template_files.length,
+        process_routes: data.process_routes.length, production_routes: data.production_routes.length, production_operation_reports: data.production_operation_reports.length,
         boms: data.boms.length, bom_scraps: data.bom_scraps.length, production_scraps: data.production_scraps.length,
         production_bom_nodes: data.production_bom_nodes.length, production_orders: data.production_orders.length, production_batches: data.production_batches.length,
       };
@@ -839,6 +847,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         clearQuality(db);
         clearProduction(db);
         clearBom(db);
+        clearProcessRoutes(db);
         db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");
         db.exec(
           "PRAGMA defer_foreign_keys=ON; DELETE FROM payments; DELETE FROM templates; DELETE FROM stock_adjustments; DELETE FROM product_changes; DELETE FROM order_items; DELETE FROM orders; DELETE FROM products; DELETE FROM categories; DELETE FROM contacts; DELETE FROM warehouses; DELETE FROM operation_requests;",
@@ -857,6 +866,9 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             if (['production_orders', 'production_batches', 'production_stage_batches'].includes(table) && row.production_group_id !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
                  !db.prepare('SELECT 1 FROM production_groups WHERE id=?').get(row.production_group_id))) row.production_group_id = null;
+            if (table === 'production_operation_reports') for (const owner of ['worker_id','registered_by']) {
+              if (row[owner] !== null && (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value || !db.prepare('SELECT 1 FROM users WHERE id=?').get(row[owner]))) row[owner] = null;
+            }
             if (table === 'stock_qr_codes') { row.qr_id = randomUUID(); row.enabled = 0; }
             if (stockQrTables.includes(table)) for (const owner of ['created_by','updated_by']) {
               if (owner in row && row[owner] !== null &&

@@ -200,7 +200,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 38);
+  assert.equal(backup.version, 39);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -274,6 +274,10 @@ const routeRoles = new Map(Object.entries({
   'get /api/products': 'employee', 'get /api/orders': 'employee', 'get /api/orders/:id': 'employee', 'get /api/dashboard': 'employee',
   'get /api/transfers': 'admin', 'post /api/transfers': 'admin', 'post /api/transfers/:id/void': 'admin',
   // BOM access is opt-in; legacy employees do not inherit its permission.
+  'get /api/process-routes': 'employee', 'get /api/process-routes/:id': 'employee',
+  'post /api/process-routes': 'bom', 'post /api/process-routes/:id': 'bom', 'post /api/process-routes/:id/status': 'bom',
+  'get /api/production-orders/:id/operation-workers': 'production', 'get /api/production-orders/:id/operations/reports': 'production',
+  'post /api/production-orders/:id/operations/report': 'production', 'post /api/production-orders/:id/operations/:reportId/void': 'production',
   'get /api/boms': 'bom', 'get /api/boms/:id': 'bom', 'post /api/boms': 'bom',
   'post /api/boms/:id': 'bom', 'post /api/boms/:id/status': 'bom', 'post /api/boms/:id/calculate': 'bom',
   'post /api/boms/:id/delete': 'bom',

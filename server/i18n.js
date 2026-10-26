@@ -20,6 +20,7 @@ export function requestLanguage(req) {
 }
 
 export const serverMessages = {
+  'pdf.scanOperations': ['扫码后选择生产层及工序登记', 'Scan to select a production layer and report an operation', 'Quét để chọn cấp sản xuất và ghi nhận công đoạn'],
   ...validationMessages,
   CONTEXT_VALIDATION_FAILED: ['{context}：{detail}', '{context}: {detail}', '{context}: {detail}'],
   'pdf.title': ['生产任务单', 'Production task sheet', 'Phiếu nhiệm vụ sản xuất'],

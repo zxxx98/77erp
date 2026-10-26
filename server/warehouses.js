@@ -1,3 +1,4 @@
+import { clearProcessRoutes } from './process-routes.js';
 import { recordProductChange } from './product-changes.js';
 import { randomUUID } from 'node:crypto';
 import { clearBom } from './bom.js';
@@ -120,6 +121,7 @@ export function installWarehouses(app, db) {
       db.prepare('DELETE FROM stock_qr_codes WHERE warehouse_id=?').run(id);
       db.prepare('DELETE FROM templates WHERE warehouse_id=?').run(id);
       clearBom(db, id);
+      clearProcessRoutes(db, id);
       db.prepare('DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE warehouse_id=?)').run(id);
       db.prepare('DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE warehouse_id=?)').run(id);
       // Original orders and their returns belong to the same warehouse and are removed together.

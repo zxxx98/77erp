@@ -32,7 +32,7 @@ import { InspectionPanel } from '../InspectionPanel.jsx';
 import { ProductBatchDialog } from '../pages/Products.jsx';
 import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
-export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProduction, announcementCount, updateNotice }) {
+export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderProcessRoutes, renderProduction, announcementCount, updateNotice }) {
   useLocale();
   const { can } = usePermissions();
   const tabs = modeItems(mode, key => key === 'production_view' ? canViewProduction(user) : can(key)).filter(item => item.mobile);
@@ -96,6 +96,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
           {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} onChanged={reload} />}
           {page === 'more' && <More mode={mode} user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'quality' && renderQuality()}
+          {page === 'process-routes' && renderProcessRoutes()}
           {page === 'bom' && renderBom()}
           {page === 'production' && renderProduction()}
           {page === 'scanner' && renderScanner()}
@@ -331,6 +332,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     <section className="mw-card"><div className="mw-account"><ShieldCheck size={30} /><div><h2>{user.name || user.username}</h2><p className="mw-muted">{translate("warehouse.account")}{user.username}</p><p className="mw-muted">{user.role === 'admin' ? translate("warehouse.administrator.account") : translate("warehouse.employee.account")}</p></div></div></section>
     {(user.role === 'admin' || user.permissions?.includes('ai')) && <section className="mw-card"><Button icon={Settings} onClick={() => openModal({ kind: 'ai' })}>{translate("warehouse.ai.assistant")}</Button></section>}
     {mode === 'production' && can('quality') && <section className="mw-card"><Button icon={FilePenLine} onClick={() => navigate('quality')}>{translate("warehouse.quality.online.acceptance")}</Button></section>}
+    {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('process-routes')}>{translate('route.title')}</Button></section>}
     {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('bom')}>{translate("warehouse.bom.material.preparation.calculation")}</Button></section>}
     {mode === 'production' && canViewProduction(user) && <section className="mw-card"><Button onClick={() => navigate('production')}>{translate("warehouse.production.order.batch.registration")}</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>{translate("warehouse.merchant.and.warehouse.settings")}</Button>}</section>

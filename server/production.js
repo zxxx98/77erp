@@ -1,3 +1,4 @@
+import { productionOperationTables, captureProductionRoutes, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
 import { requestLanguage } from './i18n.js';
 import { isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
 import { rebuildTable } from './table-migration.js';
@@ -20,7 +21,7 @@ import { renderProductionPdf } from './production-pdf.js';
 import { migrateProductionStages, productionStageTables, saveProductionStages, readProductionStages, populateStageBalances, installProductionStages, assertStagesFinished, deleteProductionStages, deriveProductionStages } from './production-stages.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
-export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables, ...productionStageTables];
+export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables, ...productionStageTables, ...productionOperationTables];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
@@ -122,7 +123,7 @@ export function migrateProduction(db) {
   migrateProductionStages(db);
 }
 
-export function clearProduction(db) { deleteProductionStages(db); db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { deleteProductionOperations(db); deleteProductionStages(db); db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 // Preserve the legacy SQLite status constraint. A posted, open order is exposed
 // as in_progress; draft without any currently posted output remains draft.
@@ -226,6 +227,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     order.items = order.items.map(item => ({ ...item, ...(order.completed_at
       ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method, standardsFor(order.completed_quantity), order.quantity_decimals)
       : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
+    readProductionRoutes(db, order);
     order.captured_at = new Date().toISOString();
     return isGroupProductionWorker(user) ? productionWorkerProjection(order) : costs ? order : productionWithoutCosts(order);
   });
@@ -244,8 +246,9 @@ export function installProduction(app, db) {
       // Every production operation rechecks current access before idempotent replay.
       const path = req.path.toLowerCase().replace(/\/+$/, '');
       if (path.startsWith('/api/production-orders')) {
-        const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches)?)?$/.test(path);
-        const register = req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
+        const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches|\/operation-workers|\/operations\/reports)?)?$/.test(path);
+        const operationReport = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/report$/.test(path);
+        const register = operationReport || req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
         if (!hasPermission(req.user, 'production')) {
           if (!isGroupProductionWorker(req.user) || (!read && !register)) fail('需要生产管理权限。', 403);
           if (req.params.id) {
@@ -253,7 +256,7 @@ export function installProduction(app, db) {
             if (!order) fail('生产单不存在或不属于当前仓库。', 404);
             assertProductionOrderAccess(req.user, order);
           }
-          if (register && req.body.finish_order !== false) fail('生产登记必须保留生产单，不能结束生产。', 403);
+          if (register && !operationReport && req.body.finish_order !== false) fail('生产登记必须保留生产单，不能结束生产。', 403);
         }
       }
       if (write && req.params.id && path.startsWith('/api/production-orders/')) {
@@ -295,6 +298,7 @@ export function installProduction(app, db) {
       if (active && !row.product.active) fail(`${row.name}已停用，请先核对物料。`);
     }
   };
+  installProductionOperations(app, db, { route, current, version });
   installProductionMaterials(app, db, { route, current, version, units });
   installProductionReceipts(app, db, {route});
   app.get('/api/production-orders', route(req => listProductionOrders(db, req.warehouse.id, req.query, true, req.user)));
@@ -343,6 +347,7 @@ export function installProduction(app, db) {
       if (req.body.stage_schema_version !== 1) fail('新多层生产单使用分层生产，请刷新页面后建单。', 409);
       saveProductionStages(db, { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), nodes: plan.nodes });
     }
+    captureProductionRoutes(db, db.prepare('SELECT * FROM production_orders WHERE id=?').get(id));
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id/assign', route(req => {
@@ -434,6 +439,7 @@ export function installProduction(app, db) {
         .run(batchId, row.product_id, expected, actual.quantity, actual.disposition);
     }
     db.prepare('UPDATE production_batches SET total_cost_cents=? WHERE id=?').run(total, batchId);
+    recordOperationOutput(db, req, order, '', req.body.completed_quantity, 'batch', batchId);
     createProductionReceipt(db, req, order, batchId);
     updateBatchTotals(db, order, req.body.finish_order === false ? 'draft' : 'completed', owner, at);
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number, batch_id: batchId });
@@ -442,6 +448,7 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/finish', route(req => {
     const order = current(req); checkOpen(req, order);
     assertNoPendingMaterials(db, order);
+    assertOperationsFinished(db, order.id);
     if (order.stage_workflow) assertStagesFinished(order);
     if (!order.batch_count) fail('请先登记至少一个有效完工批次。');
     db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?")
@@ -461,6 +468,7 @@ export function installProduction(app, db) {
     reverseBatch(req, order, batch);
     voidProductionReceipt(db, batch.id, owner, at, why);
     db.prepare("UPDATE production_batches SET status='void',voided_by_name=?,voided_at=?,void_reason=? WHERE id=?").run(owner, at, why, batch.id);
+    voidOperationOutput(db, 'batch', batch.id, owner, at, why);
     // Any correction reopens the order so a replacement batch can be recorded.
     updateBatchTotals(db, order, 'draft', owner, at);
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number, batch_id: batch.id });
@@ -477,6 +485,7 @@ export function installProduction(app, db) {
       if (order.stage_workflow && order.stages.some(s=>s.completed_quantity!==0)) fail('请先自上而下作废所有有效层级批次。',409);
       if (order.batch_count || order.items.some(item => item.available_quantity !== 0)) fail('请先作废所有有效批次，并通过仓库退回全部剩余材料，再作废生产单。', 409);
     }
+    if (db.prepare("SELECT 1 FROM production_operation_reports WHERE production_id=? AND status='active' LIMIT 1").get(order.id)) fail('请先作废全部有效工序记录和产出批次。', 409);
     const why = reason(req), before = order.completed_at ? stockBefore(order) : [];
     const at = new Date().toISOString(), owner = actor(req);
     if (order.completed_at && !order.material_workflow) {
@@ -504,6 +513,7 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/delete', route(req => {
     const order = current(req); version(req, order);
     if (order.status !== 'void') fail('仅已作废的生产单可以删除，请先作废。', 409);
+    deleteProductionOperations(db, order.id);
     deleteProductionStages(db, order.id);
     db.prepare('DELETE FROM production_receipt_items WHERE document_id IN (SELECT id FROM production_receipts WHERE production_id=?)').run(order.id);
     db.prepare('DELETE FROM production_receipts WHERE production_id=?').run(order.id);

@@ -1,3 +1,4 @@
+import { RoutePicker } from './RoutePicker.jsx';
 import { localizeError } from '../i18n/errors.js';
 import { describeStockExpression, inspectionCycleLabel, inspectionUnits } from '../warehouse-format.js';
 import { t as translate, getFormatLocale, translateText } from '../i18n/index.js';
@@ -37,7 +38,7 @@ function ProductFormSection({ title, children }) {
 }
 
 const productSnapshot = (form, targets) => JSON.stringify([
-  ...['name', 'barcode', 'category', 'category_id', 'production_type', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'is_fixed_asset', 'unit_round_up', 'inspection_date', 'inspection_interval', 'inspection_unit']
+  ...['name', 'barcode', 'category', 'category_id', 'production_type', 'default_route_id', 'unit', 'cost', 'price', 'image', 'specification', 'note', 'threshold', 'is_fixed_asset', 'unit_round_up', 'inspection_date', 'inspection_interval', 'inspection_unit']
     .map(key => ['category_id', 'cost', 'price', 'threshold', 'inspection_interval'].includes(key) && form[key] !== '' && form[key] != null
       ? Number(form[key]) : ['is_fixed_asset', 'unit_round_up'].includes(key) ? (form[key] ? 1 : 0) : String(form[key] ?? '')),
   [...targets].sort((a, b) => a - b),
@@ -210,6 +211,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
       is_fixed_asset: 0,
       unit_round_up: 0,
       production_type: '',
+      default_route_id: null,
       inspection_date: '', inspection_interval: 0, inspection_unit: 'month',
     },
   );
@@ -368,6 +370,7 @@ function ProductForm({ product, categories, units = ["个"], warehouses, warehou
                 {productionTypes.map(type => <option key={type} value={type}>{translateText(type)}</option>)}
               </Select>
             </label>
+            <div><span>{translate('route.default')}</span><RoutePicker warehouseId={warehouseId} value={form.default_route_id} onChange={value => change('default_route_id', value)} disabled={busy} /></div>
             <AntCheckbox className="product-fixed-asset" checked={!!form.unit_round_up} onChange={e => change('unit_round_up', e.target.checked ? 1 : 0)}>{translate("warehouse.round.quantities.to.whole.units")}<small>{translate("warehouse.after.checking.the.quantity.is.rounded.up.for.example.4.1")}</small>
             </AntCheckbox>
             <AntCheckbox className="product-fixed-asset" checked={!!form.is_fixed_asset} onChange={(e) => change("is_fixed_asset", e.target.checked ? 1 : 0)}>{translate("warehouse.fixed.asset")}<small>{translate("warehouse.after.checking.the.material.is.marked.as.a.fixed.asset.when")}</small>

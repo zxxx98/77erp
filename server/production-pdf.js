@@ -25,7 +25,7 @@ export async function renderProductionPdf({order,warehouseName,registrationUrl,e
  text(t('pdf.product',{value:display(order.product_name)}));text(t('pdf.identity',{barcode:display(order.barcode),specification:display(order.specification)}));
  text(t('pdf.quantity',{quantity:display(order.planned_quantity),unit:display(order.unit)}));
  text(t('pdf.bom',{name:display(order.bom_name),version:display(order.bom_version),quantity:display(order.base_quantity),unit:display(order.unit)}));
- const scanTitle=t(order.stage_workflow ? 'pdf.scanStages' : 'pdf.scan');
+ const scanTitle=t(order.operation_routes?.length ? 'pdf.scanOperations' : order.stage_workflow ? 'pdf.scanStages' : 'pdf.scan');
  const scanTitleHeight=doc.fontSize(11).heightOfString(scanTitle,{width:width-130});
  const scanInstructionsHeight=doc.fontSize(9).heightOfString(t('pdf.instructions'),{width:width-130,lineGap:6});
  const qrHeight=Math.max(127,8+scanTitleHeight+10+scanInstructionsHeight+10);

@@ -252,8 +252,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
-    const groupProductionRoute = (read && (path === '/production-orders' || /^\/production-orders\/\d+(?:\/pdf|\/stages\/batches)?$/.test(path))) ||
-      (post && /^\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path));
+    const groupProductionRoute = (read && (path === '/production-orders' || /^\/production-orders\/\d+(?:\/pdf|\/stages\/batches|\/operation-workers|\/operations\/reports)?$/.test(path))) ||
+      (post && /^\/production-orders\/\d+\/(?:(?:stages\/)?complete|operations\/report)$/.test(path));
     if (usesProductionWorkspace(req.user)) {
       if (read && ['/workspace','/style','/updates'].includes(path) || groupProductionRoute && hasPermission(req.user,'production_register')) return next();
       return res.status(403).json({error:'此岗位仅允许查看本组生产单并登记。'});
@@ -261,6 +261,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     if (groupProductionRoute && hasPermission(req.user,'production_register')) return next();
     if (read && path === '/production-groups' && hasPermission(req.user,'production')) return next();
     if (/^\/quality(?:\/|$)/.test(path) && hasPermission(req.user, 'quality')) return next();
+    if (/^\/process-routes(?:\/|$)/.test(path) && (hasPermission(req.user, 'bom') || read && ['products','production'].some(key => hasPermission(req.user,key)))) return next();
     if (/^\/boms(?:\/|$)/.test(path) && hasPermission(req.user, 'bom')) return next();
     if (/^\/production-orders(?:\/|$)/.test(path) && hasPermission(req.user, 'production') &&
         (!/\/(?:void|delete)$/.test(path) || hasPermission(req.user, 'corrections'))) return next();
