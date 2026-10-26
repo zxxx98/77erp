@@ -1,5 +1,18 @@
 // System, account, authentication and AI interface text.
 export default {
+  "system.ai.products.preview": ["修改物料预览", "Material update preview", "Xem trước cập nhật vật tư"],
+  "system.ai.products.updated": ["，已修改 {{count}} 种物料", ", updated {{count}} materials", ", đã cập nhật {{count}} vật tư"],
+  "system.ai.products.review": ["请核对各项属性的修改前后值。", "Review the before and after values for each property.", "Kiểm tra giá trị trước và sau của từng thuộc tính."],
+  "system.ai.products.sync": ["同步会复制全部可同步属性，可能新建档案；库存、默认工艺和启停状态不复制。", "Sync copies all supported properties and may create records; stock, default routes and activation status are excluded.", "Đồng bộ sao chép các thuộc tính được hỗ trợ và có thể tạo hồ sơ; không sao chép tồn kho, quy trình mặc định và trạng thái kích hoạt."],
+  "system.ai.product.field": ["属性", "Property", "Thuộc tính"],
+  "system.ai.product.before": ["修改前", "Before", "Trước"],
+  "system.ai.product.after": ["修改后", "After", "Sau"],
+  "system.ai.product.customer.parts": ["客户料号", "Customer part numbers", "Mã vật tư khách hàng"],
+  "system.ai.products.no.change": ["属性值保持不变。", "Property values remain unchanged.", "Giá trị thuộc tính không thay đổi."],
+  "system.ai.product.upload.image": ["上传物料图片", "Upload material image", "Tải ảnh vật tư lên"],
+  "system.ai.product.image.url": ["物料图片 URL", "Material image URL", "URL ảnh vật tư"],
+  "system.ai.product.image.help": ["修改档案图片时，先上传物料图片，再说明要修改的物料。图片链接会加入输入框，确认预览后保存到档案。添加图片用于对话分析。", "To change an archive image, upload the material image and specify the material. Its URL is added to your message; the archive updates after preview confirmation. Add picture is for conversation analysis.", "Để đổi ảnh hồ sơ, tải ảnh vật tư và chỉ định vật tư. URL được thêm vào tin nhắn; hồ sơ cập nhật sau khi xác nhận xem trước. Thêm ảnh dùng để phân tích trong hội thoại."],
+
   "system.basic.pages.require.permission": ["基础页面需勾选「查看基础页面」权限；修改自己的密码始终开放。", "Basic pages require the View basic pages permission. You can always change your own password.", "Các trang cơ bản yêu cầu quyền Xem trang cơ bản. Bạn luôn có thể đổi mật khẩu của mình."],
 
   "system.currently.offline.please.log.in.after.connecting.to.the.internet": [

@@ -141,7 +141,7 @@ test('desktop and mobile batch deactivate and delete with cross-page selection, 
 
   const deleteDialog = page.getByRole('dialog', { name: '批量删除物料' });
   await expect(deleteDialog).toBeVisible();
-  await expect(deleteDialog).toContainText('可删除 2 项，无法删除 1 项');
+  await expect(deleteDialog).toContainText(/可删除\s*2\s*项，无法删除\s*1\s*项/);
   await expect(deleteDialog.getByRole('region', { name: '无法删除的物料' })).toContainText('批测物料01');
   await expect(deleteDialog.getByRole('region', { name: '无法删除的物料' })).toContainText('仍有库存');
   await deleteDialog.getByRole('button', { name: '确认删除 (2)' }).click();
@@ -149,7 +149,7 @@ test('desktop and mobile batch deactivate and delete with cross-page selection, 
   // Result dialog shows 2 deleted and 1 failed, and keeps failed item 01 selected
   const resultDialog = page.getByRole('dialog', { name: '批量删除结果' });
   await expect(resultDialog).toBeVisible();
-  await expect(resultDialog).toContainText('成功删除 2 项，失败 1 项');
+  await expect(resultDialog).toContainText(/成功删除\s*2\s*项，失败\s*1\s*项/);
   await resultDialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(page.getByText('已选 1 项')).toBeVisible();
   await expect(page.getByRole('checkbox', { name: '选择 批测物料01' })).toBeChecked();

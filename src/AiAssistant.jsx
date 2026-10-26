@@ -11,6 +11,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { api, getWarehouseId } from './api.js';
 import { parseCSV } from './data-files.js';
 import { readAiImage } from './ai-images.js';
+import { readProductImage } from './catalog.js';
+import { usePermissions } from './permissions.jsx';
 import { ProductImage } from './ProductImage.jsx';
 import { AI_IMAGE_TYPES, AI_IMAGE_MAX_COUNT, AI_IMAGE_ONLY_MESSAGE } from '../shared/ai-images.js';
 import { Sparkles, Plus, ImagePlus, ArrowUp, ArrowUpRight, PackageSearch, ChartColumn, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
@@ -60,10 +62,32 @@ export function AiSettings({ onBusy = () => {} }) {
 }
 
 const fields = { get name() { return translate("system.material.name"); }, get barcode() { return translate("system.barcode"); }, get category() { return translate("system.classification"); }, get unit() { return translate("system.unit"); }, get cost() { return translate("system.reference.purchase.price"); }, get price() { return translate("system.reference.sales.price"); }, get threshold() { return translate("system.safety.stock"); }, get stock() { return translate("system.opening.stock"); }, get specification() { return translate("system.specifications.and.models"); }, get note() { return translate("system.remarks"); }, get is_fixed_asset() { return translate("system.fixed.asset"); }, get unit_round_up() { return translate("system.round.quantities.to.whole.units"); }, get production_type() { return translate("system.production.type"); } };
+const editFieldLabels = {
+  ...Object.fromEntries(Object.keys(fields).filter(key => key !== 'stock').map(key => [key, () => fields[key]])),
+  active: () => translate('warehouse.use.status'),
+  category_id: () => translate('warehouse.material.categories'),
+  image: () => translate('warehouse.material.pictures'),
+  customer_part_numbers: () => translate('system.ai.product.customer.parts'),
+  default_route_id: () => translate('route.default'),
+  inspection_date: () => translate('warehouse.next.verification.date'),
+  inspection_interval: () => translate('warehouse.inspection.cycle'),
+  inspection_unit: () => translate('warehouse.period.unit'),
+};
+function ProductEditValue({ field, value }) {
+  if (value === null || value === '') return translate('system.not.set');
+  if (field === 'active') return translate(value ? 'warehouse.enabled' : 'warehouse.deactivated');
+  if (['is_fixed_asset', 'unit_round_up'].includes(field)) return translate(value ? 'system.yes' : 'system.no');
+  if (field === 'image') return <ProductImage src={value} alt={translate('warehouse.material.picture.preview')} className="ai-image-thumbnail" />;
+  if (field === 'customer_part_numbers') return value.length ? value.map(row => `${row.customer_name} (#${row.customer_id})：${row.part_number}`).join('；') : translate('system.not.set');
+  if (field === 'production_type') return translateText(value);
+  if (field === 'inspection_unit') return { day: translate('system.day'), month: translate('system.month'), year: translate('system.year') }[value];
+  if (field === 'cost' || field === 'price') return priceBase(value);
+  return String(value);
+}
 function ActionResult({ action }) {
   useLocale();
   const p = action.preview, result = action.result;
-  return <p role="status">{translate("system.completed")}{result.orders ? `：${result.orders.map(o => o.number).join('、')}` : action.kind === 'quality_chart' ? translate("system.the.chart.has.been.saved.and.can.be.viewed.in.the", { v0: result.name }) : action.kind === 'transfer' ? `：${result.number} / ${result.in_number}` : action.kind === 'stocktake' ? translate("system.materials.have.been.counted", { v0: p.stocktake.items.length }) : action.kind === 'inspection' ? translate("system.the.verification.reminders.for.materials.have.been.updated", { v0: result.count }) : action.kind === 'mark_inspected' ? translate("system.materials.have.been.marked.as.verified", { v0: result.count }) : translate("system.add.items", { v0: result.count })}。</p>;
+  return <p role="status">{translate("system.completed")}{result.orders ? `：${result.orders.map(o => o.number).join('、')}` : action.kind === 'update_products' ? translate('system.ai.products.updated', { count: result.count }) : action.kind === 'quality_chart' ? translate("system.the.chart.has.been.saved.and.can.be.viewed.in.the", { v0: result.name }) : action.kind === 'transfer' ? `：${result.number} / ${result.in_number}` : action.kind === 'stocktake' ? translate("system.materials.have.been.counted", { v0: p.stocktake.items.length }) : action.kind === 'inspection' ? translate("system.the.verification.reminders.for.materials.have.been.updated", { v0: result.count }) : action.kind === 'mark_inspected' ? translate("system.materials.have.been.marked.as.verified", { v0: result.count }) : translate("system.add.items", { v0: result.count })}。</p>;
 }
 
 function ActionCard({ action, busy, confirm }) {
@@ -81,7 +105,15 @@ function ActionPreview({ action, busy, confirm }) {
   useLocale();
   const p = action.preview, expired = action.expires_at < Date.now();
   return <section className="ai-action">
-    <h3>{{ orders: translate("system.batch.warehouse.entry.and.exit.preview"), import: translate("system.new.material.preview"), transfer: translate("system.warehouse.transfer.preview"), stocktake: translate("system.inventory.count.preview"), inspection: translate("system.set.verification.reminder.preview"), mark_inspected: translate("system.mark.verified.preview"), quality_chart: translate("system.quality.chart.configuration.preview") }[action.kind]} · {action.result ? translate("system.completed") : expired ? translate("system.expired") : translate("system.to.be.confirmed")}</h3>
+    <h3>{{ update_products: translate("system.ai.products.preview"), orders: translate("system.batch.warehouse.entry.and.exit.preview"), import: translate("system.new.material.preview"), transfer: translate("system.warehouse.transfer.preview"), stocktake: translate("system.inventory.count.preview"), inspection: translate("system.set.verification.reminder.preview"), mark_inspected: translate("system.mark.verified.preview"), quality_chart: translate("system.quality.chart.configuration.preview") }[action.kind]} · {action.result ? translate("system.completed") : expired ? translate("system.expired") : translate("system.to.be.confirmed")}</h3>
+    {action.kind === 'update_products' && <>
+      <p><strong>{p.warehouse_name}</strong> · {translate('system.ai.products.review')}</p>
+      {!!p.sync_warehouses.length && <p>{translate('warehouse.sync.to.other.warehouses')}：{p.sync_warehouses.map(w => w.name).join('、')}。{translate('system.ai.products.sync')}</p>}
+      {p.items.map(item => <div key={item.product_id}>
+        <p><strong>{item.warehouse_name} / {item.name}</strong><small>{!item.creates_product && ` #${item.product_id} · `}{item.barcode}</small>{item.creates_product && ` · ${translate('system.a.new.material.file.will.be.created')}`}</p>
+        {item.changes.length ? <div className="ai-table"><table><thead><tr><th>{translate('system.ai.product.field')}</th><th>{translate('system.ai.product.before')}</th><th>{translate('system.ai.product.after')}</th></tr></thead><tbody>{item.changes.map(change => <tr key={change.field}><td>{editFieldLabels[change.field]?.()}</td><td><ProductEditValue field={change.field} value={change.before} /></td><td><ProductEditValue field={change.field} value={change.after} /></td></tr>)}</tbody></table></div> : <p>{translate('system.ai.products.no.change')}</p>}
+      </div>)}
+    </>}
     {action.kind==='quality_chart'&&<>
       <p><strong>{p.name}</strong> · {p.warehouse_name}</p>
       <dl className="ai-chart-config">
@@ -155,10 +187,11 @@ function UserMessage({ content, attachment, images }) {
 
 export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehouse' }) {
   useLocale();
+  const { can } = usePermissions();
   const [text, setText] = useState(''), [thread, setThread] = useState({ messages: [], actions: [] }), [file, setFile] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [images, setImages] = useState([]), [readingImages, setReadingImages] = useState(false);
   const [history, setHistory] = useState([]), [historyError, setHistoryError] = useState(''), [showHistory, setShowHistory] = useState(false), [pending, setPending] = useState(''), [copied, setCopied] = useState(null), [stage, setStage] = useState(0);
-  const lock = useRef(false), input = useRef(null), imageInput = useRef(null), prompt = useRef(null), feed = useRef(null), warehouse = useRef(getWarehouseId());
+  const lock = useRef(false), input = useRef(null), imageInput = useRef(null), productImageInput = useRef(null), prompt = useRef(null), feed = useRef(null), warehouse = useRef(getWarehouseId());
   useEffect(() => {
     if (!busy) { setStage(0); return; }
     const timer = setInterval(() => setStage(s => Math.min(s + 1, AI_STAGES().length - 1)), 2600);
@@ -318,7 +351,13 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
             <AntButton type="text" htmlType="submit" className="ai-send" aria-label={translate("system.send")} disabled={busy || (!text.trim() && !images.length)}><ArrowUp size={21} /></AntButton>
           </div>
         </AntForm>
-        <details className="ai-upload-help"><summary>{translate("system.form.image.upload.instructions")}</summary><p>{translate("system.excel.csv.only.parses.the.first.worksheet.with.a.maximum.of")}</p><p>{translate("system.supports.selecting.or.pasting.jpg.png.and.webp.images.up.to")}</p></details>
+        <details className="ai-upload-help"><summary>{translate("system.form.image.upload.instructions")}</summary>{can('products') && <><input hidden ref={productImageInput} aria-label={translate('system.ai.product.upload.image')} type="file" accept={AI_IMAGE_TYPES.join(',')} disabled={busy} onChange={e => {
+          const selected = e.target.files?.[0]; e.target.value = '';
+          if (selected) void run(async () => {
+            const url = await readProductImage(selected);
+            setText(previous => `${previous}${previous ? '\n' : ''}${translate('system.ai.product.image.url')}：${url}`);
+          });
+        }} /><AntButton htmlType="button" disabled={busy} onClick={() => productImageInput.current?.click()}>{translate('system.ai.product.upload.image')}</AntButton><p>{translate('system.ai.product.image.help')}</p></>}<p>{translate("system.excel.csv.only.parses.the.first.worksheet.with.a.maximum.of")}</p><p>{translate("system.supports.selecting.or.pasting.jpg.png.and.webp.images.up.to")}</p></details>
         <p className="ai-safety"><ShieldCheck size={12} />{translate("system.operations.involving.inventory.changes.will.be.performed.after.your.confirmation")}</p>
       </div>
     </section>

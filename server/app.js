@@ -476,51 +476,41 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       });
     }
   });
+  // Caller owns the transaction (Web save, AI preview savepoint or AI confirmation).
+  function updateProduct(req, productId, body) {
+    const existing = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(productId, req.warehouse.id);
+    if (!existing) throw Object.assign(new Error('物料不存在或不属于当前仓库。'), { status: 404 });
+    if (!Number.isSafeInteger(body.version) || body.version < 1 || body.version !== existing.version) {
+      throw Object.assign(new Error(body.version == null
+        ? '缺少物料版本，请刷新页面后重新编辑。'
+        : '物料信息已被修改，本次未保存。请查看最新信息后重新编辑。'), { status: 409, code: 'PRODUCT_VERSION_CONFLICT' });
+    }
+    const v = productValues(body, body.threshold === existing.threshold);
+    const catalog = catalogValues(body, existing);
+    if (catalog.values[5]) v[6] = Math.ceil(v[6]);
+    v[2] = catalog.path;
+    if (!v[1]) v[1] = existing.barcode;
+    db.prepare(
+      "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,unit_round_up=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=?,production_type=? WHERE id=? AND version=?",
+    ).run(...v, ...catalog.values, productId, existing.version);
+    const defaultRouteId = routeBinding(db, req.warehouse.id, body.default_route_id, existing.default_route_id);
+    db.prepare('UPDATE products SET default_route_id=? WHERE id=?').run(defaultRouteId, existing.id);
+    recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
+    syncProduct(db, existing.id, body.sync_warehouse_ids, req.user);
+    const saved = db.prepare('SELECT version FROM products WHERE id=?').get(existing.id);
+    return { ok: true, barcode: v[1], version: saved.version };
+  }
   app.put("/api/products/:id", (req, res) => {
-    let inTransaction = false;
     try {
-      const v = productValues(req.body);
-      db.exec("BEGIN IMMEDIATE");
-      inTransaction = true;
-      const existing = db
-        .prepare("SELECT * FROM products WHERE id=?")
-        .get(req.params.id);
-      if (!existing) {
-        db.exec("ROLLBACK");
-        inTransaction = false;
-        return res.status(404).json({ error: "物料不存在。" });
-      }
-      if (!Number.isSafeInteger(req.body.version) || req.body.version < 1 || req.body.version !== existing.version) {
-        db.exec('ROLLBACK');
-        inTransaction = false;
-        return res.status(409).json({
-          code: 'PRODUCT_VERSION_CONFLICT',
-          error: req.body.version == null
-            ? '缺少物料版本，请刷新页面后重新编辑。'
-            : '物料信息已被修改，本次未保存。请查看最新信息后重新编辑。',
-        });
-      }
-      const catalog = catalogValues(req.body, existing);
-      if (catalog.values[5]) v[6] = Math.ceil(v[6]);
-      v[2] = catalog.path;
-      if (!v[1]) v[1] = existing.barcode;
-      db.prepare(
-        "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,unit_round_up=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=?,production_type=? WHERE id=? AND version=?",
-      ).run(...v, ...catalog.values, req.params.id, existing.version);
-      const defaultRouteId = routeBinding(db, req.warehouse.id, req.body.default_route_id, existing.default_route_id);
-      db.prepare('UPDATE products SET default_route_id=? WHERE id=?').run(defaultRouteId, existing.id);
-      recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
-      syncProduct(db, existing.id, req.body.sync_warehouse_ids, req.user);
-      const saved = db.prepare('SELECT version FROM products WHERE id=?').get(existing.id);
-      db.exec("COMMIT");
-      inTransaction = false;
-      res.json({ ok: true, barcode: v[1], version: saved.version });
+      db.exec('BEGIN IMMEDIATE');
+      const result = updateProduct(req, req.params.id, req.body);
+      db.exec('COMMIT');
+      res.json(result);
     } catch (e) {
-      if (inTransaction) db.exec("ROLLBACK");
-      res.status(400).json({
-        error: e.message.includes("UNIQUE")
-          ? "该条码已被使用，请使用其他条码。"
-          : e.message,
+      if (db.isTransaction) db.exec('ROLLBACK');
+      res.status(e.status || 400).json({
+        ...(e.code ? { code: e.code } : {}),
+        error: e.message.includes('UNIQUE') ? '该条码已被使用，请使用其他条码。' : e.message,
       });
     }
   });
@@ -680,12 +670,15 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     }
   });
   // Lifecycle actions affect only the current warehouse, never synchronized copies.
+  function setProductStatus(req, productId, active) {
+    if (![0, 1].includes(active)) throw new Error('请选择有效的启用或停用状态。');
+    const result = db.prepare('UPDATE products SET active=? WHERE id=? AND warehouse_id=?').run(active, productId, req.warehouse.id);
+    if (!result.changes) throw Object.assign(new Error('物料不存在或不属于当前仓库。'), { status: 404 });
+    return { ok: true };
+  }
   app.post("/api/products/:id/status", (req, res) => {
-    if (![0, 1].includes(req.body?.active))
-      return res.status(400).json({ error: "请选择有效的启用或停用状态。" });
-    const result = db.prepare("UPDATE products SET active=? WHERE id=?").run(req.body.active, req.params.id);
-    if (!result.changes) return res.status(404).json({ error: "物料不存在。" });
-    res.json({ ok: true });
+    try { res.json(setProductStatus(req, req.params.id, req.body?.active)); }
+    catch (error) { res.status(error.status || 400).json({ error: error.message }); }
   });
   app.delete("/api/products/:id", (req, res) => {
     let inTransaction = false;
@@ -800,7 +793,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   });
   installStockQr(app, db);
   const imports = installOperations(app, db, { productValues, generateBarcode, catalogValues });
-  installAi(app, db, { ...options, sessionUser, imports });
+  installAi(app, db, { ...options, sessionUser, imports: { ...imports, updateProduct, setProductStatus } });
   installMultiStocktake(app, db);
   installQueries(app, db);
   app.use("/api", (_, res) => res.status(404).json({ error: "接口不存在。" }));

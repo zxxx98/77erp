@@ -1315,3 +1315,161 @@ test('AI reads process routes and operation snapshots without granting route wri
   assert.match(JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content).error,/当前仓库/);
   await f.permissions(['ai']);await f.chat(f.staff);assert.ok(!f.calls.at(-1).body.tools.some(tool=>tool.function.name==='get_process_route'));
 });
+
+test('AI edits every ProductForm property with a rolled back preview, sync details and price history', async t => {
+  const f = await fixture(t);
+  await f.permissions(['ai', 'products']);
+  const original = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  const target = (await f.request(f.admin, '/warehouses', { name: 'AI属性同步仓库' })).data;
+  const customer = (await f.request(f.admin, '/contacts', { request_id: randomUUID(), role: 'customer', name: 'AI属性客户', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  const category = (await f.request(f.admin, '/categories', { name: 'AI属性分类', parent_id: null })).data;
+  const graph = { nodes: [{ id: 'out', name: '检验', note: '', x: 24, y: 24 }], edges: [] };
+  const route = (await f.request(f.admin, '/process-routes', { request_id: randomUUID(), name: 'AI属性工艺', note: '', enabled: 1, graph })).data;
+  assert.ok(customer.id); assert.ok(category.id); assert.ok(route.id);
+  f.db.prepare("UPDATE imagebed_settings SET base_url='https://img.example.com' WHERE id=1").run();
+  f.use('get_product', { warehouse_id: 1, product_id: 1 });
+  const read = await f.chat(f.staff);
+  const details = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(details.version, original.version);
+  assert.equal(details.cost, original.cost);
+  assert.equal(details.inventory_value_cents, undefined);
+  const changes = { active: 0, name: 'AI完整属性物料', barcode: 'AI-PROPERTIES', category_id: category.id, unit: '件', cost: 2.1234, price: 3.5678,
+    threshold: 1.2, specification: ' AI规格 ', note: ' AI备注 ', image: 'https://img.example.com/file/product.webp', production_type: '半成品',
+    default_route_id: route.id, is_fixed_asset: 1, unit_round_up: 1, inspection_date: '2027-01-01', inspection_interval: 3, inspection_unit: 'month',
+    customer_part_numbers: [{ customer_id: customer.id, part_number: ' AI-客户-001 ' }] };
+  f.use('preview_update_products', { warehouse_id: 1, items: [{ product_id: 1, version: details.version, changes, sync_warehouse_ids: [target.id] }] });
+  const response = await f.chat(f.staff, { conversation_id: read.data.conversation_id });
+  assert.equal(response.status, 200);
+  assert.equal(response.data.actions.length, 1, JSON.stringify(response.data));
+  const action = response.data.actions[0];
+  assert.equal(action.kind, 'update_products');
+  assert.deepEqual(f.db.prepare('SELECT * FROM products WHERE id=1').get(), original);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM products WHERE warehouse_id=?').get(target.id).n, 0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM product_changes').get().n, 0);
+  const source = action.preview.items.find(item => item.product_id === 1);
+  assert.equal(source.changes.find(change => change.field === 'threshold').after, 2);
+  assert.equal(source.changes.find(change => change.field === 'category_id').after, 'AI属性分类');
+  assert.equal(source.changes.find(change => change.field === 'default_route_id').after, 'AI属性工艺');
+  assert.equal(source.changes.find(change => change.field === 'customer_part_numbers').after[0].customer_name, 'AI属性客户');
+  assert.ok(action.preview.items.some(item => item.warehouse_id === target.id && item.creates_product));
+  assert.equal(action.preview.sync_warehouses[0].id, target.id);
+  const schema = f.calls.at(-1).body.tools.find(tool => tool.function.name === 'preview_update_products').function.parameters.properties.items.items.properties.changes.properties;
+  for (const field of Object.keys(changes)) assert.ok(schema[field], field);
+  const confirmed = await f.request(f.staff, '/ai/confirm', { action_id: action.id });
+  assert.equal(confirmed.status, 200, JSON.stringify(confirmed.data));
+  assert.equal(confirmed.data.count, 1);
+  const saved = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  for (const [key, value] of Object.entries({ ...changes, threshold: 2, specification: 'AI规格', note: 'AI备注' }))
+    if (key !== 'customer_part_numbers') assert.deepEqual(saved[key], value, key);
+  assert.equal(saved.stock, original.stock);
+  assert.equal(saved.inventory_value_cents, original.inventory_value_cents);
+  assert.ok(saved.version > original.version);
+  assert.deepEqual(JSON.parse(saved.customer_part_numbers), [{ customer_id: customer.id, part_number: 'AI-客户-001' }]);
+  const synced = f.db.prepare('SELECT * FROM products WHERE warehouse_id=?').get(target.id);
+  assert.equal(synced.active, 1); assert.equal(synced.production_type, '半成品'); assert.equal(synced.stock, 0); assert.equal(synced.default_route_id, null);
+  const history = f.db.prepare('SELECT * FROM product_changes WHERE product_id=1').all();
+  assert.equal(history.length, 1); assert.equal(history[0].created_by, f.id); assert.equal(history[0].before_cost, original.cost);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: action.id })).status, 200);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM product_changes WHERE product_id=1').get().n, 1);
+});
+
+test('AI partial product edits preserve omitted fields and allow explicit clearing', async t => {
+  const f = await fixture(t);
+  const customer = (await f.request(f.admin, '/contacts', { request_id: randomUUID(), role: 'customer', name: '保留料号客户', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  f.db.prepare("UPDATE products SET production_type='成品',inspection_date='2027-01-01',inspection_interval=2,customer_part_numbers=? WHERE id=1")
+    .run(JSON.stringify([{ customer_id: customer.id, part_number: 'KEEP-001' }]));
+  let original = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  f.use('preview_update_products', { warehouse_id: 1, items: [{ product_id: 1, version: original.version, changes: { note: '仅改备注' } }] });
+  let response = await f.chat(f.admin), action = response.data.actions[0];
+  assert.deepEqual(action.preview.items[0].changes, [{ field: 'note', before: original.note, after: '仅改备注' }]);
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: action.id })).status, 200);
+  let saved = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  assert.deepEqual({ ...saved, note: original.note, version: original.version }, { ...original });
+  original = saved;
+  f.use('preview_update_products', { warehouse_id: 1, items: [{ product_id: 1, version: original.version,
+    changes: { production_type: '', customer_part_numbers: [], default_route_id: null, image: '', inspection_date: '', inspection_interval: 0, barcode: '' } }] });
+  response = await f.chat(f.admin); action = response.data.actions[0];
+  assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: action.id })).status, 200);
+  saved = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  assert.equal(saved.production_type, ''); assert.equal(saved.customer_part_numbers, '[]'); assert.equal(saved.inspection_date, '');
+  assert.equal(saved.inspection_interval, 0); assert.equal(saved.barcode, original.barcode);
+});
+
+test('AI product edits share panel validation and roll back the entire batch on failure', async t => {
+  const f = await fixture(t);
+  const original = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  const other = f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const target = (await f.request(f.admin, '/warehouses', { name: 'AI无效目标' })).data;
+  const invalid = [ { stock: 99 }, { active: 2 }, { name: '' }, { cost: -1 }, { price: 1.23456 }, { threshold: -1 },
+    { production_type: '废品' }, { unit_round_up: 2 }, { inspection_date: 'not-a-date' }, { inspection_interval: 1000 },
+    { customer_part_numbers: [{ customer_id: 99999, part_number: 'bad' }] }, { category_id: 99999 }, { default_route_id: 99999 },
+    { image: 'https://untrusted.example/file/test.png' }, { name: null }, { specification: 'x'.repeat(501) }, { note: 'x'.repeat(2001) } ];
+  for (const changes of invalid) {
+    f.use('preview_update_products', { warehouse_id: 1, items: [{ product_id: 1, version: original.version, changes }] });
+    const response = await f.chat(f.admin);
+    assert.equal(response.data.actions.length, 0, JSON.stringify(changes));
+    assert.deepEqual(f.db.prepare('SELECT * FROM products WHERE id=1').get(), original);
+  }
+  for (const items of [
+    [{ product_id: 1, version: original.version - 1, changes: { note: 'stale' } }],
+    [{ product_id: 1, version: original.version, changes: {} }],
+    [1, 1].map(product_id => ({ product_id, version: original.version, changes: { note: 'duplicate' } })),
+    [{ product_id: 1, version: original.version, changes: { cost: 9 }, sync_warehouse_ids: [target.id] }, { product_id: 2, version: other.version, changes: { barcode: original.barcode } }],
+  ]) {
+    f.use('preview_update_products', { warehouse_id: 1, items });
+    const response = await f.chat(f.admin);
+    assert.equal(response.data.actions.length, 0, JSON.stringify(items));
+    assert.deepEqual(f.db.prepare('SELECT * FROM products WHERE id=1').get(), original);
+    assert.deepEqual(f.db.prepare('SELECT * FROM products WHERE id=2').get(), other);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM products WHERE warehouse_id=?').get(target.id).n, 0);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM product_changes').get().n, 0);
+  }
+  f.use('preview_update_products', { warehouse_id: target.id, items: [{ product_id: 1, version: original.version, changes: { note: 'wrong warehouse' } }] });
+  assert.equal((await f.chat(f.admin)).data.actions.length, 0);
+});
+
+test('AI product confirmation detects changed source, sync target and reference data', async t => {
+  const f = await fixture(t);
+  const target = (await f.request(f.admin, '/warehouses', { name: 'AI并发同步' })).data;
+  const original = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  for (const mutate of [
+    () => f.db.prepare("UPDATE products SET note='别人修改' WHERE id=1").run(),
+    () => f.db.prepare('UPDATE categories SET name=? WHERE id=?').run('分类已变', original.category_id),
+    () => f.db.prepare('INSERT INTO products(name,barcode,category,unit,cost,price,threshold,warehouse_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run('冲突物料', original.barcode, '未分类', original.unit, 1, 2, 0, target.id, new Date().toISOString()),
+  ]) {
+    const product = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+    f.use('preview_update_products', { warehouse_id: 1, items: [{ product_id: 1, version: product.version, changes: { production_type: '原料' }, sync_warehouse_ids: [target.id] }] });
+    const response = await f.chat(f.admin), action = response.data.actions[0];
+    assert.ok(action, JSON.stringify(response.data));
+    mutate();
+    assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: action.id })).status, 409);
+    assert.equal(f.db.prepare('SELECT production_type FROM products WHERE id=1').get().production_type, original.production_type);
+  }
+});
+
+test('AI product tools enforce products permission and the writes switch on preview and confirmation', async t => {
+  const f = await fixture(t), product = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  await f.permissions(['ai']);
+  await f.chat(f.staff);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool => ['get_product', 'preview_update_products'].includes(tool.function.name)));
+  f.use('get_product', { warehouse_id: 1, product_id: 1 });
+  assert.equal((await f.chat(f.staff)).status, 403);
+  const args = { warehouse_id: 1, items: [{ product_id: 1, version: product.version, changes: { production_type: '原料' } }] };
+  f.use('preview_update_products', args);
+  assert.equal((await f.chat(f.staff)).status, 403);
+  await f.permissions(['ai', 'products']);
+  f.use('search_process_routes', {});
+  assert.equal((await f.chat(f.staff)).status, 200);
+  f.use('preview_update_products', args);
+  const response = await f.chat(f.staff), action = response.data.actions[0];
+  assert.ok(action);
+  assert.equal((await f.request(f.admin, '/settings/ai', { ...f.settings, writes: false }, 'PUT')).status, 200);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: action.id })).status, 403);
+  f.use('preview_update_products', args);
+  assert.equal((await f.chat(f.staff)).status, 403);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool => tool.function.name === 'preview_update_products'));
+  assert.equal((await f.request(f.admin, '/settings/ai', f.settings, 'PUT')).status, 200);
+  await f.permissions(['ai']);
+  assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: action.id })).status, 403);
+  assert.deepEqual(f.db.prepare('SELECT * FROM products WHERE id=1').get(), product);
+});

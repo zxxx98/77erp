@@ -16,6 +16,9 @@ export async function aiFetch(url, options) {
     const name=last.content.startsWith('推荐')?'quality_chart_data':'preview_quality_chart';
     message={content:null,tool_calls:[{id:name,type:'function',function:{name,arguments:last.content.split('参数：')[1]}}]};
   }
+  else if (last.content.startsWith('修改物料参数：')) {
+    message = { content: null, tool_calls: [{ id: 'product-update', type: 'function', function: { name: 'preview_update_products', arguments: last.content.slice('修改物料参数：'.length) } }] };
+  }
   else if (/^(调拨|盘点)参数：/.test(last.content)) {
     const name = last.content.startsWith('调拨') ? 'preview_transfer' : 'preview_stocktake';
     message = { content: null, tool_calls: [{ id: name, type: 'function', function: { name, arguments: last.content.split('参数：')[1] } }] };
