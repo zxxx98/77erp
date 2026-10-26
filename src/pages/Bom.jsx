@@ -1,4 +1,5 @@
 import { RoutePicker } from '../features/RoutePicker.jsx';
+import { BomProcessOverview } from '../features/ProcessOverview.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { bomLossMethodLabels, bomLossMethodFormulas } from '../i18n/production-display.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
@@ -162,6 +163,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
   const [filterProduct, setFilterProduct] = useState(initialProduct || null), [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [calculation, setCalculation] = useState(null);
   const [message, setMessage] = useState('');
+  const [overviewId, setOverviewId] = useState(null);
   const action = useBusiness();
   const queryData = useMemo(() => ({ ...data, bomRevision: revision }), [data, revision]);
   const list = useQuery(queryPath('/boms', { q, status, offset, product_id: filterProduct?.id }), queryData, 150);
@@ -199,6 +201,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
       setEditor(null); setRevision(n => n + 1); setMessage(pt("production.bomSaved"));
     });
   };
+  if (overviewId) return <BomProcessOverview bomId={overviewId} data={queryData} onBack={() => setOverviewId(null)} />;
   if (calculation) return <div className="bom-page"><BomCalculation key={`${calculation.id}:${calculation.version}`} bom={calculation} data={data} onBack={back} onCreateProduction={onCreateProduction} /></div>;
   if (editor) return <div className="bom-page">
     <PageHeading title={editor.id ? pt("production.editBom") : pt("production.newBom")} description={pt("production.setBaseOutputAndMaterialUsageThenSave")}>
@@ -218,7 +221,10 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
         <label className="bom-note">{pt("production.note")}<AntInput.TextArea rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label>
         <AntCheckbox className="bom-checkbox" checked={!!editor.enabled} disabled={action.busy} onChange={e => update({ enabled: e.target.checked ? 1 : 0 })}>{pt("production.enableThisBom")}</AntCheckbox>
       </section>
-      <section className="panel bom-section"><h2>{pt('route.override')}</h2><RoutePicker warehouseId={data.warehouse_id} inherit inheritedValue={editor.product?.default_route_id} value={editor.route_override_id} onChange={value => update({ route_override_id: value })} disabled={action.busy} /></section>
+      <section className="panel bom-section"><h2>{pt('route.override')}</h2><RoutePicker warehouseId={data.warehouse_id} inherit inheritedValue={editor.product?.default_route_id} value={editor.route_override_id} onChange={value => update({ route_override_id: value })} disabled={action.busy} />
+        <Button disabled={action.busy || dirty || !editor.id} onClick={() => setOverviewId(editor.id)}>{pt('overview.bom')}</Button>
+        {(dirty || !editor.id) && <p className="bom-hint">{pt('overview.saveFirst')}</p>}
+      </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>{pt("production.materialUsage")}</h2><span className="bom-hint">{pt("production.added")} {editor.items.length} / {BOM_MAX_ITEMS} {pt("production.types")}</span></div>
         <p className="bom-hint">{pt("production.enterTheNetMaterialsNeededToProduce")} {editor.base_quantity || '…'} {editor.product?.unit || pt("production.unitsOfFinishedProduct")} {pt("production.materialsMayBeIssuedDirectlyOrExpandedUsing")}</p>
         <label className="bom-loss-method">{pt("production.standardLossCalculation")}<Select aria-label={pt("production.standardLossCalculation")} aria-describedby="bom-loss-help" value={editor.loss_method} disabled={action.busy}
@@ -311,6 +317,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
           <small>{pt("production.baseOutput")} {count(bom.base_quantity)} {bom.base_unit} · {bom.item_count} {pt("production.materialsUpdatedBy")} {bom.updated_by_name}</small>
           <div><Badge tone={bom.enabled ? 'green' : 'orange'}>{bom.enabled ? pt("production.enabled") : pt("production.disabled2")}</Badge>{!bom.product_active && <Badge tone="orange">{pt("production.productDisabled")}</Badge>}</div></div>
         <div className="bom-actions"><Button icon={Calculator} disabled={action.busy || !bom.enabled} onClick={() => open(bom.id, 'calculate')}>{pt("production.planMaterials")}</Button>
+          <Button disabled={action.busy} onClick={() => setOverviewId(bom.id)}>{pt('overview.bom')}</Button>
           {onCreateProduction && <Button disabled={action.busy || !bom.enabled || !bom.product_active} onClick={() => onCreateProduction(bom)}>{pt("production.newProductionOrder")}</Button>}
           <Button disabled={action.busy} onClick={() => open(bom.id, 'edit')}>{pt("production.edit")}</Button>
           <Button icon={Copy} disabled={action.busy} onClick={() => open(bom.id, 'copy')}>{pt("production.copy2")}</Button>

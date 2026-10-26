@@ -1318,6 +1318,8 @@ test('AI reads process routes and operation snapshots without granting route wri
   f.use('get_process_route',{route_id:route.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.deepEqual(result.graph,graph);
   f.use('get_production_order',{production_id:order.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.operation_routes[0].operations[0].name,'切割');assert.ok(!JSON.stringify(result).includes('cost_cents'));
   assert.match(f.calls.at(-1).body.messages[0].content,/中间工序不扣料/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/BOM.*工艺流程图/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/虚线.*供料.*不指定.*工序/);
   assert.match(f.calls.at(-1).body.messages[0].content,/删除工艺路线须由具有BOM管理权限的用户/);
   assert.match(f.calls.at(-1).body.messages[0].content,/AI不创建、修改或删除工艺路线/);
   assert.ok(!f.calls.at(-1).body.tools.some(tool=>/^(?:preview|save|report|void).*route/.test(tool.function.name)));

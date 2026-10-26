@@ -280,6 +280,7 @@ const routeRoles = new Map(Object.entries({
   'get /api/production-orders/:id/operation-workers': 'production', 'get /api/production-orders/:id/operations/reports': 'production',
   'post /api/production-orders/:id/operations/report': 'production', 'post /api/production-orders/:id/operations/:reportId/void': 'production',
   'get /api/boms': 'bom', 'get /api/boms/:id': 'bom', 'post /api/boms': 'bom',
+  'get /api/boms/:id/process-overview': 'bom',
   'post /api/boms/:id': 'bom', 'post /api/boms/:id/status': 'bom', 'post /api/boms/:id/calculate': 'bom',
   'post /api/boms/:id/delete': 'bom',
   'get /api/production-orders': 'production', 'get /api/production-orders/boms': 'production',

@@ -31,9 +31,9 @@ export function ProductionStageSummary({ order, onOpen, disabled }) {
   </section>;
 }
 
-export function ProductionStages({ order, data, canRegister, canVoid, canReceive, management, busy = false, onActivity, onSaved, onBack }) {
+export function ProductionStages({ order, data, canRegister, canVoid, canReceive, management, busy = false, initialOperationPath, onActivity, onSaved, onBack }) {
   useLocale();
-  const [operationPath, setOperationPath] = useState(null), [operationActivity, setOperationActivity] = useState(null);
+  const [operationPath, setOperationPath] = useState(initialOperationPath ?? null), [operationActivity, setOperationActivity] = useState(null);
   const [scope, setScope] = useState(''), [search, setSearch] = useState('');
   const [form, setForm] = useState(null), [baseline, setBaseline] = useState('');
   const [history, setHistory] = useState(null), [voiding, setVoiding] = useState(null);
@@ -117,7 +117,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     const root = batch.root_batch_id && order.batches.find(row => row.id === batch.root_batch_id);
     return root && (root.receipt_status === 'confirmed' || !root.receipt_required);
   };
-  if (operationPath !== null) return <ProductionOperations order={order} path={operationPath} data={data} canRegister={canRegister} onActivity={setOperationActivity} onSaved={onSaved} onBack={() => setOperationPath(null)} onOutput={(node, workerId) => begin(byPath.get(operationPath), node, workerId)} />;
+  if (operationPath !== null) return <ProductionOperations order={order} path={operationPath} data={data} canRegister={canRegister} onActivity={setOperationActivity} onSaved={onSaved} onBack={() => initialOperationPath !== undefined ? onBack() : setOperationPath(null)} onOutput={(node, workerId) => begin(byPath.get(operationPath), node, workerId)} />;
   return <div className="production-stages">
     <PageHeading title={heading} description={`${order.number} · ${stage ? pathLabel(stage) : history ? pathLabel(byPath.get(history.path)) : order.product_name}`}>
       <Button icon={ArrowLeft} disabled={locked} onClick={back}>{form || history ? pt("production.backToLevelSelection") : pt("production.backToOrderDetails")}</Button>

@@ -3,6 +3,7 @@ import { validQuantity } from '../shared/quantity.js';
 import { createHash } from 'node:crypto';
 import { rebuildTable } from './table-migration.js';
 import { buildBomNodes, calculateBomNodes } from '../shared/bom-expansion.js';
+import { validateProcessGraph } from '../shared/process-routes.js';
 import { validateBom, validateBomLossMethod, bomShortage } from '../shared/bom.js';
 import { validateScrapRules, scrapExpectedQuantity } from '../shared/scrap.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
@@ -114,6 +115,42 @@ export function getBom(db, warehouseId, id) {
       ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, warehouseId)),
     }));
     return bom;
+  });
+}
+
+export function bomProcessOverview(db, warehouseId, id) {
+  return readSnapshot(db, () => {
+    const cache = new Map();
+    const load = bomId => {
+      if (!cache.has(bomId)) cache.set(bomId, getBom(db, warehouseId, bomId));
+      return cache.get(bomId);
+    };
+    const root = load(id);
+    const nodes = buildBomNodes(root, load, { availability: false, scrapRules: false });
+    const routes = new Map();
+    const layer = (bom, path, parentPath) => {
+      const routeId = bom.route_override_id ?? bom.product.default_route_id;
+      let route = null;
+      if (routeId != null) {
+        if (!routes.has(routeId)) {
+          const saved = db.prepare('SELECT id,name,version,enabled,graph FROM process_routes WHERE id=? AND warehouse_id=?').get(routeId, warehouseId);
+          if (!saved) fail('工艺路线不存在或不属于当前仓库。');
+          const graph = JSON.parse(saved.graph);
+          validateProcessGraph(graph);
+          routes.set(routeId, { ...saved, graph });
+        }
+        route = routes.get(routeId);
+      }
+      return { path, parent_path: parentPath, name: bom.product.name, barcode: bom.product.barcode,
+        bom_id: bom.id, bom_name: bom.name, unit: bom.base_unit, enabled: bom.enabled, product_active: bom.product.active,
+        route_source: routeId == null ? null : bom.route_override_id != null ? 'bom' : 'product', route,
+        materials: bom.items.filter(item => (item.usage_mode ?? 'stock') === 'stock').map(item => ({
+          product_id: item.product_id, name: item.product.name, barcode: item.product.barcode, unit: item.unit,
+          quantity: item.quantity, quantity_fraction: item.quantity_fraction, loss_rate: item.loss_rate, note: item.note,
+        })) };
+    };
+    return { bom_id: root.id, layers: [layer(root, '', null), ...nodes.filter(node => node.usage_mode === 'explode')
+      .map(node => layer(load(node.child_bom_id), node.path, node.parent_path))] };
   });
 }
 
@@ -273,6 +310,7 @@ export function installBom(app, db) {
   };
   app.get('/api/boms', route(req => listBoms(db, req.warehouse.id, req.query)));
   app.get('/api/boms/:id', route(current));
+  app.get('/api/boms/:id/process-overview', route(req => bomProcessOverview(db, req.warehouse.id, Number(req.params.id))));
   app.post('/api/boms', route(req => save(req), true));
   app.post('/api/boms/:id', route(req => save(req, current(req)), true));
   app.post('/api/boms/:id/status', route(req => {

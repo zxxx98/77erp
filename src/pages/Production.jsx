@@ -1,4 +1,5 @@
 import { ProductionOperations, OperationWorkerSelect } from '../features/ProductionOperations.jsx';
+import { ProductionProcessOverview } from '../features/ProcessOverview.jsx';
 import { ProcessFlowStrip } from '../features/ProcessGraph.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { bomLossMethodLabels, bomLossMethodFormulas, productionStatusLabels } from '../i18n/production-display.js';
@@ -278,7 +279,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
 
   if (editor?.kind === 'stages') return <div className="bom-page production-page">
     <ProductionStages key={`${detail.id}:${editor.session}`} order={detail} data={listData} canRegister={detail.status === 'in_progress'} canVoid={management && can('corrections')} canReceive={can('purchase')} management={management}
-      busy={action.busy} onActivity={setStageActivity} onSaved={(order, text) => saved(order, text, true)} onBack={back} />{notices}
+      busy={action.busy} initialOperationPath={editor.operationPath} onActivity={setStageActivity} onSaved={(order, text) => saved(order, text, true)} onBack={back} />{notices}
   </div>;
 
   if (editor?.kind === 'material_request') {
@@ -455,6 +456,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       <ProcessFlowStrip graph={detail.operation_routes[0].graph} operations={detail.operation_routes[0].operations} />
     </section>}
     {!!detail.stage_workflow && <ProductionStageSummary order={detail} disabled={action.busy} onOpen={() => begin({ kind: 'stages' })} />}
+    {!!detail.stage_workflow && <ProductionProcessOverview key={`overview:${detail.id}`} order={detail} disabled={action.busy} onOpen={path => begin({ kind: 'stages', operationPath: path })} />}
     {!!detail.stage_workflow && management && can('finance') && <section className="panel bom-section"><h2>{pt("production.materialCostsByLevel")}</h2>
       <div className="material-balance"><div><small>{pt("production.rawMaterialCostInvestedInAllLevels")}</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>{pt("production.remainingSemiFinishedCostInOrder")}</small><span>{money(detail.work_in_progress_cost_cents)}</span></div></div>
       <p className="bom-hint">{pt("production.productCostIncludesOnlyInputsTransferredIntoRoot")}</p>
