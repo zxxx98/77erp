@@ -1,0 +1,24 @@
+.bom-horizontal-scroll { border: 1px solid var(--border, #e9ecf1); border-radius: 12px; background: #f7f9fc; max-height: 60vh; }
+.bom-horizontal-tree { display: flex; align-items: center; width: max-content; min-width: 100%; padding: 24px; box-sizing: border-box; }
+.bom-horizontal-children { display: flex; flex-direction: column; margin: 0; padding: 0 0 0 40px; list-style: none; position: relative; }
+.bom-horizontal-branch { display: flex; align-items: center; position: relative; padding: 12px 0; }
+.bom-horizontal-branch::before { content: ''; position: absolute; left: -20px; top: 0; bottom: 0; width: 20px; border-left: 1px solid #aeb8c7; }
+.bom-horizontal-branch::after { content: ''; position: absolute; left: -20px; top: 50%; width: 20px; border-top: 1px solid #aeb8c7; }
+.bom-horizontal-branch:first-child::before { top: 50%; }
+.bom-horizontal-branch:last-child::before { bottom: 50%; }
+.bom-horizontal-children::before { content: ''; position: absolute; left: 0; top: 50%; width: 20px; border-top: 1px solid #aeb8c7; }
+.bom-horizontal-node { flex: 0 0 216px; width: 216px; box-sizing: border-box; padding: 14px 16px; border: 1px solid #c9d2df; border-radius: 12px; background: #fff; color: #243650; font-size: 13px; overflow-wrap: anywhere; }
+.bom-horizontal-node > strong { display: block; line-height: 1.6; }
+.bom-horizontal-node .bom-node-name { width: 100%; font-weight: 600; }
+.bom-horizontal-node > small { color: #526078; }
+.bom-horizontal-node .bom-node-tags { margin: 8px 0; }
+.bom-horizontal-root { background: var(--accent-light, #eff5ff); border-color: #9db6dc; }
+.bom-horizontal-quantity { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 10px 0 6px; }
+.bom-horizontal-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 10px -8px -6px; }
+.bom-horizontal-node[data-selected], .bom-horizontal-node[data-match] { border-color: var(--accent, #2563eb); background: var(--accent-light, #eff5ff); }
+.bom-horizontal-scroll:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 2px; }
+.bom-horizontal-actions button:disabled { cursor: default; opacity: .55; }
+@media (max-width: 760px) {
+  .bom-horizontal-tree { padding: 16px; }
+  .bom-horizontal-node { flex-basis: 200px; width: 200px; }
+}

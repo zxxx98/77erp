@@ -50,6 +50,7 @@ for (const accessMode of ['standard', 'production_only']) for (const {width, pwa
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '本批登记并继续生产', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('生产单继续生产');
+    await page.getByRole('tab', { name: '完工与入库', exact: true }).click();
     await expect(page.locator('.production-batches')).toContainText('登记人：worker');
     await page.getByRole('button', { name: '登记', exact: true }).click();
     await page.getByLabel('合格成品数量', { exact: true }).fill('0.5');

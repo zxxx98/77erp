@@ -1,5 +1,15 @@
 // System UI only. Stored template content, values and material identifiers are not translated.
 export default {
+  "production.detailSections": ["生产单详情分区", "Production order sections", "Các phần lệnh sản xuất"],
+  "production.overviewTab": ["概览", "Overview", "Tổng quan"],
+  "production.progressTab": ["生产进度", "Production progress", "Tiến độ sản xuất"],
+  "production.materialsTab": ["物料", "Materials", "Nguyên liệu"],
+  "production.recordsTab": ["完工与入库", "Completion & receipts", "Hoàn thành và nhập kho"],
+  "production.noCompletionRecords": ["暂无完工或入库记录。", "No completion or receipt records yet.", "Chưa có bản ghi hoàn thành hoặc nhập kho."],
+  "production.noProcessProgress": ["此生产单使用整单登记，暂无工序进度。", "This order uses whole-order registration and has no operation progress.", "Lệnh này ghi nhận toàn bộ, chưa có tiến độ công đoạn."],
+  "production.noRecipeSnapshot": ["此历史生产单未保存配方结构，请在物料页签查看用料。", "This historical order has no recipe structure snapshot. See the Materials tab for usage.", "Lệnh cũ này không lưu cấu trúc công thức. Xem nguyên liệu tại thẻ Nguyên liệu."],
+  "production.horizontalTree": ["配方横向树状图", "Horizontal recipe tree", "Sơ đồ cây công thức ngang"],
+  "production.horizontalTreeHint": ["从左到右查看成品、半成品与原料；可横向滚动，点击物料查看详情。", "Read products, subassemblies and materials from left to right. Scroll horizontally and select a material for details.", "Xem thành phẩm, bán thành phẩm và nguyên liệu từ trái sang phải. Cuộn ngang và chọn nguyên liệu để xem chi tiết."],
   "production.applicationQuantity": ["申请数量", "Requested quantity", "Số lượng yêu cầu"],
   "production.confirmCloseRemaining": ["确认关闭剩余待发", "Confirm closing remainder", "Xác nhận đóng phần còn lại"],
   "production.remainingRequestClosed": ["{{number}} 剩余待发已关闭，已发材料及库存记录保留。", "Remaining request {{number}} closed; issued materials and inventory records are retained.", "Đã đóng phần còn lại của {{number}}; giữ nguyên nguyên liệu đã cấp và lịch sử kho."],

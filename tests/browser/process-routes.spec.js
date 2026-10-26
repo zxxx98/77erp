@@ -103,6 +103,7 @@ for(const mode of ['desktop','mobile','pwa']) test(`${mode} scans to operations 
     await page.getByRole('button',{name:'按本批产量带出耗料',exact:true}).click();
     page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'本批登记并继续生产',exact:true}).click();await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
     order=await f.get();expect(order.completed_quantity).toBe(4);expect(order.items[0].available_quantity).toBe(12);expect(order.receipt_documents).toHaveLength(1);expect(order.operation_routes[0].reports).toHaveLength(2);
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await page.getByRole('button',{name:'查看工序进度',exact:true}).click();await expect(page.getByText('工序登记记录',{exact:true})).toBeVisible();await expect(page.getByText('登记人: routeadmin',{exact:false}).first()).toBeVisible();
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath('operation-progress.png'),fullPage:true});expect(errors).toEqual([]);
   }finally{await f.close();await context.close();}
@@ -191,6 +192,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} com
     await f.post(`/process-routes/${f.route.id}`, { ...f.route, name: '凳架新路线', graph });
     await f.post(`/production-orders/${f.draft.id}/operations/report`, { version: (await f.get()).version, path: '1', operation_node_id: 'cut', quantity: 4, note: '' });
     await page.getByRole('button', { name: `查看生产单 ${f.draft.number}`, exact: true }).click();
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await expect(page.getByRole('heading', { name: '工艺总览', exact: true })).toBeVisible();
     await expect(overview).toBeVisible();
     await overview.getByRole('button', { name: '分层列表', exact: true }).click();

@@ -53,6 +53,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child B
     await page.goto(`${f.base}/#production`);
     if (context) await page.evaluate(() => navigator.serviceWorker.ready);
     await page.getByRole('button', { name: `查看生产单 ${f.draft.number}`, exact: true }).click();
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await expect(page.getByRole('heading', { name: '分层生产', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '登记', exact: true }).click();
     await expect(page.getByText('尚欠计划', { exact: true })).toHaveCount(2);
@@ -93,6 +94,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child B
     await page.getByRole('button', { name: '结束生产', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('半成品');
     await page.screenshot({ path: test.info().outputPath('stage-progress.png'), fullPage: true });
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await page.getByRole('button', { name: '查看各层进度与批次', exact: true }).click();
     await page.getByRole('button', { name: '查看批次 分层半成品', exact: true }).click();
     await page.getByRole('button', { name: '作废第 1 批', exact: true }).click();
@@ -195,6 +197,7 @@ test('production-only mobile worker registers stages without costs or management
     const order = await f.get();
     expect(order.completed_quantity).toBe(1);
     expect(JSON.stringify(order)).not.toMatch(/"(?:[^"\s]*cost_cents|stock)"\s*:/);
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await page.getByRole('button', { name: '查看各层进度与批次', exact: true }).click();
     await page.getByRole('button', { name: '查看批次 分层成品', exact: true }).click();
     await expect(page.getByRole('button', { name: '作废第 1 批', exact: true })).toHaveCount(0);

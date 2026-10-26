@@ -47,8 +47,10 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     await expect(page.getByLabel('生产原料领料数量', { exact: true })).toHaveValue('10');
     await page.getByRole('button', { name: '提交领料申请', exact: true }).click();
     await expect(page.getByText('待领料', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
     await expect(page.getByText(/请前往仓库领料/).first()).toBeVisible();
     expect(f.stock()).toBe(100);
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
     await page.getByRole('button', { name: '前往出库', exact: true }).click();
     const queue = page.getByRole('region', { name: '生产领料出库单', exact: true });
     await expect(queue.getByText(f.order.number, { exact: false })).toBeVisible();
@@ -68,6 +70,7 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '本批登记并继续生产', exact: true }).click();
     expect(f.stock()).toBe(96);
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
     await page.getByRole('button', { name: '前往出库', exact: true }).click();
     await queue.getByRole('button', { name: /查看并审批/ }).click();
     await expect(page.getByLabel('生产原料本次实发数量', { exact: true })).toHaveValue('6');
@@ -89,13 +92,17 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.product.id).stock).toBe(0);
     await expect(page.getByRole('region', { name: '生产入库进度' })).toContainText('待入库');
     await expect(page.getByText(/生产已结束，待仓库入库/)).toBeVisible();
+    await page.getByRole('tab', { name: '完工与入库', exact: true }).click();
     await page.getByRole('button', { name: '查看第 1 批入库单', exact: true }).click();
     await expect(page).toHaveURL(/#production$/);
+    await expect(page.locator('[id^="production-receipt-"]').first()).toBeFocused();
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
     await page.getByRole('button', { name: '申请退料', exact: true }).click();
     await page.getByLabel('生产原料退料数量', { exact: true }).fill('2');
     await page.getByRole('button', { name: '提交退料申请', exact: true }).click();
     await expect(page.getByRole('status').first()).toContainText('退料申请已提交');
     expect(f.stock()).toBe(90);
+    await page.getByRole('tab', { name: '完工与入库', exact: true }).click();
     await page.getByRole('button', { name: '前往入库审批', exact: true }).click();
     const receipts = page.getByRole('region', { name: '生产成品入库单', exact: true });
     await expect(receipts.getByText(f.order.number, { exact: false })).toHaveCount(2);
@@ -204,6 +211,7 @@ test('production can request and cancel supplements without changing warehouse s
     await f.post(`/production-material-documents/${doc.id}/confirm`, { version: doc.version });
     await page.goto(`${f.base}/#production`);
     await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
     await expect(page.locator('.production-material .bom-shortage')).toHaveCount(0);
     await page.getByRole('button', { name: '申请补料', exact: true }).click();
     await page.getByLabel('生产原料补料数量', { exact: true }).fill('3');
@@ -232,6 +240,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} initi
     await page.getByRole('button', { name: '开始生产', exact: true }).click();
     await page.getByLabel('生产原料领料数量', { exact: true }).fill('6');
     await page.getByRole('button', { name: '提交领料申请', exact: true }).click();
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
     await page.getByRole('button', { name: '前往出库', exact: true }).click();
     const queue = page.getByRole('region', { name: '生产领料出库单', exact: true });
     await queue.getByRole('button', { name: /查看并审批/ }).click();
@@ -242,6 +251,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} initi
     expect(f.stock()).toBe(98);
     await page.goto(`${f.base}/#production`);
     await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
     const materials = page.getByRole('region', { name: '生产领退料', exact: true });
     await materials.getByRole('button', { name: '关闭剩余待发', exact: true }).click();
     await materials.getByLabel('取消申请原因', { exact: true }).fill('按本批实际数量结束');

@@ -1,4 +1,17 @@
 .production-fields { margin-top: 22px; }
+.production-detail-header { margin-bottom: 20px; }
+.production-detail-header h2 { margin: 0; font-size: 18px; }
+.production-detail-tabs, .production-tab-panel { min-width: 0; }
+.production-tab-list { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; margin-bottom: 20px; padding: 3px; border-bottom: 1px solid var(--border, #e9ecf1); scrollbar-width: thin; }
+.production-tab-list > button { flex: 0 0 auto; min-height: 44px; padding: 10px 18px; border: 0; border-radius: 6px; background: transparent; color: #536175; font: inherit; font-size: 14px; cursor: pointer; }
+.production-tab-list > button:hover { background: #f3f6fb; }
+.production-tab-list > button[aria-selected="true"] { background: var(--accent-light, #eff5ff); color: #2158b0; font-weight: 600; }
+.production-tab-list > button:focus-visible, .production-tab-panel:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 1px; }
+.production-tab-panel[hidden] { display: none; }
+.production-detail-export { flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 600px) {
+  .production-tab-list > button { padding-inline: 12px; }
+}
 .production-summary { display: flex; flex-wrap: wrap; gap: 24px 48px; padding: 18px 0; }
 .production-summary strong { display: block; margin-top: 8px; font-size: 22px; font-variant-numeric: tabular-nums; }
 .production-output { max-width: 320px; margin: 20px 0; }

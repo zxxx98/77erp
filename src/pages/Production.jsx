@@ -32,6 +32,7 @@ import { ProductionStages, ProductionStageSummary } from '../features/Production
 import { downloadProductionPdf } from '../production-pdf.js';
 import './bom.css';
 import './production.css';
+import { ProductionDetailTabs } from '../features/ProductionDetailTabs.jsx';
 import { money as formatMoney, currencySymbol } from '../app/format.js';
 
 const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
@@ -131,6 +132,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState(null), [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [message, setMessage] = useState('');
   const [stageActivity, setStageActivity] = useState(null);
+  const [detailTab, setDetailTab] = useState('overview');
   const stageSession = useRef(0);
   const action = useBusiness();
   const send = (path, body, options) => action.send(path, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, ...body }, options);
@@ -177,9 +179,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   };
   const open = id => action.run(async () => {
     const order = await api(`/production-orders/${id}`, { warehouseId: data.warehouse_id });
+    if (detail?.id !== order.id) setDetailTab('overview');
     setDetail(order); setAssignment(order.production_group_id ?? ''); setEditor(null); setMessage('');
   });
   const saved = async (order, text, stockChanged = false) => {
+    if (detail?.id !== order.id) setDetailTab('overview');
     setDetail(order); setEditor(null); setMessage(text); setRevision(n => n + 1);
     if (stockChanged) await onChanged?.();
   };
@@ -209,6 +213,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity) });
   });
   const registration = useProductionRegistration({ data, onSwitchWarehouse, navigationState: stageActivity || editor, navigationBusy: action.busy || !!stageActivity?.busy, onError: action.setError, onOrder: order => {
+    if (detail?.id !== order.id) setDetailTab('overview');
     setDetail(order); setAssignment(order.production_group_id ?? ''); setEditor(null); setMessage(''); action.setError('');
     if (order.status === 'in_progress' || !order.material_workflow && order.status === 'draft') {
       if (order.stage_workflow) { begin({ kind: 'stages' }); return; }
@@ -390,9 +395,21 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
 
   if (detail) return <div className="bom-page production-page">
     {heading(pt("production.productionOrderDetails"), detail.number)}{notices}
-    <div className="bom-actions"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
-    <p className="bom-hint">{pt("production.thePdfQrCodeUsesThisAddressThe")} {location.origin}{pt("production.andSignInWithAnAuthorizedAccountTo")}</p>
-    <section className="panel bom-section"><div className="bom-section-heading"><div><h2>{detail.product_name}</h2><small>{detail.barcode}{detail.specification && ` · ${detail.specification}`}</small></div>{statusBadge(detail.status)}</div>
+    <div className="production-detail-header"><div className="bom-section-heading"><div><h2>{detail.product_name}</h2><small>{detail.barcode}{detail.specification && ` · ${detail.specification}`}</small></div>{statusBadge(detail.status)}</div>
+      <div className="bom-actions">
+        {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
+        {management && detail.material_workflow === 1 && detail.status === 'draft' && <Button kind="primary" disabled={action.busy} onClick={startProduction}>{pt("production.startProduction")}</Button>}
+        {(detail.status === 'in_progress' || !detail.material_workflow && detail.status === 'draft') && <Button kind="primary" icon={Check} disabled={action.busy} onClick={beginCompletion}>{pt("production.register")}</Button>}
+        {management && detail.status === 'in_progress' && <Button disabled={action.busy || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>}
+        {management && detail.status !== 'void' && can('corrections') && <Button icon={XCircle} disabled={action.busy || !detail.material_workflow && detail.received_quantity > 0 && !can('purchase')} onClick={() => begin({ kind: 'void', reason: '' })}>{pt("production.voidProductionOrder")}</Button>}
+        {management && detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>{pt("production.deleteProductionOrder")}</Button>}
+        <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
+      </div>
+    <div className="bom-actions production-detail-export"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
+    </div>
+    <ProductionDetailTabs key={detail.id} active={detailTab} onChange={setDetailTab} items={[
+      { key: 'overview', label: pt('production.overviewTab'), children: <>
+    <section className="panel bom-section">
       <section className="production-summary" aria-label={pt("production.productionReceiptProgress")}><div><small>{pt("production.plannedOutput2")}</small><strong>{count(detail.planned_quantity)} {detail.unit}</strong></div>
         <div><small>{pt("production.cumulativeOutput")}</small><strong>{count(detail.completed_quantity ?? 0)} {detail.unit}</strong></div>
         <div><small>{pt("production.received")}</small><strong>{count(detail.received_quantity ?? 0)} {detail.unit}</strong></div>
@@ -411,17 +428,34 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         {detail.completed_at && <p>{pt("production.lastCompletion")}{detail.completed_by_name} · {time(detail.completed_at)}</p>}
         {detail.voided_at && <><p>{pt("production.voided")}{detail.voided_by_name} · {time(detail.voided_at)}</p><p>{pt("production.voidReason2")}{detail.void_reason}</p></>}
       </div>
-      <div className="bom-actions">
-        {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
-        {management && detail.material_workflow === 1 && detail.status === 'draft' && <Button kind="primary" disabled={action.busy} onClick={startProduction}>{pt("production.startProduction")}</Button>}
-        {(detail.status === 'in_progress' || !detail.material_workflow && detail.status === 'draft') && <Button kind="primary" icon={Check} disabled={action.busy} onClick={beginCompletion}>{pt("production.register")}</Button>}
-        {management && detail.status === 'in_progress' && <Button disabled={action.busy || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>}
-        {management && detail.status !== 'void' && can('corrections') && <Button icon={XCircle} disabled={action.busy || !detail.material_workflow && detail.received_quantity > 0 && !can('purchase')} onClick={() => begin({ kind: 'void', reason: '' })}>{pt("production.voidProductionOrder")}</Button>}
-        {management && detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>{pt("production.deleteProductionOrder")}</Button>}
-        <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
-      </div>
+
       {management && detail.status !== 'void' && can('corrections') && !detail.material_workflow && detail.received_quantity > 0 && !can('purchase') && <p className="bom-hint">{pt("production.thisHistoricalOrderContainsReceivedProductsVoidingThe")}</p>}
     </section>
+    <p className="bom-hint">{pt("production.thePdfQrCodeUsesThisAddressThe")} {location.origin}{pt("production.andSignInWithAnAuthorizedAccountTo")}</p>
+      </> },
+      { key: 'progress', label: pt('production.progressTab'), children: <>
+    {!detail.stage_workflow && !!detail.operation_routes?.length && <section className="panel bom-section process-order-summary-panel">
+      <div className="bom-section-heading">
+        <div>
+          <h2>{pt('route.progress')}</h2>
+          <p className="bom-hint">{detail.operation_routes[0].route_name} · {pt('route.version', { version: detail.operation_routes[0].route_version })}</p>
+        </div>
+        <Button disabled={action.busy} onClick={() => begin({ kind: 'operations' })}>{pt('route.viewProgress')}</Button>
+      </div>
+      <ProcessFlowStrip graph={detail.operation_routes[0].graph} operations={detail.operation_routes[0].operations} />
+    </section>}
+    {!!detail.stage_workflow && <ProductionStageSummary order={detail} disabled={action.busy} onOpen={() => begin({ kind: 'stages' })} />}
+    {!!detail.stage_workflow && <ProductionProcessOverview key={`overview:${detail.id}`} order={detail} disabled={action.busy} onOpen={path => begin({ kind: 'stages', operationPath: path })} />}
+    {!detail.stage_workflow && detail.snapshot_format === 2 && <section className="panel bom-section">
+      <p className="bom-hint">{pt("production.thisOrderUsesWholeOrderRegistrationWithNo")}</p>
+      {management && detail.material_workflow && detail.status === 'draft' && !detail.batches.length && !detail.material_documents.length && !detail.receipt_documents.length && <Button disabled={action.busy} onClick={() => action.run(async () => {
+        if (!window.confirm(pt("production.enableLevelRegistrationUsingTheSavedRecipeRegister"))) return;
+        await saved(await send(`/production-orders/${detail.id}/stages/enable`, { version: detail.version }, { warehouseId: data.warehouse_id }), pt("production.levelRegistrationEnabled"));
+      })}>{pt("production.enableLevelRegistration")}</Button>}
+    </section>}
+    {!detail.stage_workflow && !detail.operation_routes?.length && <section className="panel bom-section"><p className="bom-hint">{pt('production.noProcessProgress')}</p></section>}
+      </> },
+      { key: 'materials', label: pt('production.materialsTab'), children: <>
     {detail.material_workflow === 1 && <section className="panel bom-section" aria-label={pt("production.productionMaterialIssuesAndReturns")}><h2>{pt("production.issuesAndReturns")}</h2>
       {detail.status === 'awaiting_materials' && <p className="bom-warning">{pt("production.collectMaterialsFromTheWarehouseAfterIssueConfirmation")}</p>}
       {detail.status === 'completed' && detail.items.some(item => item.available_quantity > 0) && <p className="bom-warning">{pt("production.unusedMaterialsRemainVerifyAndRequestAReturn")}</p>}
@@ -445,32 +479,19 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.material_documents?.some(doc => doc.status === 'pending') && <p className="bom-hint">{pt("production.aMaterialRequestIsPendingHaveTheWarehouse")}</p>}
       <MaterialDocumentList documents={detail.material_documents || []} busy={action.busy} onCancel={management && detail.status !== 'void' ? cancelMaterialRequest : undefined} />
     </section>}
-    {!detail.stage_workflow && !!detail.operation_routes?.length && <section className="panel bom-section process-order-summary-panel">
-      <div className="bom-section-heading">
-        <div>
-          <h2>{pt('route.progress')}</h2>
-          <p className="bom-hint">{detail.operation_routes[0].route_name} · {pt('route.version', { version: detail.operation_routes[0].route_version })}</p>
-        </div>
-        <Button disabled={action.busy} onClick={() => begin({ kind: 'operations' })}>{pt('route.viewProgress')}</Button>
-      </div>
-      <ProcessFlowStrip graph={detail.operation_routes[0].graph} operations={detail.operation_routes[0].operations} />
-    </section>}
-    {!!detail.stage_workflow && <ProductionStageSummary order={detail} disabled={action.busy} onOpen={() => begin({ kind: 'stages' })} />}
-    {!!detail.stage_workflow && <ProductionProcessOverview key={`overview:${detail.id}`} order={detail} disabled={action.busy} onOpen={path => begin({ kind: 'stages', operationPath: path })} />}
     {!!detail.stage_workflow && management && can('finance') && <section className="panel bom-section"><h2>{pt("production.materialCostsByLevel")}</h2>
       <div className="material-balance"><div><small>{pt("production.rawMaterialCostInvestedInAllLevels")}</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>{pt("production.remainingSemiFinishedCostInOrder")}</small><span>{money(detail.work_in_progress_cost_cents)}</span></div></div>
       <p className="bom-hint">{pt("production.productCostIncludesOnlyInputsTransferredIntoRoot")}</p>
     </section>}
-    {!detail.stage_workflow && detail.snapshot_format === 2 && <section className="panel bom-section">
-      <p className="bom-hint">{pt("production.thisOrderUsesWholeOrderRegistrationWithNo")}</p>
-      {management && detail.material_workflow && detail.status === 'draft' && !detail.batches.length && !detail.material_documents.length && !detail.receipt_documents.length && <Button disabled={action.busy} onClick={() => action.run(async () => {
-        if (!window.confirm(pt("production.enableLevelRegistrationUsingTheSavedRecipeRegister"))) return;
-        await saved(await send(`/production-orders/${detail.id}/stages/enable`, { version: detail.version }, { warehouseId: data.warehouse_id }), pt("production.levelRegistrationEnabled"));
-      })}>{pt("production.enableLevelRegistration")}</Button>}
-    </section>}
-    {detail.snapshot_format === 2 && <section className="panel bom-section"><h2>{pt("production.recipeStructureSnapshot")}</h2>
-      <BomStructure nodes={detail.nodes} quantity={detail.planned_quantity} isSnapshot />
-    </section>}
+    <section className="panel bom-section"><h2>{detail.completed_at ? pt("production.usageRecords") : pt("production.plannedMaterials")}</h2>
+      {!!detail.stage_workflow && <p className="bom-hint">{pt("production.actualUsageHereIsGroupedByFinalProduct")}</p>}
+      {detail.completed_at && <p className="bom-hint">{pt("production.standardUsageUsesTheSavedNetUsageLoss")}</p>}
+      <Materials rows={detail.items} issued={!!detail.material_workflow && ['in_progress', 'completed'].includes(detail.status)} showActual={!!detail.completed_at} costs={management && can('finance')} />
+      {detail.status === 'void' && detail.completed_at && <p className="bom-hint">{pt("production.originalCompletionRecordsRetainedAboveThisOrderIs")}</p>}
+      {!detail.completed_at && <p className="bom-hint">{pt("production.stockReadAt2")} {time(detail.captured_at)}。{detail.material_workflow ? pt("production.draftsAndPendingIssueRequestsDoNotReserve") : pt("production.thisHistoricalOrderVerifiesActualUsageAndDeducts")}</p>}
+    </section>
+      </> },
+      { key: 'records', label: pt('production.recordsTab'), children: <>
     <ProductionBatches key={detail.id} order={detail} costs={management && can('finance')} canVoid={management && can('corrections') && !detail.stage_workflow} canReceive={can('purchase')} disabled={action.busy}
       onVoid={batch => begin({ kind: 'void_batch', batchId: batch.id, reason: '' })} />
     {!!detail.receipt_documents?.length && <section className="panel bom-section" aria-label={pt("production.productionProductReceipts")}><h2>{pt("production.productionProductReceipts")}</h2>
@@ -482,13 +503,15 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.completed_at && detail.status !== 'void' && <p className="bom-hint">{pt("production.registeredReceiptsIncludePendingAndReceivedScrapCheck")}</p>}
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">{pt("production.orderVoidedScrapRecordsRemainReceivedQuantitiesHave")}</p>}
     </section>}
-    <section className="panel bom-section"><h2>{detail.completed_at ? pt("production.usageRecords") : pt("production.plannedMaterials")}</h2>
-      {!!detail.stage_workflow && <p className="bom-hint">{pt("production.actualUsageHereIsGroupedByFinalProduct")}</p>}
-      {detail.completed_at && <p className="bom-hint">{pt("production.standardUsageUsesTheSavedNetUsageLoss")}</p>}
-      <Materials rows={detail.items} issued={!!detail.material_workflow && ['in_progress', 'completed'].includes(detail.status)} showActual={!!detail.completed_at} costs={management && can('finance')} />
-      {detail.status === 'void' && detail.completed_at && <p className="bom-hint">{pt("production.originalCompletionRecordsRetainedAboveThisOrderIs")}</p>}
-      {!detail.completed_at && <p className="bom-hint">{pt("production.stockReadAt2")} {time(detail.captured_at)}。{detail.material_workflow ? pt("production.draftsAndPendingIssueRequestsDoNotReserve") : pt("production.thisHistoricalOrderVerifiesActualUsageAndDeducts")}</p>}
-    </section>
+    {!detail.batches?.length && !detail.receipt_documents?.length && !(detail.scraps || []).length && <section className="panel bom-section"><p className="bom-hint">{pt('production.noCompletionRecords')}</p></section>}
+      </> },
+      { key: 'recipe', label: pt('production.recipeStructure'), children: <>
+    {detail.snapshot_format === 2 && <section className="panel bom-section"><h2>{pt("production.recipeStructureSnapshot")}</h2>
+      <BomStructure nodes={detail.nodes} quantity={detail.planned_quantity} isSnapshot horizontal active={detailTab === 'recipe'} />
+    </section>}
+    {detail.snapshot_format !== 2 && <section className="panel bom-section"><p className="bom-hint">{pt('production.noRecipeSnapshot')}</p></section>}
+      </> },
+    ]} />
   </div>;
 
   return <div className="bom-page production-page">

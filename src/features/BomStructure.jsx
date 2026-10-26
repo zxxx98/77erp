@@ -11,6 +11,7 @@ import { usePreferences } from '../preferences.jsx';
 import { calculateBomNodes } from '../../shared/bom-expansion.js';
 
 import './bom-structure.css';
+import { BomHorizontalTree } from './BomHorizontalTree.jsx';
 
 const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const nodeLevel = node => pt('production.structureLevelValue', { level: node.path.split('.').length });
@@ -48,19 +49,19 @@ function NodeDetails({ node, path, onClose }) {
   </section>;
 }
 
-export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true, isSnapshot = false }) {
+export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true, isSnapshot = false, horizontal = false }) {
   useLocale();
   // Changing production quantity keeps the current view. Replacing a recipe or
   // snapshot starts at its root, since positional paths can name different goods.
   const identity = useMemo(() => JSON.stringify(nodes.map(node => [node.path, node.product_id, node.bom_id, node.bom_version, node.usage_mode, node.child_bom_id])), [nodes]);
-  return <StructureBrowser key={identity} nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={active} isSnapshot={isSnapshot} />;
+  return <StructureBrowser key={identity} nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={active} isSnapshot={isSnapshot} horizontal={horizontal} />;
 }
 
-function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot }) {
+function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot, horizontal }) {
   useLocale();
   const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
-  const [expanded, setExpanded] = useState(() => new Set());
+  const [expanded, setExpanded] = useState(() => new Set(horizontal ? nodes.filter(node => node.path.split('.').length < 2).map(node => node.path) : []));
   const [scope, setScope] = useState(''), [query, setQuery] = useState(''), [productFilter, setProductFilter] = useState(null);
   const [selectedPath, setSelectedPath] = useState(null);
   const viewport = useRef(null), positions = useRef(new Map()), detailTrigger = useRef(null), breadcrumb = useRef(null);
@@ -99,10 +100,10 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
     for (const node of groups.get(parent) || []) {
       if (searching && !includedPaths.has(node.path)) continue;
       visible.push({ node, level });
-      if (!narrow && (searching || expanded.has(node.path))) append(node.path, level + 1);
+      if ((!narrow || horizontal) && (searching || expanded.has(node.path))) append(node.path, level + 1);
     }
   };
-  if (searching && narrow) matches.forEach(node => visible.push({ node, level: 0 }));
+  if (searching && narrow && !horizontal) matches.forEach(node => visible.push({ node, level: 0 }));
   else append(searching ? '' : scope);
   const selected = byPath.get(selectedPath);
 
@@ -117,19 +118,25 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
     if (previousScope.current !== scope) {
       previousScope.current = scope;
       list.scrollTop = positions.current.get(scope)?.scroll || 0;
+      list.scrollLeft = positions.current.get(scope)?.left || 0;
       searchPosition.current = null;
     } else if (query.trim() || productFilter !== null) {
-      searchPosition.current ??= list.scrollTop;
+      searchPosition.current ??= { top: list.scrollTop, left: list.scrollLeft };
       const match = list.querySelector('[data-match="true"]');
-      if (match) list.scrollTop += match.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.querySelector('thead')?.offsetHeight || 0);
+      if (match) {
+        const bounds = match.getBoundingClientRect(), frame = list.getBoundingClientRect();
+        list.scrollTop += bounds.top - frame.top - (list.querySelector('thead')?.offsetHeight || 0);
+        if (horizontal && (bounds.left < frame.left || bounds.right > frame.right)) list.scrollLeft += bounds.left - frame.left - 16;
+      }
     } else if (searchPosition.current !== null) {
-      list.scrollTop = searchPosition.current;
+      list.scrollTop = searchPosition.current.top;
+      list.scrollLeft = searchPosition.current.left;
       searchPosition.current = null;
     }
-  }, [scope, query, productFilter, narrow]);
+  }, [scope, query, productFilter, narrow, horizontal]);
 
   const navigate = path => {
-    positions.current.set(scope, { scroll: viewport.current?.scrollTop || 0, query, productFilter });
+    positions.current.set(scope, { scroll: viewport.current?.scrollTop || 0, left: viewport.current?.scrollLeft || 0, query, productFilter });
     const saved = positions.current.get(path);
     setScope(path); setQuery(saved?.query || ''); setProductFilter(saved?.productFilter ?? null); setSelectedPath(null);
     breadcrumb.current?.focus({ preventScroll: true });
@@ -153,8 +160,11 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
     <p className="bom-structure-metadata-hint">{pt(isSnapshot ? 'production.snapshotMetadataHint' : 'production.structureMetadataHint')}</p>
     <div className="bom-structure-toolbar">
       <Input type="search" aria-label={pt("production.searchStructureMaterials")} placeholder={pt("production.searchMaterialNamesOrCodesAcrossTheRecipe")} maxLength={100} value={query}
-        onChange={event => { setQuery(event.target.value); setProductFilter(null); }} />
-      {searching ? <button type="button" className="bom-tree-action" onClick={clearSearch}>{pt("production.clearSearch")}</button> : !narrow && <div className="bom-depth-actions">
+        onChange={event => {
+          if (!searching && event.target.value.trim() && viewport.current) searchPosition.current = { top: viewport.current.scrollTop, left: viewport.current.scrollLeft };
+          setQuery(event.target.value); setProductFilter(null);
+        }} />
+      {searching ? <button type="button" className="bom-tree-action" onClick={clearSearch}>{pt("production.clearSearch")}</button> : (!narrow || horizontal) && <div className="bom-depth-actions">
         <button type="button" className="bom-tree-action" onClick={() => expandTo(2)}>{pt("production.expandToLevel2")}</button>
         <button type="button" className="bom-tree-action" onClick={() => expandTo(3)}>{pt("production.expandToLevel3")}</button>
         <button type="button" className="bom-tree-action" onClick={() => setExpanded(new Set())}>{pt("production.collapseAll")}</button>
@@ -168,9 +178,14 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
       {scope && !searching && <button type="button" className="bom-tree-action" onClick={() => navigate(byPath.get(scope)?.parent_path || '')}><ArrowLeft size={14} />{pt("production.backToParent")}</button>}
       <span role="status">{searching ? pt("production.matchesFoundInTheEntireRecipe", { v0: matches.length }) : pt("production.itemsAtCurrentLevel", { v0: groups.get(scope)?.length || 0, v1: scope ? pt("production.requirementsStillUseThisFinishedProductOutput") : '' })}</span>
     </div>
+    {horizontal && <p className="bom-hint">{pt('production.horizontalTreeHint')}</p>}
     <div className={`bom-structure-layout${selected && !narrow ? ' has-detail' : ''}`}>
-      <div className="bom-structure-scroll" ref={viewport} tabIndex={0} aria-label={pt("production.recipeStructureList")}>
-        <table className="bom-structure-table"><thead><tr><th scope="col">{pt("production.material2")}</th><th scope="col">{pt("production.materialSupplyMethod")}</th><th scope="col">{pt("production.currentRequirement")}</th><th scope="col"><span className="bom-visually-hidden">{pt("production.branchActions")}</span></th></tr></thead>
+      <div className={`bom-structure-scroll${horizontal ? ' bom-horizontal-scroll' : ''}`} ref={viewport} tabIndex={0} role={horizontal ? 'region' : undefined} aria-label={pt(horizontal ? 'production.horizontalTree' : 'production.recipeStructureList')}>
+        {horizontal ? <BomHorizontalTree groups={groups} scope={searching ? '' : scope}
+          root={!searching && scope ? { name: byPath.get(scope)?.name, quantity: byPath.get(scope)?.required, unit: byPath.get(scope)?.unit } : { name: rootName, quantity, unit: rows[0]?.bom_base_unit }}
+          expanded={expanded} searching={searching} includedPaths={includedPaths} matchedPaths={matchedPaths} selectedPath={selectedPath}
+          onToggle={toggle} onBranch={navigate} onSelect={(path, trigger) => { detailTrigger.current = trigger; setSelectedPath(path); }} />
+        : <><table className="bom-structure-table"><thead><tr><th scope="col">{pt("production.material2")}</th><th scope="col">{pt("production.materialSupplyMethod")}</th><th scope="col">{pt("production.currentRequirement")}</th><th scope="col"><span className="bom-visually-hidden">{pt("production.branchActions")}</span></th></tr></thead>
           <tbody>{visible.map(({ node, level }) => <tr className="bom-structure-row" key={node.path} data-selected={node.path === selectedPath || undefined} data-match={searching && matchedPaths.has(node.path) || undefined}>
             <td><div className="bom-tree-name" style={{ '--bom-indent': `${level * 16}px` }}>
               {!narrow && <span className="bom-tree-toggle">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-icon" disabled={searching} aria-label={`${expanded.has(node.path) || searching ? pt("production.collapse") : pt("production.expand")} ${node.name}`} aria-expanded={searching || expanded.has(node.path)} onClick={() => toggle(node.path)}>{expanded.has(node.path) || searching ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}</span>}
@@ -185,7 +200,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
             <td className="bom-tree-branch">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-action" aria-label={pt("production.openBranch", { v0: node.name })} onClick={() => navigate(node.path)}>{narrow ? <ChevronRight size={18} /> : pt("production.openBranch2")}</button>}</td>
           </tr>)}</tbody>
         </table>
-        {!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}
+        {!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}</>}
       </div>
       {selected && !narrow && <NodeDetails node={selected} path={fullPath(selected)} onClose={closeDetails} />}
     </div>
