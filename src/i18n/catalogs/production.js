@@ -1,5 +1,10 @@
 // System UI only. Stored template content, values and material identifiers are not translated.
 export default {
+  "production.materialLedger": ["生产物料台账", "Production material ledger", "Sổ nguyên liệu sản xuất"],
+  "production.collapseLedgerDetails": ["收起详情 {{v0}}", "Collapse details {{v0}}", "Thu gọn chi tiết {{v0}}"],
+  "production.materialDocumentHistory": ["领退料单据", "Material issue and return documents", "Chứng từ nhận và trả nguyên liệu"],
+  "production.finalProductUsage": ["计入最终成品的耗料", "Usage attributed to finished products", "Tiêu hao tính vào thành phẩm"],
+  "production.ledgerStageUsageHint": ["台账中的已用为各层实际消耗；下方差异按计入最终成品的耗料核算。", "Used in the ledger is actual consumption across all levels. Variances below use consumption attributed to finished products.", "Đã dùng trong sổ là tiêu hao thực tế ở mọi cấp. Chênh lệch bên dưới dựa trên tiêu hao tính vào thành phẩm."],
   "production.detailSections": ["生产单详情分区", "Production order sections", "Các phần lệnh sản xuất"],
   "production.overviewTab": ["概览", "Overview", "Tổng quan"],
   "production.progressTab": ["生产进度", "Production progress", "Tiến độ sản xuất"],

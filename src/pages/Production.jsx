@@ -33,6 +33,7 @@ import { downloadProductionPdf } from '../production-pdf.js';
 import './bom.css';
 import './production.css';
 import { ProductionDetailTabs } from '../features/ProductionDetailTabs.jsx';
+import { ProductionMaterialLedger } from '../features/ProductionMaterialLedger.jsx';
 import { money as formatMoney, currencySymbol } from '../app/format.js';
 
 const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
@@ -456,20 +457,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     {!detail.stage_workflow && !detail.operation_routes?.length && <section className="panel bom-section"><p className="bom-hint">{pt('production.noProcessProgress')}</p></section>}
       </> },
       { key: 'materials', label: pt('production.materialsTab'), children: <>
-    {detail.material_workflow === 1 && <section className="panel bom-section" aria-label={pt("production.productionMaterialIssuesAndReturns")}><h2>{pt("production.issuesAndReturns")}</h2>
+    {detail.material_workflow === 1 && <section className="panel bom-section" aria-label={pt("production.productionMaterialIssuesAndReturns")}><h2>{pt("production.materialLedger")}</h2>
       {detail.status === 'awaiting_materials' && <p className="bom-warning">{pt("production.collectMaterialsFromTheWarehouseAfterIssueConfirmation")}</p>}
       {detail.status === 'completed' && detail.items.some(item => item.available_quantity > 0) && <p className="bom-warning">{pt("production.unusedMaterialsRemainVerifyAndRequestAReturn")}</p>}
       {detail.items.some(item => item.pending_issue_quantity > 0) && detail.status === 'in_progress' && <p className="bom-warning">{pt("production.partialIssueProductionHint")}</p>}
       <p className="bom-hint">{pt("production.issuedBalanceConfirmedIssuesValidRegisteredUsageConfirmed")}</p>
-      {detail.items.map(item => <div className="production-batch" key={item.product_id}><strong>{item.name}</strong><div className="material-balance">
-        <div><small>{pt("production.plannedRequirement")}</small><span>{count(item.planned_quantity)} {item.unit}</span></div>
-        <div><small>{pt("production.requestedQuantity")}</small><span>{count(item.requested_quantity)} {item.unit}</span></div>
-        <div><small>{pt("production.pendingIssue")}</small><span>{count(item.pending_issue_quantity)} {item.unit}</span></div>
-        {item.closed_request_quantity > 0 && <div><small>{pt("production.closedQuantity")}</small><span>{count(item.closed_request_quantity)} {item.unit}</span></div>}
-        <div><small>{pt("production.issued")}</small><span>{count(item.issued_quantity)} {item.unit}</span></div><div><small>{pt("production.used")}</small><span>{count(detail.stage_workflow ? item.direct_consumed_quantity : item.actual_quantity ?? 0)} {item.unit}</span></div>
-        <div><small>{pt("production.returned")}</small><span>{count(item.returned_quantity)} {item.unit}</span></div><div><small>{pt("production.issuedBalance")}</small><span>{count(item.available_quantity)} {item.unit}</span></div>
-        {management && can('finance') && <div><small>{pt("production.remainingMaterialCost")}</small><span>{money(item.available_cost_cents)}</span></div>}
-      </div></div>)}
       <div className="bom-actions">
         {management && detail.status === 'in_progress' && <Button disabled={action.busy || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={() => requestMaterials('out')}>{pt("production.requestSupplement")}</Button>}
         {management && ['in_progress', 'completed'].includes(detail.status) && <Button disabled={action.busy || detail.material_documents?.some(doc => doc.status === 'pending') || !detail.items.some(item => item.available_quantity > 0)} onClick={() => requestMaterials('in')}>{pt("production.requestReturn")}</Button>}
@@ -477,19 +469,24 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         {onNavigate && can('purchase') && <Button disabled={action.busy} onClick={() => onNavigate('purchases', { approval: 'returns', q: detail.number })}>{pt("production.goToReceipts")}</Button>}
       </div>
       {detail.material_documents?.some(doc => doc.status === 'pending') && <p className="bom-hint">{pt("production.aMaterialRequestIsPendingHaveTheWarehouse")}</p>}
-      <MaterialDocumentList documents={detail.material_documents || []} busy={action.busy} onCancel={management && detail.status !== 'void' ? cancelMaterialRequest : undefined} />
+      <ProductionMaterialLedger key={detail.id} order={detail} costs={management && can('finance')} busy={action.busy} />
+      {!detail.completed_at && <p className="bom-hint">{pt("production.stockReadAt2")} {time(detail.captured_at)}。{pt("production.draftsAndPendingIssueRequestsDoNotReserve")}</p>}
+      {detail.status === 'void' && detail.completed_at && <p className="bom-hint">{pt("production.originalCompletionRecordsRetainedAboveThisOrderIs")}</p>}
+      {!!detail.material_documents?.length && <div className="production-ledger-documents"><h3>{pt('production.materialDocumentHistory')}</h3>
+        <MaterialDocumentList documents={detail.material_documents} busy={action.busy} onCancel={management && detail.status !== 'void' ? cancelMaterialRequest : undefined} />
+      </div>}
     </section>}
     {!!detail.stage_workflow && management && can('finance') && <section className="panel bom-section"><h2>{pt("production.materialCostsByLevel")}</h2>
       <div className="material-balance"><div><small>{pt("production.rawMaterialCostInvestedInAllLevels")}</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>{pt("production.remainingSemiFinishedCostInOrder")}</small><span>{money(detail.work_in_progress_cost_cents)}</span></div></div>
       <p className="bom-hint">{pt("production.productCostIncludesOnlyInputsTransferredIntoRoot")}</p>
     </section>}
-    <section className="panel bom-section"><h2>{detail.completed_at ? pt("production.usageRecords") : pt("production.plannedMaterials")}</h2>
+    {!detail.material_workflow && <section className="panel bom-section"><h2>{detail.completed_at ? pt("production.usageRecords") : pt("production.plannedMaterials")}</h2>
       {!!detail.stage_workflow && <p className="bom-hint">{pt("production.actualUsageHereIsGroupedByFinalProduct")}</p>}
       {detail.completed_at && <p className="bom-hint">{pt("production.standardUsageUsesTheSavedNetUsageLoss")}</p>}
       <Materials rows={detail.items} issued={!!detail.material_workflow && ['in_progress', 'completed'].includes(detail.status)} showActual={!!detail.completed_at} costs={management && can('finance')} />
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">{pt("production.originalCompletionRecordsRetainedAboveThisOrderIs")}</p>}
       {!detail.completed_at && <p className="bom-hint">{pt("production.stockReadAt2")} {time(detail.captured_at)}。{detail.material_workflow ? pt("production.draftsAndPendingIssueRequestsDoNotReserve") : pt("production.thisHistoricalOrderVerifiesActualUsageAndDeducts")}</p>}
-    </section>
+    </section>}
       </> },
       { key: 'records', label: pt('production.recordsTab'), children: <>
     <ProductionBatches key={detail.id} order={detail} costs={management && can('finance')} canVoid={management && can('corrections') && !detail.stage_workflow} canReceive={can('purchase')} disabled={action.busy}

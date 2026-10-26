@@ -72,6 +72,13 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child B
     expect(order.stages.find(s => s.path === '1').available_quantity).toBe(12);
     expect(order.items[0].available_quantity).toBe(24);
     expect(order.receipt_documents).toHaveLength(0);
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
+    const ledger = page.getByRole('table', { name: '生产物料台账', exact: true });
+    await expect(ledger.locator('[data-field="used_quantity"]')).toContainText('36');
+    await expect(ledger.locator('[data-field="available_quantity"]')).toContainText('24');
+    await ledger.getByRole('button', { name: '查看详情 分层原料', exact: true }).click();
+    await expect(ledger.getByText('计入最终成品的耗料', { exact: true })).toBeVisible();
+    await expect(ledger.locator('[data-field="final_product_usage"]')).toContainText('0');
     await page.getByRole('button', { name: '登记', exact: true }).click();
     await page.getByRole('button', { name: '登记 分层成品', exact: true }).click();
     await page.getByLabel('本批合格数量', { exact: true }).fill('5');
@@ -197,6 +204,13 @@ test('production-only mobile worker registers stages without costs or management
     const order = await f.get();
     expect(order.completed_quantity).toBe(1);
     expect(JSON.stringify(order)).not.toMatch(/"(?:[^"\s]*cost_cents|stock)"\s*:/);
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
+    const ledger = page.getByRole('table', { name: '生产物料台账', exact: true });
+    await ledger.getByRole('button', { name: '查看详情 分层原料', exact: true }).focus();
+    await ledger.getByRole('button', { name: '查看详情 分层原料', exact: true }).press('Enter');
+    await expect(ledger.getByRole('button', { name: '收起详情 分层原料', exact: true })).toHaveAttribute('aria-expanded', 'true');
+    await expect(ledger.getByText('材料成本', { exact: true })).toHaveCount(0);
+    await expect(ledger.getByText('余料成本', { exact: true })).toHaveCount(0);
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await page.getByRole('button', { name: '查看各层进度与批次', exact: true }).click();
     await page.getByRole('button', { name: '查看批次 分层成品', exact: true }).click();
