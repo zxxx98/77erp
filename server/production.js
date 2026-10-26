@@ -123,7 +123,7 @@ export function migrateProduction(db) {
   migrateProductionStages(db);
 }
 
-export function clearProduction(db) { deleteProductionOperations(db); deleteProductionStages(db); db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { deleteProductionOperations(db); deleteProductionStages(db); db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_issue_items; DELETE FROM production_material_issues; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 // Preserve the legacy SQLite status constraint. A posted, open order is exposed
 // as in_progress; draft without any currently posted output remains draft.
@@ -517,6 +517,8 @@ export function installProduction(app, db) {
     deleteProductionStages(db, order.id);
     db.prepare('DELETE FROM production_receipt_items WHERE document_id IN (SELECT id FROM production_receipts WHERE production_id=?)').run(order.id);
     db.prepare('DELETE FROM production_receipts WHERE production_id=?').run(order.id);
+    db.prepare('DELETE FROM production_material_issue_items WHERE issue_id IN (SELECT i.id FROM production_material_issues i JOIN production_material_documents d ON d.id=i.document_id WHERE d.production_id=?)').run(order.id);
+    db.prepare('DELETE FROM production_material_issues WHERE document_id IN (SELECT id FROM production_material_documents WHERE production_id=?)').run(order.id);
     db.prepare('DELETE FROM production_material_document_items WHERE document_id IN (SELECT id FROM production_material_documents WHERE production_id=?)').run(order.id);
     db.prepare('DELETE FROM production_material_documents WHERE production_id=?').run(order.id);
     for (const table of ['production_batch_scraps', 'production_batch_items'])

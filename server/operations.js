@@ -13,7 +13,7 @@ import { qualityTables, clearQuality, validateQualityBackup } from './quality.js
 import { bomTables, clearBom, validateBomBackup } from './bom.js';
 import { productionTables, productionBatchTables, clearProduction, validateProductionBackup } from './production.js';
 import { validateProductionReceiptBackup } from './production-receipts.js';
-import { validateProductionMaterialBackup } from './production-materials.js';
+import { validateProductionMaterialBackup, migrateMaterialIssueBackup } from './production-materials.js';
 import { productionStageTables, validateProductionStageBackup } from './production-stages.js';
 
 const hash = (value) =>
@@ -435,7 +435,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 39,
+    version: 40,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -444,7 +444,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
@@ -588,6 +588,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     // Backups made before product lifecycle support default to listed products.
     for (const p of data.products || []) if (p && !('active' in p)) p.active = 1;
     if (value.version < 8) for (const p of data.products || []) if (p && !('version' in p)) p.version = 1;
+    if (value.version < 40) migrateMaterialIssueBackup(data);
     for (const table of tables) {
       if (!Array.isArray(data[table]) || data[table].length > 100000)
         fail(`备份中的 ${table} 格式或数量无效。`);

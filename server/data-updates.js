@@ -23,6 +23,8 @@ export function installDataUpdates(app, db) {
     production_orders: row => `'warehouse:' || ${row}.warehouse_id`,
     production_receipts: row => `'warehouse:' || ${row}.warehouse_id`,
     production_receipt_items: row => `'warehouse:' || (SELECT warehouse_id FROM production_receipts WHERE id=${row}.document_id)`,
+    production_material_issues: row => `'warehouse:' || (SELECT warehouse_id FROM production_material_documents WHERE id=${row}.document_id)`,
+    production_material_issue_items: row => `'warehouse:' || (SELECT d.warehouse_id FROM production_material_issues i JOIN production_material_documents d ON d.id=i.document_id WHERE i.id=${row}.issue_id)`,
     production_material_documents: row => `'warehouse:' || ${row}.warehouse_id`,
     production_material_document_items: row => `'warehouse:' || (SELECT warehouse_id FROM production_material_documents WHERE id=${row}.document_id)`,
     production_bom_nodes: row => `'warehouse:' || (SELECT warehouse_id FROM production_orders WHERE id=${row}.production_id)`,

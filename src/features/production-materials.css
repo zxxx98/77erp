@@ -44,3 +44,9 @@
   .production-approval-row { flex-direction: column; align-items: stretch; gap: 12px; }
   .production-approval-row > .btn { align-self: flex-end; min-height: 44px; padding-inline: 12px; }
 }
+
+.material-issue-progress { display: flex; flex-wrap: wrap; gap: 8px 16px; color: #536175; }
+.material-issue-input { display: flex; flex-direction: column; gap: 6px; max-width: 200px; }
+.material-issue-history { margin-top: 20px; }
+.material-issue-history h3 { font-size: 14px; }
+.material-issue-record { border-top: 1px solid #e9ecf1; padding: 12px 0; }

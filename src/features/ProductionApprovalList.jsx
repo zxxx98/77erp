@@ -7,7 +7,7 @@ export function ProductionApprovalList({ documents, busy, onView, statusLabels, 
   useLocale();
   return <ul className="production-approval-list">{documents.map(doc => <li className="production-approval-row" key={doc.id}>
     <div className="production-approval-summary">
-      <div className="production-approval-number"><strong>{doc.number}</strong><Badge tone={doc.status === 'pending' ? 'orange' : doc.status === 'confirmed' ? 'green' : 'gray'}>{statusLabels[doc.status]}</Badge></div>
+      <div className="production-approval-number"><strong>{doc.number}</strong><Badge tone={doc.status === 'pending' ? 'orange' : doc.status === 'confirmed' ? 'green' : 'gray'}>{statusLabels[doc.fulfillment_status || doc.status]}</Badge></div>
       <p>{doc.production_number} · {doc.product_name}</p>
       <small>{receipt ? translate("warehouse.batch.2", { v0: doc.batch_number, v1: count(doc.quantity), v2: doc.unit }) : translate("warehouse.materials.2", { v0: doc.type === 'in' ? translate("warehouse.material.return") : doc.kind === 'supplement' ? translate("warehouse.additional.material.issue") : translate("warehouse.material.issue"), v1: doc.items.length })} · {doc.created_by_name} · {dateTime(doc.created_at)}</small>
     </div>

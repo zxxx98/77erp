@@ -112,14 +112,22 @@ export function installProductHistory(app, db) {
         'material:' || i.id,NULL,d.number,d.type,'production',d.status,d.confirmed_at,'',d.production_number || ' · ' || d.note,d.confirmed_by_name,
         i.quantity,CASE WHEN d.type='out' THEN -i.quantity ELSE i.quantity END,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
       FROM production_material_document_items i JOIN production_material_documents d ON d.id=i.document_id
-      WHERE i.product_id=? AND d.warehouse_id=? AND d.status='confirmed' AND (? OR d.type='out' AND ? OR d.type='in' AND ?)
+      WHERE i.product_id=? AND d.warehouse_id=? AND d.status='confirmed' AND d.type='in' AND (? OR d.type='out' AND ? OR d.type='in' AND ?)
+      UNION ALL
+      SELECT 'production_material_out','material-issue:' || i.id,NULL,s.number,'out','production','confirmed',s.confirmed_at,'',d.production_number || ' · ' || d.note,s.confirmed_by_name,
+        i.quantity,-i.quantity,NULL,NULL,NULL,NULL,NULL,NULL,p.unit
+      FROM production_material_issue_items i JOIN production_material_issues s ON s.id=i.issue_id
+      JOIN production_material_documents d ON d.id=s.document_id
+      JOIN production_material_document_items p ON p.document_id=d.id AND p.product_id=i.product_id
+      WHERE i.product_id=? AND d.warehouse_id=? AND (? OR ?)
     ) ORDER BY created_at DESC,event_id DESC,event DESC LIMIT ? OFFSET ?`)
       .all(product.id, req.warehouse.id, product.id, req.warehouse.id,
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'stocktake')),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'finance')),
         ...Array.from({ length: 12 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(),
         ...Array.from({ length: 2 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production') || hasPermission(req.user, 'purchase'))]).flat(),
-        product.id, req.warehouse.id, Number(hasPermission(req.user, 'production')), Number(hasPermission(req.user, 'sale')), Number(hasPermission(req.user, 'purchase')), limit + 1, offset);
+        product.id, req.warehouse.id, Number(hasPermission(req.user, 'production')), Number(hasPermission(req.user, 'sale')), Number(hasPermission(req.user, 'purchase')),
+        product.id, req.warehouse.id, Number(hasPermission(req.user, 'production')), Number(hasPermission(req.user, 'sale')), limit + 1, offset);
     const records = rows.slice(0, limit).map(row => {
       if (row.event === 'price_change') return row;
       const { before_cost, after_cost, before_price, after_price, ...record } = row;

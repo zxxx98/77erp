@@ -1074,7 +1074,17 @@ test('AI reads awaiting warehouse approval and issued material balances without 
   assert.ok(call.tools.find(tool => tool.function.name === 'search_production_orders').function.parameters.properties.status.enum.includes('awaiting_materials'));
   assert.equal(JSON.parse(call.messages.find(message => message.role === 'tool').content).orders[0].status, 'awaiting_materials');
   assert.match(call.messages.find(message => message.role === 'system').content, /领料.*扣.*库存/);
-  await post(`/production-material-documents/${order.material_documents[0].id}/confirm`, { version: order.material_documents[0].version });
+  const issueRequest = order.material_documents[0];
+  const partlyIssued = await post(`/production-material-documents/${issueRequest.id}/confirm`, { version: issueRequest.version, items: [{ product_id: material.id, quantity: 1 }] });
+  f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
+  const partialRead = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+  assert.equal(partialRead.status, 'in_progress');
+  assert.equal(partialRead.items[0].issued_quantity, 1); assert.equal(partialRead.items[0].pending_issue_quantity, 1);
+  assert.equal(partialRead.material_documents[0].fulfillment_status, 'partial');
+  assert.equal(partialRead.material_documents[0].issues[0].items[0].quantity, 1);
+  assert.equal(/cost_cents|inventory_value|price/.test(JSON.stringify(partialRead)), false);
+  assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /待发数量不能当作生产可用余额/);
+  await post(`/production-material-documents/${issueRequest.id}/confirm`, { version: partlyIssued.version });
   f.use('get_production_order', { production_id: order.id }); await f.chat(f.staff);
   const result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.items[0].issued_quantity, 2); assert.equal(result.items[0].available_quantity, 2);

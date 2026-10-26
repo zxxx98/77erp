@@ -500,7 +500,7 @@ test("backup v7 preserves multi-item history, restore rotates labels and disable
     q = await f.create();
   await f.execute(q, (await f.preview(q)).data);
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 39);
+  assert.equal(backup.version, 40);
   const restore = async (value) => {
     const p = await f.request("/backup/preview", "POST", { backup: value });
     assert.equal(p.status, 200, JSON.stringify(p.data));

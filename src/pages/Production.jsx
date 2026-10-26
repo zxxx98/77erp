@@ -218,15 +218,13 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       setMessage(({ draft: pt("production.productionHasNotStartedAskTheSupervisorTo"), awaiting_materials: pt("production.waitingForWarehouseMaterialConfirmationBeforeRegistration"), completed: pt("production.productionHasEndedRegistrationIsClosed"), void: pt("production.thisOrderIsVoidedRegistrationIsUnavailable") })[order.status] || pt("production.registrationIsUnavailableInTheCurrentStatusCheck"));
     }
   } });
-  const startProduction = () => action.run(async () => {
-    if (!window.confirm(pt("production.startProductionAMaterialIssueRequestWillBe"))) return;
-    await saved(await send(`/production-orders/${detail.id}/start`, { version: detail.version }, { warehouseId: data.warehouse_id }), pt("production.materialRequestCreatedCollectMaterialsFromTheWarehouse"), true);
-  });
+  const startProduction = () => begin({ kind: 'material_request', initial: true, type: 'out', note: '',
+    items: detail.items.map(item => ({ product_id: item.product_id, quantity: String(item.planned_quantity) })) });
   const requestMaterials = type => begin({ kind: 'material_request', type, note: '',
     items: detail.items.map(item => ({ product_id: item.product_id, quantity: type === 'in' ? String(item.available_quantity) : '0' })) });
   const cancelMaterialRequest = (doc, reason) => action.run(async () => {
     await send(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason }, { warehouseId: data.warehouse_id });
-    await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), pt("production.materialRequestCancelledStockUnchanged"), true);
+    await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"), true);
   });
   const finishOrder = () => action.run(async () => {
     if (!window.confirm(pt("production.endThisProductionOrderPendingBatchesStillRequire"))) return;
@@ -284,20 +282,21 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   </div>;
 
   if (editor?.kind === 'material_request') {
-    const returning = editor.type === 'in', label = returning ? pt("production.returnMaterials") : pt("production.supplementMaterials");
+    const returning = editor.type === 'in', label = returning ? pt("production.returnMaterials") : editor.initial ? pt("production.issueMaterials") : pt("production.supplementMaterials");
     const submitRequest = event => {
       event.preventDefault();
       action.run(async () => {
         const items = editor.items.map(row => ({ product_id: row.product_id,
           quantity: materialQuantity(parseQuantity(row.quantity), detail.items.find(item => item.product_id === row.product_id)) })).filter(row => row.quantity > 0);
         if (!items.length) throw new Error(pt("production.enterAQuantityForAtLeastOneMaterial", { v0: label }));
-        await saved(await send(`/production-orders/${detail.id}/material-requests`, { version: detail.version, type: editor.type, items, note: editor.note }, { warehouseId: data.warehouse_id }), pt("production.requestSubmittedAwaitingWarehouseConfirmation", { v0: label, v1: returning ? pt("production.receipt2") : pt("production.issue") }), true);
+        await saved(await send(`/production-orders/${detail.id}/${editor.initial ? 'start' : 'material-requests'}`, { version: detail.version, type: editor.type, items, note: editor.note }, { warehouseId: data.warehouse_id }), pt("production.requestSubmittedAwaitingWarehouseConfirmation", { v0: label, v1: returning ? pt("production.receipt2") : pt("production.issue") }), true);
       });
     };
     return <div className="bom-page production-page">{heading(pt("production.request", { v0: label }), `${detail.number} · ${detail.product_name}`, pt("production.backToOrderDetails"))}
       <form onSubmit={submitRequest}><section className="panel bom-section"><h2>{label}{pt("production.material")}</h2>
-        <p className="bom-hint">{returning ? pt("production.enterUnusedMaterialsToReturnStockIncreasesOnly") : pt("production.enterExtraMaterialsNeededTheOrderSAvailable")}{pt("production.enter0ForMaterialsNotRequested")}</p>
+        <p className="bom-hint">{returning ? pt("production.enterUnusedMaterialsToReturnStockIncreasesOnly") : editor.initial ? pt("production.initialPartialRequestHint") : pt("production.enterExtraMaterialsNeededTheOrderSAvailable")}{pt("production.enter0ForMaterialsNotRequested")}</p>
         {detail.items.map(item => <div className="production-material" key={item.product_id}><div className="production-material-name"><strong>{item.name}</strong><small>{item.barcode}</small></div>
+          <div><small>{pt("production.plannedRequirement")}</small><span>{count(item.planned_quantity)} {item.unit}</span></div>
           <div><small>{pt("production.issuedBalance")}</small><span>{count(item.available_quantity)} {item.unit}</span></div>
           <label>{label}{pt("production.quantity")}{item.unit}）<AntInput aria-label={pt("production.quantity2", { v0: item.name, v1: label })} inputMode="decimal" value={editor.items.find(row => row.product_id === item.product_id).quantity} disabled={action.busy}
             onChange={event => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: event.target.value } : row) })} /></label>
@@ -425,8 +424,13 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     {detail.material_workflow === 1 && <section className="panel bom-section" aria-label={pt("production.productionMaterialIssuesAndReturns")}><h2>{pt("production.issuesAndReturns")}</h2>
       {detail.status === 'awaiting_materials' && <p className="bom-warning">{pt("production.collectMaterialsFromTheWarehouseAfterIssueConfirmation")}</p>}
       {detail.status === 'completed' && detail.items.some(item => item.available_quantity > 0) && <p className="bom-warning">{pt("production.unusedMaterialsRemainVerifyAndRequestAReturn")}</p>}
+      {detail.items.some(item => item.pending_issue_quantity > 0) && detail.status === 'in_progress' && <p className="bom-warning">{pt("production.partialIssueProductionHint")}</p>}
       <p className="bom-hint">{pt("production.issuedBalanceConfirmedIssuesValidRegisteredUsageConfirmed")}</p>
       {detail.items.map(item => <div className="production-batch" key={item.product_id}><strong>{item.name}</strong><div className="material-balance">
+        <div><small>{pt("production.plannedRequirement")}</small><span>{count(item.planned_quantity)} {item.unit}</span></div>
+        <div><small>{pt("production.requestedQuantity")}</small><span>{count(item.requested_quantity)} {item.unit}</span></div>
+        <div><small>{pt("production.pendingIssue")}</small><span>{count(item.pending_issue_quantity)} {item.unit}</span></div>
+        {item.closed_request_quantity > 0 && <div><small>{pt("production.closedQuantity")}</small><span>{count(item.closed_request_quantity)} {item.unit}</span></div>}
         <div><small>{pt("production.issued")}</small><span>{count(item.issued_quantity)} {item.unit}</span></div><div><small>{pt("production.used")}</small><span>{count(detail.stage_workflow ? item.direct_consumed_quantity : item.actual_quantity ?? 0)} {item.unit}</span></div>
         <div><small>{pt("production.returned")}</small><span>{count(item.returned_quantity)} {item.unit}</span></div><div><small>{pt("production.issuedBalance")}</small><span>{count(item.available_quantity)} {item.unit}</span></div>
         {management && can('finance') && <div><small>{pt("production.remainingMaterialCost")}</small><span>{money(item.available_cost_cents)}</span></div>}
