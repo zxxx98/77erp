@@ -34,9 +34,10 @@ export function validateProcessGraph(graph) {
 export function arrangeProcessGraph(graph) {
   const { order, incoming } = validateProcessGraph(graph), depth = new Map(), rows = new Map();
   for (const id of order) depth.set(id, Math.max(-1, ...incoming.get(id).map(parent => depth.get(parent))) + 1);
+  const maxDepth = Math.max(1, ...depth.values()), columnGap = Math.min(240, Math.floor((10000 - 24) / maxDepth));
   return { ...graph, nodes: graph.nodes.map(node => {
     const column = depth.get(node.id), row = rows.get(column) || 0; rows.set(column, row + 1);
-    return { ...node, x: 24 + column * 200, y: 24 + row * 120 };
+    return { ...node, x: 24 + column * columnGap, y: 24 + row * 140 };
   }) };
 }
 

@@ -332,6 +332,73 @@
   box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.03);
 }
 .process-canvas { position: relative; }
+.process-canvas.is-editable { user-select: none; -webkit-touch-callout: none; }
+.process-node-handle {
+  position: absolute;
+  z-index: 3;
+  width: min(28px, var(--process-handle-width, 44px));
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  cursor: crosshair;
+}
+.process-node-handle::after {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  width: 12px;
+  height: 12px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--accent, #2563eb);
+  border-radius: 50%;
+  background: var(--surface, #fff);
+}
+.process-node-handle:hover::after, .process-node-handle:active::after { background: var(--accent, #2563eb); }
+.process-node-handle:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 1px; }
+.process-node-handle:disabled { cursor: not-allowed; }
+.process-node-handle:disabled::after { border-color: var(--muted, #647084); background: var(--border, #e9ecf1); }
+.process-edge-hit { pointer-events: stroke; cursor: context-menu; }
+.process-edge:has(.process-edge-hit):hover .process-edge-line { stroke: var(--accent, #2563eb); stroke-width: 3; }
+.process-graph-menu {
+  position: fixed;
+  z-index: 2100;
+  min-width: 168px;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: var(--text, #17243c);
+  box-shadow: 0 6px 24px rgba(15, 23, 42, .18);
+}
+.process-graph-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.process-graph-menu button:hover, .process-graph-menu button:focus-visible { background: var(--accent-light, #eff5ff); outline: 2px solid var(--accent, #2563eb); outline-offset: -2px; }
+.process-graph-menu button:disabled { color: var(--muted, #647084); cursor: not-allowed; }
+.process-graph-menu p { margin: 6px 12px; font-size: 12px; }
+@media (pointer: coarse) {
+  .process-node-handle { width: min(44px, var(--process-handle-width, 44px)); height: 44px; }
+  .process-edge-hit { stroke-width: 28px; }
+}
 .process-edges {
   position: absolute;
   inset: 0;
@@ -429,6 +496,12 @@
   font-weight: 600;
   line-height: 1.35;
   color: #17243c;
+}
+.is-editable .process-node strong {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .process-node span {
   color: var(--muted, #647084);

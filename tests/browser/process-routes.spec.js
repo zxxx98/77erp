@@ -45,6 +45,153 @@ for(const device of ['desktop','iPhone 13']) test(`${device} creates and edits a
   }finally{await f.close();await context.close();}
 });
 
+for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} edits route with handles and canvas or edge menus`, async ({ browser }) => {
+  const touch = mode !== 'desktop';
+  const context = await browser.newContext({ locale: 'zh-CN', ...(touch ? devices[mode === 'pwa' ? 'iPhone 13' : mode] : { viewport: { width: 1440, height: 1000 } }), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const gesture = async (start, end, hold = false) => {
+    if (touch) {
+      const session = await context.newCDPSession(page);
+      await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: start.x, y: start.y }] });
+      if (hold) await page.waitForTimeout(650);
+      else for (let i = 1; i <= 6; i++) await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: start.x + (end.x - start.x) * i / 6, y: start.y + (end.y - start.y) * i / 6 }] });
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await session.detach();
+    } else if (hold) await page.mouse.click(start.x, start.y, { button: 'right' });
+    else { await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(end.x, end.y, { steps: 6 }); await page.mouse.up(); }
+  };
+  const canvasPoint = async (x, y) => {
+    const region = page.getByRole('region', { name: '流程图', exact: true });
+    await region.evaluate(el => { el.scrollLeft = 0; el.scrollTop = 0; el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -200); });
+    const box = await region.boundingBox();
+    return { x: box.x + Math.min(x, box.width - 30), y: box.y + y };
+  };
+  const handleDrag = async (label, x, y) => {
+    const end = await canvasPoint(x, y), handle = page.getByRole('button', { name: label, exact: true });
+    await expect(handle).toBeVisible();
+    const box = await handle.boundingBox();
+    await gesture({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, end);
+  };
+  try {
+    await page.goto(`${f.base}/#process-routes`);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '新建路线', exact: true }).click();
+    await page.getByLabel('路线名称', { exact: true }).fill('手势路线');
+    await page.getByLabel('工序名称', { exact: true }).fill('A');
+    await page.getByRole('button', { name: '流程图', exact: true }).click();
+    await handleDrag('从 A 拖出后续工序', 300, 180);
+    await expect(page.locator('.process-node')).toHaveCount(2);
+    await page.getByLabel('工序名称', { exact: true }).fill('B');
+    await handleDrag('从 A 拖出前置工序', 45, 280);
+    await expect(page.locator('.process-node')).toHaveCount(3);
+    await page.getByLabel('工序名称', { exact: true }).fill('P');
+    await canvasPoint(40, 40);
+    const edgePoint = await page.locator('.process-edge-hit').first().evaluate(el => { const p = el.getPointAtLength(el.getTotalLength() / 2), r = el.ownerSVGElement.getBoundingClientRect(); return { x: r.x + p.x, y: r.y + p.y }; });
+    await gesture(edgePoint, edgePoint, true);
+    await expect(page.getByRole('menuitem', { name: '插入工序', exact: true })).toBeVisible();
+    await page.getByRole('menuitem', { name: '插入工序', exact: true }).click();
+    await expect(page.locator('.process-node')).toHaveCount(4);
+    await page.getByLabel('工序名称', { exact: true }).fill('C');
+    await canvasPoint(110, 180);
+    const blank = await page.locator('.process-canvas').evaluate(el => {
+      const r = el.getBoundingClientRect(), viewport = el.parentElement.getBoundingClientRect();
+      for (let y = Math.max(r.top + 130, 210); y < Math.min(viewport.bottom - 20, innerHeight - 100); y += 35) {
+        for (let x = Math.max(r.left + 40, viewport.left + 25); x < viewport.right - 25; x += 35) {
+          if (document.elementFromPoint(x, y) === el) return { x, y };
+        }
+      }
+      throw new Error('No visible empty canvas point');
+    });
+    await gesture(blank, blank, true);
+    await expect(page.getByRole('menuitem', { name: '新建工序', exact: true })).toBeVisible();
+    await page.getByRole('menuitem', { name: '新建工序', exact: true }).click();
+    await expect(page.locator('.process-node')).toHaveCount(5);
+    await page.getByLabel('工序名称', { exact: true }).fill('D');
+    await page.locator('.process-node').filter({ has: page.getByText('B', { exact: true }) }).click();
+    await page.getByRole('checkbox', { name: 'D', exact: true }).check();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: test.info().outputPath('graph-gestures.png'), fullPage: true });
+    await page.getByRole('button', { name: '保存路线', exact: true }).click();
+    await expect(page.getByText('工艺路线已保存', { exact: true })).toBeVisible();
+    const saved = JSON.parse(f.db.prepare("SELECT graph FROM process_routes WHERE name='手势路线'").get().graph);
+    const names = new Map(saved.nodes.map(n => [n.id, n.name]));
+    expect(saved.edges.map(e => `${names.get(e.from)}>${names.get(e.to)}`).sort()).toEqual(['A>C', 'C>B', 'D>B', 'P>A']);
+    expect(saved.nodes.find(n => n.name === 'A')).toMatchObject({ x: 24, y: 24 });
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context.close(); }
+});
+
+for (const touch of [false, true]) test(`${touch ? 'touch' : 'desktop'} compact legacy route keeps both handles and edge reachable`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(touch ? devices['Pixel 7'] : {}) });
+  const page = await context.newPage(), f = await fixture(page);
+  try {
+    const compact = { ...graph, nodes: graph.nodes.map((n, i) => ({ ...n, x: 24 + i * 200 })) };
+    f.db.prepare('UPDATE process_routes SET graph=? WHERE id=?').run(JSON.stringify(compact), f.route.id);
+    await page.goto(`${f.base}/#process-routes`);
+    await page.getByRole('button', { name: '编辑路线', exact: true }).click();
+    await page.getByRole('button', { name: '流程图', exact: true }).click();
+    await page.locator('.process-canvas-scroll').evaluate(el => { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -200); });
+    const hit = await page.locator('.process-edge-hit').evaluate(el => { const p = el.getPointAtLength(el.getTotalLength() / 2), r = el.ownerSVGElement.getBoundingClientRect(); return document.elementFromPoint(r.x + p.x, r.y + p.y)?.classList.contains('process-edge-hit'); });
+    expect(hit).toBe(true);
+    const handle = page.getByRole('button', { name: '从 下料 拖出后续工序', exact: true });
+    expect(await handle.evaluate(el => { const r = el.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el; })).toBe(true);
+  } finally { await f.close(); await context.close(); }
+});
+
+test('long operation labels do not overlap newly created nodes', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN' }), page = await context.newPage(), f = await fixture(page);
+  try {
+    await page.goto(`${f.base}/#process-routes`);
+    await page.getByRole('button', { name: '新建路线', exact: true }).click();
+    await page.getByLabel('工序名称', { exact: true }).fill('很长的工序名称'.repeat(10));
+    await page.getByLabel('作业说明', { exact: true }).fill('作业说明'.repeat(50));
+    await page.locator('.process-node-handle').first().press('Enter');
+    const bounds = await page.locator('.process-node').evaluateAll(nodes => nodes.map(n => { const r = n.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }));
+    expect(bounds[1].top).toBeGreaterThanOrEqual(bounds[0].bottom);
+  } finally { await f.close(); await context.close(); }
+});
+
+test('graph gestures cancel cleanly and use scrolled canvas coordinates', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN' }), page = await context.newPage(), f = await fixture(page);
+  try {
+    await page.goto(`${f.base}/#process-routes`);
+    await page.getByRole('button', { name: '新建路线', exact: true }).click();
+    await page.getByLabel('工序名称', { exact: true }).fill('A');
+    const handle = page.getByRole('button', { name: '从 A 拖出后续工序', exact: true });
+    await handle.click();
+    await expect(page.locator('.process-node')).toHaveCount(1);
+    for (const cancel of ['Escape', 'pointercancel', 'outside', 'node']) {
+      await handle.scrollIntoViewIfNeeded();
+      const box = await handle.boundingBox(), end = { x: box.x + 100, y: box.y + 100 };
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down(); await page.mouse.move(end.x, end.y, { steps: 3 });
+      await expect(page.locator('.process-edge-preview')).toBeVisible();
+      if (cancel === 'Escape') await page.keyboard.press('Escape');
+      if (cancel === 'pointercancel') await handle.dispatchEvent('pointercancel', { pointerId: 1 });
+      if (cancel === 'outside') await page.mouse.move(5, 5);
+      if (cancel === 'node') await page.mouse.move(box.x - 80, box.y);
+      await page.mouse.up();
+      await expect(page.locator('.process-edge-preview')).toHaveCount(0);
+      await expect(page.locator('.process-node')).toHaveCount(1);
+    }
+    for (let i = 0; i < 4; i++) await page.locator('.process-node-handle').last().press('Enter');
+    await expect(page.locator('.process-node')).toHaveCount(5);
+    const region = page.locator('.process-canvas-scroll');
+    await region.evaluate(el => { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -200); el.scrollLeft = 200; });
+    const box = await region.boundingBox(), point = { x: box.x + 120, y: box.y + 260 };
+    const expected = await page.locator('.process-canvas').evaluate((el, p) => { const r = el.getBoundingClientRect(); return { x: Math.round(p.x - r.x - 92), y: Math.round(p.y - r.y - 41) }; }, point);
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await expect(page.getByRole('menuitem', { name: '新建工序', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await page.mouse.click(point.x, point.y, { button: 'right' });
+    await page.getByRole('menuitem', { name: '新建工序', exact: true }).press('Enter');
+    await expect(page.locator('.process-node')).toHaveCount(6);
+    expect(await page.locator('.process-node').last().evaluate(el => ({ x: parseFloat(el.style.left), y: parseFloat(el.style.top) }))).toEqual(expected);
+  } finally { await f.close(); await context.close(); }
+});
+
 for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} confirms route deletion, rejects references and stale versions, and returns from an empty last page`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage(), f = await fixture(page), errors = [];
@@ -94,6 +241,10 @@ for(const mode of ['desktop','mobile','pwa']) test(`${mode} scans to operations 
   try{
     await page.goto(f.link);if(mode==='pwa')await page.evaluate(()=>navigator.serviceWorker.ready);
     await expect(page.getByRole('heading',{name:'工序进度与登记',exact:true})).toBeVisible();
+    await page.getByRole('button', { name: '流程图', exact: true }).click();
+    await expect(page.locator('.process-node-handle')).toHaveCount(0);
+    await expect(page.locator('.process-edge-hit')).toHaveCount(0);
+    await page.getByRole('button', { name: '工序列表', exact: true }).click();
     await expect(page.getByRole('button',{name:'登记产出与耗料 检验',exact:true})).toBeDisabled();
     await page.getByRole('button',{name:'登记工序 下料',exact:true}).click();await page.getByLabel('本批完成数量',{exact:true}).fill('4');
     page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'登记工序',exact:true}).click();await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();

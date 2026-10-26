@@ -11,6 +11,7 @@ import { useLocale } from '../i18n/react.jsx';
 import { mobileDevice } from '../device.js';
 import { validateProcessGraph, arrangeProcessGraph } from '../../shared/process-routes.js';
 import { ProcessGraph, ProcessFlowStrip, orderProcessNodes } from '../features/ProcessGraph.jsx';
+import { addProcessNode } from '../features/process-graph-editing.js';
 import './bom.css';
 
 export function ProcessRoutes({ data }) {
@@ -100,6 +101,15 @@ export function ProcessRoutes({ data }) {
   </div>;
   const graph = editor.graph, orderedNodes = orderProcessNodes(graph), node = orderedNodes.find(n => n.id === selected) || graph.nodes.find(n => n.id === selected);
   const patchNode = changes => update({ graph: { ...graph, nodes: graph.nodes.map(n => n.id === selected ? { ...n, ...changes } : n) } });
+  const createNode = ({ x, y, ...connection }) => {
+    if (action.busy) return;
+    try {
+      const next = { id: crypto.randomUUID(), name: t('route.newNode'), note: '', x, y };
+      const updated = addProcessNode(graph, next, connection);
+      if (updated === graph) return;
+      update({ graph: updated }); setSelected(next.id); setConnecting(null);
+    } catch (error) { action.setError(t(error.message)); }
+  };
   return <div className="bom-page process-page"><PageHeading title={t(editor.id ? 'route.edit' : 'route.new')} description={t('route.snapshotHint')}><Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{t('route.back')}</Button></PageHeading>
     <section className="panel bom-section process-route-fields">
       <div className="process-route-fields-grid">
@@ -118,7 +128,7 @@ export function ProcessRoutes({ data }) {
           <Button aria-pressed={view === 'list'} onClick={() => setView('list')}>{t('route.list')}</Button>
         </div>
         <div className="bom-actions process-editor-tools">
-          <Button icon={Plus} disabled={action.busy || graph.nodes.length >= 50} onClick={() => { const next = { id: crypto.randomUUID(), name: t('route.newNode'), note: '', x: 24, y: Math.min(9900, graph.nodes.length * 110 + 24) }; update({ graph: { ...graph, nodes: [...graph.nodes, next] } }); setSelected(next.id); }}>{t('route.add')}</Button>
+          <Button icon={Plus} disabled={action.busy || graph.nodes.length >= 50} onClick={() => createNode({ x: 24, y: Math.min(9900, graph.nodes.length * 110 + 24) })}>{t('route.add')}</Button>
           <Button icon={Sparkles} disabled={action.busy} onClick={() => action.run(async () => update({ graph: arrangeProcessGraph(graph) }))}>{t('route.auto')}</Button>
           {view === 'graph' && <Button icon={Link2} disabled={action.busy} aria-pressed={connecting !== null} onClick={() => setConnecting(connecting === null ? '' : null)}>{t('route.connect')}</Button>}
         </div>
@@ -129,7 +139,7 @@ export function ProcessRoutes({ data }) {
       </div>
       <div className="process-editor-layout">
         <div className="process-editor-stage">
-          {view === 'graph' ? <ProcessGraph graph={graph} selected={selected} connectingSource={connecting || null} onSelect={select} onChange={next => update({ graph: next })} disabled={action.busy} /> : <div className="process-step-list">{orderedNodes.map(n => <article className={`process-operation process-step-card${selected === n.id ? ' selected' : ''}`} key={n.id} onClick={() => !action.busy && setSelected(n.id)}>
+          {view === 'graph' ? <ProcessGraph graph={graph} selected={selected} connectingSource={connecting || null} onSelect={select} onChange={next => update({ graph: next })} onCreate={createNode} disabled={action.busy} /> : <div className="process-step-list">{orderedNodes.map(n => <article className={`process-operation process-step-card${selected === n.id ? ' selected' : ''}`} key={n.id} onClick={() => !action.busy && setSelected(n.id)}>
             <div className="process-step-card-head">
               <div className="process-step-card-title">
                 <span className="process-step-badge">#{n.step}</span>
