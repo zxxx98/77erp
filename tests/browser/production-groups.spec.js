@@ -60,7 +60,7 @@ for (const accessMode of ['standard', 'production_only']) for (const {width, pwa
     f.db.prepare('UPDATE users SET production_group_id=?,permissions_version=permissions_version+1 WHERE id=?').run(f.second.id, f.worker.id);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('暂无派给本组的生产单。', { exact: true })).toBeVisible();
+    await expect(page.getByText('暂无派给本组或本人的生产单。', { exact: true })).toBeVisible();
     expect(businessRequests).toEqual([]); expect(errors).toEqual([]);
     await page.getByRole('button', { name: '修改密码', exact: true }).click();
     await expect(page.getByRole('heading', { name: '修改密码', exact: true })).toBeVisible();
@@ -106,13 +106,14 @@ test('admin configures groups, strict positions, optional employee membership an
     await choose(page, row.getByRole('combobox', { name: 'newworker的生产小组', exact: true }), '新装配组');
     await expect(row).toContainText('新装配组');
     await page.getByRole('button', { name: '关闭弹窗', exact: true }).first().click();
-    // A fresh draft permits dispatch while started orders do not.
+    // Drafts support multiple assignment targets.
     const prep = await (await page.request.post(f.base + '/api/production-orders/prepare', { data: { bom_id: f.order.bom_id, bom_version: f.order.bom_version, schema_version: 2, planned_quantity: 2 } })).json();
     const draftResponse = await page.request.post(f.base + '/api/production-orders', { data: { request_id: randomUUID(), bom_id: f.order.bom_id, bom_version: prep.version, schema_version: 2, planned_quantity: 2, structure_token: prep.structure_token, note: '' } });
     expect(draftResponse.ok()).toBe(true); const draft = await draftResponse.json();
     await page.goto(f.base + '/#production');
     await page.getByRole('button', { name: `查看生产单 ${draft.number}`, exact: true }).click();
-    await choose(page, page.getByRole('combobox', { name: '派工生产小组', exact: true }), '新装配组');
+    await page.getByText('生产指派', { exact: true }).click();
+    await page.getByRole('checkbox', { name: '新装配组', exact: true }).check();
     await page.getByRole('button', { name: '派工', exact: true }).click();
     await expect(page.getByText('生产小组：新装配组', { exact: true })).toBeVisible();
   } finally { await f.close(); }
@@ -143,4 +144,49 @@ for (const width of [1440, 390]) test(`basic page grants and revocations switch 
     await expect(page.getByRole('heading', { name: '物料管理', exact: true })).toBeVisible();
     expect((await page.request.get(f.base + '/api/products')).status()).toBe(200);
   } finally { await f.close(); }
+});
+
+
+for (const {width, pwa} of [{width:1440}, {width:390}, {width:390,pwa:true}]) test.describe(`multiple production assignments ${width}${pwa ? ' PWA' : ''}`, () => {
+  test.use({ serviceWorkers: pwa ? 'allow' : 'block' });
+  test('management appends groups and an ungrouped person after production has started', async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    if (width < 640) await page.addInitScript(() => Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' }));
+    const f = await fixture(page);
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    try {
+      await page.request.post(f.base + '/api/auth/logout');
+      await page.request.post(f.base + '/api/auth/login', { data: { username: 'owner', password: 'Strong-password-123' } });
+      const post = async (path, data) => {
+        const response = await page.request.post(f.base + '/api' + path, { data: { request_id: randomUUID(), ...data } });
+        expect(response.ok(), await response.text()).toBe(true); return response.json();
+      };
+      const position = await post('/positions', { name: '个人生产登记', access_mode: 'production_only', permissions: ['production_register'] });
+      const individual = await post('/users', { username: 'individual', name: '个人工人', password: 'Worker-password-123', role: 'employee', position_id: position.id });
+      await page.goto(f.base + '/#production');
+      if (pwa) await page.evaluate(() => navigator.serviceWorker.ready);
+      await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
+      await page.getByText('生产指派', { exact: true }).click();
+      await expect(page.getByText('生产已开始，可追加多个生产组或个人，已有指派将保留。', { exact: true })).toBeVisible();
+      await expect(page.getByRole('checkbox', { name: '装配一组', exact: true })).toBeChecked();
+      await expect(page.getByRole('checkbox', { name: '装配一组', exact: true })).toBeDisabled();
+      await page.getByRole('checkbox', { name: '装配二组', exact: true }).check();
+      await page.getByRole('checkbox', { name: '个人工人', exact: true }).check();
+      await page.getByRole('button', { name: '派工', exact: true }).click();
+      await expect(page.getByText('生产小组：装配一组、装配二组', { exact: true })).toBeVisible();
+      await expect(page.getByText('指派人员：个人工人', { exact: true })).toBeVisible();
+      const order = await (await page.request.get(f.base + `/api/production-orders/${f.order.id}`)).json();
+      expect(order.assigned_users.map(user => user.id)).toEqual([individual.id]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.request.post(f.base + '/api/auth/logout');
+      await page.request.post(f.base + '/api/auth/login', { data: { username: 'individual', password: 'Worker-password-123' } });
+      await page.goto(f.base + '/#production');
+      await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
+      await expect(page.getByText('指派人员：个人工人', { exact: true })).toBeVisible();
+      await expect(page.getByText('生产指派', { exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: '登记', exact: true }).click();
+      await expect(page.getByLabel('合格成品数量', { exact: true })).toBeVisible();
+      expect(errors).toEqual([]);
+    } finally { await f.close(); }
+  });
 });

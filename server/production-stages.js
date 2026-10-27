@@ -1,3 +1,4 @@
+import { productionRegistrationGroup } from './production-access.js';
 import { recordOperationOutput, voidOperationOutput } from './process-routes.js';
 import { deriveProductionStages, stageDisplayStandardQuantity } from '../shared/production-stages.js';
 import { addQuantity, materialQuantity, validQuantity, validStoredQuantity, quantityUnits, QUANTITY_SCALE } from '../shared/quantity.js';
@@ -159,8 +160,9 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     const q=materialQuantity(req.body.completed_quantity,s),ledger=stageLedger(db,o.id),count=ledger.batches.filter(b=>b.path===s.path).length;
     if(count>=1000||ledger.batches.length>=10000)fail('层级批次达到上限（每层 1000 批、整单 10000 批，含作废），请拆分生产单。');
     if(!validStoredQuantity(addQuantity(s.completed_quantity,q),true))fail('累计产量超出范围。');
+    const registrationGroup=productionRegistrationGroup(req.user,o);
     const at=new Date().toISOString(),owner=actor(req),components=new Map(),pool=new Map(o.items.map(i=>[i.product_id,{quantity:i.available_quantity,cost_cents:i.available_cost_cents}]));
-    const id=Number(db.prepare(`INSERT INTO production_stage_batches(production_id,stage_id,path,batch_number,completed_quantity,total_cost_cents,note,created_by,created_by_name,production_group_id,production_group_name,created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`).run(o.id,s.id,s.path,count+1,q,(req.body.note||'').trim(),req.user.id,owner,o.production_group_id,o.production_group_name,at).lastInsertRowid);
+    const id=Number(db.prepare(`INSERT INTO production_stage_batches(production_id,stage_id,path,batch_number,completed_quantity,total_cost_cents,note,created_by,created_by_name,production_group_id,production_group_name,created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`).run(o.id,s.id,s.path,count+1,q,(req.body.note||'').trim(),req.user.id,owner,registrationGroup.id,registrationGroup.name,at).lastInsertRowid);
     const merge=c=>{const prev=components.get(c.product_id)||{product_id:c.product_id,quantity:0,cost_cents:0};prev.quantity=addQuantity(prev.quantity,c.quantity);prev.cost_cents+=c.cost_cents;if(!validStoredQuantity(prev.quantity)||!Number.isSafeInteger(prev.cost_cents))fail('原料组成累计超出范围。');components.set(c.product_id,prev);};
     let total=0;
     for(const a of actuals){
@@ -179,7 +181,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     db.prepare('UPDATE production_stage_batches SET total_cost_cents=? WHERE id=?').run(total,id);
     if(s.path===''){
       validateScrapActuals(req.body.scraps??[],o.scraps);const number=(o.batches.at(-1)?.batch_number??0)+1;
-      const rootId=Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required,created_by,production_group_id,production_group_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)`).run(o.id,number,q,total,(req.body.note||'').trim(),owner,at,req.user.id,o.production_group_id,o.production_group_name).lastInsertRowid);
+      const rootId=Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required,created_by,production_group_id,production_group_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)`).run(o.id,number,q,total,(req.body.note||'').trim(),owner,at,req.user.id,registrationGroup.id,registrationGroup.name).lastInsertRowid);
       for(const item of o.items){const c=components.get(item.product_id)||{quantity:0,cost_cents:0};db.prepare('INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?)').run(rootId,item.product_id,c.quantity,c.cost_cents,actuals.filter(a=>a.product_id===item.product_id&&a.usage_mode==='stock').map(a=>a.variance_reason).filter(Boolean).join('；'));}
       for(const rule of o.scraps){const actual=req.body.scraps.find(a=>a.product_id===rule.product_id),quantity=materialQuantity(actual.quantity,rule);db.prepare('INSERT INTO production_batch_scraps(batch_id,product_id,expected_quantity,actual_quantity,disposition) VALUES (?,?,?,?,?)').run(rootId,rule.product_id,scrapExpectedQuantity(rule,q,o.base_quantity,actuals.filter(a=>a.usage_mode==='stock').map(a=>({product_id:a.product_id,quantity:a.quantity})),o.quantity_decimals),quantity,actual.disposition);}
       db.prepare('UPDATE production_stage_batches SET root_batch_id=? WHERE id=?').run(rootId,id);createProductionReceipt(db,req,o,rootId);updateBatchTotals(db,o,'draft',owner,at);

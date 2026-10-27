@@ -11,7 +11,7 @@ export const permissionOptions = [
   { key: 'quality', label: '品质管理', description: '桌面验收模板配置、验收单解析与物料绑定、品质图表及原始 Excel 下载' },
   { key: 'bom', label: 'BOM', description: 'BOM 与工艺路线的维护、启停、备料测算、废料产出规则及导出' },
   { key: 'production', label: '生产管理', description: '查看全部生产单、派单、生产草稿、领料补料退料申请、分批登记及结束生产' },
-  { key: 'production_register', label: '本组生产登记', description: '仅查看所属生产组的生产单并登记产量和耗料；未分组时没有可见生产单' },
+  { key: 'production_register', label: '本组生产登记', description: '仅查看派给所属生产组或本人的生产单，并登记产量和耗料' },
   { key: 'finance', label: '财务管理', description: '收付款、欠款、库存成本及毛利报表' },
   { key: 'data_io', label: '数据导入导出', description: '物料批量导入及单据 CSV 导出' },
 ];

@@ -1,3 +1,5 @@
+import { ProductionAssignments } from '../features/ProductionAssignments.jsx';
+import { productionAssignments, productionAssignmentNames } from '../../shared/production-assignment.js';
 import { ProductionOperations, OperationWorkerSelect } from '../features/ProductionOperations.jsx';
 import { ProductionProcessOverview } from '../features/ProcessOverview.jsx';
 import { ProcessFlowStrip } from '../features/ProcessGraph.jsx';
@@ -126,10 +128,8 @@ function ProductionBatches({ order, costs, canVoid, canReceive, disabled, onVoid
 export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWarehouse }) {
   const { locale } = useLocale();
   const [outputLanguage, setOutputLanguage] = useState(null);
-  const { can, user } = usePermissions();
+  const { can } = usePermissions();
   const management = can('production');
-  const [groups, setGroups] = useState([]), [assignment, setAssignment] = useState('');
-  useEffect(() => { if (management) api('/production-groups').then(setGroups).catch(() => {}); }, [management]);
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState(null), [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [message, setMessage] = useState('');
   const [stageActivity, setStageActivity] = useState(null);
@@ -181,7 +181,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const open = id => action.run(async () => {
     const order = await api(`/production-orders/${id}`, { warehouseId: data.warehouse_id });
     if (detail?.id !== order.id) setDetailTab('overview');
-    setDetail(order); setAssignment(order.production_group_id ?? ''); setEditor(null); setMessage('');
+    setDetail(order); setEditor(null); setMessage('');
   });
   const saved = async (order, text, stockChanged = false) => {
     if (detail?.id !== order.id) setDetailTab('overview');
@@ -215,7 +215,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   });
   const registration = useProductionRegistration({ data, onSwitchWarehouse, navigationState: stageActivity || editor, navigationBusy: action.busy || !!stageActivity?.busy, onError: action.setError, onOrder: order => {
     if (detail?.id !== order.id) setDetailTab('overview');
-    setDetail(order); setAssignment(order.production_group_id ?? ''); setEditor(null); setMessage(''); action.setError('');
+    setDetail(order); setEditor(null); setMessage(''); action.setError('');
     if (order.status === 'in_progress' || !order.material_workflow && order.status === 'draft') {
       if (order.stage_workflow) { begin({ kind: 'stages' }); return; }
       if (order.operation_routes?.length) { begin({ kind: 'operations' }); return; }
@@ -420,8 +420,10 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       </section>
       {detail.status === 'completed' && detail.pending_receipt_quantity > 0 && <p className="bom-warning">{pt("production.productionEndedAwaitingWarehouseReceiptAcceptedProductsAnd")}</p>}
       {detail.status === 'void' && <p className="bom-hint">{pt("production.orderVoidedCumulativeOutputRetainsHistoricalRecordsReceipts")}</p>}
-      <p className="bom-hint">{pt("production.productionGroup")}{detail.production_group_name || pt("production.ungrouped")}</p>
-      {management && detail.status === 'draft' && !detail.batches?.length && <div className="bom-actions"><Select aria-label={pt("production.assignProductionGroup")} value={assignment} disabled={action.busy} onChange={setAssignment}><option value="">{pt("production.ungrouped")}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select><Button disabled={action.busy} onClick={() => action.run(async () => { await saved(await send(`/production-orders/${detail.id}/assign`, { production_group_id: assignment ? Number(assignment) : null, version: detail.version }, { warehouseId: data.warehouse_id }), pt("production.productionGroupUpdated")); })}>{pt("production.assign")}</Button></div>}
+      <p className="bom-hint">{pt("production.productionGroup")}{productionAssignments(detail).assigned_groups.map(group => group.name).join("、") || pt("production.ungrouped")}</p>
+      {!!productionAssignments(detail).assigned_users.length && <p className="bom-hint">{pt('production.assignedUsers')}{productionAssignments(detail).assigned_users.map(user => user.name).join('、')}</p>}
+      {management && ['draft', 'awaiting_materials', 'in_progress'].includes(detail.status) && <ProductionAssignments key={`${detail.id}:${detail.version}`} order={detail} busy={action.busy}
+        onSave={targets => action.run(async () => { await saved(await send(`/production-orders/${detail.id}/assign`, { ...targets, version: detail.version }, { warehouseId: data.warehouse_id }), pt('production.assignmentsUpdated')); })} />}
       <p className="bom-hint">{pt("production.recipe")}{detail.bom_name} #{detail.bom_id} {pt("production.baseOutput2")} {count(detail.base_quantity)} {detail.unit} {pt("production.recipeRetainedFromOrderCreation")}</p>
       <p className="bom-hint">{detail.snapshot_format === 2 ? pt("production.rootRecipeLossCalculation") : pt("production.standardLossCalculation")}：{bomLossMethodLabels[detail.loss_method]}{pt("production.standardInput")}{bomLossMethodFormulas[detail.loss_method]}。</p>
       {detail.note && <p className="production-note">{detail.note}</p>}
@@ -524,11 +526,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       <div className="production-list">{list.result?.orders.map(order => <article className="bom-list-item" key={order.id}>
         <div className="bom-list-info"><strong>{order.product_name}</strong><p>{order.number}</p><small>{order.barcode} · {order.bom_name} #{order.bom_id}</small>
           <small>{pt("production.planned")} {count(order.planned_quantity)} {order.unit}{order.completed_at ? pt("production.accepted", { v0: count(order.completed_quantity), v1: order.unit }) : ''} {pt("production.createdBy")} {order.created_by_name}</small>
-          <small>{pt("production.productionGroup")}{order.production_group_name || pt("production.ungrouped")}</small><small>{time(order.created_at)}</small>{statusBadge(order.status)}</div>
+          <small>{pt("production.productionGroup")}{productionAssignmentNames(order) || pt("production.ungrouped")}</small><small>{time(order.created_at)}</small>{statusBadge(order.status)}</div>
         <div className="bom-actions"><Button icon={ClipboardList} disabled={action.busy} onClick={() => open(order.id)} aria-label={pt("production.viewProductionOrder", { v0: order.number })}>{pt("production.viewDetails")}</Button>
           {management && order.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(order)}>{pt("production.deleteProductionOrder")}</Button>}</div>
       </article>)}</div>
-      {list.result && !list.result.orders.length && <p className="bom-empty">{management ? pt("production.noMatchingProductionOrdersSelectAnExistingBom") : user.production_group_id ? pt("production.noProductionOrdersAssignedToThisGroup") : pt("production.noProductionGroupAssignedContactAnAdministrator")}</p>}
+      {list.result && !list.result.orders.length && <p className="bom-empty">{management ? pt("production.noMatchingProductionOrdersSelectAnExistingBom") : pt("production.noAssignedOrders")}</p>}
       {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination"><Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>{pt("production.previous")}</Button><span>{pt("production.total")} {list.result.total} {pt("production.orders")}</span><Button disabled={!list.result.has_more} onClick={() => setOffset(n => n + 30)}>{pt("production.next")}</Button></div>}
     </section>
   </div>;

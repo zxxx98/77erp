@@ -1,3 +1,4 @@
+import { isProductionAssignee, productionAssignments } from '../shared/production-assignment.js';
 import { hasPermission } from '../shared/permissions.js';
 const fail = (message, status) => { throw Object.assign(new Error(message), {status}); };
 export const isGroupProductionWorker = user => !!user && !hasPermission(user, 'production') && hasPermission(user, 'production_register');
@@ -6,8 +7,8 @@ export function assertProductionReader(user) {
 }
 export function assertProductionOrderAccess(user, order) {
   assertProductionReader(user);
-  if (isGroupProductionWorker(user) && (!user.production_group_id || order.production_group_id !== user.production_group_id))
-    fail('生产单不存在或不属于当前生产组。',404);
+  if (isGroupProductionWorker(user) && !isProductionAssignee(user, order))
+    fail('生产单不存在或未指派给当前用户。',404);
 }
 // Registered quantities and material identities are sufficient for shop-floor work.
 // Inventory balances and accounting values must never enter the restricted response.
@@ -17,4 +18,10 @@ export function productionWorkerProjection(value) {
     .filter(([key]) => !['stock','inventory_value_cents'].includes(key) && !/(?:^|_)(?:cost|price)(?:_|$)/.test(key))
     .map(([key, child]) => [key,productionWorkerProjection(child)]));
   return value;
+}
+
+export function productionRegistrationGroup(user, order) {
+  if (!isGroupProductionWorker(user)) return { id: order.production_group_id, name: order.production_group_name };
+  const group = productionAssignments(order).assigned_groups.find(group => group.id === user.production_group_id);
+  return { id: group?.id ?? null, name: group?.name ?? '' };
 }

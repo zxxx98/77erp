@@ -1,3 +1,4 @@
+import { isProductionAssignee } from '../shared/production-assignment.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { validateProcessGraph, processProgress } from '../shared/process-routes.js';
@@ -152,7 +153,7 @@ function operationWorker(db, req, order) {
   const workerId = req.body.worker_id ?? req.user.id;
   if (!id(workerId)) fail('请选择有效作业员工。');
   const worker = db.prepare('SELECT id,name,username,active,production_group_id FROM users WHERE id=?').get(workerId);
-  if (!worker?.active || workerId !== req.user.id && (!hasPermission(req.user, 'production') || !order.production_group_id || worker.production_group_id !== order.production_group_id)) fail('仅可选择本人或本单生产组的有效员工。', 403);
+  if (!worker?.active || workerId !== req.user.id && (!hasPermission(req.user, 'production') || !isProductionAssignee(worker, order))) fail('仅可选择本人或本单已指派的有效员工。', 403);
   return worker;
 }
 function operationInput(db, req, order, path, quantity, output) {
@@ -199,8 +200,8 @@ export function assertOperationsFinished(db, productionId) {
 export function installProductionOperations(app, db, { route, current, version }) {
   app.get('/api/production-orders/:id/operation-workers', route(req => {
     const order = current(req);
-    const workers = hasPermission(req.user, 'production') && order.production_group_id
-      ? db.prepare('SELECT id,name,username FROM users WHERE active=1 AND (production_group_id=? OR id=?) ORDER BY id').all(order.production_group_id, req.user.id)
+    const workers = hasPermission(req.user, 'production')
+      ? db.prepare('SELECT id,name,username,production_group_id FROM users WHERE active=1 ORDER BY id').all().filter(worker => worker.id === req.user.id || isProductionAssignee(worker, order))
       : [{ id: req.user.id, name: req.user.name, username: req.user.username }];
     return { workers: workers.map(w => ({ id: w.id, name: w.name || w.username })) };
   }));

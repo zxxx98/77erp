@@ -1493,3 +1493,29 @@ test('AI product tools enforce products permission and the writes switch on prev
   assert.equal((await f.request(f.staff, '/ai/confirm', { action_id: action.id })).status, 403);
   assert.deepEqual(f.db.prepare('SELECT * FROM products WHERE id=1').get(), product);
 });
+
+test('AI production queries include personal assignments and secondary groups without exposing inventory or costs', async t => {
+  const f=await fixture(t);
+  await f.permissions(['ai','production_register','finance']);
+  const group=(await f.request(f.admin,'/production-groups',{name:'AI 主组'})).data;
+  const secondary=(await f.request(f.admin,'/production-groups',{name:'AI 协作组'})).data;
+  const product=f.db.prepare('SELECT * FROM products WHERE id=1').get(), material=f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const bom=(await f.request(f.admin,'/boms',{request_id:randomUUID(),name:'AI 多组配方',product_id:product.id,base_quantity:1,base_unit:product.unit,note:'',enabled:1,items:[{product_id:material.id,quantity:1,unit:material.unit,note:''}]})).data;
+  const create=async extra=>{
+    const result=await f.request(f.admin,'/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:1,note:'',production_group_ids:[group.id,secondary.id],...extra});
+    assert.equal(result.status,200,JSON.stringify(result.data));return result.data;
+  };
+  const personal=await create({user_ids:[f.id]}), grouped=await create({});
+  f.use('search_production_orders',{});await f.chat(f.staff);
+  let result=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
+  assert.deepEqual(result.orders.map(order=>order.id),[personal.id]);
+  f.use('get_production_order',{production_id:personal.id});await f.chat(f.staff);
+  result=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
+  assert.deepEqual(result.assigned_groups.map(group=>group.id),[group.id,secondary.id]);
+  assert.equal(result.assigned_users[0].id,f.id);
+  assert.equal(result.items[0].product.stock,undefined);assert.equal(result.items[0].cost_cents,undefined);
+  f.db.prepare('UPDATE users SET production_group_id=? WHERE id=?').run(secondary.id,f.id);
+  f.use('search_production_orders',{});await f.chat(f.staff);
+  result=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
+  assert.deepEqual(new Set(result.orders.map(order=>order.id)),new Set([personal.id,grouped.id]));
+});

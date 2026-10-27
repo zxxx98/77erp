@@ -82,7 +82,8 @@ export function installProductionGroups(app, db) {
   app.delete('/api/production-groups/:id',route(req => {
     const before=current(req);
     if(before.member_count || db.prepare('SELECT 1 FROM production_orders WHERE production_group_id=? LIMIT 1').get(before.id) ||
-      db.prepare('SELECT 1 FROM production_batches WHERE production_group_id=? LIMIT 1').get(before.id))
+      db.prepare('SELECT 1 FROM production_batches WHERE production_group_id=? LIMIT 1').get(before.id) ||
+      db.prepare("SELECT 1 FROM production_orders,json_each(assigned_groups) WHERE json_extract(value,'$.id')=? LIMIT 1").get(before.id))
       fail('生产组仍有关联员工或生产单，不能删除。',409);
     db.prepare('DELETE FROM production_groups WHERE id=?').run(before.id);
     recordPositionChange(db,req,'删除生产组',null,null,before,null); return {ok:true};

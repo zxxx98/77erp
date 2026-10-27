@@ -1,3 +1,4 @@
+import { productionAssignmentNames } from '../shared/production-assignment.js';
 import { serverTranslator, isSupportedLanguage } from './i18n.js';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
@@ -20,7 +21,7 @@ export async function renderProductionPdf({order,warehouseName,registrationUrl,e
  const page=()=>{doc.addPage();doc.font(fontPath).fontSize(10);y=40;};
  const reserve=height=>{if(y+height>bottom)page();};
  const text=(value,size=10)=>{doc.fontSize(size);for(const line of lines(value,width)){if(y+size+7>bottom)page();doc.text(line,left,y,{lineBreak:false});y+=size+7;}doc.fontSize(10);};
- text(t('pdf.title'),21);text(t('pdf.number',{value:display(order.number)}));text(t('pdf.warehouseGroup',{warehouse:display(warehouseName),group:display(order.production_group_name)}));
+ text(t('pdf.title'),21);text(t('pdf.number',{value:display(order.number)}));text(t('pdf.warehouseGroup',{warehouse:display(warehouseName),group:display(productionAssignmentNames(order))}));
  if(order.status==='void'){doc.fillColor('#b91c1c');text(t('pdf.void'),14);doc.fillColor('#111111');text(t('pdf.voidReason',{value:display(order.void_reason)}));}
  text(t('pdf.product',{value:display(order.product_name)}));text(t('pdf.identity',{barcode:display(order.barcode),specification:display(order.specification)}));
  text(t('pdf.quantity',{quantity:display(order.planned_quantity),unit:display(order.unit)}));

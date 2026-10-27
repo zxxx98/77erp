@@ -187,7 +187,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version,40);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version,41);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);
@@ -218,4 +218,30 @@ test('reports reject changed units and replayed backups reject historical depend
   [first.created_sequence,second.created_sequence]=[second.created_sequence,first.created_sequence];
   const bad=await f.command('/backup/preview',{backup});assert.equal(bad.status,400);assert.match(bad.data.error,/顺序/);
   const history=f.ok(await f.request(`/production-orders/${order.id}/operations/reports?snapshot_id=${order.operation_routes[0].id}&offset=1&limit=1`));assert.equal(history.total,3);assert.equal(history.reports.length,1);assert.equal(history.has_more,true);
+});
+
+for (const multi of [false,true]) test(`started ${multi ? 'layered' : 'single-level'} operation routes support secondary groups and personal assignees`, async t => {
+  const f=await fixture(t,{multi});
+  const a=f.ok(await f.command('/production-groups',{name:'主生产组'})), b=f.ok(await f.command('/production-groups',{name:'协作组'}));
+  const position=f.ok(await f.command('/positions',{name:'协作登记',access_mode:'production_only',permissions:['production_register']}));
+  const employee=async(username,groupId)=>{
+    const user=f.ok(await f.command('/users',{username,password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:groupId}));
+    const login=await f.request('/auth/login',{username,password:'Worker-test-123'},{cookie:'no-session'});
+    return {...user,cookie:login.cookie};
+  };
+  const grouped=await employee('secondary-worker',b.id), person=await employee('personal-worker',null), outsider=await employee('unassigned-worker',null);
+  let order=await f.start(await f.create({production_group_id:a.id}));
+  order=f.ok(await f.command(`/production-orders/${order.id}/assign`,{version:order.version,production_group_ids:[a.id,b.id],user_ids:[person.id]}));
+  const available=f.ok(await f.request(`/production-orders/${order.id}/operation-workers`)).workers.map(user=>user.id);
+  assert.ok(available.includes(grouped.id));assert.ok(available.includes(person.id));assert.ok(!available.includes(outsider.id));
+  const path=multi?'1':'';
+  assert.equal((await f.report(order,'cut',2,path,{worker_id:outsider.id})).status,403);
+  order=f.ok(await f.report(order,'cut',2,path,{worker_id:grouped.id}));
+  order=f.ok(await f.report(order,'weld',2,path,{}, {cookie:grouped.cookie}));
+  order=f.ok(await f.complete(order,1,path,{}, {cookie:person.cookie}));
+  const reports=order.operation_routes.find(route=>route.path===path).reports;
+  assert.equal(reports.find(report=>report.node_id==='cut').worker_id,grouped.id);
+  assert.equal(reports.find(report=>report.node_id==='out').worker_id,person.id);
+  const batch=f.db.prepare(`SELECT production_group_id,created_by FROM ${multi?'production_stage_batches':'production_batches'} WHERE production_id=? ORDER BY id DESC`).get(order.id);
+  assert.equal(batch.created_by,person.id);assert.equal(batch.production_group_id,null);
 });

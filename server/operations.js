@@ -435,7 +435,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 40,
+    version: 41,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -444,11 +444,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 41) for (const order of data.production_orders || []) { order.assigned_groups = '[]'; order.assigned_users = '[]'; }
     if (value.version < 39) {
       for (const table of [...processRouteTables, ...productionOperationTables]) data[table] = [];
       for (const row of data.products || []) row.default_route_id = null;
@@ -867,6 +868,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             if (['production_orders', 'production_batches', 'production_stage_batches'].includes(table) && row.production_group_id !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
                  !db.prepare('SELECT 1 FROM production_groups WHERE id=?').get(row.production_group_id))) row.production_group_id = null;
+            if (table === 'production_orders') for (const [key, target] of [['assigned_groups', 'production_groups'], ['assigned_users', 'users']]) {
+              const sameInstance = req.body.backup.source_instance_id === db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
+              row[key] = JSON.stringify(JSON.parse(row[key]).filter(entry => sameInstance && db.prepare(`SELECT 1 FROM ${target} WHERE id=?`).get(entry.id)));
+            }
             if (table === 'production_operation_reports') for (const owner of ['worker_id','registered_by']) {
               if (row[owner] !== null && (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value || !db.prepare('SELECT 1 FROM users WHERE id=?').get(row[owner]))) row[owner] = null;
             }

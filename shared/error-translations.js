@@ -2,6 +2,15 @@ import { processRouteMessages } from './process-route-messages.js';
 import { createValidationTranslator } from './error-translation-runtime.js';
 // System validation text only; never include stored business values in this catalog.
 export const validationMessages = {
+  "VALIDATION_PRODUCTION_ASSIGNMENT_INVALID_ASSIGNED_GROUPS": ["请选择有效且不重复的生产组。", "Select valid groups without duplicates.", "Chọn các tổ hợp lệ và không trùng lặp."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_INVALID_ASSIGNED_USERS": ["请选择有效且不重复的生产人员。", "Select valid people without duplicates.", "Chọn nhân viên hợp lệ và không trùng lặp."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_UNAVAILABLE_ASSIGNEE": ["生产人员不存在、已停用或没有生产权限。", "The person is unavailable or lacks production permission.", "Nhân viên không tồn tại, đã ngừng hoạt động hoặc thiếu quyền sản xuất."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_EXPLICIT_ASSIGNMENT_REQUIRED": ["请选择生产组或生产人员，或明确取消派工。", "Select groups or people, or explicitly clear assignments.", "Chọn tổ hoặc nhân viên, hoặc xóa phân công một cách rõ ràng."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_ASSIGN_OPEN_ORDERS_ONLY": ["仅未结束的生产单可以派工。", "Only open orders can be assigned.", "Chỉ có thể phân công lệnh chưa kết thúc."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_APPEND_ONLY_ASSIGNMENTS": ["已开始的生产单仅支持追加指派，不能移除原有生产组或人员。", "Started orders only allow adding assignments. Existing groups and people must be retained.", "Lệnh đã bắt đầu chỉ cho phép thêm phân công. Phải giữ nguyên tổ và nhân viên hiện có."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_NOT_ASSIGNED": ["生产单不存在或未指派给当前用户。", "Order not found or not assigned to you.", "Không tìm thấy lệnh hoặc lệnh chưa được giao cho bạn."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_INVALID_OPERATION_ASSIGNEE": ["仅可选择本人或本单已指派的有效员工。", "Select yourself or an active employee assigned to this order.", "Chọn chính bạn hoặc nhân viên đang hoạt động được giao lệnh này."],
+  "VALIDATION_PRODUCTION_ASSIGNMENT_BACKUP": ["备份生产指派无效。", "Invalid production assignments in backup.", "Phân công sản xuất trong bản sao lưu không hợp lệ."],
   ...processRouteMessages,
   "VALIDATION_OVER_ISSUE_MATERIAL": ["本次发料的材料需属于当前申请。", "Materials issued must belong to the current request.", "Nguyên liệu cấp phải thuộc yêu cầu hiện tại."],
   "VALIDATION_PARTIAL_ISSUE_STOCK": ["{p0}库存不足，请核对本次实发数量。", "Insufficient stock for {p0}. Check this issue quantity.", "Không đủ tồn kho cho {p0}. Kiểm tra số lượng cấp lần này."],

@@ -84,7 +84,7 @@ async function organization(f) {
   };
   const employee=await user('groupworker',['production_register','finance'],a), warehouse=await user('warehouseworker',['sale','purchase'],b);
   const assign=async (order, groupId, body={}) => f.command(`/production-orders/${order.id}/assign`,{version:order.version,schema_version:2,production_group_id:groupId,...body});
-  return {a,b,employee,warehouse,assign};
+  return {a,b,employee,warehouse,assign,user};
 }
 
 test('group workers see and register only their group; snapshots and replay revocation are enforced', async t => {
@@ -125,7 +125,7 @@ test('group workers see and register only their group; snapshots and replay revo
   assert.throws(()=>getProductionOrder(f.db,1,a.id,true,external),error=>error.status===404);
 });
 
-test('dispatch versions and start activity lock assignment; warehouse approval remains cross-group', async t => {
+test('dispatch versions reject replacement after start; warehouse approval remains cross-group', async t => {
   const f=await fixture(t), g=await organization(f), initial=await f.create();
   const memberBefore=f.db.prepare('SELECT permissions_version FROM users WHERE id=?').get(g.employee.id).permissions_version;
   const assigned=f.ok(await g.assign(initial,g.a));
@@ -174,4 +174,99 @@ test('creation validates optional group and dispatch accepts explicit unassignme
   const options={cookie:g.employee.cookie,pendingReceipt:true};
   assert.equal((await f.command('/production-orders',f.plan(),options)).status,403);
   assert.equal((await f.request(`/production-orders/${order.id}`,undefined,options)).status,404);
+});
+
+
+test('started orders accept multiple groups and people, including ungrouped workers, without changing accounting or past batches', async t => {
+  const f=await fixture(t), g=await organization(f);
+  const bworker=await g.user('second-group-worker',['production_register'],g.b);
+  const individual=await g.user('individual-worker',['production_register'],null);
+  const outsider=await g.user('outsider-worker',['production_register'],null);
+  let order=await f.create({production_group_id:g.a});
+  f.db.prepare('UPDATE production_orders SET material_workflow=1 WHERE id=?').run(order.id);
+  order=f.ok(await f.command(`/production-orders/${order.id}/start`,{version:order.version}));
+  const before=f.inventory(), materialDocs=order.material_documents;
+  const assign=(current, groups, people, options)=>f.command(`/production-orders/${current.id}/assign`,{version:current.version,schema_version:2,production_group_ids:groups,user_ids:people},options);
+  assert.equal((await f.request(`/production-orders/${order.id}`,undefined,{cookie:individual.cookie})).status,404);
+  const body={version:order.version,schema_version:2,production_group_ids:[g.a,g.b],user_ids:[individual.id],request_id:randomUUID()};
+  order=f.ok(await f.request(`/production-orders/${order.id}/assign`,body));
+  assert.deepEqual(order.assigned_groups.map(group=>group.id),[g.a,g.b]);
+  assert.deepEqual(order.assigned_users.map(user=>user.id),[individual.id]);
+  assert.deepEqual(f.inventory(),before);
+  assert.deepEqual(order.material_documents,materialDocs);
+  assert.equal((await f.request(`/production-orders/${order.id}/assign`,body)).status,200);
+  assert.equal((await assign(order,[g.a],[])).status,409);
+  assert.equal((await assign(order,[g.a,g.b],[individual.id],{cookie:individual.cookie})).status,403);
+  for(const user of [g.employee,bworker,individual]) {
+    const options={cookie:user.cookie};
+    assert.deepEqual(f.ok(await f.request('/production-orders',undefined,options)).orders.map(row=>row.id),[order.id]);
+    const detail=f.ok(await f.request(`/production-orders/${order.id}`,undefined,options));
+    assert.equal(detail.items[0].product.stock,undefined);
+    assert.equal(detail.items[0].cost_cents,undefined);
+  }
+  assert.equal((await f.request(`/production-orders/${order.id}`,undefined,{cookie:outsider.cookie})).status,404);
+  const doc=order.material_documents[0];
+  f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));
+  order=f.ok(await f.request(`/production-orders/${order.id}`));
+  const complete=async(user, current)=>f.ok(await f.command(`/production-orders/${current.id}/complete`,{...f.completion(current),completed_quantity:1,finish_order:false,items:[{product_id:f.material,quantity:1.5},{product_id:f.second,quantity:0.1}]},{cookie:user.cookie,pendingReceipt:true}));
+  order=await complete(bworker,order);
+  assert.equal(order.batches[0].production_group_id,g.b);
+  assert.equal(order.batches[0].production_group_name,'B组');
+  const firstBatch=f.db.prepare('SELECT * FROM production_batches WHERE production_id=?').get(order.id);
+  order=f.ok(await assign(order,[g.a,g.b],[individual.id,outsider.id]));
+  assert.deepEqual(f.db.prepare('SELECT * FROM production_batches WHERE id=?').get(firstBatch.id),firstBatch);
+  order=await complete(individual,order);
+  assert.equal(order.batches[1].created_by,individual.id);
+  assert.equal(order.batches[1].production_group_id,null);
+  assert.equal(order.batches[1].production_group_name,'');
+  const staff=f.db.prepare('SELECT permissions_version FROM users WHERE id=?').get(individual.id);
+  assert.ok(staff.permissions_version>1);
+  f.db.prepare("UPDATE positions SET permissions='[]' WHERE id=(SELECT position_id FROM users WHERE id=?)").run(individual.id);
+  assert.equal((await f.request(`/production-orders/${order.id}`,undefined,{cookie:individual.cookie})).status,403);
+  order=f.ok(await f.command(`/production-orders/${order.id}/finish`,{version:order.version}));
+  assert.equal((await assign(order,[g.a,g.b],[individual.id,outsider.id])).status,409);
+});
+
+test('multi-assignment validates recipients, preserves legacy creation and protects secondary groups', async t => {
+  const f=await fixture(t), g=await organization(f);
+  const person=await g.user('personal-assignee',['production_register'],null);
+  const order=await f.create({production_group_ids:[g.a,g.b],user_ids:[person.id]});
+  assert.equal(order.production_group_id,g.a);
+  assert.deepEqual(order.assigned_groups.map(group=>group.id),[g.a,g.b]);
+  assert.equal(order.assigned_users[0].id,person.id);
+  const position=f.db.prepare('SELECT version FROM production_groups WHERE id=?').get(g.b);
+  assert.equal((await f.request(`/production-groups/${g.b}`,{version:position.version},{method:'DELETE'})).status,409);
+  for(const extra of [{production_group_ids:null},{production_group_ids:[g.a,g.a]},{user_ids:[person.id,person.id]},{user_ids:['1']},{user_ids:[999999]},{user_ids:[g.warehouse.id]}])
+    assert.equal((await f.command('/production-orders',f.plan(extra))).status,400,JSON.stringify(extra));
+  const options=f.ok(await f.request('/production-orders/assignment-options'));
+  assert.ok(options.users.some(user=>user.id===person.id));
+  assert.ok(!options.users.some(user=>user.id===g.warehouse.id));
+  assert.equal((await f.request('/production-orders/assignment-options',undefined,{cookie:person.cookie})).status,403);
+  const cleared=f.ok(await g.assign(order,null));
+  assert.deepEqual(cleared.assigned_groups,[]);
+  assert.deepEqual(cleared.assigned_users,[]);
+  assert.equal((await f.request(`/production-orders/${order.id}`,undefined,{cookie:person.cookie})).status,404);
+});
+
+test('assignment backups migrate old single-group orders and never grant cross-instance recipients', async t => {
+  const f=await fixture(t), g=await organization(f), person=await g.user('backup-assignee',['production_register'],null);
+  const order=await f.create({production_group_ids:[g.a,g.b],user_ids:[person.id]});
+  const backup=f.ok(await f.request('/backup'));
+  assert.equal(backup.version,41);
+  const restore=async backup=>{ const preview=await f.command('/backup/preview',{backup}); if(preview.status!==200)return preview; return f.command('/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA'}); };
+  const invalid=structuredClone(backup);invalid.data.production_orders[0].assigned_users='[{"id":1,"name":"x"},{"id":1,"name":"x"}]';
+  assert.equal((await restore(invalid)).status,400);
+  f.ok(await restore(backup));
+  assert.equal(f.ok(await f.request(`/production-orders/${order.id}`,undefined,{cookie:person.cookie})).assigned_users[0].id,person.id);
+  const old=structuredClone(backup);old.version=40;
+  for(const row of old.data.production_orders){delete row.assigned_groups;delete row.assigned_users;}
+  f.ok(await restore(old));
+  assert.deepEqual(f.ok(await f.request(`/production-orders/${order.id}`)).assigned_groups.map(group=>group.id),[g.a]);
+  const foreign=structuredClone(backup);foreign.source_instance_id=randomUUID();
+  f.ok(await restore(foreign));
+  const restored=f.ok(await f.request(`/production-orders/${order.id}`));
+  assert.equal(restored.production_group_id,null);
+  assert.deepEqual(restored.assigned_groups,[]);
+  assert.deepEqual(restored.assigned_users,[]);
+  assert.equal((await f.request(`/production-orders/${order.id}`,undefined,{cookie:person.cookie})).status,404);
 });

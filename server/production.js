@@ -1,6 +1,7 @@
+import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
 import { productionOperationTables, captureProductionRoutes, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
 import { requestLanguage } from './i18n.js';
-import { isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
+import { productionRegistrationGroup, isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
 import { rebuildTable } from './table-migration.js';
 import { BOM_NODE_COLUMNS, validateSnapshotNodes, validateExpansionScraps, calculateBomNodes } from '../shared/bom-expansion.js';
 import { randomUUID } from 'node:crypto';
@@ -70,6 +71,9 @@ export function migrateProduction(db) {
     CREATE INDEX IF NOT EXISTS production_item_product ON production_items(product_id);
     INSERT OR IGNORE INTO app_metadata(key,value) VALUES ('production_version','0');
     UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT COALESCE(MAX(version),0) FROM production_orders)) WHERE key='production_version';`);
+  for (const column of ['assigned_groups', 'assigned_users'])
+    if (!db.prepare('PRAGMA table_info(production_orders)').all().some(field => field.name === column))
+      db.exec(`ALTER TABLE production_orders ADD COLUMN ${column} TEXT NOT NULL DEFAULT '[]'`);
   if (!db.prepare('PRAGMA table_info(production_items)').all().some(column => column.name === 'base_quantity_fraction'))
     db.exec("ALTER TABLE production_items ADD COLUMN base_quantity_fraction TEXT NOT NULL DEFAULT ''");
   if (!db.prepare('PRAGMA table_info(production_items)').all().some(column => column.name === 'variance_reason'))
@@ -158,8 +162,8 @@ export function listProductionOrders(db, warehouseId, query = {}, costs = false,
   return snapshot(db, () => {
     const clauses = ['warehouse_id=?'], params = [warehouseId];
     if (isGroupProductionWorker(user)) {
-      if (user.production_group_id) { clauses.push('production_group_id=?'); params.push(user.production_group_id); }
-      else clauses.push('0=1');
+      clauses.push(`(production_group_id=? OR EXISTS (SELECT 1 FROM json_each(assigned_groups) WHERE json_extract(value,'$.id')=?) OR EXISTS (SELECT 1 FROM json_each(assigned_users) WHERE json_extract(value,'$.id')=?))`);
+      params.push(user.production_group_id ?? null, user.production_group_id ?? null, user.id ?? null);
     }
     if (status === 'in_progress') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='in_progress') OR (material_workflow=0 AND completed_at IS NOT NULL))");
     else if (status === 'draft') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='draft') OR (material_workflow=0 AND completed_at IS NULL))");
@@ -168,7 +172,7 @@ export function listProductionOrders(db, warehouseId, query = {}, costs = false,
     if (q.trim()) { clauses.push("(number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR bom_name LIKE ? ESCAPE '\\')"); params.push(...Array(4).fill(pattern(q.trim()))); }
     const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) AS n FROM production_orders WHERE ${where}`).get(...params).n;
     const orders = db.prepare(`SELECT * FROM production_orders WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset));
-    const result = { orders: orders.map(order => ({ ...order, ...receiptQuantities(db, order), status: publicStatus(order) })), total, has_more: Number(offset) + orders.length < total, next_offset: Number(offset) + orders.length };
+    const result = { orders: orders.map(order => ({ ...order, ...productionAssignments(order), ...receiptQuantities(db, order), status: publicStatus(order) })), total, has_more: Number(offset) + orders.length < total, next_offset: Number(offset) + orders.length };
     return isGroupProductionWorker(user) ? productionWorkerProjection(result) : costs ? result : productionWithoutCosts(result);
   });
 }
@@ -179,6 +183,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
   return snapshot(db, () => {
     const order = db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(id, warehouseId);
     if (!order) fail('生产单不存在或不属于当前仓库。', 404);
+    Object.assign(order, productionAssignments(order));
     assertProductionOrderAccess(user, order);
     order.product = publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(order.product_id));
     order.items = db.prepare('SELECT * FROM production_items WHERE production_id=? ORDER BY position,id').all(id).map(item => ({
@@ -252,7 +257,7 @@ export function installProduction(app, db) {
         if (!hasPermission(req.user, 'production')) {
           if (!isGroupProductionWorker(req.user) || (!read && !register)) fail('需要生产管理权限。', 403);
           if (req.params.id) {
-            const order = db.prepare('SELECT production_group_id FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
+            const order = db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
             if (!order) fail('生产单不存在或不属于当前仓库。', 404);
             assertProductionOrderAccess(req.user, order);
           }
@@ -281,6 +286,33 @@ export function installProduction(app, db) {
     if (!group) fail('生产组不存在。', 404);
     return group;
   };
+  const assignmentTargets = (body, previous = {}) => {
+    const ids = (value, label) => {
+      if (!Array.isArray(value) || value.length > 200 || value.some(id => !isId(id)) || new Set(value).size !== value.length)
+        fail(label);
+      return value;
+    };
+    const groups = ids(body.production_group_ids === undefined ? (body.production_group_id == null ? [] : [body.production_group_id]) : body.production_group_ids, '请选择有效且不重复的生产组。').map(productionGroup);
+    const people = ids(body.user_ids === undefined ? [] : body.user_ids, '请选择有效且不重复的生产人员。');
+    const eligible = new Map((people.length ? assignmentUsers() : []).map(user => [user.id, user]));
+    const users = people.map(id => {
+      const user = eligible.get(id);
+      if (!user) {
+        const existing = previous.assigned_users?.find(user => user.id === id);
+        if (existing) return existing;
+        fail('生产人员不存在、已停用或没有生产权限。');
+      }
+      return { id: user.id, name: user.name || user.username };
+    });
+    return { assigned_groups: groups, assigned_users: users };
+  };
+  const assignmentUsers = () => db.prepare(`SELECT u.id,u.name,u.username,u.role,p.permissions,p.access_mode FROM users u LEFT JOIN positions p ON p.id=u.position_id WHERE u.active=1 ORDER BY u.id`).all()
+    .filter(user => { const value = { ...user, permissions: JSON.parse(user.permissions || '[]') }; return hasPermission(value, 'production') || hasPermission(value, 'production_register'); });
+  const saveAssignments = (id, targets) => {
+    const group = targets.assigned_groups[0];
+    db.prepare('UPDATE production_orders SET production_group_id=?,production_group_name=?,assigned_groups=?,assigned_users=? WHERE id=?')
+      .run(group?.id ?? null, group?.name ?? '', JSON.stringify(targets.assigned_groups), JSON.stringify(targets.assigned_users), id);
+  };
   const current = req => getProductionOrder(db, req.warehouse.id, Number(req.params.id), true);
   const version = (req, order) => {
     if (order.stage_workflow && req.body.stage_schema_version !== 1) fail('此生产单使用分层生产，请刷新页面后操作。', 409);
@@ -301,6 +333,7 @@ export function installProduction(app, db) {
   installProductionOperations(app, db, { route, current, version });
   installProductionMaterials(app, db, { route, current, version, units });
   installProductionReceipts(app, db, {route});
+  app.get('/api/production-orders/assignment-options', route(() => ({ users: assignmentUsers().map(user => ({ id: user.id, name: user.name || user.username })) })));
   app.get('/api/production-orders', route(req => listProductionOrders(db, req.warehouse.id, req.query, true, req.user)));
   app.get('/api/production-orders/boms', route(req => listBoms(db, req.warehouse.id, { ...req.query, status: 'enabled' })));
   app.post('/api/production-orders/prepare', route(req => prepareProduction(db, req)));
@@ -322,7 +355,7 @@ export function installProduction(app, db) {
   });
   app.post('/api/production-orders', route(req => {
     validateProductionPlan(req.body);
-    const group = productionGroup(req.body.production_group_id);
+    const targets = assignmentTargets(req.body);
     const plan = prepareProduction(db, req), bom = getBom(db, req.warehouse.id, plan.bom_id);
     if (plan.multi_level && req.body.structure_token !== plan.structure_token) fail('下级配方已变化或尚未预览，请重新测算后保存。当前填写内容已保留。', 409);
     const at = new Date().toISOString(), owner = actor(req), number = `SC${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -331,7 +364,7 @@ export function installProduction(app, db) {
       created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
       .run(number, req.warehouse.id, bom.id, bom.version, bom.name, bom.product_id, bom.product.name, bom.product.barcode,
         bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, bom.loss_method, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
-    db.prepare('UPDATE production_orders SET production_group_id=?,production_group_name=? WHERE id=?').run(group?.id ?? null, group?.name ?? '', id);
+    saveAssignments(id, targets);
     db.prepare('UPDATE production_orders SET material_workflow=1,quantity_decimals=4,snapshot_format=?,unit_round_up=? WHERE id=?').run(plan.multi_level ? 2 : 1, bom.product.unit_round_up, id);
     if (plan.multi_level) {
       const insertNode = db.prepare(`INSERT INTO production_bom_nodes(production_id,${BOM_NODE_COLUMNS.join(',')}) VALUES (${Array(BOM_NODE_COLUMNS.length + 1).fill('?').join(',')})`);
@@ -353,14 +386,18 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/assign', route(req => {
     const order = current(req); version(req, order);
     if (req.body.schema_version !== 2) fail('请刷新页面后派工。', 409);
-    if (req.body.production_group_id === undefined) fail('请选择生产组或明确取消派工。');
-    if (order.status !== 'draft' || order.completed_at || order.batches.length || order.material_documents.length || order.receipt_documents.length)
-      fail('仅尚未开始且没有作业记录的待生产单可以派工。', 409);
-    const group = productionGroup(req.body.production_group_id), at = new Date().toISOString();
-    db.prepare('UPDATE production_orders SET production_group_id=?,production_group_name=?,updated_by_name=?,updated_at=? WHERE id=?')
-      .run(group?.id ?? null, group?.name ?? '', actor(req), at, order.id);
-    const groups = [...new Set([order.production_group_id, group?.id].filter(Boolean))];
-    for (const id of groups) db.prepare('UPDATE users SET permissions_version=permissions_version+1 WHERE production_group_id=?').run(id);
+    if (req.body.production_group_id === undefined && req.body.production_group_ids === undefined && req.body.user_ids === undefined)
+      fail('请选择生产组或生产人员，或明确取消派工。');
+    if (!['draft', 'awaiting_materials', 'in_progress'].includes(order.status)) fail('仅未结束的生产单可以派工。', 409);
+    const before = productionAssignments(order), targets = assignmentTargets(req.body, before);
+    const started = order.status !== 'draft' || order.completed_at || order.batches.length || order.material_documents.length || order.receipt_documents.length || order.operation_routes.some(route => route.report_count);
+    if (started && ['assigned_groups', 'assigned_users'].some(key => before[key].some(entry => !targets[key].some(target => target.id === entry.id))))
+      fail('已开始的生产单仅支持追加指派，不能移除原有生产组或人员。', 409);
+    saveAssignments(order.id, targets);
+    db.prepare('UPDATE production_orders SET updated_by_name=?,updated_at=? WHERE id=?').run(actor(req), new Date().toISOString(), order.id);
+    const affected = Object.fromEntries(Object.keys(before).map(key => [key, [...before[key], ...targets[key]]]));
+    for (const user of db.prepare('SELECT id,production_group_id FROM users').all())
+      if (isProductionAssignee(user, affected)) db.prepare('UPDATE users SET permissions_version=permissions_version+1 WHERE id=?').run(user.id);
     return current(req);
   }, true));
   app.post('/api/production-orders/:id', route(req => {
@@ -415,7 +452,8 @@ export function installProduction(app, db) {
     const batchNumber = (order.batches.at(-1)?.batch_number ?? 0) + 1;
     const batchId = Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required)
       VALUES (?,?,?,0,?,?,?,1)`).run(order.id, batchNumber, req.body.completed_quantity, (req.body.note ?? '').trim(), owner, at).lastInsertRowid);
-    db.prepare('UPDATE production_batches SET created_by=?,production_group_id=?,production_group_name=? WHERE id=?').run(req.user.id, order.production_group_id, order.production_group_name, batchId);
+    const registrationGroup = productionRegistrationGroup(req.user, order);
+    db.prepare('UPDATE production_batches SET created_by=?,production_group_id=?,production_group_name=? WHERE id=?').run(req.user.id, registrationGroup.id, registrationGroup.name, batchId);
     const actuals = new Map(req.body.items.map(item => [item.product_id, item]));
     let total = 0;
     for (const item of order.items) {
@@ -564,6 +602,12 @@ export function validateProductionBackup(data) {
     if (![1, 2].includes(order.snapshot_format) || (order.snapshot_format === 1 && nodes.length)) fail('备份生产配方快照格式无效。');
     const expanded = order.snapshot_format === 2 ? validateSnapshotNodes(order, nodes) : null;
     if (expanded && (!expanded.multi_level || expanded.rows.length !== rows.length)) fail('备份多层生产材料汇总无效。');
+    for (const key of ['assigned_groups', 'assigned_users']) {
+      let entries;
+      try { entries = JSON.parse(order[key]); } catch { fail('备份生产指派无效。'); }
+      if (!Array.isArray(entries) || entries.length > 200 || new Set(entries.map(entry => entry?.id)).size !== entries.length ||
+          entries.some(entry => !entry || Object.keys(entry).length !== 2 || !isId(entry.id) || !text(entry.name, 60, true))) fail('备份生产指派无效。');
+    }
     validateProductionPlan(order, true);
     validateBomLossMethod(order.loss_method);
     if (![0, 1].includes(order.batch_tracking) || (batches.length && order.batch_tracking !== 1) || (order.batch_tracking === 1 && completed && !batches.length) ||
