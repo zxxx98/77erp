@@ -29,7 +29,8 @@ import { MaterialVariance } from '../features/MaterialVariance.jsx';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
 import { MaterialDocumentList } from '../features/ProductionMaterialDocuments.jsx';
 import { ProductionReceiptList } from '../features/ProductionReceipts.jsx';
-import { useProductionRegistration } from '../features/ProductionRegistration.jsx';
+import { useProductionRegistration, ProductionRegistrationQr } from '../features/ProductionRegistration.jsx';
+import { ProductionQuickRegistration } from '../features/ProductionQuickRegistration.jsx';
 import { ProductionStages, ProductionStageSummary } from '../features/ProductionStages.jsx';
 import { downloadProductionPdf } from '../production-pdf.js';
 import './bom.css';
@@ -159,7 +160,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
-  const begin = value => { const next = value.kind === 'stages' ? { ...value, session: ++stageSession.current } : value; setEditor(next); setBaseline(JSON.stringify(next)); setMessage(''); action.setError(''); };
+  const begin = value => { const next = ['stages', 'quick_registration'].includes(value.kind) ? { ...value, session: ++stageSession.current } : value; setEditor(next); setBaseline(JSON.stringify(next)); setMessage(''); action.setError(''); };
   const update = value => { setEditor(previous => ({ ...previous, ...value })); action.setError(''); };
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
@@ -217,10 +218,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     if (detail?.id !== order.id) setDetailTab('overview');
     setDetail(order); setEditor(null); setMessage(''); action.setError('');
     if (order.status === 'in_progress' || !order.material_workflow && order.status === 'draft') {
-      if (order.stage_workflow) { begin({ kind: 'stages' }); return; }
-      if (order.operation_routes?.length) { begin({ kind: 'operations' }); return; }
-      const quantity = Math.max(0, quantityUnits(order.planned_quantity) - quantityUnits(order.completed_quantity ?? 0)) / QUANTITY_SCALE || 1;
-      begin({ kind: 'complete', completed_quantity: String(quantity), note: '', ...batchDefaults(quantity, order) });
+      begin({ kind: 'quick_registration' });
     } else {
       setMessage(({ draft: pt("production.productionHasNotStartedAskTheSupervisorTo"), awaiting_materials: pt("production.waitingForWarehouseMaterialConfirmationBeforeRegistration"), completed: pt("production.productionHasEndedRegistrationIsClosed"), void: pt("production.thisOrderIsVoidedRegistrationIsUnavailable") })[order.status] || pt("production.registrationIsUnavailableInTheCurrentStatusCheck"));
     }
@@ -277,6 +275,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{label}</Button>
   </PageHeading>;
   const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}</>;
+
+  if (editor?.kind === 'quick_registration') return <div className="bom-page production-page">
+    <ProductionQuickRegistration key={`${detail.id}:${editor.session}`} order={detail} data={listData} onActivity={setStageActivity} onBack={back}
+      onSaved={async (order, stockChanged) => { setDetail(order); setRevision(value => value + 1); if (stockChanged) await onChanged?.(); }} />{notices}
+  </div>;
 
   if (editor?.kind === 'operations') return <div className="bom-page production-page"><ProductionOperations order={detail} data={listData} canRegister={detail.status === 'in_progress'} onActivity={setStageActivity} onSaved={(order, text) => saved(order, text, true)} onBack={back} onOutput={(node, worker_id) => {
     const quantity = node.available_quantity ?? (Math.max(0, detail.planned_quantity - (detail.completed_quantity || 0)) || 1);
@@ -408,6 +411,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       </div>
     <div className="bom-actions production-detail-export"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
     </div>
+    <ProductionRegistrationQr order={detail} data={data} />
     <ProductionDetailTabs key={detail.id} active={detailTab} onChange={setDetailTab} items={[
       { key: 'overview', label: pt('production.overviewTab'), children: <>
     <section className="panel bom-section">

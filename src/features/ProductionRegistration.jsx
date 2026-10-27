@@ -1,12 +1,34 @@
 import { productionMessage } from '../i18n/production-errors.js';
 import { t as pt } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { CameraScanner } from '../CameraScanner.jsx';
 import { Modal, Button } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
-import { parseProductionRegistrationUrl } from '../../shared/production-link.js';
+import { parseProductionRegistrationUrl, productionRegistrationUrl } from '../../shared/production-link.js';
+import { qrSymbol } from '../product-code.js';
+import './production-registration.css';
+
+export function ProductionRegistrationQr({ order, data }) {
+  useLocale();
+  const code = useMemo(() => {
+    try {
+      const url = productionRegistrationUrl({ origin: location.origin, warehouseId: data.warehouse_id,
+        orderId: order.id, number: order.number, sourceId: data.instance_id });
+      return { url, symbol: qrSymbol(url) };
+    } catch { return null; }
+  }, [data.warehouse_id, data.instance_id, order.id, order.number]);
+  return <section className="panel bom-section production-registration-qr" aria-label={pt('registration.qr')}>
+    {code && <svg className="registration-qr-symbol" viewBox={`0 0 ${code.symbol.size} ${code.symbol.size}`} role="img" aria-label={pt('registration.qr')} shapeRendering="crispEdges">
+      <rect width={code.symbol.size} height={code.symbol.size} fill="#fff" /><path d={code.symbol.path} fill="#000" />
+    </svg>}
+    <div><h2>{pt('registration.qr')}</h2><p className="bom-hint">{pt('registration.qrHint')}</p>
+      {code ? <a href={code.url}>{pt('production.openRegistration')}</a> : <p role="alert" className="form-error">{pt('registration.qrUnavailable')}</p>}
+      <p className="bom-hint registration-origin">{location.origin}</p>
+    </div>
+  </section>;
+}
 
 export function clearProductionRegistration() {
   if (!location.hash.startsWith('#production?') || !new URLSearchParams(location.hash.split('?')[1]).has('register')) return;

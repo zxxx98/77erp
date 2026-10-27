@@ -34,7 +34,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} QR re
     f.db.prepare('UPDATE production_orders SET material_workflow=0 WHERE id=?').run(f.order.id);
     await page.goto(f.link);
     await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
-    await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveValue('5');
+    await expect(page.getByLabel('本次数量', { exact: true })).toHaveValue('');
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
     await page.reload();
     await expect(page.getByRole('heading', { name: '生产单', exact: true })).toBeVisible();
@@ -51,10 +51,10 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} QR re
     await page.getByLabel('生产登记链接', { exact: true }).fill(f.link);
     await page.getByLabel('生产登记链接', { exact: true }).press('Enter');
     await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
-    await page.getByLabel('合格成品数量', { exact: true }).fill('3');
+    await page.getByLabel('本次数量', { exact: true }).fill('3');
     page.once('dialog', dialog => dialog.dismiss());
     await page.evaluate(link => { history.replaceState(null, '', link); window.dispatchEvent(new HashChangeEvent('hashchange')); }, f.link);
-    await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveValue('3');
+    await expect(page.getByLabel('本次数量', { exact: true })).toHaveValue('3');
     await expect.poll(() => new URL(page.url()).hash).toBe('#production');
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
   } finally { await f.close(); }

@@ -1,6 +1,8 @@
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
+import sharp from 'sharp';
+import { BinaryBitmap, DecodeHintType, HybridBinarizer, QRCodeReader, RGBLuminanceSource } from '@zxing/library';
 import { productionRegistrationUrl } from '../../shared/production-link.js';
 
 const graph = { nodes:[{id:'cut',name:'下料',note:'按图下料',x:24,y:24},{id:'out',name:'检验',note:'',x:244,y:24}],edges:[{from:'cut',to:'out'}] };
@@ -307,39 +309,83 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} con
   } finally { await f.close(); await context.close(); }
 });
 
-for(const mode of ['desktop','mobile','pwa']) test(`${mode} scans to operations and registers intermediate work then final output`,async({browser})=>{
-  const context=await browser.newContext({locale:'zh-CN',...(mode==='desktop'?{}:devices['iPhone 13']),serviceWorkers:mode==='pwa'?'allow':'block'});const page=await context.newPage(),f=await fixture(page),errors=[];page.on('pageerror',error=>errors.push(error.message));
-  try{
-    await page.goto(f.link);if(mode==='pwa')await page.evaluate(()=>navigator.serviceWorker.ready);
-    await expect(page.getByRole('heading',{name:'工序进度与登记',exact:true})).toBeVisible();
-    await page.getByRole('button', { name: '流程图', exact: true }).click();
-    await expect(page.locator('.process-node-handle')).toHaveCount(0);
-    await expect(page.locator('.process-edge-hit')).toHaveCount(0);
-    await page.getByRole('button', { name: '工序列表', exact: true }).click();
-    await expect(page.getByRole('button',{name:'登记产出与耗料 检验',exact:true})).toBeDisabled();
-    await page.getByRole('button',{name:'登记工序 下料',exact:true}).click();await page.getByLabel('本批完成数量',{exact:true}).fill('4');
-    page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'登记工序',exact:true}).click();await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
-    let order=await f.get();expect(order.completed_quantity).toBeNull();expect(order.receipt_documents).toHaveLength(0);expect(order.items[0].available_quantity).toBe(20);
-    await page.getByRole('button',{name:'登记',exact:true}).click();await page.getByRole('button',{name:'登记产出与耗料 检验',exact:true}).click();await page.getByLabel('合格成品数量',{exact:true}).fill('4');
-    await expect(page.getByRole('combobox',{name:'作业员工',exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'按本批产量带出耗料',exact:true}).click();
-    page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'本批登记并继续生产',exact:true}).click();await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
-    order=await f.get();expect(order.completed_quantity).toBe(4);expect(order.items[0].available_quantity).toBe(12);expect(order.receipt_documents).toHaveLength(1);expect(order.operation_routes[0].reports).toHaveLength(2);
+for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registration reports work and output with a scannable detail QR`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices['iPhone 13']), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await page.goto(f.link);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
+    await expect(page.getByRole('radio', { name: /检验/ })).toBeDisabled();
+    const quantity = page.getByLabel('本次数量', { exact: true });
+    await expect(quantity).toBeDisabled();
+    await page.getByRole('radio', { name: /下料/ }).check();
+    await quantity.fill('4');
+    await page.getByRole('button', { name: '提交登记', exact: true }).dblclick();
+    await expect(page.getByRole('status').filter({ hasText: '已登记 下料：4 件' })).toBeVisible();
+    await expect(quantity).toHaveValue('');
+    await expect(page.getByRole('radio', { name: /下料/ })).toBeChecked();
+    let order = await f.get();
+    expect(order.completed_quantity).toBeNull(); expect(order.receipt_documents).toHaveLength(0);
+    expect(order.items[0].available_quantity).toBe(20); expect(order.operation_routes[0].reports).toHaveLength(1);
+    await page.getByRole('radio', { name: /检验/ }).check();
+    await quantity.fill('5');
+    await page.getByRole('button', { name: '提交登记', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('超过前序可用数量');
+    expect((await f.get()).operation_routes[0].reports).toHaveLength(1);
+    await quantity.fill('4');
+    await expect(page.locator('.registration-details')).not.toHaveAttribute('open', '');
+    await page.getByRole('button', { name: '提交登记', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: '已登记 检验：4 件' })).toBeVisible();
+    order = await f.get();
+    expect(order.completed_quantity).toBe(4); expect(order.items[0].available_quantity).toBe(12);
+    expect(order.receipt_documents).toHaveLength(1); expect(order.operation_routes[0].reports).toHaveLength(2);
+    expect(order.status).toBe('in_progress');
+    await expect(quantity).toHaveValue('');
+    await page.screenshot({ path: test.info().outputPath('quick-registration.png'), fullPage: true });
+    await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
+    const qr = page.getByRole('img', { name: '生产登记二维码', exact: true });
+    await expect(qr).toBeVisible();
+    await expect(page.getByRole('link', { name: '打开登记', exact: true })).toHaveAttribute('href', f.link);
+    const symbol = await qr.evaluate(el => ({ svg: new XMLSerializer().serializeToString(el), size: el.viewBox.baseVal.width }));
+    const width = symbol.size * 4;
+    const pixels = await sharp(Buffer.from(symbol.svg)).resize(width, width).greyscale().removeAlpha().raw().toBuffer();
+    const decoded = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Uint8ClampedArray(pixels), width, width))), new Map([[DecodeHintType.PURE_BARCODE, true]])).getText();
+    expect(decoded).toBe(f.link);
+    await page.screenshot({ path: test.info().outputPath('detail-registration-qr.png'), fullPage: true });
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
-    await page.getByRole('button',{name:'查看工序进度',exact:true}).click();await expect(page.getByText('工序登记记录',{exact:true})).toBeVisible();await expect(page.getByText('登记人: routeadmin',{exact:false}).first()).toBeVisible();
-    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath('operation-progress.png'),fullPage:true});expect(errors).toEqual([]);
-  }finally{await f.close();await context.close();}
+    await page.getByRole('button', { name: '查看工序进度', exact: true }).click();
+    await expect(page.getByText('工序登记记录', { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context.close(); }
 });
 
-test('mobile production-only worker scans to a half-finished route and outputs into the stage ledger',async({browser})=>{
-  const context=await browser.newContext({locale:'zh-CN',...devices['iPhone 13'],serviceWorkers:'block'});const page=await context.newPage(),f=await fixture(page,{worker:true,multi:true}),errors=[];page.on('pageerror',error=>errors.push(error.message));
-  try{
-    await f.post('/auth/login',{username:'routeworker',password:'Worker-test-123'});await page.goto(f.link);await page.getByRole('button',{name:'登记 凳架',exact:true}).click();await expect(page.getByRole('heading',{name:'工序进度与登记',exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'登记工序 下料',exact:true}).click();await page.getByLabel('本批完成数量',{exact:true}).fill('3');page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'登记工序',exact:true}).click();
-    await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();await page.getByRole('button',{name:'登记',exact:true}).click();await page.getByRole('button',{name:'登记 凳架',exact:true}).click();await page.getByRole('button',{name:'登记产出与耗料 检验',exact:true}).click();
-    await page.getByLabel('本批合格数量',{exact:true}).fill('3');await page.getByRole('button',{name:'按本批产量带出耗料',exact:true}).click();page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'登记本批半成品',exact:true}).click();await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
-    const order=await f.get();expect(order.completed_quantity).toBeNull();expect(order.stages.find(s=>s.path==='1').available_quantity).toBe(3);expect(order.receipt_documents).toHaveLength(0);expect(order.operation_routes.find(r=>r.path==='1').reports[0].worker_name).toBe('李四');expect(JSON.stringify(order)).not.toMatch(/"(?:[^"\s]*cost_cents|stock)"\s*:/);expect(errors).toEqual([]);
-  }finally{await f.close();await context.close();}
+test('mobile worker selects duplicate operation names across BOM layers and registers semi-finished output', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...devices['iPhone 13'], serviceWorkers: 'block' });
+  const page = await context.newPage(), f = await fixture(page, { worker: true, multi: true }), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await f.post('/auth/login', { username: 'routeworker', password: 'Worker-test-123' });
+    await page.goto(f.link);
+    await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
+    const half = name => page.locator('.registration-option-row').filter({ hasText: '凳架配方' }).filter({ hasText: name }).getByRole('radio');
+    await half('下料').check();
+    const quantity = page.getByLabel('本次数量', { exact: true });
+    await quantity.fill('3');
+    await page.getByRole('button', { name: '提交登记', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: '已登记 下料：3 件' })).toBeVisible();
+    await half('检验').check(); await quantity.fill('3');
+    await page.getByRole('button', { name: '提交登记', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: '已登记 检验：3 件' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: '作业员工', exact: true })).toHaveCount(0);
+    const order = await f.get();
+    expect(order.completed_quantity).toBeNull(); expect(order.stages.find(s => s.path === '1').available_quantity).toBe(3);
+    expect(order.receipt_documents).toHaveLength(0); expect(order.operation_routes.find(r => r.path === '1').reports[0].worker_name).toBe('李四');
+    expect(JSON.stringify(order)).not.toMatch(/"(?:[^"\s]*cost_cents|stock)"\s*:/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(errors).toEqual([]);
+  } finally { await f.close(); await context.close(); }
 });
 
 for(const device of ['desktop','iPhone 13']) test(`${device} binds a material default and selects a BOM override`,async({browser})=>{

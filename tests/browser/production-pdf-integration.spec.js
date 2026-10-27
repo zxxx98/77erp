@@ -53,7 +53,7 @@ for (const mobile of [false, true]) test.describe(`task QR ${mobile ? 'mobile PW
       await page.getByLabel('密码', { exact: true }).fill(password);
       await page.getByRole('button', { name: '登录', exact: true }).click();
       await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
-      await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveValue('5');
+      await expect(page.getByLabel('本次数量', { exact: true })).toHaveValue('');
       await expect(page.locator('.production-only-header')).toContainText('扫码任务仓');
       if (mobile) await page.evaluate(() => navigator.serviceWorker.ready);
       expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
@@ -116,7 +116,7 @@ test('camera decodes a production QR and opens registration without manual input
     await page.getByRole('button', { name: '扫码登记', exact: true }).click();
     await page.getByRole('button', { name: '使用相机扫码', exact: true }).click();
     await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
-    await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveValue('5');
+    await expect(page.getByLabel('本次数量', { exact: true })).toHaveValue('');
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
   } finally { await f.close(); }
 });

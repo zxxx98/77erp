@@ -1,0 +1,41 @@
+.production-quick-registration { min-width: 0; }
+.registration-form { max-width: 720px; margin-inline: auto; }
+.registration-operations { display: grid; border: 1px solid #e2e7ef; border-radius: 12px; overflow: hidden; }
+.registration-option-row { border-bottom: 1px solid #e9edf3; min-width: 0; }
+.registration-option-row:last-child { border-bottom: 0; }
+.registration-option-row > .erp-mobile-choice { display: block; }
+.registration-operations .registration-operation { display: flex; align-items: center; width: 100%; margin: 0; padding: 14px; white-space: normal; }
+.registration-operation:has(input:checked) { background: #eef5ff; }
+.registration-operation > span:last-child { flex: 1; min-width: 0; }
+.registration-operation .adm-radio-content { flex: 1; min-width: 0; }
+.registration-option-content { display: flex; align-items: center; gap: 12px; justify-content: space-between; width: 100%; }
+.registration-operation-name { display: grid; min-width: 0; gap: 4px; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.registration-operation-name strong { font-size: 15px; }
+.registration-operation-name small, .registration-option-quantity { color: #647084; font-size: 12px; }
+.registration-option-quantity { flex-shrink: 0; max-width: 38%; white-space: normal; overflow-wrap: anywhere; text-align: right; }
+.registration-quantity-label { display: grid; gap: 10px; margin-top: 24px; font-weight: 600; }
+.registration-quantity-label input { font-size: 20px; }
+.registration-details { margin: 20px 0; }
+.registration-details summary { cursor: pointer; padding: 12px 0; color: #52617a; }
+.registration-details > label, .registration-material > label { display: grid; gap: 8px; margin-top: 16px; }
+.registration-source { overflow-wrap: anywhere; }
+.registration-material { padding: 16px 0; border-top: 1px solid #e9edf3; }
+.registration-material > small { display: block; }
+.registration-submit, .registration-reload { width: 100%; margin-top: 12px; min-height: 48px; }
+.registration-picker-trigger.btn { display: flex; align-items: center; justify-content: space-between; width: 100%; height: auto; min-height: 64px; padding: 12px; white-space: normal; }
+.registration-picker-trigger > span { flex: 1; min-width: 0; }
+.registration-picker-trigger svg { flex-shrink: 0; }
+.mobile-device .registration-picker-trigger > span { flex-wrap: nowrap; justify-content: space-between; }
+.mobile-device .registration-picker-trigger .registration-operation-name { flex: 1; }
+.registration-picker-modal .registration-operations { margin-top: 16px; }
+.production-registration-qr { display: flex; align-items: center; gap: 28px; }
+.registration-qr-symbol { width: 232px; height: 232px; flex-shrink: 0; max-width: 100%; background: #fff; }
+.production-registration-qr > div { min-width: 0; }
+.registration-origin { overflow-wrap: anywhere; }
+.production-registration-qr a { display: inline-flex; align-items: center; min-height: 44px; }
+@media (max-width: 600px) {
+  .production-registration-qr { flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+  .registration-operations .registration-operation { padding: 14px 10px; min-height: 64px; }
+  .registration-operation-name small { line-height: 1.6; }
+  .registration-quantity-label input { min-height: 44px; }
+}
