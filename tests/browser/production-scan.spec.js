@@ -59,3 +59,62 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} QR re
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
   } finally { await f.close(); }
 });
+
+for (const device of ['android', 'ios', 'pwa']) test(`${device} header scan opens production registration in production mode`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(device => {
+    Object.defineProperty(navigator, 'userAgent', { value: device === 'ios'
+      ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1'
+      : 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36' });
+    if (device === 'pwa') {
+      const matchMedia = window.matchMedia.bind(window);
+      window.matchMedia = query => query === '(display-mode: standalone)'
+        ? { matches: true, media: query, addEventListener() {}, removeEventListener() {} } : matchMedia(query);
+    }
+  }, device);
+  const f = await fixture(page);
+  try {
+    await page.goto(f.base + '/#bom');
+    const headerScan = page.locator('.mw-header').getByRole('button', { name: '扫描生产登记二维码', exact: true });
+    await headerScan.click();
+    const dialog = page.getByRole('dialog', { name: '扫码登记', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => new URL(page.url()).hash).toBe('#production');
+    await expect(page.getByRole('heading', { name: '扫码工作台', exact: true })).toHaveCount(0);
+    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await headerScan.click();
+    await expect(dialog).toBeVisible();
+    await page.evaluate(() => {
+      navigator.mediaDevices.getUserMedia = async () => {
+        const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 800;
+        canvas.getContext('2d').fillRect(0, 0, 640, 800);
+        window.productionCameraStream = canvas.captureStream(20);
+        return window.productionCameraStream;
+      };
+      window.BarcodeDetector = class {
+        static async getSupportedFormats() { return ['qr_code']; }
+        async detect() { return window.productionCameraCode ? [{ rawValue: window.productionCameraCode }] : []; }
+      };
+    });
+    await dialog.getByRole('button', { name: '使用相机扫码', exact: true }).click();
+    await expect(page.locator('.camera-scanner-immersive video')).toHaveClass(/ready/);
+    await page.evaluate(link => { window.productionCameraCode = link; }, f.link);
+    await expect(page.getByRole('heading', { name: '生产单详情', exact: true })).toBeVisible();
+    await expect(page.getByText('本单尚未开始生产，请联系生产主管开工，并由仓库确认领料。', { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.productionCameraStream.getVideoTracks()[0].readyState)).toBe('ended');
+    expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
+    f.db.prepare('UPDATE production_orders SET material_workflow=0 WHERE id=?').run(f.order.id);
+    await headerScan.click();
+    await dialog.getByLabel('生产登记链接', { exact: true }).fill(f.link);
+    await dialog.getByRole('button', { name: '打开登记', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
+    await expect(page.getByLabel('本次数量', { exact: true })).toHaveValue('');
+    expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: '生产单', exact: true })).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    await page.goto(f.base + '/#overview');
+    await page.locator('.mw-header').getByRole('button', { name: '打开扫码工作台', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '扫码工作台', exact: true })).toBeVisible();
+  } finally { await f.close(); }
+});

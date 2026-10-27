@@ -67,6 +67,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
     };
   }, []);
   const ready = !!data.warehouse_id;
+  const productionScan = mode === 'production';
   return <div className="mw-shell">
     <div className="mw-topbar">
       <header className="mw-header" inert={switching}>
@@ -74,7 +75,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
           {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label={translate("warehouse.return.to.workbench")} onClick={() => navigate('overview')} /><strong className="mw-modal-title">{translate("warehouse.scanning.workbench")}</strong></> : <>
             <strong className="mw-wordmark">77 <span>ERP</span></strong>
             {can('basic_view') && <AntButton type="text" htmlType="button" className="mw-icon announcement-entry" aria-label={translate("warehouse.announcement.center")} onClick={() => navigate('announcements')} disabled={!ready}><Megaphone size={22} />{announcementCount > 0 && <span className="announcement-entry-count" aria-label={translate("warehouse.unread.announcements", { v0: announcementCount })}>{announcementCount > 99 ? '99+' : announcementCount}</span>}</AntButton>}
-            {can('basic_view') && <MobileIcon icon={ScanLine} label={translate("warehouse.open.the.qr.code.scanning.workbench")} onClick={() => navigate('scanner')} disabled={!ready} />}
+            {(productionScan ? canViewProduction(user) : can('basic_view')) && <MobileIcon icon={ScanLine} label={translate(productionScan ? 'production.scanProductionRegistrationQr' : 'warehouse.open.the.qr.code.scanning.workbench')} onClick={() => productionScan ? navigate('production', { scan: true }) : navigate('scanner')} disabled={!ready} />}
           </>}
           <LanguageSwitcher iconOnly />
         </div>

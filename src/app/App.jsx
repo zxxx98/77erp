@@ -254,9 +254,10 @@ function StandardApp({ admin, onLogout }) {
       if (filter.q) params.set('q', filter.q);
       acceptedHash.current += `?${params}`;
     }
+    if (id === 'production' && filter?.scan) acceptedHash.current += '?scan=1';
     location.hash = acceptedHash.current;
     setNotification(false);
-    if (filter && !filter.approval) setInventoryFilter(filter);
+    if (filter && !filter.approval && !filter.scan) setInventoryFilter(filter);
     window.scrollTo({ top: 0 });
   };
   const switchMode = nextMode => {

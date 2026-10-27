@@ -81,7 +81,18 @@ export function useProductionRegistration({ data, onSwitchWarehouse, onOrder, on
     } finally { if (alive()) setBusy(false); }
   };
   useEffect(() => {
-    if (!data.warehouse_id || !data.instance_id || !location.hash.startsWith('#production?') || !new URLSearchParams(location.hash.split('?')[1]).has('register')) return;
+    if (!data.warehouse_id || !data.instance_id || !location.hash.startsWith('#production?')) return;
+    const params = new URLSearchParams(location.hash.split('?')[1]);
+    if (params.get('scan') === '1' && !params.has('register')) {
+      setError(''); setScanner(true);
+      params.delete('scan');
+      const url = new URL(location.href);
+      url.hash = `production${params.size ? `?${params}` : ''}`;
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      return;
+    }
+    if (!params.has('register')) return;
     const key = `${data.warehouse_id}:${location.href}`;
     if (last.current === key) return;
     last.current = key;
