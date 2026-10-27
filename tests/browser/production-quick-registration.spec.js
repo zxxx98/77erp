@@ -63,6 +63,42 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} sea
   } finally { await f.close(); await context.close(); }
 });
 
+for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} unfiltered operations scroll past disabled root steps to semi-finished work`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? { viewport: { width: 1280, height: 600 } } : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), f = await fixture(page);
+  try {
+    if (mode !== 'desktop') await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto(f.link);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '选择工序', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '选择工序', exact: true });
+    const scroller = mode === 'desktop' ? dialog : dialog.locator('.form-body');
+    await expect(dialog.getByRole('radio')).toHaveCount(8);
+    await expect(dialog.getByRole('radio').nth(1)).toBeDisabled();
+    await expect.poll(() => scroller.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(100);
+    if (mode !== 'desktop') {
+      const session = await context.newCDPSession(page), box = await scroller.boundingBox();
+      const x = box.x + box.width / 2, startY = box.y + box.height - 30;
+      await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: startY }] });
+      for (let step = 1; step <= 6; step++) {
+        await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: startY - step * 40 }] });
+        await page.waitForTimeout(16);
+      }
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+      await session.detach();
+    }
+    const half = dialog.locator('.registration-option-row').filter({ hasText: f.longName }).filter({ hasText: '半成品配方' });
+    await half.scrollIntoViewIfNeeded();
+    expect(await scroller.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await half.getByRole('radio').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.registration-picker-trigger')).toContainText('半成品配方');
+    await expect(page.getByRole('searchbox', { name: '搜索工序、路线、BOM 或层级', exact: true })).toHaveCount(0);
+    expect((await f.get()).operation_routes.every(route => route.report_count === 0)).toBe(true);
+  } finally { await f.close(); await context.close(); }
+});
+
 test('quick report retries a lost response without duplicate work and preserves drafts on a stale version', async ({ page }) => {
   const f = await fixture(page);
   try {
