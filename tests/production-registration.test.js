@@ -19,6 +19,25 @@ test('operation names expand through route, BOM and layer without mixing identic
   assert.equal(targets[5].showStep, true);
   assert.equal(targets[4].output, false);
   assert.equal(targets[5].output, true);
+
+  const branched = registrationTargets({
+    stage_workflow: 1,
+    stages: [
+      { path: '', parent_path: null, name: '电源线', unit: 'PCS', bom_name: '成品 BOM', items: [] },
+      { path: '7', parent_path: '', name: '护套线', unit: 'M', bom_name: '1级 BOM', items: [] },
+      { path: '7.2', parent_path: '7', name: '黑白成缆', unit: 'M', bom_name: '2级 BOM', items: [] },
+      { path: '7.2.1', parent_path: '7.2', name: '芯线 黑色', unit: 'M', bom_name: '黑芯 BOM', items: [] },
+      { path: '7.2.1.1', parent_path: '7.2.1', name: '绞合裸铜线*1C', unit: 'M', bom_name: '绞铜 BOM', items: [] },
+      { path: '7.2.2', parent_path: '7.2', name: '芯线 白色', unit: 'M', bom_name: '白芯 BOM', items: [] },
+      { path: '7.2.2.1', parent_path: '7.2.2', name: '绞合裸铜线*1C', unit: 'M', bom_name: '绞铜 BOM', items: [] },
+    ],
+    operation_routes: [
+      route('7.2.1.1', '103绞铜工艺图', ['铜线绞合（绞铜）']),
+      route('7.2.2.1', '103绞铜工艺图', ['铜线绞合（绞铜）']),
+    ],
+  });
+  assert.equal(branched.find(row => row.path === '7.2.1.1').context, '103绞铜工艺图 · 绞铜 BOM · 芯线 黑色');
+  assert.equal(branched.find(row => row.path === '7.2.2.1').context, '103绞铜工艺图 · 绞铜 BOM · 芯线 白色');
 });
 
 test('layers without routes remain reportable and standard usage respects fractional rounding', () => {

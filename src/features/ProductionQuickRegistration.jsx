@@ -130,7 +130,7 @@ export function ProductionQuickRegistration({ order, data, onSaved, onBack, onAc
       </Button>}
       {picker && <Modal title={t('registration.chooseOperation')} className="registration-picker-modal" onClose={() => setPicker(false)}>
         <div className="form-body"><Input type="search" aria-label={t('registration.search')} placeholder={t('registration.search')} value={search} onChange={event => setSearch(event.target.value)} />
-          {choices(targets.filter(row => `${row.name} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())))}
+          {choices(targets.filter(row => `${row.name} ${row.context} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())))}
         </div>
       </Modal>}
       <label className="registration-quantity-label">{t('registration.quantity')}{target && `（${target.unit}）`}
