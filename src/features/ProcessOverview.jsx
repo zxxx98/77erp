@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight, Minus, Plus, Maximize2 } from 'lucide-react';
 import { Button, PageHeading, QueryStatus } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { useLocale } from '../i18n/react.jsx';
+import { ZoomViewport } from '../ui/ZoomViewport.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { useQuery } from '../queries.js';
 import { layoutOverview, overviewScope, productionOverviewLayers } from '../../shared/process-overview.js';
@@ -59,11 +60,10 @@ function LayerList({ layers, production, collapsed, onSelect, counts, byPath, ..
   </div>;
 }
 
-function OverviewCanvas({ layout, production, scale, canvasRef, onSelect, counts, ...actions }) {
+function OverviewCanvas({ layout, production, scale, onScaleChange, canvasRef, onSelect, counts, ...actions }) {
   const marker = `overview-${useId().replace(/:/g, '')}`;
-  return <div className="overview-canvas-scroll" ref={canvasRef} tabIndex={0} role="region" aria-label={t('route.graph')} data-testid="overview-canvas">
-    <div style={{ width: layout.width * scale, height: layout.height * scale }}>
-      <div className="overview-canvas" style={{ width: layout.width, height: layout.height, transform: `scale(${scale})` }}>
+  return <ZoomViewport className="overview-canvas-scroll" ref={canvasRef} label={t('route.graph')} testId="overview-canvas" scale={scale} onScaleChange={onScaleChange} showTools={false} minScale={0.35} maxScale={1.5}>
+      <div className="overview-canvas" style={{ width: layout.width, height: layout.height }}>
         <svg width={layout.width} height={layout.height} className="overview-edges" aria-hidden="true">
           <defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1L7 4L0 7Z" fill="currentColor" /></marker></defs>
           {layout.groups.map(group => <rect key={group.path} className="overview-group-bg" x={group.x} y={group.y} width={group.width} height={group.height} rx="12" />)}
@@ -93,8 +93,7 @@ function OverviewCanvas({ layout, production, scale, canvasRef, onSelect, counts
           </button>)}
         </article>)}
       </div>
-    </div>
-  </div>;
+  </ZoomViewport>;
 }
 
 export function ProcessOverview({ layers, production = false, onOpen, disabled = false }) {
@@ -147,7 +146,8 @@ export function ProcessOverview({ layers, production = false, onOpen, disabled =
         <Button icon={Minus} aria-label={t('overview.zoomOut')} disabled={scale <= 0.35} onClick={() => setZoom(Math.max(0.35, scale - 0.15))} />
         <span className="overview-scale">{Math.round(scale * 100)}%</span><Button icon={Plus} aria-label={t('overview.zoomIn')} disabled={scale >= 1.5} onClick={() => setZoom(Math.min(1.5, scale + 0.15))} />
         <Button icon={Maximize2} onClick={() => { setZoom(null); canvasRef.current?.scrollTo({ left: 0, top: 0 }); }}>{t('overview.fit')}</Button></div>
-        <OverviewCanvas layout={layout} production={production} scale={scale} canvasRef={canvasRef} counts={counts} onSelect={onSelect} {...actions} /></>}
+        <p className="overview-description">{t('canvas.graphHint')}</p>
+        <OverviewCanvas layout={layout} production={production} scale={scale} onScaleChange={setZoom} canvasRef={canvasRef} counts={counts} onSelect={onSelect} {...actions} /></>}
     {selectedLayer && <aside className="overview-detail" aria-label={t('overview.detail')}>
       <div className="overview-detail-heading"><h3>{selectedLayer.name} · {selectedNode?.name || noRouteLabel(production)}</h3><Button onClick={() => setSelected(null)}>{t('route.close')}</Button></div>
       <p>{selectedLayer.bom_name} · {selectedLayer.path || t('production.finalProduct')}</p>

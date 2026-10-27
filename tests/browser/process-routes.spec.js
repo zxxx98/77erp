@@ -26,6 +26,63 @@ async function fixture(page,{worker=false,multi=false}={}) {
   return {base,db,post,route,draft,link,raw,half,output,child,root,get,close:async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}};
 }
 
+for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} zooms and pans the process canvas and moves nodes at the current scale`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices['iPhone 13']), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await page.goto(`${f.base}/#process-routes`);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '编辑路线', exact: true }).click();
+    if (mode !== 'desktop') await page.getByRole('button', { name: '流程图', exact: true }).click();
+    const canvas = page.locator('.process-canvas-scroll'), tools = page.getByRole('group', { name: '画布缩放', exact: true });
+    const node = canvas.locator('.process-node').filter({ hasText: '下料' });
+    await canvas.scrollIntoViewIfNeeded();
+    const before = await node.boundingBox(), center = { x: before.x + before.width / 2, y: before.y + before.height / 2 };
+    await page.mouse.move(center.x, center.y);
+    const scroll = await page.evaluate(() => scrollY);
+    await page.mouse.wheel(0, -180);
+    await expect.poll(() => tools.getByRole('status', { name: '缩放比例' }).textContent()).not.toBe('100%');
+    const enlarged = await node.boundingBox(), scale = enlarged.width / before.width;
+    expect(scale).toBeGreaterThan(1);
+    expect(Math.abs(enlarged.x + enlarged.width / 2 - center.x)).toBeLessThan(2);
+    expect(Math.abs(enlarged.y + enlarged.height / 2 - center.y)).toBeLessThan(2);
+    expect(await page.evaluate(() => scrollY)).toBe(scroll);
+    const box = await canvas.boundingBox(), start = { x: box.x + 80, y: box.y + box.height - 30 }, end = { x: start.x + 40, y: start.y - 35 };
+    if (mode === 'desktop') {
+      await page.mouse.move(start.x, start.y); await page.mouse.down();
+      await page.mouse.move(end.x, end.y, { steps: 8 }); await page.mouse.up();
+    } else {
+      const session = await context.newCDPSession(page);
+      await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] });
+      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [end] });
+      await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await session.detach();
+    }
+    const panned = await node.boundingBox();
+    expect(panned.x - enlarged.x).toBeCloseTo(40, 0);
+    expect(panned.y - enlarged.y).toBeCloseTo(-35, 0);
+    // Panning never edits the route, and moving a node divides by the zoom.
+    expect(await node.evaluate(element => element.style.left)).toBe('24px');
+    await page.mouse.move(panned.x + panned.width / 2, panned.y + panned.height / 2); await page.mouse.down();
+    await page.mouse.move(panned.x + panned.width / 2 + 30 * scale, panned.y + panned.height / 2 + 20 * scale, { steps: 8 }); await page.mouse.up();
+    await expect.poll(() => node.evaluate(element => element.style.left)).toBe('54px');
+    await expect.poll(() => node.evaluate(element => element.style.top)).toBe('44px');
+    // Moving the pointer after release must not keep dragging the node.
+    await page.mouse.move(panned.x + panned.width / 2 + 80, panned.y + panned.height / 2 + 80);
+    expect(await node.evaluate(element => element.style.left)).toBe('54px');
+    await tools.getByRole('button', { name: '重置视图', exact: true }).click();
+    await expect(tools.getByRole('status', { name: '缩放比例' })).toHaveText('100%');
+    await page.getByRole('button', { name: '保存路线', exact: true }).click();
+    await expect(page.getByText('工艺路线已保存', { exact: true })).toBeVisible();
+    const saved = JSON.parse(f.db.prepare('SELECT graph FROM process_routes WHERE id=?').get(f.route.id).graph);
+    expect(saved.nodes[0]).toMatchObject({ x: 54, y: 44 });
+    expect(saved.nodes[1]).toMatchObject({ x: 244, y: 24 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context.close(); }
+});
+
 for(const device of ['desktop','iPhone 13']) test(`${device} creates and edits a connected route using graph or predecessor list`,async({browser})=>{
   const context=await browser.newContext({locale:'zh-CN',...(device==='desktop'?{}:devices[device]),serviceWorkers:'block'});const page=await context.newPage(),f=await fixture(page),errors=[];page.on('pageerror',error=>errors.push(error.message));
   try{
@@ -189,6 +246,20 @@ test('graph gestures cancel cleanly and use scrolled canvas coordinates', async 
     await page.getByRole('menuitem', { name: '新建工序', exact: true }).press('Enter');
     await expect(page.locator('.process-node')).toHaveCount(6);
     expect(await page.locator('.process-node').last().evaluate(el => ({ x: parseFloat(el.style.left), y: parseFloat(el.style.top) }))).toEqual(expected);
+    await page.getByRole('button', { name: '重置视图', exact: true }).click();
+    await page.getByRole('button', { name: '缩小', exact: true }).click();
+    await region.scrollIntoViewIfNeeded();
+    const scaledFrame = await region.boundingBox();
+    const end = { x: scaledFrame.x + scaledFrame.width - 40, y: scaledFrame.y + 330 };
+    const scaledExpected = await page.locator('.process-canvas').evaluate((el, p) => {
+      const bounds = el.getBoundingClientRect(), scale = bounds.width / el.offsetWidth;
+      return { x: Math.round((p.x - bounds.x) / scale), y: Math.round((p.y - bounds.y) / scale - 41) };
+    }, end);
+    const scaledHandle = await handle.boundingBox();
+    await page.mouse.move(scaledHandle.x + scaledHandle.width / 2, scaledHandle.y + scaledHandle.height / 2); await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 6 }); await page.mouse.up();
+    await expect(page.locator('.process-node')).toHaveCount(7);
+    expect(await page.locator('.process-node').last().evaluate(el => ({ x: parseFloat(el.style.left), y: parseFloat(el.style.top) }))).toEqual(scaledExpected);
   } finally { await f.close(); await context.close(); }
 });
 
@@ -313,6 +384,19 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} com
     await expect(overview.getByRole('complementary', { name: '工序详情', exact: true })).toContainText('按图下料');
     await overview.getByRole('button', { name: '关闭', exact: true }).click();
     const beforeZoom = await overview.locator('.overview-scale').textContent();
+    const canvas = overview.getByTestId('overview-canvas');
+    await canvas.hover();
+    const scroll = await page.evaluate(() => scrollY);
+    await page.mouse.wheel(0, -180);
+    await expect(overview.locator('.overview-scale')).not.toHaveText(beforeZoom);
+    expect(await page.evaluate(() => scrollY)).toBe(scroll);
+    await canvas.scrollIntoViewIfNeeded();
+    const frame = await canvas.boundingBox(), left = await canvas.evaluate(element => element.scrollLeft);
+    const maxLeft = await canvas.evaluate(element => element.scrollWidth - element.clientWidth);
+    await page.mouse.move(frame.x + 120, frame.y + 8); await page.mouse.down();
+    await page.mouse.move(frame.x + 60, frame.y + 8, { steps: 8 }); await page.mouse.up();
+    expect(await canvas.evaluate(element => element.scrollLeft)).toBeCloseTo(Math.min(maxLeft, left + 60), 0);
+    await expect(overview.getByRole('complementary', { name: '工序详情', exact: true })).toHaveCount(0);
     await overview.getByRole('button', { name: '放大流程图', exact: true }).click();
     await expect(overview.locator('.overview-scale')).not.toHaveText(beforeZoom);
     await overview.getByRole('button', { name: '适应画布', exact: true }).click();

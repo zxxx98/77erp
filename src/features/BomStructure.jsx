@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { Drawer } from 'antd';
 import { ArrowLeft, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { Input } from '../ui/controls.jsx';
+import { ZoomViewport } from '../ui/ZoomViewport.jsx';
 import { mobileDevice } from '../device.js';
 import { usePreferences } from '../preferences.jsx';
 import { calculateBomNodes } from '../../shared/bom-expansion.js';
@@ -125,7 +126,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
       const match = list.querySelector('[data-match="true"]');
       if (match) {
         const bounds = match.getBoundingClientRect(), frame = list.getBoundingClientRect();
-        list.scrollTop += bounds.top - frame.top - (list.querySelector('thead')?.offsetHeight || 0);
+        list.scrollTop += bounds.top - frame.top - (list.querySelector('thead')?.getBoundingClientRect().height || 0);
         if (horizontal && (bounds.left < frame.left || bounds.right > frame.right)) list.scrollLeft += bounds.left - frame.left - 16;
       }
     } else if (searchPosition.current !== null) {
@@ -180,7 +181,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
     </div>
     {horizontal && <p className="bom-hint">{pt('production.horizontalTreeHint')}</p>}
     <div className={`bom-structure-layout${selected && !narrow ? ' has-detail' : ''}`}>
-      <div className={`bom-structure-scroll${horizontal ? ' bom-horizontal-scroll' : ''}`} ref={viewport} tabIndex={0} role={horizontal ? 'region' : undefined} aria-label={pt(horizontal ? 'production.horizontalTree' : 'production.recipeStructureList')}>
+      <ZoomViewport className={`bom-structure-scroll${horizontal ? ' bom-horizontal-scroll' : ''}`} ref={viewport} label={pt(horizontal ? 'production.horizontalTree' : 'production.recipeStructureList')}>
         {horizontal ? <BomHorizontalTree groups={groups} scope={searching ? '' : scope}
           root={!searching && scope ? { name: byPath.get(scope)?.name, quantity: byPath.get(scope)?.required, unit: byPath.get(scope)?.unit } : { name: rootName, quantity, unit: rows[0]?.bom_base_unit }}
           expanded={expanded} searching={searching} includedPaths={includedPaths} matchedPaths={matchedPaths} selectedPath={selectedPath}
@@ -201,7 +202,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
           </tr>)}</tbody>
         </table>
         {!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}</>}
-      </div>
+      </ZoomViewport>
       {selected && !narrow && <NodeDetails node={selected} path={fullPath(selected)} onClose={closeDetails} />}
     </div>
     <p className="bom-hint">{pt("production.expandedByGrossRequirementsWithoutDeductingIntermediateStock2")}</p>

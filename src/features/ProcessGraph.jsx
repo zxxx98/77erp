@@ -2,6 +2,7 @@ import { Fragment, useId, useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { t } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
+import { ZoomViewport } from '../ui/ZoomViewport.jsx';
 import { ProcessGraphMenu } from './ProcessGraphMenu.jsx';
 import { useProcessGraphGestures } from './useProcessGraphGestures.js';
 import './process-routes.css';
@@ -71,7 +72,7 @@ export function ProcessGraph({ graph, selected, connectingSource = null, onSelec
     return Math.max(12, Math.min(44, ...distances.map(distance => distance - 4)));
   };
   const width = Math.max(620, ...graph.nodes.map(n => n.x + (onCreate ? 420 : 228))), height = Math.max(onCreate ? 360 : 240, ...graph.nodes.map(n => n.y + (onCreate ? 240 : 124)));
-  return <div className="process-canvas-scroll" role="region" aria-label={t('route.graph')} tabIndex={0}>
+  return <ZoomViewport className="process-canvas-scroll" label={t('route.graph')} freePan height={Math.min(480, height)} onNavigate={gestures.cancelNavigation}>
     <div ref={gestures.canvasRef} className={`process-canvas${onCreate ? ' is-editable' : ''}`} style={{ width, height }} {...gestures.canvasEvents}>
       <svg width={width} height={height} aria-hidden="true" className="process-edges">
         <defs>
@@ -98,19 +99,23 @@ export function ProcessGraph({ graph, selected, connectingSource = null, onSelec
         const output = !graph.edges.some(e => e.from === node.id), isStart = !graph.edges.some(e => e.to === node.id);
         const isConnectingFrom = connectingSource === node.id;
         return <Fragment key={node.id}><button type="button" className={`process-node${selected === node.id ? ' selected' : ''}${output ? ' is-output' : isStart ? ' is-start' : ''}${isConnectingFrom ? ' is-connecting' : ''}`} style={{ left: node.x, top: node.y }} aria-pressed={selected === node.id}
-          onClick={() => !disabled && onSelect?.(node.id)}
+          onClick={event => { const moved = drag.current?.moved; drag.current = null; if (!disabled && (!moved || event.detail === 0)) onSelect?.(node.id); }}
           onPointerDown={event => {
             if (!onChange || disabled || event.button !== 0) return;
-            drag.current = { id: node.id, px: event.clientX, py: event.clientY, x: node.x, y: node.y };
+            const scale = event.currentTarget.getBoundingClientRect().width / event.currentTarget.offsetWidth;
+            drag.current = { id: node.id, px: event.clientX, py: event.clientY, x: node.x, y: node.y, scale, moved: false, dragging: true };
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerMove={event => {
             const active = drag.current;
-            if (!active || active.id !== node.id || disabled) return;
+            if (!active?.dragging || active.id !== node.id || disabled) return;
+            const dx = (event.clientX - active.px) / active.scale, dy = (event.clientY - active.py) / active.scale;
+            if (!active.moved && Math.hypot(dx, dy) <= 3) return;
+            active.moved = true;
             const margin = onCreate ? 24 : 0;
-            const x = Math.min(10000, Math.max(margin, Math.round(active.x + event.clientX - active.px))), y = Math.min(10000, Math.max(margin, Math.round(active.y + event.clientY - active.py)));
-            if (Math.abs(x - active.x) + Math.abs(y - active.y) > 3) onChange({ ...graph, nodes: graph.nodes.map(n => n.id === node.id ? { ...n, x, y } : n) });
-          }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+            const x = Math.min(10000, Math.max(margin, Math.round(active.x + dx))), y = Math.min(10000, Math.max(margin, Math.round(active.y + dy)));
+            onChange({ ...graph, nodes: graph.nodes.map(n => n.id === node.id ? { ...n, x, y } : n) });
+          }} onPointerUp={event => { if (drag.current) drag.current.dragging = false; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { if (drag.current) drag.current.dragging = false; }}>
           {!onCreate && !isStart && <i className="process-node-port in" aria-hidden="true" />}
           {!onCreate && !output && <i className="process-node-port out" aria-hidden="true" />}
           <div className="process-node-header">
@@ -134,5 +139,5 @@ export function ProcessGraph({ graph, selected, connectingSource = null, onSelec
       })}
     </div>
     {gestures.menu && !disabled && <ProcessGraphMenu menu={gestures.menu} limit={graph.nodes.length >= 50 ? 'route.nodeLimit' : gestures.menu.edge && graph.edges.length >= 200 ? 'route.edgeLimit' : null} onCreate={onCreate} onClose={gestures.closeMenu} />}
-  </div>;
+  </ZoomViewport>;
 }

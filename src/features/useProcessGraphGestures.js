@@ -18,8 +18,9 @@ export function useProcessGraphGestures({ onCreate, disabled }) {
   useEffect(() => { if (disabled) { stopPress(); stopLine(); setMenu(null); } }, [disabled]);
 
   const point = event => {
-    const bounds = canvasRef.current.getBoundingClientRect();
-    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+    const canvas = canvasRef.current, bounds = canvas.getBoundingClientRect();
+    const scale = bounds.width / canvas.offsetWidth;
+    return { x: (event.clientX - bounds.left) / scale, y: (event.clientY - bounds.top) / scale };
   };
   const menuTarget = target => {
     if (target.closest('.process-node, .process-node-handle')) return null;
@@ -77,5 +78,6 @@ export function useProcessGraphGestures({ onCreate, disabled }) {
     onClick: event => { if (!disabled && !limited && event.detail === 0) onCreate({ anchorId: node.id, direction, x: node.x + (direction === 'before' ? -240 : 240), y: node.y }); },
     onContextMenu: event => event.preventDefault(),
   });
-  return { canvasRef, line, menu, closeMenu, canvasEvents, handleEvents };
+  const cancelNavigation = () => { stopPress(); stopLine(); closeMenu(); };
+  return { canvasRef, line, menu, closeMenu, canvasEvents, handleEvents, cancelNavigation };
 }

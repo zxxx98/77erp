@@ -1,5 +1,12 @@
 // Display labels only; shared business codes and values stay unchanged.
 export default {
+  'canvas.controls': ['画布缩放', 'Canvas zoom', 'Thu phóng khung vẽ'],
+  'canvas.zoomIn': ['放大', 'Zoom in', 'Phóng to'],
+  'canvas.zoomOut': ['缩小', 'Zoom out', 'Thu nhỏ'],
+  'canvas.scale': ['缩放比例', 'Zoom level', 'Mức thu phóng'],
+  'canvas.reset': ['重置视图', 'Reset view', 'Đặt lại góc nhìn'],
+  'canvas.graphHint': ['滚轮缩放，按住空白处拖动画布', 'Scroll to zoom; drag the background to pan', 'Cuộn để thu phóng; kéo nền để di chuyển'],
+  'canvas.tableHint': ['滚轮缩放，按住空白处拖动查看', 'Scroll to zoom; drag empty areas to scroll', 'Cuộn để thu phóng; kéo vùng trống để xem'],
   "shared-ui.basic.view": ["查看基础页面", "View basic pages", "Xem trang cơ bản"],
   "shared-ui.basic.view.description": ["查看仪表盘、物料、库存、出入库记录、扫码查询和公告；业务操作仍需对应权限", "View the dashboard, materials, inventory, stock documents, QR queries and announcements; operations require their corresponding permissions", "Xem tổng quan, vật tư, tồn kho, chứng từ nhập xuất, tra cứu QR và thông báo; thao tác cần quyền tương ứng"],
 

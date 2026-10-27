@@ -61,6 +61,17 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} nav
     await page.getByRole('tab', { name: '配方结构', exact: true }).click();
     const rows = page.locator('.bom-structure-row');
     await expect(rows).toHaveCount(2);
+    const structure = page.locator('.bom-structure'), zoom = structure.getByRole('status', { name: '缩放比例' });
+    const list = page.locator('.bom-structure-scroll');
+    const originalWidth = (await list.locator('table').boundingBox()).width;
+    await list.hover();
+    const pageScroll = await page.evaluate(() => scrollY);
+    await page.mouse.wheel(0, -160);
+    await expect.poll(() => zoom.textContent()).not.toBe('100%');
+    expect((await list.locator('table').boundingBox()).width).toBeGreaterThan(originalWidth * 1.2);
+    expect(await page.evaluate(() => scrollY)).toBe(pageScroll);
+    await structure.getByRole('button', { name: '重置视图', exact: true }).click();
+    await expect(zoom).toHaveText('100%');
     await expect(rows.first().locator('.bom-node-tags')).toHaveText('半成品第 1 级');
     await expect(rows.last().locator('.bom-node-tags')).toHaveText('原料第 1 级');
     if (profile === 'desktop') {
@@ -110,6 +121,31 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} nav
     await expect(page.getByRole('button', { name: '查看详情 共用原料', exact: true })).toHaveCount(2);
     expect(errors).toEqual([]);
   } finally { await f.close(); await context?.close(); }
+});
+
+test('desktop pans a zoomed BOM list without activating material actions', async ({ page }) => {
+  const f = await fixture(page, true);
+  try {
+    await page.goto(f.base + '/#bom');
+    await page.getByRole('searchbox', { name: '搜索BOM', exact: true }).fill('层级配方0');
+    await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '开始测算', exact: true }).click();
+    await page.getByRole('tab', { name: '配方结构', exact: true }).click();
+    const structure = page.locator('.bom-structure'), list = page.locator('.bom-structure-scroll');
+    await structure.getByRole('button', { name: '放大', exact: true }).click();
+    await list.scrollIntoViewIfNeeded();
+    await list.evaluate(element => { element.scrollTop = 0; });
+    const box = await list.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 40, box.y + 100, { steps: 8 });
+    await page.mouse.up();
+    expect(await list.evaluate(element => element.scrollTop)).toBeGreaterThan(80);
+    await expect(page.getByRole('region', { name: '节点详情', exact: true })).toHaveCount(0);
+    await structure.getByRole('button', { name: '重置视图', exact: true }).click();
+    expect(await list.evaluate(element => element.scrollTop)).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  } finally { await f.close(); }
 });
 
 for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} restores branch scroll and inspects a frozen production snapshot`, async ({ page }) => {

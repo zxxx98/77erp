@@ -59,6 +59,18 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production tabs p
     expect(bounds.find(node => node.path === '1').x).toBeGreaterThan(bounds.find(node => node.path === '').x + bounds.find(node => node.path === '').width);
     expect(bounds.find(node => node.path === '1.1').x).toBeGreaterThan(bounds.find(node => node.path === '1').x + bounds.find(node => node.path === '1').width);
     await expect(canvas.locator('[data-node-path="1.1"]')).toContainText('60 件');
+    const structure = page.locator('.bom-structure'), originalWidth = bounds.find(node => node.path === '1').width;
+    await canvas.hover();
+    await page.mouse.wheel(0, -160);
+    await expect.poll(() => structure.getByRole('status', { name: '缩放比例' }).textContent()).not.toBe('100%');
+    expect((await canvas.locator('[data-node-path="1"]').boundingBox()).width).toBeGreaterThan(originalWidth * 1.2);
+    await canvas.scrollIntoViewIfNeeded();
+    const frame = await canvas.boundingBox(), left = await canvas.evaluate(element => element.scrollLeft);
+    await page.mouse.move(frame.x + 120, frame.y + 8); await page.mouse.down();
+    await page.mouse.move(frame.x + 60, frame.y + 8, { steps: 8 }); await page.mouse.up();
+    expect(await canvas.evaluate(element => element.scrollLeft)).toBeGreaterThan(left + 50);
+    await structure.getByRole('button', { name: '重置视图', exact: true }).click();
+    await expect(structure.getByRole('status', { name: '缩放比例' })).toHaveText('100%');
     await page.screenshot({ path: test.info().outputPath(`${mode}-tree.png`), fullPage: true });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('searchbox', { name: '搜索结构物料', exact: true }).fill('树图原料');
@@ -102,4 +114,3 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production tabs p
     expect(errors).toEqual([]);
   } finally { await f.close(); await context?.close(); }
 });
-
