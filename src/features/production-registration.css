@@ -28,13 +28,13 @@
 .mobile-device .registration-picker-trigger > span { flex-wrap: nowrap; justify-content: space-between; }
 .mobile-device .registration-picker-trigger .registration-operation-name { flex: 1; }
 .registration-picker-modal .registration-operations { margin-top: 16px; }
-.production-registration-qr { display: flex; align-items: center; gap: 28px; }
-.registration-qr-symbol { width: 232px; height: 232px; flex-shrink: 0; max-width: 100%; background: #fff; }
-.production-registration-qr > div { min-width: 0; }
-.registration-origin { overflow-wrap: anywhere; }
-.production-registration-qr a { display: inline-flex; align-items: center; min-height: 44px; }
+.production-registration-qr { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 10px 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); flex-shrink: 0; }
+.registration-qr-symbol { width: 108px; height: 108px; display: block; flex-shrink: 0; max-width: 100%; background: #fff; }
+.registration-qr-link { display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; line-height: 1.3; color: #2563eb; text-decoration: none; }
+.registration-qr-link:hover { text-decoration: underline; }
 @media (max-width: 600px) {
-  .production-registration-qr { flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+  .production-registration-qr { padding: 8px 8px 6px; border-radius: 10px; gap: 4px; }
+  .registration-qr-symbol { width: 84px; height: 84px; }
   .registration-operations .registration-operation { padding: 14px 10px; min-height: 64px; }
   .registration-operation-name small { line-height: 1.6; }
   .registration-quantity-label input { min-height: 44px; }

@@ -399,19 +399,25 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
 
   if (detail) return <div className="bom-page production-page">
     {heading(pt("production.productionOrderDetails"), detail.number)}{notices}
-    <div className="production-detail-header"><div className="bom-section-heading"><div><h2>{detail.product_name}</h2><small>{detail.barcode}{detail.specification && ` · ${detail.specification}`}</small></div>{statusBadge(detail.status)}</div>
-      <div className="bom-actions">
-        {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
-        {management && detail.material_workflow === 1 && detail.status === 'draft' && <Button kind="primary" disabled={action.busy} onClick={startProduction}>{pt("production.startProduction")}</Button>}
-        {(detail.status === 'in_progress' || !detail.material_workflow && detail.status === 'draft') && <Button kind="primary" icon={Check} disabled={action.busy} onClick={beginCompletion}>{pt("production.register")}</Button>}
-        {management && detail.status === 'in_progress' && <Button disabled={action.busy || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>}
-        {management && detail.status !== 'void' && can('corrections') && <Button icon={XCircle} disabled={action.busy || !detail.material_workflow && detail.received_quantity > 0 && !can('purchase')} onClick={() => begin({ kind: 'void', reason: '' })}>{pt("production.voidProductionOrder")}</Button>}
-        {management && detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>{pt("production.deleteProductionOrder")}</Button>}
-        <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
+    <div className="production-detail-header">
+      <div className="production-detail-main">
+        <div className="production-detail-identity">
+          <div className="production-detail-title"><h2>{detail.product_name}</h2>{statusBadge(detail.status)}</div>
+          <small>{detail.barcode}{detail.specification && ` · ${detail.specification}`}</small>
+        </div>
+        <div className="bom-actions">
+          {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
+          {management && detail.material_workflow === 1 && detail.status === 'draft' && <Button kind="primary" disabled={action.busy} onClick={startProduction}>{pt("production.startProduction")}</Button>}
+          {(detail.status === 'in_progress' || !detail.material_workflow && detail.status === 'draft') && <Button kind="primary" icon={Check} disabled={action.busy} onClick={beginCompletion}>{pt("production.register")}</Button>}
+          {management && detail.status === 'in_progress' && <Button disabled={action.busy || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>}
+          {management && detail.status !== 'void' && can('corrections') && <Button icon={XCircle} disabled={action.busy || !detail.material_workflow && detail.received_quantity > 0 && !can('purchase')} onClick={() => begin({ kind: 'void', reason: '' })}>{pt("production.voidProductionOrder")}</Button>}
+          {management && detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>{pt("production.deleteProductionOrder")}</Button>}
+          <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
+        </div>
+        <div className="bom-actions production-detail-export"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
       </div>
-    <div className="bom-actions production-detail-export"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
+      <ProductionRegistrationQr order={detail} data={data} />
     </div>
-    <ProductionRegistrationQr order={detail} data={data} />
     <ProductionDetailTabs key={detail.id} active={detailTab} onChange={setDetailTab} items={[
       { key: 'overview', label: pt('production.overviewTab'), children: <>
     <section className="panel bom-section">

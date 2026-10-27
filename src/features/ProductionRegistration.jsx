@@ -19,15 +19,12 @@ export function ProductionRegistrationQr({ order, data }) {
       return { url, symbol: qrSymbol(url) };
     } catch { return null; }
   }, [data.warehouse_id, data.instance_id, order.id, order.number]);
-  return <section className="panel bom-section production-registration-qr" aria-label={pt('registration.qr')}>
+  return <div className="production-registration-qr" aria-label={pt('registration.qr')} title={pt('registration.qrHint')}>
     {code && <svg className="registration-qr-symbol" viewBox={`0 0 ${code.symbol.size} ${code.symbol.size}`} role="img" aria-label={pt('registration.qr')} shapeRendering="crispEdges">
       <rect width={code.symbol.size} height={code.symbol.size} fill="#fff" /><path d={code.symbol.path} fill="#000" />
     </svg>}
-    <div><h2>{pt('registration.qr')}</h2><p className="bom-hint">{pt('registration.qrHint')}</p>
-      {code ? <a href={code.url}>{pt('production.openRegistration')}</a> : <p role="alert" className="form-error">{pt('registration.qrUnavailable')}</p>}
-      <p className="bom-hint registration-origin">{location.origin}</p>
-    </div>
-  </section>;
+    {code ? <a className="registration-qr-link" href={code.url}>{pt('production.openRegistration')}</a> : <p role="alert" className="form-error">{pt('registration.qrUnavailable')}</p>}
+  </div>;
 }
 
 export function clearProductionRegistration() {
