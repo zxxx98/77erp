@@ -78,8 +78,10 @@ export function materialDocumentProgress(doc) {
   return { ...doc, fulfillment_status: doc.type === 'in' ? doc.status : doc.status === 'pending' ? issued ? 'partial' : 'pending' : doc.status === 'cancelled' ? 'closed' : 'confirmed',
     items: doc.items.map(row => {
       const quantity = doc.type === 'out' ? (doc.issues ?? []).reduce((sum, issue) => addQuantity(sum, issue.items.find(item => item.product_id === row.product_id)?.quantity ?? 0), 0) : doc.status === 'confirmed' ? row.quantity : 0;
-      const remaining = addQuantity(row.quantity, -quantity);
-      return { ...row, issued_quantity: quantity, pending_quantity: doc.status === 'pending' ? remaining : 0, closed_quantity: doc.status === 'cancelled' ? remaining : 0 };
+      const remaining = Math.max(0, addQuantity(row.quantity, -quantity));
+      return { ...row, issued_quantity: quantity, pending_quantity: doc.status === 'pending' ? remaining : 0,
+        closed_quantity: doc.status === 'cancelled' ? remaining : 0,
+        over_issued_quantity: doc.type === 'out' ? Math.max(0, addQuantity(quantity, -row.quantity)) : 0 };
     }) };
 }
 
@@ -127,6 +129,7 @@ export function materialBalances(order) {
     // Lifetime turnover can exceed Number's exact range even when the remaining pool is small.
     if (cost < 0n || cost > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${item.name}材料余额成本不足或超出范围。`);
     return { ...item, requested_quantity: requested, pending_issue_quantity: pending, closed_request_quantity: closed, issued_quantity: issued, returned_quantity: returned,
+      over_plan_quantity: Math.max(0, addQuantity(issued, -item.planned_quantity)),
       ...(order.stage_workflow ? { direct_consumed_quantity:consumed, direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
       available_quantity: addQuantity(addQuantity(issued, -returned), -consumed), available_cost_cents: Number(cost) };
   });
@@ -175,7 +178,6 @@ export function installProductionMaterials(app, db, { route, current, version, u
     const { items = order.items.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity })), note = '' } = req.body;
     const normalized = normalizeItems(order, items);
     if (typeof note !== 'string' || note.length > 500) fail('申请备注最多 500 字。');
-    if (normalized.some(row => row.quantity > order.items.find(item => item.product_id === row.product_id).planned_quantity)) fail('首次领料申请不能超过计划需求，额外材料请申请补料。');
     create(req, order, 'out', 'initial', normalized, note.trim());
     return current(req);
   }, true));
@@ -234,7 +236,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
       if (doc.type === 'in' && req.body.items !== undefined) fail('退料单需整单确认。');
       const rows = requested.map(row => {
         const source = doc.items.find(item => item.product_id === row.product_id);
-        if (!source || doc.type === 'out' && row.quantity > source.pending_quantity) fail('本次实发数量不能超过申请剩余待发数量。');
+        if (!source) fail('本次发料的材料需属于当前申请。');
         return { ...source, quantity: row.quantity };
       });
       const before = rows.map(row => db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id));
@@ -332,8 +334,7 @@ export function validateProductionMaterialBackup(data) {
   for (const issue of issues.values()) if (!issue.items.length || issue.items.reduce((sum,row) => sum + BigInt(row.cost_cents),0n) !== BigInt(issue.total_cost_cents)) fail('备份生产发料成本合计无效。');
   for (const doc of docs.values()) if (doc.type === 'out') {
     const progress = materialDocumentProgress(doc);
-    if (progress.items.some(row => row.issued_quantity > row.quantity) ||
-        doc.status === 'confirmed' && progress.items.some(row => row.issued_quantity !== row.quantity) ||
+    if (doc.status === 'confirmed' && progress.items.some(row => row.issued_quantity < row.quantity) ||
         doc.status === 'pending' && progress.items.every(row => row.pending_quantity === 0)) fail('备份生产发料数量与申请不一致。');
     if (doc.status === 'confirmed' && doc.items.some(row =>
       doc.issues.reduce((sum,issue) => sum + BigInt(issue.items.find(item => item.product_id === row.product_id)?.cost_cents ?? 0),0n) !== BigInt(row.cost_cents))) fail('备份生产发料成本与申请不一致。');
@@ -349,11 +350,6 @@ export function validateProductionMaterialBackup(data) {
         documents.some(doc => doc.status === 'pending' && doc.kind !== 'initial' && order.material_phase !== 'in_progress') ||
         order.material_phase !== 'in_progress' && (order.completed_at || documents.some(doc => doc.status === 'confirmed')) ||
         order.status === 'void' && pending.has(order.id)) fail('备份生产领料阶段与材料单不一致。');
-    for (const doc of documents.filter(doc => doc.kind === 'initial')) {
-      const items = data.production_items.filter(row => row.production_id === order.id);
-      // Cancelled initial requests can predate an editable plan change.
-      if (doc.status !== 'cancelled' && (doc.items.some(row => row.quantity > items.find(item => item.product_id === row.product_id)?.planned_quantity))) fail('备份首次领料数量超过计划需求。');
-    }
     const balances = materialBalances({ ...order, items: data.production_items.filter(row => row.production_id === order.id), material_documents: documents,
       stage_direct_batches:stageDirectBatches(data,order.id),
       batches: data.production_batches.filter(row => row.production_id === order.id).map(batch => ({ ...batch, items: data.production_batch_items.filter(row => row.batch_id === batch.id) })) });

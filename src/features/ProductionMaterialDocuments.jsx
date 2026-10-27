@@ -8,7 +8,7 @@ import { ProductionApprovalList } from './ProductionApprovalList.jsx';
 import { ProductionApprovalDialog } from './ProductionApprovalDialog.jsx';
 import { Select } from '../Dropdown.jsx';
 import { usePermissions } from '../permissions.jsx';
-import { parseQuantity } from '../../shared/quantity.js';
+import { addQuantity, parseQuantity, validQuantity } from '../../shared/quantity.js';
 import { useBusiness } from '../business-api.js';
 import { queryPath, useQuery } from '../queries.js';
 import { count, dateTime, money, currencySymbol } from '../app/format.js';
@@ -25,14 +25,17 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
   const [cancelling, setCancelling] = useState(null);
   const [reason, setReason] = useState('');
   const [quantities, setQuantities] = useState({}), [error, setError] = useState('');
+  const issueExcess = (doc, item) => {
+    const value = Number(quantities[`${doc.id}:${item.product_id}`] ?? item.pending_quantity);
+    return validQuantity(value) ? Math.max(0, addQuantity(value, -item.pending_quantity)) : 0;
+  };
   const confirm = doc => {
     try {
       setError('');
-      const items = doc.type === 'out' ? doc.items.filter(item => item.pending_quantity > 0).map(item => ({ product_id: item.product_id,
+      const items = doc.type === 'out' ? doc.items.map(item => ({ product_id: item.product_id,
         quantity: parseQuantity(quantities[`${doc.id}:${item.product_id}`] ?? String(item.pending_quantity)) })).filter(item => item.quantity > 0) : undefined;
       if (items && !items.length) throw new Error(pt('production.enterIssueQuantity'));
       if (items?.some(row => doc.items.find(item => item.product_id === row.product_id).unit_round_up && !Number.isInteger(row.quantity))) throw new Error(pt('production.issuedMaterialMustBeWhole'));
-      if (items?.some(row => row.quantity > doc.items.find(item => item.product_id === row.product_id).pending_quantity)) throw new Error(pt('production.issueExceedsRemaining'));
       onConfirm(doc, items);
     } catch (error) { setError(error.message); }
   };
@@ -56,12 +59,14 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
       {doc.type === 'out' && <div className="material-issue-progress">
         <span>{pt('production.issued')} {count(item.issued_quantity)} {item.unit}</span>
         <span>{pt('production.pendingIssue')} {count(item.pending_quantity)} {item.unit}</span>
+        {item.over_issued_quantity > 0 && <span>{pt('production.overIssued')} {count(item.over_issued_quantity)} {item.unit}</span>}
         {item.closed_quantity > 0 && <span>{pt('production.closedQuantity')} {count(item.closed_quantity)} {item.unit}</span>}
       </div>}
-      {doc.status === 'pending' && doc.type === 'out' && onConfirm && item.pending_quantity > 0 && <label className="material-issue-input">{pt('production.currentIssue')}
+      {doc.status === 'pending' && doc.type === 'out' && onConfirm && <label className="material-issue-input">{pt('production.currentIssue')}
         <Input aria-label={pt('production.currentIssueFor', { name: item.name })} inputMode="decimal" disabled={busy}
           value={quantities[`${doc.id}:${item.product_id}`] ?? String(item.pending_quantity)}
           onChange={event => { setError(''); setQuantities(previous => ({ ...previous, [`${doc.id}:${item.product_id}`]: event.target.value })); }} />
+        {issueExcess(doc, item) > 0 && <small role="status">{pt('production.currentOverIssueHint', { quantity: count(issueExcess(doc, item)), unit: item.unit })}</small>}
       </label>}
       {can('finance') && item.cost_cents != null && <small>{pt("production.materialCost")} {currencySymbol()}{money(item.cost_cents / 100)}</small>}
     </li>)}</ul>}
@@ -108,7 +113,14 @@ export function ProductionMaterialDocuments({ data, type, onChanged, initialQuer
   };
   const confirm = (doc, items) => action.run(async () => {
     const direction = doc.type === 'out' ? pt("production.issue") : pt("production.receipt2");
-    if (!window.confirm(doc.type === 'out' ? pt('production.confirmCurrentIssue', { number: doc.number }) : pt("production.approveAndTheEntireOrder", { v0: doc.number, v1: direction, v2: pt("production.unusedMaterialsWillReturnToTheCurrentWarehouse") }))) return;
+    const excess = (items || []).flatMap(row => {
+      const item = doc.items.find(item => item.product_id === row.product_id);
+      return row.quantity > item.pending_quantity ? [`${item.name} +${count(addQuantity(row.quantity, -item.pending_quantity))} ${item.unit}`] : [];
+    });
+    const confirmation = doc.type === 'out'
+      ? pt('production.confirmCurrentIssue', { number: doc.number }) + (excess.length ? '\n' + pt('production.confirmOverIssue', { items: excess.join('\n') }) : '')
+      : pt("production.approveAndTheEntireOrder", { v0: doc.number, v1: direction, v2: pt("production.unusedMaterialsWillReturnToTheCurrentWarehouse") });
+    if (!window.confirm(confirmation)) return;
     await action.send(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, ...(items ? { items } : {}) }, { warehouseId: data.warehouse_id });
     setMessage(pt("production.confirmed2", { v0: doc.number, v1: direction })); await completed();
   });

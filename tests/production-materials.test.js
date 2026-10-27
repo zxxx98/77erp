@@ -201,7 +201,7 @@ test('backup ledger rejects forged phases, unbalanced costs and malformed docume
     data => { data.production_orders[0].material_phase = 'draft'; },
     data => { data.production_material_documents[0].production_id = 9999; },
     data => { data.production_material_document_items[0].cost_cents++; },
-    data => { data.production_material_document_items[0].quantity = 1; },
+    data => { data.production_material_document_items[0].quantity = 0; },
     data => { data.production_material_documents[0].status = 'pending'; },
     data => { data.production_orders[0].material_workflow = 0; },
   ]) {
@@ -368,9 +368,9 @@ test('closing a partly issued application preserves materials and progress; retu
   assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
 });
 
-test('initial requests allow material subsets and reject quantities beyond the production plan', async t => {
+test('initial requests allow material subsets and validate quantities', async t => {
   const f = await fixture(t); let order = await f.create();
-  for (const items of [[],[{product_id:f.parent,quantity:1}],[{product_id:f.material,quantity:21}],[{product_id:f.material,quantity:0}]])
+  for (const items of [[],[{product_id:f.parent,quantity:1}],[{product_id:f.material,quantity:0}]])
     assert.equal((await f.command(`/production-orders/${order.id}/start`, { version: order.version, items })).status, 400);
   order = f.ok(await f.command(`/production-orders/${order.id}/start`, { version: order.version, items: [{product_id:f.material,quantity:3.1234}], note: '首批少领' }));
   assert.equal(order.material_documents[0].items.length, 1);
@@ -385,7 +385,7 @@ test('partial confirmation validates selected lines, integer units and stock ato
   let order = await f.start(await f.create()), doc = order.material_documents[0];
   const before = f.stock(f.material);
   const post = items => f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items });
-  for (const items of [[],[{product_id:f.material,quantity:0}],[{product_id:f.material,quantity:0.1}],[{product_id:f.material,quantity:21}],[{product_id:f.parent,quantity:1}],[{product_id:f.material,quantity:1},{product_id:f.material,quantity:1}],[{product_id:f.material,quantity:0.00001}]])
+  for (const items of [[],[{product_id:f.material,quantity:0}],[{product_id:f.material,quantity:0.1}],[{product_id:f.parent,quantity:1}],[{product_id:f.material,quantity:1},{product_id:f.material,quantity:1}],[{product_id:f.material,quantity:0.00001}]])
     assert.equal((await post(items)).status, 400);
   f.db.prepare('UPDATE products SET stock=0,inventory_value_cents=0 WHERE id=?').run(f.second);
   assert.equal((await post([{product_id:f.material,quantity:2},{product_id:f.second,quantity:1}])).status, 400);
@@ -397,12 +397,12 @@ test('partial confirmation validates selected lines, integer units and stock ato
   assert.equal((await f.get(order.id)).status, 'in_progress');
 });
 
-test('partial issue backups reject overfulfillment, forged costs and missing issue records', async t => {
+test('partial issue backups reject malformed quantities, forged costs and missing issue records', async t => {
   const f = await fixture(t); const order = await f.start(await f.create()), doc = order.material_documents[0];
   f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items: [{product_id:f.material,quantity:3}] }));
   const backup = f.ok(await f.request('/backup'));
   for (const mutate of [
-    data => data.production_material_issue_items[0].quantity = 21,
+    data => data.production_material_issue_items[0].quantity = 0,
     data => data.production_material_issue_items[0].cost_cents++,
     data => data.production_material_issues[0].document_id = 999,
     data => data.production_material_issue_items[0].product_id = f.parent,
@@ -426,5 +426,79 @@ test('deployed databases and version 39 backups migrate full issues once without
   order = await f.get(order.id);
   assert.equal(order.material_documents[0].issues.length, 1);
   assert.equal(order.items[0].issued_quantity, 20); assert.deepEqual(f.stock(f.material), before);
+  f.ok(await f.request('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
+});
+
+test('whole-bag overissues preserve requested quantities, fulfill remaining materials and return unused stock at pool cost', async t => {
+  const f = await fixture(t), original = [f.stock(f.material), f.stock(f.second)];
+  let order = await f.start(await f.create()), doc = order.material_documents[0];
+  doc = f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items: [{ product_id: f.material, quantity: 25 }] }));
+  assert.equal(doc.fulfillment_status, 'partial');
+  assert.deepEqual(doc.items.map(row => [row.quantity, row.issued_quantity, row.pending_quantity, row.over_issued_quantity]), [[20,25,0,5],[10,0,10,0]]);
+  order = await f.get(order.id);
+  assert.equal(order.items[0].available_quantity, 25); assert.equal(order.items[0].over_plan_quantity, 5);
+  const partialBackup = f.ok(await f.request('/backup')), partialPreview = f.ok(await f.request('/backup/preview', { backup: partialBackup }));
+  f.ok(await f.command('/backup/restore', { backup: partialBackup, ...partialPreview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  order = await f.get(order.id); doc = order.material_documents[0];
+  // A default confirmation must issue only the still-pending second material.
+  doc = await f.confirm(doc);
+  assert.equal(doc.status, 'confirmed'); assert.deepEqual(doc.items.map(row => row.issued_quantity), [25,10]);
+  assert.equal(f.stock(f.material).stock, 75); assert.equal(doc.issues.length, 2);
+  order = await f.get(order.id);
+  order = f.ok(await f.complete(order, 20, { completed_quantity: 10, finish_order: true, items: [{ product_id: f.material, quantity: 20 }, { product_id: f.second, quantity: 10 }] }));
+  assert.equal(order.status, 'completed'); assert.equal(order.items[0].available_quantity, 5);
+  order = f.ok(await f.command(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'in', items: [{ product_id: f.material, quantity: 5 }], note: '整袋领料余量退回' }));
+  await f.confirm(order.material_documents.at(-1)); order = await f.get(order.id);
+  assert.equal(f.stock(f.material).stock, 80); assert.equal(order.items[0].available_quantity, 0);
+  assert.equal(order.items[0].available_cost_cents, 0); assert.equal(order.items[0].returned_quantity, 5);
+  assert.equal(order.material_documents[0].items[0].over_issued_quantity, 5);
+  assert.equal(order.items[0].over_plan_quantity, 5, 'gross excess is historical, not the quantity left to return');
+  for (let i = 0; i < order.items.length; i++)
+    assert.equal(f.stock(order.items[i].product_id).inventory_value_cents + order.items[i].cost_cents, original[i].inventory_value_cents);
+  const backup = f.ok(await f.request('/backup')), preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal((await f.get(order.id)).items[0].available_quantity, 0);
+});
+
+test('initial requests may exceed plan while warehouse issues remain restricted to application materials and stock', async t => {
+  const f = await fixture(t); let order = await f.create();
+  order = f.ok(await f.command(`/production-orders/${order.id}/start`, { version: order.version, items: [{ product_id: f.material, quantity: 25 }], note: '原料每袋25kg' }));
+  let doc = order.material_documents[0];
+  assert.equal(order.items[0].planned_quantity, 20); assert.equal(doc.items[0].quantity, 25);
+  assert.equal(f.stock(f.material).stock, 100);
+  assert.equal((await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items: [{ product_id: f.second, quantity: 1 }] })).status, 400);
+  doc = await f.confirm(doc); order = await f.get(order.id);
+  assert.equal(doc.status, 'confirmed'); assert.equal(doc.items[0].over_issued_quantity, 0);
+  assert.equal(order.items[0].over_plan_quantity, 5); assert.equal(order.items[0].available_quantity, 25);
+  f.ok(await f.request('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
+});
+
+test('overissues on an already fulfilled line of a pending application remain atomic, versioned and cancellable', async t => {
+  const f = await fixture(t); let order = await f.start(await f.create()), doc = order.material_documents[0];
+  const initial = [f.stock(f.material), f.stock(f.second)];
+  assert.equal((await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items: [{ product_id: f.second, quantity: 12 }, { product_id: f.material, quantity: 101 }] })).status, 400);
+  assert.deepEqual([f.stock(f.material), f.stock(f.second)], initial);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_material_issues').get().n, 0);
+  doc = f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items: [{ product_id: f.material, quantity: 20 }] }));
+  const request = { request_id: randomUUID(), version: doc.version, items: [{ product_id: f.material, quantity: 5 }] };
+  const issued = f.ok(await f.request(`/production-material-documents/${doc.id}/confirm`, request));
+  assert.deepEqual(f.ok(await f.request(`/production-material-documents/${doc.id}/confirm`, request)), issued);
+  assert.equal((await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items: request.items })).status, 409);
+  assert.equal(f.stock(f.material).stock, 75);
+  doc = f.ok(await f.command(`/production-material-documents/${doc.id}/cancel`, { version: issued.version, reason: '另一种材料不需要' }));
+  assert.equal(doc.items[0].closed_quantity, 0); assert.equal(doc.items[0].over_issued_quantity, 5);
+  assert.equal(doc.items[1].closed_quantity, 10);
+  const backup = f.ok(await f.request('/backup')), preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  order = await f.get(order.id); assert.equal(order.status, 'in_progress'); assert.equal(order.items[0].available_quantity, 25);
+});
+
+test('supplement requests allow overissue while preserving original requested quantities', async t => {
+  const f = await fixture(t); let order = await f.start(await f.create()); await f.confirm(order.material_documents[0]); order = await f.get(order.id);
+  order = f.ok(await f.command(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'out', items: [{ product_id: f.material, quantity: 1 }], note: '整袋补料' }));
+  let doc = order.material_documents.at(-1);
+  doc = f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version, items: [{ product_id: f.material, quantity: 5 }] }));
+  assert.equal(doc.status, 'confirmed'); assert.equal(doc.items[0].quantity, 1); assert.equal(doc.items[0].over_issued_quantity, 4);
+  order = await f.get(order.id); assert.equal(order.items[0].issued_quantity, 25); assert.equal(order.items[0].available_quantity, 25);
   f.ok(await f.request('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
 });

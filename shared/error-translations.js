@@ -3,6 +3,7 @@ import { createValidationTranslator } from './error-translation-runtime.js';
 // System validation text only; never include stored business values in this catalog.
 export const validationMessages = {
   ...processRouteMessages,
+  "VALIDATION_OVER_ISSUE_MATERIAL": ["本次发料的材料需属于当前申请。", "Materials issued must belong to the current request.", "Nguyên liệu cấp phải thuộc yêu cầu hiện tại."],
   "VALIDATION_PARTIAL_ISSUE_STOCK": ["{p0}库存不足，请核对本次实发数量。", "Insufficient stock for {p0}. Check this issue quantity.", "Không đủ tồn kho cho {p0}. Kiểm tra số lượng cấp lần này."],
   "VALIDATION_PARTIAL_ISSUE_LINES": ["请核对材料明细，材料不能重复。", "Check material lines; duplicate materials are not allowed.", "Kiểm tra chi tiết; không được trùng nguyên liệu."],
   "VALIDATION_PARTIAL_ISSUE_LIMIT": ["材料数量超出范围。", "Material quantity is out of range.", "Số lượng nguyên liệu vượt giới hạn."],

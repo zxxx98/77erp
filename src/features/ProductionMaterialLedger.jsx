@@ -38,6 +38,7 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
         return <tbody key={item.product_id}>
           <tr className="production-ledger-row">
             <th scope="row" className="production-ledger-material"><strong>{item.name}</strong><small>{item.barcode}{item.specification && ` · ${item.specification}`}</small>
+              {item.over_plan_quantity > 0 && <p data-field="over_plan_quantity"><span>{t('production.overPlanIssued')}</span> {count(item.over_plan_quantity)} {item.unit}</p>}
               {shortage > 0 && <p className="bom-shortage">{t(issued ? 'production.supplementNeeded' : 'production.shortage')} {count(shortage)} {item.unit}</p>}
               {item.product && item.unit !== item.product.unit && <p className="bom-warning">{t('production.currentUnitChangedTo')} {item.product.unit}{t('production.thisOrderRetains')} {item.unit}。</p>}
               {item.product && !item.product.active && <p className="bom-warning">{t('production.materialDisabled')}</p>}

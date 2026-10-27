@@ -250,7 +250,7 @@ test('production can request and cancel supplements without changing warehouse s
   } finally { await f.close(); }
 });
 
-for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} initial subset and closing an issued request preserve production progress`, async ({ page }) => {
+for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} initial over-plan request and closing an issued request preserve production progress`, async ({ page }) => {
   if (mobile) {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone);
@@ -260,7 +260,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} initi
     await page.goto(`${f.base}/#production`);
     await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
     await page.getByRole('button', { name: '开始生产', exact: true }).click();
-    await page.getByLabel('生产原料领料数量', { exact: true }).fill('6');
+    await page.getByLabel('生产原料领料数量', { exact: true }).fill('12');
     await page.getByRole('button', { name: '提交领料申请', exact: true }).click();
     await page.getByRole('tab', { name: '物料', exact: true }).click();
     await page.getByRole('button', { name: '前往出库', exact: true }).click();
@@ -292,4 +292,62 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} initi
     expect(f.stock()).toBe(98);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   } finally { await f.close(); }
+});
+
+for (const device of ['desktop', 'mobile', 'pwa']) test(`${device} full-bag overissue keeps request quantity and returns unused materials`, async ({ page, browser }) => {
+  const context = device === 'pwa' ? await browser.newContext({ locale: 'zh-CN', serviceWorkers: 'allow', viewport: { width: 390, height: 844 }, userAgent: iphone }) : null;
+  if (context) page = await context.newPage();
+  if (device !== 'desktop') {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone);
+  }
+  const f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    const started = await f.post(`/production-orders/${f.order.id}/start`, { version: f.order.version });
+    await page.goto(`${f.base}/#sales`);
+    if (context) await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('tab', { name: /领料.*补料待出库/ }).click();
+    const queue = page.getByRole('region', { name: '生产领料出库单', exact: true });
+    await queue.getByRole('button', { name: /查看并审批/ }).click();
+    await page.getByLabel('生产原料本次实发数量', { exact: true }).fill('25');
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText('本次超出待发 15 千克');
+    page.once('dialog', async dialog => { expect(dialog.message()).toContain('生产原料 +15 千克'); await dialog.accept(); });
+    await page.getByRole('dialog').getByRole('button', { name: '批准并确认出库', exact: true }).click();
+    await expect(queue.getByRole('status').filter({ hasText: '已出库' })).toBeVisible();
+    expect(f.stock()).toBe(75);
+    const response = await page.request.get(`${f.base}/api/production-orders/${f.order.id}`), issued = await response.json();
+    expect(issued.material_documents[0].items[0].quantity).toBe(10);
+    expect(issued.material_documents[0].items[0].pending_quantity).toBe(0);
+    expect(issued.material_documents[0].items[0].over_issued_quantity).toBe(15);
+    expect(issued.material_documents[0].status).toBe('confirmed');
+    await page.goto(`${f.base}/#production`);
+    await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
+    await page.getByRole('tab', { name: '物料', exact: true }).click();
+    const materials = page.getByRole('region', { name: '生产领退料', exact: true });
+    await expect(materials.getByText('超计划已领', { exact: true })).toBeVisible();
+    await materials.getByRole('button', { name: '查看材料明细', exact: true }).click();
+    await expect(materials.getByText('超申请已发 15 千克', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '登记', exact: true }).click();
+    await page.getByLabel('合格成品数量', { exact: true }).fill('5');
+    await page.getByLabel('生产原料实际耗料', { exact: true }).fill('10');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '本批登记并结束生产', exact: true }).click();
+    await expect(page.getByText('已完工', { exact: true })).toBeVisible();
+    expect(f.stock()).toBe(75);
+    await page.getByRole('button', { name: '申请退料', exact: true }).click();
+    await expect(page.getByLabel('生产原料退料数量', { exact: true })).toHaveValue('15');
+    await page.getByRole('button', { name: '提交退料申请', exact: true }).click();
+    await expect(page.getByRole('status').first()).toContainText('退料申请已提交');
+    await page.getByRole('button', { name: '前往入库', exact: true }).click();
+    const returns = page.getByRole('region', { name: '生产退料入库单', exact: true });
+    await returns.getByRole('button', { name: /查看并审批/ }).click();
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('dialog').getByRole('button', { name: '批准并确认入库', exact: true }).click();
+    await expect(returns.getByRole('status').filter({ hasText: '已入库' })).toBeVisible();
+    expect(f.db.prepare('SELECT stock,inventory_value_cents FROM products WHERE id=?').get(f.material.id)).toEqual({ stock: 90, inventory_value_cents: 18000 });
+    expect(f.db.prepare('SELECT quantity FROM production_material_document_items WHERE document_id=?').get(started.material_documents[0].id).quantity).toBe(10);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context?.close(); }
 });
