@@ -420,10 +420,14 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       </section>
       {detail.status === 'completed' && detail.pending_receipt_quantity > 0 && <p className="bom-warning">{pt("production.productionEndedAwaitingWarehouseReceiptAcceptedProductsAnd")}</p>}
       {detail.status === 'void' && <p className="bom-hint">{pt("production.orderVoidedCumulativeOutputRetainsHistoricalRecordsReceipts")}</p>}
-      <p className="bom-hint">{pt("production.productionGroup")}{productionAssignments(detail).assigned_groups.map(group => group.name).join("、") || pt("production.ungrouped")}</p>
-      {!!productionAssignments(detail).assigned_users.length && <p className="bom-hint">{pt('production.assignedUsers')}{productionAssignments(detail).assigned_users.map(user => user.name).join('、')}</p>}
-      {management && ['draft', 'awaiting_materials', 'in_progress'].includes(detail.status) && <ProductionAssignments key={`${detail.id}:${detail.version}`} order={detail} busy={action.busy}
-        onSave={targets => action.run(async () => { await saved(await send(`/production-orders/${detail.id}/assign`, { ...targets, version: detail.version }, { warehouseId: data.warehouse_id }), pt('production.assignmentsUpdated')); })} />}
+      <div className="production-assignment-panel">
+        <div className="production-assignment-current">
+          <p className="bom-hint production-assignment-chip">{pt("production.productionGroup")}{productionAssignments(detail).assigned_groups.map(group => group.name).join("、") || pt("production.ungrouped")}</p>
+          {!!productionAssignments(detail).assigned_users.length && <p className="bom-hint production-assignment-chip">{pt('production.assignedUsers')}{productionAssignments(detail).assigned_users.map(user => user.name).join('、')}</p>}
+        </div>
+        {management && ['draft', 'awaiting_materials', 'in_progress'].includes(detail.status) && <ProductionAssignments key={`${detail.id}:${detail.version}`} order={detail} busy={action.busy}
+          onSave={targets => action.run(async () => { await saved(await send(`/production-orders/${detail.id}/assign`, { ...targets, version: detail.version }, { warehouseId: data.warehouse_id }), pt('production.assignmentsUpdated')); })} />}
+      </div>
       <p className="bom-hint">{pt("production.recipe")}{detail.bom_name} #{detail.bom_id} {pt("production.baseOutput2")} {count(detail.base_quantity)} {detail.unit} {pt("production.recipeRetainedFromOrderCreation")}</p>
       <p className="bom-hint">{detail.snapshot_format === 2 ? pt("production.rootRecipeLossCalculation") : pt("production.standardLossCalculation")}：{bomLossMethodLabels[detail.loss_method]}{pt("production.standardInput")}{bomLossMethodFormulas[detail.loss_method]}。</p>
       {detail.note && <p className="production-note">{detail.note}</p>}

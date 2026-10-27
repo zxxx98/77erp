@@ -56,8 +56,51 @@
   .production-variance-numbers > div:first-child { grid-column: 1 / -1; }
 }
 
-.production-assignment-editor { margin: 12px 0; }
-.production-assignment-editor summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
-.production-assignment-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; margin-bottom: 12px; }
-.production-assignment-options fieldset { min-width: 0; max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-.production-assignment-options legend { font-weight: 600; }
+.production-assignment-panel { margin: 12px 0 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.production-assignment-current { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.production-assignment-chip { margin: 0; display: inline-flex; align-items: center; padding: 5px 12px; background: #f4f7fb; border: 1px solid #e2e8f2; border-radius: 999px; color: #334155; font-size: 12.5px; font-weight: 500; line-height: 1.45; max-width: 100%; overflow-wrap: anywhere; }
+.production-assignment-editor { margin: 0; background: #fff; border: 1px solid #e2e8f3; border-radius: 10px; overflow: hidden; transition: border-color 0.16s, box-shadow 0.16s; min-width: 0; }
+.production-assignment-editor[open] { border-color: #cbd8ee; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04); }
+.production-assignment-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 10px 14px; background: #f8fafd; list-style: none; cursor: pointer; user-select: none; color: #1e293b; font-size: 13px; font-weight: 600; transition: background 0.16s; }
+.production-assignment-summary::-webkit-details-marker { display: none; }
+.production-assignment-summary::marker { content: ""; }
+.production-assignment-summary:hover { background: #eff5ff; }
+.production-assignment-summary:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: -2px; }
+.production-assignment-summary-main { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.production-assignment-summary-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; background: #e8f1ff; color: #2563eb; flex-shrink: 0; }
+.production-assignment-summary-title { overflow-wrap: anywhere; }
+.production-assignment-summary-meta { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; color: #64748b; }
+.production-assignment-count-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: #e8f1ff; color: #1d4ed8; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.production-assignment-chevron { transition: transform 0.18s ease; }
+.production-assignment-editor[open] > .production-assignment-summary { border-bottom: 1px solid #e6ecf5; }
+.production-assignment-editor[open] .production-assignment-chevron { transform: rotate(180deg); }
+.production-assignment-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.production-assignment-hint { margin: 0; padding: 8px 12px; border-radius: 8px; background: #f2f7ff; border: 1px solid #dce8fd; color: #1e40af; font-size: 12px; line-height: 1.55; }
+.production-assignment-hint.is-started { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.production-assignment-body > .bom-error { padding: 0; margin: 0; }
+.production-assignment-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; margin: 0; min-width: 0; align-items: start; }
+.production-assignment-group { min-width: 0; margin: 0; padding: 0; border: 1px solid #e4eaf3; border-radius: 10px; background: #fbfcfe; display: flex; flex-direction: column; overflow: hidden; }
+.production-assignment-group-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; background: #f4f7fb; border-bottom: 1px solid #e6ecf5; }
+.production-assignment-group-header > legend { padding: 0; margin: 0; font-size: 12.5px; font-weight: 600; color: #334155; }
+.production-assignment-group-badge { padding: 2px 8px; border-radius: 999px; background: #fff; border: 1px solid #dde5f0; color: #64748b; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.production-assignment-list { max-height: 224px; overflow-y: auto; padding: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr)); gap: 8px; align-content: start; min-height: 56px; }
+.production-assignment-item { display: flex; align-items: stretch; min-width: 0; border: 1px solid #e3e9f2; border-radius: 8px; background: #fff; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s; }
+.production-assignment-item:hover:not(.is-locked) { border-color: #93c5fd; background: #f8fbff; }
+.production-assignment-item.is-checked { border-color: #60a5fa; background: #eff6ff; box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06); }
+.production-assignment-item.is-locked { border-color: #cbd5e1; background: #f1f5f9; }
+.production-assignment-item > .ant-checkbox-wrapper,
+.production-assignment-item .adm-checkbox { display: flex; align-items: center; width: 100%; min-width: 0; min-height: 38px; padding: 7px 11px; margin: 0; font-size: 13px; line-height: 1.4; color: #1e293b; overflow-wrap: anywhere; }
+.production-assignment-item.is-checked > .ant-checkbox-wrapper,
+.production-assignment-item.is-checked .adm-checkbox { color: #1d4ed8; font-weight: 500; }
+.production-assignment-item.is-locked > .ant-checkbox-wrapper,
+.production-assignment-item.is-locked .adm-checkbox { color: #475569; }
+.production-assignment-empty { grid-column: 1 / -1; color: #94a3b8; font-size: 13px; padding: 6px 4px; }
+.production-assignment-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 12px; border-top: 1px solid #eef2f8; }
+@media (max-width: 600px) {
+  .production-assignment-body { padding: 12px; gap: 12px; }
+  .production-assignment-list { grid-template-columns: 1fr; max-height: 200px; }
+  .production-assignment-footer > .btn { width: 100%; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .production-assignment-editor, .production-assignment-summary, .production-assignment-chevron, .production-assignment-item { transition: none; }
+}
