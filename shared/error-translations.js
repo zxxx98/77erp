@@ -2,6 +2,8 @@ import { processRouteMessages } from './process-route-messages.js';
 import { createValidationTranslator } from './error-translation-runtime.js';
 // System validation text only; never include stored business values in this catalog.
 export const validationMessages = {
+  VALIDATION_USER_POSITIONS_REQUIRED: ['请为员工选择至少一个有效且不重复的岗位。', 'Select at least one valid position without duplicates.', 'Chọn ít nhất một vị trí hợp lệ và không trùng lặp.'],
+  VALIDATION_USER_POSITIONS_CONFLICT: ['岗位参数不一致，请刷新后重新选择。', 'Position parameters conflict. Refresh and select again.', 'Tham số vị trí không nhất quán. Làm mới và chọn lại.'],
   "VALIDATION_PRODUCTION_ASSIGNMENT_INVALID_ASSIGNED_GROUPS": ["请选择有效且不重复的生产组。", "Select valid groups without duplicates.", "Chọn các tổ hợp lệ và không trùng lặp."],
   "VALIDATION_PRODUCTION_ASSIGNMENT_INVALID_ASSIGNED_USERS": ["请选择有效且不重复的生产人员。", "Select valid people without duplicates.", "Chọn nhân viên hợp lệ và không trùng lặp."],
   "VALIDATION_PRODUCTION_ASSIGNMENT_UNAVAILABLE_ASSIGNEE": ["生产人员不存在、已停用或没有生产权限。", "The person is unavailable or lacks production permission.", "Nhân viên không tồn tại, đã ngừng hoạt động hoặc thiếu quyền sản xuất."],

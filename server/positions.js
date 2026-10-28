@@ -1,4 +1,4 @@
-import { permissionKeys, legacyPermissions } from '../shared/permissions.js';
+import { permissionKeys, legacyPermissions, combinePositionAuthorization } from '../shared/permissions.js';
 import { queueNotification } from './notifications.js';
 
 const migrationKey = 'employee_positions_v1';
@@ -66,13 +66,57 @@ export function requirePosition(db, id) {
   return row;
 }
 
+export function migrateUserPositions(db) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (!db.prepare("SELECT 1 FROM app_metadata WHERE key='user_positions_v1'").get()) {
+      db.exec(`CREATE TABLE user_positions (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        position_id INTEGER NOT NULL REFERENCES positions(id),
+        PRIMARY KEY(user_id,position_id)
+      );
+      CREATE INDEX user_positions_position ON user_positions(position_id);
+      INSERT INTO user_positions SELECT id,position_id FROM users WHERE role='employee' AND position_id IS NOT NULL;
+      -- Keep the old single-position column writable for existing integrations.
+      CREATE TRIGGER user_positions_insert AFTER INSERT ON users WHEN NEW.role='employee' AND NEW.position_id IS NOT NULL
+      BEGIN INSERT INTO user_positions VALUES(NEW.id,NEW.position_id); END;
+      CREATE TRIGGER user_positions_update AFTER UPDATE OF position_id,role ON users
+      WHEN OLD.position_id IS NOT NEW.position_id OR OLD.role IS NOT NEW.role
+      BEGIN
+        DELETE FROM user_positions WHERE user_id=NEW.id;
+        INSERT INTO user_positions SELECT NEW.id,NEW.position_id WHERE NEW.role='employee' AND NEW.position_id IS NOT NULL;
+      END;`);
+      db.prepare('INSERT INTO app_metadata(key,value) VALUES(?,?)').run('user_positions_v1', '1');
+    }
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+}
+
+export function requirePositions(db, body) {
+  const ids = body?.position_ids !== undefined ? body.position_ids : (body?.position_id === undefined ? undefined : [body.position_id]);
+  if (!Array.isArray(ids) || !ids.length || ids.some(id => !validId(id)) || new Set(ids).size !== ids.length)
+    fail('请为员工选择至少一个有效且不重复的岗位。');
+  if (body.position_ids !== undefined && body.position_id !== undefined && body.position_id !== ids[0])
+    fail('岗位参数不一致，请刷新后重新选择。');
+  return [...ids].sort((a,b) => a-b).map(id => requirePosition(db,id));
+}
+
+export function assignPositions(db, userId, positions) {
+  db.prepare('UPDATE users SET position_id=? WHERE id=?').run(positions[0]?.id ?? null,userId);
+  db.prepare('DELETE FROM user_positions WHERE user_id=?').run(userId);
+  const insert = db.prepare('INSERT INTO user_positions(user_id,position_id) VALUES(?,?)');
+  for (const position of positions) insert.run(userId,position.id);
+}
+
 export function positionAuthorization(db, user) {
-  const position = user.position_id ? db.prepare('SELECT id,name,permissions,legacy_permissions,access_mode FROM positions WHERE id=?').get(user.position_id) : null;
+  const positions = db.prepare(`SELECT p.id,p.name,p.permissions,p.legacy_permissions,p.access_mode
+    FROM user_positions up JOIN positions p ON p.id=up.position_id WHERE up.user_id=? ORDER BY p.id`).all(user.id)
+    .map(row => ({...row,permissions:JSON.parse(row.permissions),legacy_permissions:!!row.legacy_permissions}));
   // Never fall back to retired users.permissions, even for missing/corrupt associations.
   return {
-    position_id: position?.id ?? null, position_name: position?.name ?? null,
-    permissions: position ? JSON.parse(position.permissions) : [], legacy_permissions: !!position?.legacy_permissions,
-    access_mode: position?.access_mode ?? 'standard',
+    position_id: positions[0]?.id ?? null, position_name: positions[0]?.name ?? null,
+    position_ids: positions.map(position => position.id), position_names: positions.map(position => position.name), positions,
+    ...combinePositionAuthorization(positions),
   };
 }
 
@@ -85,7 +129,7 @@ export function recordPositionChange(db, req, action, positionId, userId, before
 }
 
 const present = row => ({ ...row, permissions: JSON.parse(row.permissions), legacy_permissions: !!row.legacy_permissions });
-const selectPosition = `SELECT p.*, (SELECT COUNT(*) FROM users u WHERE u.position_id=p.id) AS member_count FROM positions p`;
+const selectPosition = `SELECT p.*, (SELECT COUNT(*) FROM user_positions up WHERE up.position_id=p.id) AS member_count FROM positions p`;
 export function installPositions(app, db) {
   const read = id => present(db.prepare(`${selectPosition} WHERE p.id=?`).get(id));
   const route = (fn, {write = false, status = 200} = {}) => (req, res, next) => {
@@ -141,14 +185,14 @@ export function installPositions(app, db) {
     const authorizationChanged = permissions !== before.permissions || legacy !== before.legacy_permissions || value.access_mode !== before.access_mode;
     db.prepare('UPDATE positions SET name=?,description=?,permissions=?,legacy_permissions=?,access_mode=?,version=version+1,updated_at=? WHERE id=?')
       .run(value.name,value.description,permissions,legacy,value.access_mode,new Date().toISOString(),before.id);
-    if (authorizationChanged) db.prepare("UPDATE users SET permissions_version=permissions_version+1 WHERE position_id=? AND role='employee'").run(before.id);
+    if (authorizationChanged) db.prepare("UPDATE users SET permissions_version=permissions_version+1 WHERE id IN (SELECT user_id FROM user_positions WHERE position_id=?) AND role='employee'").run(before.id);
     const result = read(before.id);
     recordPositionChange(db,req,'修改岗位',before.id,null,present(before),result);
     return result;
   }, {write:true}));
   app.delete('/api/positions/:id', route(req => {
     const before = current(req);
-    if (db.prepare('SELECT 1 FROM users WHERE position_id=? LIMIT 1').get(before.id)) fail('岗位仍有关联员工（包括停用账号），请先调整员工岗位。',409);
+    if (db.prepare('SELECT 1 FROM user_positions WHERE position_id=? LIMIT 1').get(before.id)) fail('岗位仍有关联员工（包括停用账号），请先调整员工岗位。',409);
     db.prepare('DELETE FROM positions WHERE id=?').run(before.id);
     recordPositionChange(db,req,'删除岗位',before.id,null,present(before),null);
     return {ok:true};
@@ -158,10 +202,12 @@ export function installPositions(app, db) {
     if (!user) fail('账号不存在。',404);
     if (user.role !== 'employee') fail('管理员拥有全部权限，无需分配岗位。');
     if (!validId(req.body?.version) || user.permissions_version !== req.body.version) fail('员工岗位或权限已变化，请刷新后重新选择。',409);
-    const position = requirePosition(db,req.body.position_id);
-    if (position.id !== user.position_id) {
-      db.prepare('UPDATE users SET position_id=?,permissions_version=permissions_version+1 WHERE id=?').run(position.id,user.id);
-      recordPositionChange(db,req,'调整员工岗位',position.id,user.id,{position_id:user.position_id},{position_id:position.id});
+    const positions = requirePositions(db,req.body), before = positionAuthorization(db,user).position_ids;
+    const after = positions.map(position => position.id);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      assignPositions(db,user.id,positions);
+      db.prepare('UPDATE users SET permissions_version=permissions_version+1 WHERE id=?').run(user.id);
+      recordPositionChange(db,req,'调整员工岗位',after[0],user.id,{position_ids:before},{position_ids:after});
     }
     return {ok:true};
   }, {write:true}));

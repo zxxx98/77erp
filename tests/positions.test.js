@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { createApp } from '../server/app.js';
-import { legacyPermissions } from '../shared/permissions.js';
+import { legacyPermissions, canManage } from '../shared/permissions.js';
 
 const password = 'Strong-password-123';
 function oldDatabase(t, extra = '', cleanup = true) {
@@ -62,6 +62,7 @@ test('deployment migrates equal permissions together without merging legacy beha
   try {
     const users = db.prepare('SELECT * FROM users ORDER BY id').all();
     assert.equal(users[0].position_id, null);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM user_positions').get().n,6);
     assert.ok(users[1].position_id > 0);
     assert.equal(users[1].position_id, users[2].position_id);
     assert.notEqual(users[5].position_id, users[6].position_id);
@@ -193,9 +194,13 @@ test('legacy positions preserve old rules until explicit conversion, including r
 
 test('business reset and restore preserve positions, assignments, audit and migration marker', async t => {
   const f = await fixture(t), p = await f.position('独立账号配置', ['products']);
-  await f.user('alice', p.id);
+  const q = await f.position('第二岗位',['sale']);
+  const a = await f.user('alice',p.id);
+  const version = (await f.request(a.cookie,'/auth/status')).data.permissions_version;
+  assert.equal((await f.request(f.admin,`/users/${a.id}/position`,{position_ids:[p.id,q.id],version},'PUT')).status,200);
   const snapshot = () => ({
     positions:f.db.prepare('SELECT * FROM positions ORDER BY id').all(),
+    memberships:f.db.prepare('SELECT * FROM user_positions ORDER BY user_id,position_id').all(),
     users:f.db.prepare('SELECT * FROM users ORDER BY id').all(),
     changes:f.db.prepare('SELECT * FROM position_changes ORDER BY id').all(),
     marker:f.db.prepare("SELECT value FROM app_metadata WHERE key='employee_positions_v1'").get(),
@@ -255,4 +260,81 @@ test('deleting a position during employee creation cannot leave an orphan or cra
     assert.equal(f.db.prepare('SELECT position_id FROM users WHERE id=?').get(created.data.id).position_id,p.id);
     assert.ok(f.db.prepare('SELECT 1 FROM positions WHERE id=?').get(p.id));
   }
+});
+
+test('multiple positions combine grants and revoke secondary grants in existing sessions with versioned audit', async t => {
+  const f = await fixture(t), p = await f.position('入库员', ['basic_view','purchase']), q = await f.position('出库员', ['sale']);
+  const created = await f.request(f.admin,'/users',{username:'multi',password,position_ids:[q.id,p.id]});
+  assert.equal(created.status,201);
+  const id = created.data.id, login = await f.request(null,'/auth/login',{username:'multi',password});
+  const state = async () => (await f.request(login.cookie,'/auth/status')).data;
+  let user = await state();
+  assert.deepEqual(user.position_ids,[p.id,q.id]);
+  assert.deepEqual(user.position_names,['入库员','出库员']);
+  assert.deepEqual(user.permissions,['basic_view','purchase','sale']);
+  const revision = (await f.request(login.cookie,'/updates')).data.revision;
+  assert.equal((await f.request(f.admin,`/positions/${q.id}`,{...q,permissions:['finance']},'PUT')).status,200);
+  let next = await state();
+  assert.deepEqual(next.permissions,['basic_view','purchase','finance']);
+  assert.ok(next.permissions_version > user.permissions_version);
+  assert.notEqual((await f.request(login.cookie,'/updates')).data.revision,revision);
+  assert.equal((await f.request(login.cookie,'/orders',{type:'out'})).status,403);
+  assert.equal((await f.request(f.admin,`/users/${id}/position`,{position_ids:[p.id],version:user.permissions_version},'PUT')).status,409);
+  assert.equal((await f.request(f.admin,`/users/${id}`,{role:'employee',active:0},'PUT')).status,200);
+  const currentQ = (await f.request(f.admin,'/positions')).data.find(row => row.id === q.id);
+  assert.equal(currentQ.member_count,1);
+  assert.equal((await f.request(f.admin,`/positions/${q.id}`,{version:currentQ.version},'DELETE')).status,409);
+  assert.equal((await f.request(f.admin,`/users/${id}/position`,{position_ids:[p.id],version:next.permissions_version},'PUT')).status,200);
+  const audit = f.db.prepare("SELECT before_json,after_json FROM position_changes WHERE user_id=? AND action='调整员工岗位' ORDER BY id DESC LIMIT 1").get(id);
+  assert.deepEqual(JSON.parse(audit.before_json),{position_ids:[p.id,q.id]});
+  assert.deepEqual(JSON.parse(audit.after_json),{position_ids:[p.id]});
+  assert.equal((await f.request(f.admin,`/positions/${q.id}`,{version:currentQ.version},'DELETE')).status,200);
+  assert.equal((await f.request(f.admin,`/users/${id}`,{role:'employee',active:1},'PUT')).status,200);
+  assert.equal((await state()).authenticated,false);
+  const relogin = await f.request(null,'/auth/login',{username:'multi',password});
+  assert.deepEqual(relogin.data.permissions,['basic_view','purchase']);
+});
+
+test('multiple position validation is atomic, old assignment API still works, and role changes clear all memberships', async t => {
+  const f = await fixture(t), p = await f.position('岗位一',['purchase']), q = await f.position('岗位二',['sale']);
+  const a = await f.user('alice',p.id);
+  let version = (await f.request(a.cookie,'/auth/status')).data.permissions_version;
+  for (const position_ids of [[],null,'1',[p.id,p.id],[p.id,999],['1'],[0],[-1],[1.5]]) {
+    assert.equal((await f.request(f.admin,'/users',{username:'invalid',password,position_ids})).status,400);
+    assert.equal((await f.request(f.admin,`/users/${a.id}/position`,{position_ids,version},'PUT')).status,400);
+  }
+  assert.equal(f.db.prepare("SELECT 1 FROM users WHERE username='invalid'").get(),undefined);
+  assert.deepEqual((await f.request(a.cookie,'/auth/status')).data.position_ids,[p.id]);
+  assert.equal((await f.request(f.admin,`/users/${a.id}/position`,{position_ids:[q.id],position_id:p.id,version},'PUT')).status,400);
+  assert.equal((await f.request(f.admin,`/users/${a.id}/position`,{position_ids:[p.id,q.id],version},'PUT')).status,200);
+  assert.equal((await f.request(f.admin,`/users/${a.id}`,{role:'employee',active:1,position_ids:[q.id]},'PUT')).status,409);
+  version = (await f.request(a.cookie,'/auth/status')).data.permissions_version;
+  assert.equal((await f.request(f.admin,`/users/${a.id}/position`,{position_id:q.id,version},'PUT')).status,200);
+  assert.deepEqual((await f.request(a.cookie,'/auth/status')).data.position_ids,[q.id]);
+  assert.equal((await f.request(f.admin,`/users/${a.id}`,{role:'admin',active:1},'PUT')).status,200);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM user_positions WHERE user_id=?').get(a.id).n,0);
+  assert.equal((await f.request(f.admin,`/users/${a.id}`,{role:'employee',active:1,position_ids:[q.id,p.id]},'PUT')).status,200);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM user_positions WHERE user_id=?').get(a.id).n,2);
+});
+
+test('combining legacy and standard positions preserves legacy limits while enabling explicit standard grants', async t => {
+  const path = oldDatabase(t,'',false), f = await fixture(t,path);
+  t.after(() => rmSync(dirname(path),{recursive:true,force:true}));
+  const employee = await f.request(null,'/auth/login',{username:'legacy',password});
+  const original = employee.data, standard = await f.position('标准出库员',['sale']);
+  assert.equal((await f.request(f.admin,`/users/${original.id}/position`,{position_ids:[original.position_id,standard.id],version:original.permissions_version},'PUT')).status,200);
+  const state = (await f.request(employee.cookie,'/auth/status')).data;
+  assert.equal(state.legacy_permissions,true);
+  assert.deepEqual(state.standard_permissions,['sale']);
+  assert.equal(canManage(state,'sale'),true);
+  assert.equal(canManage(state,'products'),false);
+  assert.equal((await f.request(employee.cookie,'/categories',{name:'不应允许管理分类'})).status,403);
+  assert.equal((await f.request(employee.cookie,'/products/999',{},'DELETE')).status,403);
+  const manage = await f.position('标准物料员',['products']);
+  assert.equal((await f.request(f.admin,`/users/${original.id}/position`,{position_ids:[original.position_id,standard.id,manage.id],version:state.permissions_version},'PUT')).status,200);
+  assert.equal((await f.request(employee.cookie,'/categories',{name:'现在允许管理分类'})).status,200);
+  // Restarting an upgraded database must keep every assignment.
+  const reopened = createApp(path);
+  try { assert.equal(reopened.db.prepare('SELECT COUNT(*) n FROM user_positions WHERE user_id=?').get(original.id).n,3); }
+  finally { reopened.db.close(); }
 });

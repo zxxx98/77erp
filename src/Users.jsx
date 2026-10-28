@@ -1,7 +1,7 @@
 import { localizeError } from './i18n/errors.js';
 import { t as translate, getFormatLocale } from './i18n/index.js';
 import { useLocale } from './i18n/react.jsx';
-import { Input as AntInput, Button as AntButton } from './ui/controls.jsx';
+import { Input as AntInput, Button as AntButton, Checkbox } from './ui/controls.jsx';
 
 import { LoadingStatus } from './Loading.jsx';
 import { Select } from "./Dropdown.jsx";
@@ -9,6 +9,15 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import './users.css';
 import { EffectivePermissions } from './Positions.jsx';
+import { combinePositionAuthorization } from '../shared/permissions.js';
+
+function PositionPicker({ label, positions, value, onChange, disabled }) {
+  return <fieldset className="user-position-picker" disabled={disabled} aria-label={label}>
+    <legend>{label}</legend>
+    <div>{positions.map(position => <Checkbox key={position.id} checked={value.includes(position.id)} disabled={disabled}
+      onChange={event => onChange(event.target.checked ? [...value,position.id] : value.filter(id => id !== position.id))}>{position.name}</Checkbox>)}</div>
+  </fieldset>;
+}
 
 export function ChangePassword({ onChanged }) {
   useLocale();
@@ -52,9 +61,10 @@ export function UserManager({ Modal, onChanged }) {
   const [positions, setPositions] = useState([]);
   const [groups, setGroups] = useState([]);
   const [groupId, setGroupId] = useState('');
-  const [positionId, setPositionId] = useState('');
+  const [positionIds, setPositionIds] = useState([]);
   const [positionUser, setPositionUser] = useState(null);
-  const [nextPosition, setNextPosition] = useState('');
+  const [nextPositions, setNextPositions] = useState([]);
+  const preview = combinePositionAuthorization(positions.filter(position => nextPositions.includes(position.id)));
   const [conflict, setConflict] = useState(false);
   const [resetUser, setResetUser] = useState(null);
   const [resetPassword, setResetPassword] = useState('');
@@ -87,13 +97,13 @@ export function UserManager({ Modal, onChanged }) {
       <label>{translate("system.account.name")}<AntInput maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder={translate("system.for.example.zhang.san")} /></label>
       <label>{translate("system.initial.password")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
       <label>{translate("system.new.account.role")}<Select aria-label={translate("system.new.account.role")} value={role} onChange={e => setRole(e)} disabled={busy}><option value="employee">{translate("system.employee")}</option><option value="admin">{translate("system.administrator")}</option></Select></label>
-      {role === 'employee' && <label>{translate("system.new.account.position")}<Select aria-label={translate("system.new.account.position")} value={positionId} disabled={busy} onChange={setPositionId}><option value="" disabled>{translate("system.please.select.a.position")}</option>{positions.map(position => <option key={position.id} value={position.id}>{position.name}</option>)}</Select></label>}
+      {role === 'employee' && <PositionPicker label={translate("system.new.account.position")} positions={positions} value={positionIds} disabled={busy} onChange={setPositionIds} />}
       {role === 'employee' && <label>{translate("system.new.account.production.team")}<Select aria-label={translate("system.new.account.production.team")} value={groupId} disabled={busy} onChange={setGroupId}><option value="">{translate("system.not.grouped")}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select></label>}
       {role === 'employee' && !positions.length && <p className="muted">{translate("system.please.go.to.the.post.configuration.to.add.a.new.position")}</p>}
       <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
-        if (role === 'employee' && !positionId) { setError(translate("system.please.select.the.new.employee.s.position")); return; }
+        if (role === 'employee' && !positionIds.length) { setError(translate("system.please.select.the.new.employee.s.position")); return; }
         void run(async () => {
-        await api('/users', { method: 'POST', body: { username, password, role, name, ...(role === 'employee' ? { position_id: Number(positionId), production_group_id: groupId ? Number(groupId) : null } : {}) } });
+        await api('/users', { method: 'POST', body: { username, password, role, name, ...(role === 'employee' ? { position_ids: positionIds, production_group_id: groupId ? Number(groupId) : null } : {}) } });
         setUsername(''); setPassword(''); setName('');
       }, translate("system.account.has.been.created")); }}>{translate("system.add.account")}</AntButton>
     </div>
@@ -108,9 +118,9 @@ export function UserManager({ Modal, onChanged }) {
             <td>{user.active ? translate("system.normal") : translate("system.deactivated")}</td>
             <td><Select aria-label={translate("system.s.role", { v0: user.username })} value={user.role} disabled={busy} onChange={e => {
               const nextRole = e;
-              if (nextRole === 'employee') { setPositionUser({ ...user, downgrade: true }); setNextPosition(''); setError(''); setConflict(false); }
+              if (nextRole === 'employee') { setPositionUser({ ...user, downgrade: true }); setNextPositions([]); setError(''); setConflict(false); }
               else if (window.confirm(translate("system.modify.s.role.this.account.needs.to.be.logged.in.again", { v0: user.username }))) void update(user, { role: nextRole });
-            }}><option value="employee">{translate("system.employee")}</option><option value="admin">{translate("system.administrator")}</option></Select>{user.role === 'employee' && <Select aria-label={translate("system.s.position", { v0: user.username })} value={user.position_id ?? ''} disabled={busy} onChange={value => { setPositionUser(user); setNextPosition(value); setError(''); setConflict(false); }}><option value="" disabled>{translate("system.no.position.assigned.please.fix.it")}</option>{positions.map(position => <option key={position.id} value={position.id}>{position.name}</option>)}</Select>}{user.role === 'employee' && <Select aria-label={translate("system.s.production.team", { v0: user.username })} value={user.production_group_id ?? ''} disabled={busy} onChange={value => run(() => api(`/users/${user.id}/production-group`, { method: 'PUT', body: { production_group_id: value ? Number(value) : null, version: user.permissions_version } }), translate("system.the.production.team.has.been.updated.and.the.permissions.will.take"))}><option value="">{translate("system.not.grouped")}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select>}</td>
+            }}><option value="employee">{translate("system.employee")}</option><option value="admin">{translate("system.administrator")}</option></Select>{user.role === 'employee' && <AntButton className="btn user-position-button" aria-label={translate("system.s.position", { v0: user.username })} disabled={busy} onClick={() => { setPositionUser(user); setNextPositions(user.position_ids || []); setError(''); setConflict(false); }}>{user.position_names?.join('、') || translate("system.no.position.assigned.please.fix.it")}</AntButton>}{user.role === 'employee' && <Select aria-label={translate("system.s.production.team", { v0: user.username })} value={user.production_group_id ?? ''} disabled={busy} onChange={value => run(() => api(`/users/${user.id}/production-group`, { method: 'PUT', body: { production_group_id: value ? Number(value) : null, version: user.permissions_version } }), translate("system.the.production.team.has.been.updated.and.the.permissions.will.take"))}><option value="">{translate("system.not.grouped")}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select>}</td>
             <td><div className="user-actions">
               <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => {
                 if (window.confirm(translate("system.account.3", { v0: user.active ? translate("system.deactivate") : translate("system.activate"), v1: user.username }))) void update(user, { active: user.active ? 0 : 1 });
@@ -133,12 +143,12 @@ export function UserManager({ Modal, onChanged }) {
       </div>
     </Modal>}
     {permissionUser && <Modal title={translate("system.effective.permissions.for", { v0: permissionUser.username })} className="permission-dialog" onClose={() => setPermissionUser(null)}>
-      <div className="form-body"><p>{translate("system.position.2")}<strong>{permissionUser.position_name || translate("system.unassigned.position")}</strong></p><p className="muted">{translate("system.permissions.are.configured.uniformly.by.position.and.are.only.for.viewing")}</p><EffectivePermissions permissions={permissionUser.permissions} legacy={permissionUser.legacy_permissions} accessMode={permissionUser.access_mode} /></div>
+      <div className="form-body"><p>{translate("system.position.2")}<strong>{permissionUser.position_names?.join('、') || translate("system.unassigned.position")}</strong></p><p className="muted">{translate("system.permissions.are.configured.uniformly.by.position.and.are.only.for.viewing")}</p><EffectivePermissions permissions={permissionUser.permissions} legacy={permissionUser.legacy_permissions} accessMode={permissionUser.access_mode} standardPermissions={permissionUser.standard_permissions} /></div>
     </Modal>}
     {positionUser && <Modal title={positionUser.downgrade ? translate("system.change.to.employee", { v0: positionUser.username }) : translate("system.adjust.s.position", { v0: positionUser.username })} onClose={() => { if (!busy) { setPositionUser(null); setError(''); setConflict(false); } }}>
       <div className="form-body account-fields"><p className="muted">{positionUser.downgrade ? translate("system.please.select.an.employee.position.first.after.modifying.the.role.the") : translate("system.the.permissions.for.the.selected.position.will.be.used.immediately.after")}</p>
-        <label>{translate("system.staff.positions")}<Select aria-label={translate("system.staff.positions")} value={nextPosition} disabled={busy} onChange={setNextPosition}><option value="" disabled>{translate("system.please.select.a.position")}</option>{positions.map(position => <option key={position.id} value={position.id}>{position.name}</option>)}</Select></label>
-        {nextPosition && <EffectivePermissions permissions={positions.find(position => String(position.id) === String(nextPosition))?.permissions} legacy={positions.find(position => String(position.id) === String(nextPosition))?.legacy_permissions} />}
+        <PositionPicker label={translate("system.staff.positions")} positions={positions} value={nextPositions} disabled={busy} onChange={setNextPositions} />
+        {!!nextPositions.length && <EffectivePermissions permissions={preview.permissions} legacy={preview.legacy_permissions} accessMode={preview.access_mode} standardPermissions={preview.standard_permissions} />}
         {error && <p className="form-error" role="alert">{error}</p>}
         {notice && <p role="status">{notice}</p>}
         {conflict && <AntButton htmlType="button" disabled={busy} onClick={() => run(async () => {
@@ -148,9 +158,9 @@ export function UserManager({ Modal, onChanged }) {
           setPositionUser(current => ({ ...current, ...latest }));
         }, translate("system.the.account.version.has.been.refreshed.and.the.position.selection.has"))}>{translate("system.refresh.version.and.keep.selection")}</AntButton>}
         <div className="permission-dialog-actions"><AntButton htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPositionUser(null); setError(''); }}>{translate("system.cancel")}</AntButton><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
-          if (!nextPosition) { setError(translate("system.please.select.a.staff.position")); return; }
+          if (!nextPositions.length) { setError(translate("system.please.select.a.staff.position")); return; }
           void run(async () => {
-            await api(positionUser.downgrade ? `/users/${positionUser.id}` : `/users/${positionUser.id}/position`, { method: 'PUT', body: positionUser.downgrade ? { role: 'employee', active: positionUser.active, position_id: Number(nextPosition) } : { position_id: Number(nextPosition), version: positionUser.permissions_version } });
+            await api(positionUser.downgrade ? `/users/${positionUser.id}` : `/users/${positionUser.id}/position`, { method: 'PUT', body: positionUser.downgrade ? { role: 'employee', active: positionUser.active, position_ids: nextPositions } : { position_ids: nextPositions, version: positionUser.permissions_version } });
             setPositionUser(null);
           }, translate("system.the.position.has.been.updated.and.the.permissions.will.take.effect"));
         }}>{translate("system.save.post")}</AntButton></div>

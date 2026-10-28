@@ -17,6 +17,17 @@ export const permissionOptions = [
 ];
 export const permissionKeys = permissionOptions.map(option => option.key);
 export const legacyPermissions = ['products', 'purchase', 'sale', 'data_io'];
+// Grants are additive. Restricted positions contribute registration only; legacy
+// grants retain their old rules even when combined with standard positions.
+export function combinePositionAuthorization(positions) {
+  const grants = position => position.access_mode === 'production_only' ? position.permissions.filter(key => key === 'production_register') : position.permissions;
+  return {
+    permissions: permissionKeys.filter(key => positions.some(position => grants(position).includes(key))),
+    standard_permissions: permissionKeys.filter(key => positions.some(position => !position.legacy_permissions && grants(position).includes(key))),
+    legacy_permissions: positions.some(position => !!position.legacy_permissions),
+    access_mode: positions.length && positions.every(position => position.access_mode === 'production_only') ? 'production_only' : 'standard',
+  };
+}
 export function hasPermission(user, key) {
   return user?.role === 'admin' || ((!isProductionOnly(user) || key === 'production_register') && !!user?.permissions?.includes(key));
 }
@@ -24,7 +35,7 @@ export function isProductionOnly(user) { return user?.role !== 'admin' && user?.
 export function canViewProduction(user) { return hasPermission(user, 'production') || hasPermission(user, 'production_register'); }
 // Existing employees keep their former capabilities until an administrator saves a configuration.
 export function canManage(user, key) {
-  return hasPermission(user, key) && (!user?.legacy_permissions || user?.role === 'admin');
+  return hasPermission(user, key) && (!user?.legacy_permissions || user?.role === 'admin' || !!user?.standard_permissions?.includes(key));
 }
 export function canManageTemplates(user) {
   return hasPermission(user, 'business') || !!user?.legacy_permissions;

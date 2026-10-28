@@ -7,7 +7,7 @@ import { addQuantity, validQuantity, materialQuantity } from '../shared/quantity
 import { inspectionToday, inspectionCompletion, inspectionConfig } from '../shared/inspection.js';
 import { categoryPaths } from './catalog.js';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
-import { hasPermission, canViewProduction } from '../shared/permissions.js';
+import { hasPermission, canManage, canViewProduction } from '../shared/permissions.js';
 import { createOrder } from './orders.js';
 import { normalizeAiImages, aiTranscript, aiModelMessages } from './ai-images.js';
 import { AI_IMAGE_HISTORY_LIMIT } from '../shared/ai-images.js';
@@ -165,7 +165,9 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (!config().enabled) fail('AI 助手未启用。', 403);
     req.user = user;
   }
-  const requirePermission = (req, permission) => { if (!hasPermission(req.user, permission)) fail('没有此业务操作的权限。', 403); };
+  // Legacy data access allows exports; AI table imports need a standard grant.
+  const permitted = (user, permission) => permission === 'data_io' ? canManage(user, permission) : hasPermission(user, permission);
+  const requirePermission = (req, permission) => { if (!permitted(req.user, permission)) fail('没有此业务操作的权限。', 403); };
   function warehouse(id) {
     if (!Number.isSafeInteger(id)) fail('请选择有效仓库。');
     return db.prepare('SELECT * FROM warehouses WHERE id=?').get(id) || fail('仓库不存在。');
@@ -787,11 +789,11 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
             if (['search_boms', 'get_bom', 'calculate_bom'].includes(name)) return hasPermission(req.user, 'bom');
             if (name === 'get_product') return hasPermission(req.user, 'products');
             if(['quality_chart_templates','quality_chart_data','preview_quality_chart'].includes(name))return hasPermission(req.user,'quality')&&(!name.startsWith('preview_')||!!config().writes);
-            if (['read_import_table', 'replace_import_table'].includes(name)) return hasPermission(req.user, 'data_io');
+            if (['read_import_table', 'replace_import_table'].includes(name)) return canManage(req.user, 'data_io');
             if (!name.startsWith('preview_')) return hasPermission(req.user, 'basic_view');
             if (!config().writes) return false;
             return name === 'preview_orders' ? hasPermission(req.user, 'purchase') || hasPermission(req.user, 'sale')
-              : hasPermission(req.user, { preview_update_products: 'products', preview_import: 'data_io', preview_transfer: 'transfer', preview_stocktake: 'stocktake', preview_inspection: 'products', preview_mark_inspected: 'products' }[name]);
+              : permitted(req.user, { preview_update_products: 'products', preview_import: 'data_io', preview_transfer: 'transfer', preview_stocktake: 'stocktake', preview_inspection: 'products', preview_mark_inspected: 'products' }[name]);
           });
           const reply = await completion(config(), [system, ...messages], available);
           current(req);

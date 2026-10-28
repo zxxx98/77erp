@@ -1676,9 +1676,9 @@ export default {
     "Cấu hình vị trí"
   ],
   "system.each.employee.chooses.a.position.adjusting.position.permissions.will.affect.all": [
-    "每名员工选择一个岗位。调整岗位权限会同时影响该岗位的全部员工，包含已停用账号。",
-    "Each employee chooses a position. Adjusting position permissions will affect all employees in the position at the same time, including disabled accounts.",
-    "Mỗi nhân viên được chọn một vị trí. Việc điều chỉnh quyền của vị trí sẽ ảnh hưởng đến tất cả nhân viên ở vị trí đó cùng lúc, bao gồm cả những tài khoản bị vô hiệu hóa."
+    "每名员工可选择多个岗位，权限合并生效。调整岗位权限会影响该岗位的全部员工，包含已停用账号。",
+    "Employees can hold multiple positions with combined permissions. Changes affect every member, including disabled accounts.",
+    "Mỗi nhân viên có thể có nhiều vị trí với quyền được kết hợp. Thay đổi quyền ảnh hưởng đến mọi thành viên, kể cả tài khoản bị vô hiệu hóa."
   ],
   "system.new.positions": [
     "新增岗位",
@@ -2421,9 +2421,9 @@ export default {
     "Vui lòng chọn vị trí nhân viên trước. Sau khi sửa đổi vai trò, tài khoản cần phải đăng nhập lại."
   ],
   "system.the.permissions.for.the.selected.position.will.be.used.immediately.after": [
-    "保存后立即使用所选岗位的权限。",
-    "The permissions for the selected position will be used immediately after saving.",
-    "Quyền cho vị trí đã chọn sẽ được sử dụng ngay sau khi lưu."
+    "可选择多个岗位，保存后合并权限并立即生效。全部为仅生产作业岗位时，使用生产工作区。",
+    "Select one or more positions. Their combined permissions apply immediately after saving. The production workspace applies when all positions are production only.",
+    "Chọn một hoặc nhiều vị trí. Quyền kết hợp có hiệu lực ngay sau khi lưu. Không gian sản xuất áp dụng khi tất cả vị trí chỉ dành cho sản xuất."
   ],
   "system.staff.positions": [
     "员工岗位",

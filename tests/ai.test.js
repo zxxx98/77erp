@@ -1519,3 +1519,33 @@ test('AI production queries include personal assignments and secondary groups wi
   result=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
   assert.deepEqual(new Set(result.orders.map(order=>order.id)),new Set([personal.id,grouped.id]));
 });
+
+test('AI combines access and business permissions from separate positions and rejects confirmation after secondary revocation', async t => {
+  const f = await fixture(t);
+  const ai = (await f.request(f.admin,'/positions',{name:'AI查询员',permissions:['basic_view','ai']})).data;
+  const purchase = (await f.request(f.admin,'/positions',{name:'入库员',permissions:['purchase']})).data;
+  const version = (await f.request(f.staff,'/auth/status')).data.permissions_version;
+  assert.equal((await f.request(f.admin,`/users/${f.id}/position`,{position_ids:[ai.id,purchase.id],version},'PUT')).status,200);
+  f.use('preview_orders',{orders:[f.order()]});
+  const preview=await f.chat(f.staff);
+  assert.equal(preview.status,200);
+  assert.equal(preview.data.actions.length,1);
+  const stock=f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock;
+  const current=(await f.request(f.staff,'/auth/status')).data;
+  assert.equal((await f.request(f.admin,`/users/${f.id}/position`,{position_ids:[ai.id],version:current.permissions_version},'PUT')).status,200);
+  assert.equal((await f.request(f.staff,'/ai/confirm',{action_id:preview.data.actions[0].id})).status,403);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock,stock);
+  assert.equal((await f.chat(f.staff)).status,200);
+});
+
+test('an AI position combined with legacy grants cannot unlock standard data imports', async t => {
+  const f = await fixture(t);
+  const ai = (await f.request(f.admin,'/positions',{name:'AI使用',permissions:['basic_view','ai']})).data;
+  const legacy = (await f.request(f.admin,'/positions',{name:'旧版数据权限',permissions:['data_io']})).data;
+  f.db.prepare('UPDATE positions SET legacy_permissions=1 WHERE id=?').run(legacy.id);
+  const version = (await f.request(f.staff,'/auth/status')).data.permissions_version;
+  assert.equal((await f.request(f.admin,`/users/${f.id}/position`,{position_ids:[ai.id,legacy.id],version},'PUT')).status,200);
+  assert.equal((await f.chat(f.staff)).status,200);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool=>['preview_import','read_import_table','replace_import_table'].includes(tool.function.name)));
+  assert.equal((await f.chat(f.staff,{table:[['名称','单位'],['旧权限不得导入','个']]})).status,403);
+});

@@ -43,11 +43,13 @@ for (const width of [1440, 390, 320]) {
         expect(targets.every(target => target.width >= 44 && target.height >= 44)).toBe(true);
       }
       await capture(page, `test-results/positions-list-${width}.png`);
+      await page.request.post(f.base + '/api/positions', { data: { name: '财务兼岗', permissions: ['finance'] } });
       await nav.getByRole('button', { name: /用户管理/ }).click();
       for (const username of ['staffone', 'stafftwo']) {
         await page.getByLabel('新账号', { exact: true }).fill(username);
         await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
-        await choose(page, page.getByRole('combobox', { name: '新账号岗位', exact: true }), '仓管');
+        await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '仓管', exact: true }).check();
+        await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '财务兼岗', exact: true }).check();
         await page.getByRole('button', { name: '新增账号', exact: true }).click();
         await expect(page.locator('.user-row').filter({ hasText: username })).toBeVisible();
       }
@@ -57,6 +59,8 @@ for (const width of [1440, 390, 320]) {
       await expect(details.getByRole('checkbox')).toHaveCount(0);
       await expect(details).toContainText('入库');
       await expect(details).toContainText('出库');
+      await expect(details).toContainText('财务管理');
+      await expect(row.getByRole('button', { name: 'staffone的岗位', exact: true })).toContainText('仓管、财务兼岗');
       await details.getByRole('button', { name: '关闭弹窗', exact: true }).click();
       await nav.getByRole('button', { name: /岗位配置/ }).click();
       const position = page.locator('.position-row').filter({ hasText: '仓管' });
@@ -75,6 +79,18 @@ for (const width of [1440, 390, 320]) {
       await expect(details.locator('.effective-permissions')).toContainText('入库');
       await expect(details.locator('.effective-permissions')).not.toContainText('出库');
       await details.getByRole('button', { name: '关闭弹窗', exact: true }).click();
+      await row.getByRole('button', { name: 'staffone的岗位', exact: true }).click();
+      const assignment = page.getByRole('dialog', { name: '调整 staffone 的岗位', exact: true });
+      await expect(assignment.getByRole('checkbox', { name: '仓管', exact: true })).toBeChecked();
+      await expect(assignment.getByRole('checkbox', { name: '财务兼岗', exact: true })).toBeChecked();
+      await assignment.getByRole('checkbox', { name: '财务兼岗', exact: true }).uncheck();
+      await expect(assignment.locator('.effective-permissions')).not.toContainText('财务管理');
+      await assignment.getByRole('button', { name: '保存岗位', exact: true }).click();
+      await expect(assignment).toHaveCount(0);
+      await expect(row.getByRole('button', { name: 'staffone的岗位', exact: true })).toHaveText('仓管');
+      const saved = (await (await page.request.get(f.base + '/api/users')).json()).find(user => user.username === 'staffone');
+      expect(saved.position_names).toEqual(['仓管']);
+      expect(saved.permissions).toEqual(['purchase']);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await capture(page, `test-results/positions-${width}.png`);
     } finally { await f.close(); }
@@ -130,7 +146,7 @@ test('administrator downgrade requires a selected position and employee reassign
   const f = await fixture(page);
   try {
     const positions = await (await page.request.get(f.base + '/api/positions')).json();
-    const readonly = positions.find(position => !position.permissions.length);
+    const readonly = positions.find(position => position.name === '只读员工');
     const second = await (await page.request.post(f.base + '/api/positions', { data: { name: '财务', description: '', permissions: ['finance'] } })).json();
     await (await page.request.post(f.base + '/api/users', { data: { username: 'secondadmin', password: 'Strong-password-123', role: 'admin' } })).json();
     await page.goto(f.base);
@@ -142,19 +158,22 @@ test('administrator downgrade requires a selected position and employee reassign
     expect(f.db.prepare('SELECT role FROM users WHERE username=?').get('secondadmin').role).toBe('admin');
     await dialog.getByRole('button', { name: '保存岗位', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('请选择员工岗位');
-    await choose(page, dialog.getByRole('combobox', { name: '员工岗位', exact: true }), readonly.name);
+    await dialog.getByRole('checkbox', { name: readonly.name, exact: true }).check();
     await dialog.getByRole('button', { name: '保存岗位', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await choose(page, row.getByRole('combobox', { name: 'secondadmin的岗位', exact: true }), '财务');
+    await row.getByRole('button', { name: 'secondadmin的岗位', exact: true }).click();
     dialog = page.getByRole('dialog', { name: '调整 secondadmin 的岗位', exact: true });
+    await dialog.getByRole('checkbox', { name: '财务', exact: true }).check();
     const employee = (await (await page.request.get(f.base + '/api/users')).json()).find(user => user.username === 'secondadmin');
     await page.request.put(f.base + `/api/users/${employee.id}/position`, { data: { position_id: second.id, version: employee.permissions_version } });
     await dialog.getByRole('button', { name: '保存岗位', exact: true }).click();
     await expect(dialog.getByRole('alert')).toBeVisible();
     await dialog.getByRole('button', { name: '刷新版本并保留选择', exact: true }).click();
     await expect(dialog.getByRole('status')).toContainText('岗位选择已保留');
+    await expect(dialog.getByRole('checkbox', { name: readonly.name, exact: true })).toBeChecked();
+    await expect(dialog.getByRole('checkbox', { name: '财务', exact: true })).toBeChecked();
     await dialog.getByRole('button', { name: '保存岗位', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    expect(f.db.prepare('SELECT position_id FROM users WHERE username=?').get('secondadmin').position_id).toBe(second.id);
+    expect(f.db.prepare('SELECT position_id FROM user_positions WHERE user_id=? ORDER BY position_id').all(employee.id).map(row => row.position_id)).toEqual([readonly.id,second.id]);
   } finally { await f.close(); }
 });

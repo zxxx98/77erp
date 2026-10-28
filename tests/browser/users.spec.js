@@ -41,8 +41,7 @@ test('administrator creates accounts, protects the last administrator, resets pa
     await expect(page.getByRole('alert')).toContainText('最后一个管理员');
     await page.getByLabel('新账号', { exact: true }).fill('staff');
     await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
-    await page.getByRole('combobox', { name: '新账号岗位', exact: true }).click();
-    await page.getByRole('option', { name: '只读员工', exact: true }).click();
+    await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '只读员工', exact: true }).check();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const employee = page.locator('.user-row').filter({ hasText: 'staff' });
     await expect(employee).toBeVisible();
@@ -144,8 +143,7 @@ test('administrator configures position modules including AI and changes take ef
     await page.getByRole('button', { name: /用户管理/ }).click();
     await page.getByLabel('新账号', { exact: true }).fill('staff');
     await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
-    await page.getByRole('combobox', { name: '新账号岗位', exact: true }).click();
-    await page.getByRole('option', { name: '只读员工', exact: true }).click();
+    await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '只读员工', exact: true }).check();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const row = page.locator('.user-row').filter({ hasText: 'staff' });
     await expect(row).toBeVisible();
@@ -172,7 +170,8 @@ test('administrator configures position modules including AI and changes take ef
     let dialog = page.getByRole('dialog', { name: '编辑岗位：只读员工', exact: true });
     await expect(dialog.getByRole('checkbox')).toHaveCount(permissionOptions.length);
     await expect(dialog.getByRole('checkbox', { name: /^AI 助手/ })).not.toBeChecked();
-    await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(0);
+    await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(1);
+    await expect(dialog.getByRole('checkbox', { name: /^查看基础页面/ })).toBeChecked();
     await dialog.getByRole('checkbox', { name: /^物料管理/ }).check();
     await dialog.getByRole('button', { name: '保存岗位', exact: true }).click();
     await expect(dialog).toHaveCount(0);

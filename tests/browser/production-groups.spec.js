@@ -99,7 +99,7 @@ test('admin configures groups, strict positions, optional employee membership an
     await nav.getByRole('button', { name: /用户管理/ }).click();
     await page.getByLabel('新账号', { exact: true }).fill('newworker');
     await page.getByLabel('初始密码', { exact: true }).fill('Worker-password-123');
-    await choose(page, page.getByRole('combobox', { name: '新账号岗位', exact: true }), '新增登记岗位');
+    await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '新增登记岗位', exact: true }).check();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const row = page.locator('.user-row').filter({ hasText: 'newworker' });
     await expect(row).toBeVisible();

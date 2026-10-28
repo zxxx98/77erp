@@ -157,3 +157,27 @@ test('basic page migration preserves standard access once and never expands prod
   migrateBasicView(f.db);
   assert.equal(f.db.prepare('SELECT permissions FROM positions WHERE id=?').get(standard.id).permissions, '[]');
 });
+
+test('mixed positions combine workspace access and secondary production grants qualify for assignment', async t => {
+  const f=await fixture(t);
+  const normal=await f.position('普通员工',['basic_view']), worker=await f.position('生产登记',['production_register'],'production_only');
+  const user=await f.user('multiworker',normal.id);
+  assert.equal((await f.request(f.admin,'/production-orders/assignment-options')).data.users.some(row=>row.id===user.id),false);
+  const assign=async ids=>{
+    const current=(await f.request(user.cookie,'/auth/status')).data;
+    assert.equal((await f.request(f.admin,`/users/${user.id}/position`,{position_ids:ids,version:current.permissions_version},'PUT')).status,200);
+    return (await f.request(user.cookie,'/auth/status')).data;
+  };
+  let current=await assign([normal.id,worker.id]);
+  assert.equal(current.access_mode,'standard');
+  assert.deepEqual(current.permissions,['basic_view','production_register']);
+  assert.equal((await f.request(user.cookie,'/products')).status,200);
+  assert.equal((await f.request(f.admin,'/production-orders/assignment-options')).data.users.filter(row=>row.id===user.id).length,1);
+  const other=await f.position('第二生产岗位',['production_register'],'production_only');
+  current=await assign([worker.id,other.id]);
+  assert.equal(current.access_mode,'production_only');
+  assert.equal((await f.request(user.cookie,'/products')).status,403);
+  assert.equal((await f.request(user.cookie,'/production-orders')).status,200);
+  await assign([normal.id]);
+  assert.equal((await f.request(f.admin,'/production-orders/assignment-options')).data.users.some(row=>row.id===user.id),false);
+});

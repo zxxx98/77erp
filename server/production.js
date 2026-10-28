@@ -1,3 +1,4 @@
+import { positionAuthorization } from './positions.js';
 import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
 import { productionOperationTables, captureProductionRoutes, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
 import { requestLanguage } from './i18n.js';
@@ -306,8 +307,8 @@ export function installProduction(app, db) {
     });
     return { assigned_groups: groups, assigned_users: users };
   };
-  const assignmentUsers = () => db.prepare(`SELECT u.id,u.name,u.username,u.role,p.permissions,p.access_mode FROM users u LEFT JOIN positions p ON p.id=u.position_id WHERE u.active=1 ORDER BY u.id`).all()
-    .filter(user => { const value = { ...user, permissions: JSON.parse(user.permissions || '[]') }; return hasPermission(value, 'production') || hasPermission(value, 'production_register'); });
+  const assignmentUsers = () => db.prepare('SELECT id,name,username,role FROM users WHERE active=1 ORDER BY id').all()
+    .filter(user => { const value = { ...user, ...positionAuthorization(db,user) }; return hasPermission(value, 'production') || hasPermission(value, 'production_register'); });
   const saveAssignments = (id, targets) => {
     const group = targets.assigned_groups[0];
     db.prepare('UPDATE production_orders SET production_group_id=?,production_group_name=?,assigned_groups=?,assigned_users=? WHERE id=?')

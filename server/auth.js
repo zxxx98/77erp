@@ -2,9 +2,9 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { isSupportedLanguage } from './i18n.js';
 
-import { permissionKeys, hasPermission, usesProductionWorkspace } from '../shared/permissions.js';
+import { permissionKeys, hasPermission, canManage, usesProductionWorkspace } from '../shared/permissions.js';
 import { queueNotification } from './notifications.js';
-import { migratePositions, migrateBasicView, positionAuthorization, requirePosition, installPositions, recordPositionChange } from './positions.js';
+import { migratePositions, migrateBasicView, positionAuthorization, requirePositions, assignPositions, migrateUserPositions, installPositions, recordPositionChange } from './positions.js';
 import { migrateProductionGroups, installProductionGroups, requireProductionGroup } from './production-groups.js';
 
 const deriveKey = promisify(scrypt);
@@ -49,6 +49,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   migratePositions(db);
   migrateProductionGroups(db);
   migrateBasicView(db);
+  migrateUserPositions(db);
   // installAuth runs after the business migrations, so orders and templates already exist here.
   for (const table of ['orders', 'templates']) {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -58,7 +59,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   }
   const initialized = () => !!db.prepare("SELECT 1 FROM users LIMIT 1").get();
   const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, role: user.role, language: user.language ?? null,
-    ...(user.role === 'admin' ? { permissions: permissionKeys, legacy_permissions: false, position_id: null, position_name: null, access_mode: 'standard' } : positionAuthorization(db, user)),
+    ...(user.role === 'admin' ? { permissions: permissionKeys, legacy_permissions: false, position_id: null, position_name: null, position_ids: [], position_names: [], positions: [], access_mode: 'standard' } : positionAuthorization(db, user)),
     production_group_id: user.production_group_id ?? null,
     production_group_name: user.production_group_id ? db.prepare('SELECT name FROM production_groups WHERE id=?').get(user.production_group_id)?.name ?? null : null,
     permissions_version: user.permissions_version ?? 1 });
@@ -285,7 +286,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       (post && (path === '/stock-qrs/preview' || /^\/stock-qrs\/[0-9a-f-]{36}\/execute$/.test(path)));
     if (req.user.legacy_permissions) {
       if (legacyAllowed && (!read || hasPermission(req.user, 'basic_view'))) return next();
-    } else {
+    }
+    {
       const basicRead = read && (
         ['/workspace','/data','/style','/warehouses','/categories','/contacts','/templates','/products','/orders','/dashboard'].includes(path) ||
         /^\/products\/barcode\/[^/]+$/.test(path) || /^\/products\/\d+$/.test(path) ||
@@ -318,7 +320,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
         const qr = typeof qrId === 'string' ? db.prepare('SELECT type FROM stock_qr_codes WHERE qr_id=?').get(qrId) : null;
         permission = qr?.type === 'in' ? 'purchase' : qr?.type === 'out' ? 'sale' : null;
       }
-      if (permission && hasPermission(req.user, permission)) return next();
+      if (permission && canManage(req.user, permission)) return next();
     }
     return res.status(403).json({ error: '没有此操作的权限，请联系管理员。' });
   });
@@ -329,18 +331,22 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const { username, password, role = 'employee', name = '' } = req.body || {};
     if (!validUsername(username) || !validPassword(password) || !validName(name) || !['admin','employee'].includes(role))
       return res.status(400).json({ error: '请填写有效账号、8–128 位密码、角色及最多 60 个字的名称。' });
-    try { if (role === 'employee') requirePosition(db, req.body.position_id); }
+    try { if (role === 'employee') requirePositions(db, req.body); }
     catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
     const [salt, hash] = await passwordFields(password);
     if (sessionUser(req)?.role !== 'admin') return res.status(401).json({ error: '登录或权限已变化，请重新登录。' });
     db.exec('BEGIN IMMEDIATE');
     try {
       // Password hashing yields: the selected position may have been removed meanwhile.
-      const position = role === 'employee' ? requirePosition(db, req.body.position_id) : null;
+      const positions = role === 'employee' ? requirePositions(db, req.body) : [];
+      const position = positions[0];
       const group = role === 'employee' ? requireProductionGroup(db,req.body.production_group_id ?? null) : null;
       const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,permissions,position_id,production_group_id) VALUES (?,?,?,?,?,?,'[]',?,?)")
         .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), position?.id ?? null,group?.id ?? null);
-      if (position) recordPositionChange(db, req, '新员工分配岗位', position.id, Number(result.lastInsertRowid), null, {position_id: position.id});
+      if (position) {
+        assignPositions(db,Number(result.lastInsertRowid),positions);
+        recordPositionChange(db, req, '新员工分配岗位', position.id, Number(result.lastInsertRowid), null, {position_ids: positions.map(position => position.id)});
+      }
       if (group) recordPositionChange(db, req, '新员工分配生产组', position?.id ?? null, Number(result.lastInsertRowid), null, {production_group_id:group.id});
       db.exec('COMMIT');
       res.status(201).json({ id: Number(result.lastInsertRowid) });
@@ -368,9 +374,13 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
           db.prepare("SELECT COUNT(*) AS n FROM users WHERE active=1 AND role='admin'").get().n <= 1) {
         db.exec('ROLLBACK'); return res.status(409).json({ error: '不能停用或降级最后一个管理员。' });
       }
-      const positionId = role === 'admin' ? null : user.role === 'admin'
-        ? requirePosition(db, req.body.position_id).id : user.position_id;
-      if (user.role === 'employee' && role === 'employee' && req.body.position_id !== undefined && req.body.position_id !== user.position_id) {
+      const beforePositions = positionAuthorization(db,user).position_ids;
+      const positions = role === 'admin' ? [] : user.role === 'admin'
+        ? requirePositions(db, req.body) : null;
+      const positionId = positions ? positions[0]?.id ?? null : user.position_id;
+      if (user.role === 'employee' && role === 'employee' &&
+          (req.body.position_id !== undefined || req.body.position_ids !== undefined) &&
+          JSON.stringify(requirePositions(db,req.body).map(position => position.id)) !== JSON.stringify(beforePositions)) {
         db.exec('ROLLBACK'); return res.status(409).json({error:'请通过调整岗位操作提交当前权限版本。'});
       }
       if (req.body.production_group_id !== undefined && req.body.production_group_id !== user.production_group_id) {
@@ -378,7 +388,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       }
       db.prepare('UPDATE users SET role=?,active=?,name=?,position_id=?,production_group_id=?,permissions_version=permissions_version+? WHERE id=?')
         .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), positionId, role === 'admin' ? null : user.production_group_id, role !== user.role ? 1 : 0, user.id);
-      if (positionId !== user.position_id) recordPositionChange(db, req, '账号类型变更岗位', positionId, user.id, {position_id:user.position_id}, {position_id:positionId});
+      if (positions) assignPositions(db,user.id,positions);
+      if (role !== user.role) recordPositionChange(db, req, '账号类型变更岗位', positionId, user.id, {position_ids:beforePositions}, {position_ids:positions.map(position => position.id)});
       if (!active || role !== user.role) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(user.id);
       if (role !== user.role || active !== user.active) queueNotification(db, req, 'admin_action', { action: '修改账号角色／状态', target_user: user.username, before_role: user.role, role, before_active: user.active, active }, { global: true });
       db.exec('COMMIT');
