@@ -59,6 +59,7 @@ for (const mobile of [false, true]) test.describe(`task QR ${mobile ? 'mobile PW
       expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
+      await page.getByRole('button', { name: '更多操作', exact: true }).click();
       const downloadPromise = page.waitForEvent('download');
       await page.getByRole('button', { name: '导出 PDF', exact: true }).click();
       const download = await downloadPromise;

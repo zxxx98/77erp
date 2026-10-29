@@ -156,7 +156,7 @@ function updateBatchTotals(db, order, status, owner, at) {
 export function listProductionOrders(db, warehouseId, query = {}, costs = false, user) {
   assertProductionReader(user);
   const { q = '', status = 'all', offset = '0', limit = '30' } = query;
-  if (typeof q !== 'string' || q.length > 100 || !['all', 'draft', 'awaiting_materials', 'in_progress', 'completed', 'void'].includes(status) ||
+  if (typeof q !== 'string' || q.length > 100 || !['all', 'draft', 'awaiting_materials', 'in_progress', 'pending_receipt', 'completed', 'void'].includes(status) ||
       typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
       typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100)
     fail('生产单筛选或分页参数无效。');
@@ -169,6 +169,7 @@ export function listProductionOrders(db, warehouseId, query = {}, costs = false,
     if (status === 'in_progress') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='in_progress') OR (material_workflow=0 AND completed_at IS NOT NULL))");
     else if (status === 'draft') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='draft') OR (material_workflow=0 AND completed_at IS NULL))");
     else if (status === 'awaiting_materials') clauses.push("status='draft' AND material_workflow=1 AND material_phase='awaiting_materials'");
+    else if (status === 'pending_receipt') clauses.push("status!='void' AND EXISTS (SELECT 1 FROM production_batches b JOIN production_receipts r ON r.batch_id=b.id WHERE b.production_id=production_orders.id AND b.status='active' AND r.status='pending')");
     else if (status !== 'all') { clauses.push('status=?'); params.push(status); }
     if (q.trim()) { clauses.push("(number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR bom_name LIKE ? ESCAPE '\\')"); params.push(...Array(4).fill(pattern(q.trim()))); }
     const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) AS n FROM production_orders WHERE ${where}`).get(...params).n;

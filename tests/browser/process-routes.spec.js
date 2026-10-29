@@ -345,6 +345,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     await expect(quantity).toHaveValue('');
     await page.screenshot({ path: test.info().outputPath('quick-registration.png'), fullPage: true });
     await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
+    await page.getByRole('button', { name: '更多操作', exact: true }).click();
     const qr = page.getByRole('img', { name: '生产登记二维码', exact: true });
     await expect(qr).toBeVisible();
     await expect(page.getByRole('link', { name: '打开登记', exact: true })).toHaveAttribute('href', f.link);
@@ -354,8 +355,10 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     const decoded = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(new Uint8ClampedArray(pixels), width, width))), new Map([[DecodeHintType.PURE_BARCODE, true]])).getText();
     expect(decoded).toBe(f.link);
     await page.screenshot({ path: test.info().outputPath('detail-registration-qr.png'), fullPage: true });
+    await page.getByRole('button', { name: '刷新单据与库存', exact: true }).click();
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
-    await page.getByRole('button', { name: '查看工序进度', exact: true }).click();
+    await page.getByText('工序进度与登记（2）', { exact: true }).click();
+    await page.getByRole('button', { name: '查看工序记录', exact: true }).click();
     await expect(page.getByText('工序登记记录', { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
@@ -474,6 +477,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} com
     await f.post(`/production-orders/${f.draft.id}/operations/report`, { version: (await f.get()).version, path: '1', operation_node_id: 'cut', quantity: 4, note: '' });
     await page.getByRole('button', { name: `查看生产单 ${f.draft.number}`, exact: true }).click();
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
+    await page.getByText('查看工艺关系图', { exact: true }).click();
     await expect(page.getByRole('heading', { name: '工艺总览', exact: true })).toBeVisible();
     await expect(overview).toBeVisible();
     await overview.getByRole('button', { name: '分层列表', exact: true }).click();

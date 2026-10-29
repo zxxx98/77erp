@@ -31,12 +31,12 @@ export function ProductionStageSummary({ order, onOpen, disabled }) {
   </section>;
 }
 
-export function ProductionStages({ order, data, canRegister, canVoid, canReceive, management, busy = false, initialOperationPath, onActivity, onSaved, onBack }) {
+export function ProductionStages({ order, data, canRegister, canVoid, canReceive, management, busy = false, initialOperationPath, initialHistoryPath, onRegister, onActivity, onSaved, onBack }) {
   useLocale();
   const [operationPath, setOperationPath] = useState(initialOperationPath ?? null), [operationActivity, setOperationActivity] = useState(null);
   const [scope, setScope] = useState(''), [search, setSearch] = useState('');
   const [form, setForm] = useState(null), [baseline, setBaseline] = useState('');
-  const [history, setHistory] = useState(null), [voiding, setVoiding] = useState(null);
+  const [history, setHistory] = useState(() => initialHistoryPath !== undefined ? { path: initialHistoryPath, offset: 0 } : null), [voiding, setVoiding] = useState(null);
   const action = useBusiness(), locked = busy || action.busy;
   const byPath = useMemo(() => new Map(order.stages.map(stage => [stage.path, stage])), [order.stages]);
   const stage = form ? byPath.get(form.path) : null;
@@ -61,7 +61,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const leave = fn => { if (!locked && (!dirty || window.confirm(pt("production.levelRegistrationIsUnsavedLeave")))) { action.setError(''); fn(); } };
   const back = () => leave(() => {
     if (form) { if (form.operation_node_id) setOperationPath(form.path); setForm(null); }
-    else if (history) { setHistory(null); setVoiding(null); }
+    else if (history) { if (initialHistoryPath !== undefined) onBack(); else { setHistory(null); setVoiding(null); } }
     else onBack();
   });
   const defaults = (target, quantity) => target.items.map(item => ({ path: item.path, quantity: String(stageStandardQuantity(item, quantity)), variance_reason: '' }));
@@ -117,10 +117,10 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     const root = batch.root_batch_id && order.batches.find(row => row.id === batch.root_batch_id);
     return root && (root.receipt_status === 'confirmed' || !root.receipt_required);
   };
-  if (operationPath !== null) return <ProductionOperations order={order} path={operationPath} data={data} canRegister={canRegister} onActivity={setOperationActivity} onSaved={onSaved} onBack={() => initialOperationPath !== undefined ? onBack() : setOperationPath(null)} onOutput={(node, workerId) => begin(byPath.get(operationPath), node, workerId)} />;
+  if (operationPath !== null) return <ProductionOperations order={order} path={operationPath} data={data} canRegister={canRegister} onRegister={onRegister} onActivity={setOperationActivity} onSaved={onSaved} onBack={() => initialOperationPath !== undefined ? onBack() : setOperationPath(null)} onOutput={(node, workerId) => begin(byPath.get(operationPath), node, workerId)} />;
   return <div className="production-stages">
     <PageHeading title={heading} description={`${order.number} · ${stage ? pathLabel(stage) : history ? pathLabel(byPath.get(history.path)) : order.product_name}`}>
-      <Button icon={ArrowLeft} disabled={locked} onClick={back}>{form || history ? pt("production.backToLevelSelection") : pt("production.backToOrderDetails")}</Button>
+      <Button icon={ArrowLeft} disabled={locked} onClick={back}>{form || history && initialHistoryPath === undefined ? pt("production.backToLevelSelection") : pt("production.backToOrderDetails")}</Button>
     </PageHeading>
     {form && stage ? <form onSubmit={submit}>
       <section className="panel bom-section">
@@ -202,7 +202,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
             {input.standard_quantity != null && <p>{pt("production.variance")} {count(addQuantity(input.actual_quantity, -input.standard_quantity))} {input.unit}</p>}
           </div>)}
         </details><div className="bom-actions">
-          {canRegister && <Button kind="primary" disabled={locked} aria-label={pt("production.register4", { v0: item.name })} onClick={() => begin(item)}>{pt("production.register")}</Button>}
+          {canRegister && <Button kind="primary" disabled={locked} aria-label={pt("production.register4", { v0: item.name })} onClick={() => onRegister ? onRegister(JSON.stringify([item.path, null])) : begin(item)}>{pt("production.register")}</Button>}
           {order.operation_routes?.some(route => route.path === item.path) && <Button disabled={locked} onClick={() => setOperationPath(item.path)}>{pt('route.viewProgress')}</Button>}
           <Button disabled={locked} aria-label={pt("production.viewBatches", { v0: item.name })} onClick={() => { setHistory({ path: item.path, offset: 0 }); action.setError(''); }}>{pt("production.batchRecords")}</Button>
           {item.path !== scope && item.items.some(input => input.usage_mode === 'explode') && <Button disabled={locked} icon={ChevronRight} aria-label={pt("production.viewChildLevel", { v0: item.name })} onClick={() => { setScope(item.path); setSearch(''); }}>{pt("production.viewChildLevel2")}</Button>}

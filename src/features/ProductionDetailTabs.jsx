@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useLocale } from '../i18n/react.jsx';
 import { t } from '../i18n/index.js';
 
@@ -6,6 +6,7 @@ export function ProductionDetailTabs({ active, onChange, items }) {
   useLocale();
   const id = useId();
   const [visited, setVisited] = useState(() => new Set([active]));
+  useEffect(() => { setVisited(previous => previous.has(active) ? previous : new Set([...previous, active])); }, [active]);
   const select = (key, target) => {
     setVisited(previous => new Set([...previous, key]));
     onChange(key);

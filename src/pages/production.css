@@ -113,3 +113,67 @@
 @media (prefers-reduced-motion: reduce) {
   .production-assignment-editor, .production-assignment-summary, .production-assignment-chevron, .production-assignment-item { transition: none; }
 }
+
+/* The order header stays compact on both the desktop and mobile shells. */
+.production-detail-page > .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.production-detail-page > .page-heading .heading-actions { margin-top: 0; flex-shrink: 0; }
+.production-detail-page > .page-heading h1 { font-size: 18px; }
+.production-detail-header { align-items: center; gap: 16px; margin-bottom: 18px; }
+.production-detail-identity { margin: 0; }
+.production-detail-header h2 { font-size: 22px; }
+.production-primary-actions { flex-shrink: 0; }
+.production-status-panel { padding: 20px 24px; margin-bottom: 20px; }
+.production-summary { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 20px; padding: 0 0 16px; }
+.production-summary > div { min-width: 0; }
+.production-summary strong { font-size: 22px; overflow-wrap: anywhere; }
+.production-summary strong small { display: inline; font-weight: 400; font-size: 14px; }
+.production-progress-bar { display: block; width: 100%; height: 6px; border: 0; border-radius: 4px; overflow: hidden; background: #e9eef5; accent-color: #2563eb; }
+.production-progress-bar::-webkit-progress-bar { background: #e9eef5; }
+.production-progress-bar::-webkit-progress-value { background: #2563eb; border-radius: 4px; }
+.production-progress-bar::-moz-progress-bar { background: #2563eb; }
+.production-progress-caption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #647084; font-size: 12px; margin-top: 8px; }
+.production-state-hint { margin: 0 0 12px; color: #44516a; line-height: 1.65; }
+.production-task { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; margin-top: 14px; border-top: 1px solid #e9ecf1; font-size: 13px; line-height: 1.6; }
+.production-task .btn { flex-shrink: 0; }
+.production-disclosure { margin-top: 14px; }
+.production-disclosure > summary { cursor: pointer; min-height: 44px; padding: 12px 0; color: #536175; font-size: 13px; line-height: 1.5; }
+.production-disclosure > summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.production-disclosure > .process-overview { border: 0; padding: 0; margin: 12px 0 0; box-shadow: none; }
+.production-more-actions { display: flex; flex-direction: column; gap: 12px; }
+.production-more-actions .production-registration-qr { align-self: center; }
+.production-more-actions .production-detail-export { display: flex; gap: 10px; margin: 0; }
+.production-more-actions .production-detail-export > * { flex: 1; min-width: 0; }
+.production-more-actions .bom-hint { margin: 0; overflow-wrap: anywhere; }
+.production-order-filters { display: block; }
+.production-list-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.production-list-shortcuts button[aria-pressed="true"] { background: #eff5ff; color: #2158b0; border-color: #adc9f5; }
+.production-list-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.production-list-title .ant-tag { margin: 0; }
+.production-list-output { margin: 10px 0 6px; font-size: 14px; }
+.production-progress-item { padding: 20px 0; border-bottom: 1px solid #e9ecf1; }
+.production-progress-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.production-progress-item-main { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 12px; font-size: 14px; }
+.production-progress-item .production-disclosure { margin-top: 8px; }
+.production-inline-operations { margin-bottom: 12px; border-top: 1px solid #e9ecf1; }
+.production-inline-operation { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e9ecf1; font-size: 13px; }
+.production-inline-operation > div { min-width: 0; }
+.production-inline-operation .btn { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .mobile-device .mw-shell .production-detail-page > .page-heading { display: flex; }
+  .mobile-device .mw-shell .production-detail-page > .page-heading h1 { font-size: 18px; }
+  .production-detail-page > .page-heading .heading-actions { margin-top: 0; }
+  .production-detail-header { display: flex; flex-wrap: wrap; gap: 12px; }
+  .production-detail-identity { flex: 1 1 100%; }
+  .production-detail-header h2 { font-size: 20px; }
+  .production-primary-actions { width: 100%; display: flex; }
+  .production-primary-actions > .btn-primary { flex: 1; }
+  .production-status-panel { padding: 16px 14px; margin-bottom: 12px; }
+  .production-summary { grid-template-columns: 1.4fr 1fr 1fr; gap: 10px; }
+  .production-summary strong { font-size: 18px; }
+  .production-summary strong small { display: block; font-size: 12px; }
+  .production-tab-list { margin-bottom: 12px; }
+  .production-task, .production-progress-item-main { align-items: flex-start; flex-wrap: wrap; }
+  .production-task > span { flex: 1 1 180px; }
+  .production-list-shortcuts { flex-wrap: nowrap; overflow-x: auto; padding: 2px 0 8px; }
+  .production-list-shortcuts > .btn { flex-shrink: 0; }
+}

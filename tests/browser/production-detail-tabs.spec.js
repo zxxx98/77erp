@@ -46,7 +46,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production tabs p
     await expect(page.getByRole('heading', { name: '配方结构快照', exact: true })).not.toBeVisible();
     await page.screenshot({ path: test.info().outputPath(`${mode}-overview.png`), fullPage: true });
     await tab('生产进度').click();
-    await expect(page.getByRole('heading', { name: '分层生产', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '产品与半成品进度', exact: true })).toBeVisible();
     await tab('物料').click();
     await expect(page.getByRole('region', { name: '生产领退料', exact: true })).toBeVisible();
     await tab('完工与入库').click();
@@ -96,6 +96,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production tabs p
     await expect(canvas.locator('[data-node-path="1"]')).toContainText('20 件');
     await expect(canvas.locator('[data-node-path="1.1"]')).toContainText('60 件');
     await page.getByRole('button', { name: '返回上一级', exact: true }).click();
+    await page.getByRole('button', { name: '更多操作', exact: true }).click();
     await page.getByRole('button', { name: '刷新单据与库存', exact: true }).click();
     await expect(tab('配方结构')).toHaveAttribute('aria-selected', 'true');
     await tab('概览').click();

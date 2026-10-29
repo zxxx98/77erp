@@ -26,7 +26,7 @@ export function OperationWorkerSelect({ order, warehouseId, value, onChange, dis
   </Select></label><p className="bom-hint">{t('route.workerHint')}</p><QueryStatus query={query} /></div>;
 }
 
-export function ProductionOperations({ order, path = '', data, canRegister, onOutput, onBack, onSaved, onActivity }) {
+export function ProductionOperations({ order, path = '', data, canRegister, onRegister, onOutput, onBack, onSaved, onActivity }) {
   useLocale();
   const { can, user } = usePermissions(), action = useBusiness();
   const route = order.operation_routes.find(r => r.path === path), layer = order.stages?.find(s => s.path === path);
@@ -61,7 +61,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onOu
           </div>
           <p className="bom-hint">{t('route.reportHint')}</p>
         </div>
-        <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />
+        {!onRegister && canRegister && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
       </div>
       {!form && !voiding && <>
         <div className="process-editor-toolbar process-progress-toolbar">
@@ -91,7 +91,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onOu
                 {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t('route.available')}</dt><dd>{count(node.available_quantity)} {unit}</dd></div>}
               </dl>
               {canRegister && <div className="process-operation-card-action">
-                <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' })}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
+                <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' })}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
               </div>}
             </article>;
           })}

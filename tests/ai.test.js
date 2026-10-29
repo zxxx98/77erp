@@ -1072,6 +1072,9 @@ test('AI reads awaiting warehouse approval and issued material balances without 
   f.use('search_production_orders', { status: 'awaiting_materials' }); await f.chat(f.staff);
   const call = f.calls.at(-1).body;
   assert.ok(call.tools.find(tool => tool.function.name === 'search_production_orders').function.parameters.properties.status.enum.includes('awaiting_materials'));
+  assert.ok(call.tools.find(tool => tool.function.name === 'search_production_orders').function.parameters.properties.status.enum.includes('pending_receipt'));
+  f.use('search_production_orders', { status: 'pending_receipt' }); await f.chat(f.staff);
+  assert.deepEqual(JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content).orders, []);
   assert.equal(JSON.parse(call.messages.find(message => message.role === 'tool').content).orders[0].status, 'awaiting_materials');
   assert.match(call.messages.find(message => message.role === 'system').content, /领料.*扣.*库存/);
   const issueRequest = order.material_documents[0];

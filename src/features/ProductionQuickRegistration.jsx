@@ -12,7 +12,8 @@ import { useLocale } from '../i18n/react.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { registrationDefaults, registrationTargets } from '../production-registration.js';
 import { materialQuantity, parseQuantity } from '../../shared/quantity.js';
-import { validateProductionCompletion } from '../../shared/production.js';
+import { validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
+import { MaterialVariance } from './MaterialVariance.jsx';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import './production-registration.css';
 
@@ -29,12 +30,12 @@ function OperationName({ target }) {
   </span>;
 }
 
-export function ProductionQuickRegistration({ order, data, onSaved, onBack, onActivity }) {
+export function ProductionQuickRegistration({ order, data, initialTargetId, onSaved, onBack, onActivity }) {
   useLocale();
   const { user, can } = usePermissions();
   const action = useBusiness();
   const targets = useMemo(() => registrationTargets(order), [order]);
-  const [selectedId, setSelectedId] = useState(() => targets.length === 1 ? targets[0].id : '');
+  const [selectedId, setSelectedId] = useState(() => targets.some(row => row.id === initialTargetId) ? initialTargetId : targets.length === 1 ? targets[0].id : '');
   const [quantity, setQuantity] = useState(''), [note, setNote] = useState('');
   const [workerId, setWorkerId] = useState(user.id);
   const [overrides, setOverrides] = useState({ items: {}, scraps: {} });
@@ -156,21 +157,23 @@ export function ProductionQuickRegistration({ order, data, onSaved, onBack, onAc
               {order.stage_workflow && <small className="bom-hint">{t('registration.layer', { path: source.path })}</small>}
               {source.available_quantity != null && <p className="bom-hint">{t('production.available')} {count(source.available_quantity)} {source.unit}</p>}
               <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.name })} inputMode="decimal" disabled={action.busy} value={row.quantity} onChange={event => patchItem(key, { quantity: event.target.value })} /></label>
-              <label>{t('production.usageVarianceReason2')}<Input aria-label={t('production.usageVarianceReason', { v0: source.name })} maxLength={500} disabled={action.busy} value={row.variance_reason} onChange={event => patchItem(key, { variance_reason: event.target.value })} /></label>
+              {order.stage_workflow
+                ? <label>{t('production.usageVarianceReason2')}<Input.TextArea rows={2} aria-label={t('production.usageVarianceReason', { v0: source.name })} maxLength={500} disabled={action.busy} value={row.variance_reason} onChange={event => patchItem(key, { variance_reason: event.target.value })} /></label>
+                : <MaterialVariance row={{ ...source, ...row }} analysis={productionMaterialAnalysis(source, outputQuantity, order.base_quantity, Number(row.quantity), order.loss_method, order.snapshot_format === 2 ? order.nodes : undefined, order.quantity_decimals)} complete disabled={action.busy} onReason={(_, variance_reason) => patchItem(key, { variance_reason })} />}
             </div>;
           })}
           <Button disabled={action.busy || !quantity} onClick={() => setOverrides({ items: {}, scraps: {} })}>{t('production.fillUsageFromThisBatchSOutput')}</Button>
           <ScrapOutputs rows={scrapRows} materials={target.layer.items} complete disabled={action.busy} onChange={patchScrap} />
         </>}
-        <label>{t('route.batchNote')}<Input.TextArea aria-label={t('route.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>
+        <label>{t('production.batchNote')}<Input.TextArea aria-label={t('production.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>
       </details>
       {action.error && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
       {message && <p className="bom-success" role="status">{message}</p>}
       <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable || target.node?.available_quantity === 0}>{t('registration.submit')}</Button>
-      <Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
+      <details className="production-disclosure" open={!!action.error}><summary>{t('production.registrationTools')}</summary><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
         const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
         clear(); setMessage(''); await onSaved(latest, false);
-      }))}>{t('production.reloadProductionOrder')}</Button>
+      }))}>{t('production.reloadProductionOrder')}</Button></details>
     </form>
   </div>;
 }

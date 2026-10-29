@@ -194,3 +194,21 @@ test('database migration marks pre-existing posted batches historical and is res
   order=await f.get(order.id);assert.equal(order.batches[0].receipt_required,0);assert.equal(order.batches[0].receipt_status,'confirmed');assert.equal(order.received_quantity,5);assert.deepEqual(f.stock(f.parent),before);
   assert.equal((await f.command(`/production-receipts/${doc.id}/confirm`,{version:doc.version})).status,404);
 });
+
+test('pending receipt order filter applies before pagination and removes confirmed or voided batches', async t => {
+  const f = await fixture(t);
+  let order = await f.start(await f.create()); await f.confirm(order.material_documents[0]);
+  order = f.ok(await f.complete(await f.get(order.id), 10));
+  await f.create(); // A newer draft must not hide the matching order at limit=1.
+  const pending = () => f.request('/production-orders?status=pending_receipt&limit=1').then(f.ok);
+  let list = await pending();
+  assert.equal(list.total, 1); assert.equal(list.orders[0].id, order.id); assert.equal(list.has_more, false);
+  f.ok(await f.command(`/production-receipts/${order.receipt_documents[0].id}/confirm`, { version: order.receipt_documents[0].version }));
+  assert.equal((await pending()).total, 0);
+  order = f.ok(await f.complete(await f.get(order.id), 10));
+  assert.equal((await pending()).total, 1);
+  const batch = order.batches.at(-1);
+  f.ok(await f.command(`/production-orders/${order.id}/batches/${batch.id}/void`, { version: order.version, reason: '纠正登记' }));
+  assert.equal((await pending()).total, 0);
+  assert.equal(f.ok(await f.request('/production-orders?status=draft')).total, 1);
+});

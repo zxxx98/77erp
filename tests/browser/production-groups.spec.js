@@ -1,3 +1,4 @@
+import { productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
 import { test, expect } from '@playwright/test';
 import { createApp } from '../../server/app.js';
 import { randomUUID } from 'node:crypto';
@@ -44,22 +45,23 @@ for (const accessMode of ['standard', 'production_only']) for (const {width, pwa
     await expect(page.getByText('生产小组：装配一组', { exact: true })).toBeVisible();
     for (const name of ['编辑草稿', '开始生产', '结束生产', '申请补料', '申请退料', '派工']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '登记', exact: true }).click();
-    await page.getByLabel('合格成品数量', { exact: true }).fill('2');
-    await expect(page.getByRole('button', { name: '本批登记并继续生产', exact: true })).toHaveCount(1);
+    await page.getByLabel('本次数量', { exact: true }).fill('2');
+    await adjustUsage(page);
+    await expect(page.getByRole('button', { name: '提交登记', exact: true })).toHaveCount(1);
     await expect(page.getByRole('button', { name: '本批登记并结束生产', exact: true })).toHaveCount(0);
-    page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '本批登记并继续生产', exact: true }).click();
-    await expect(page.locator('.bom-success')).toContainText('生产单继续生产');
+    await submitProductionBatch(page);
+    await expect(page.getByText('生产中', { exact: true })).toBeVisible();
     await page.getByRole('tab', { name: '完工与入库', exact: true }).click();
     await expect(page.locator('.production-batches')).toContainText('登记人：worker');
     await page.getByRole('button', { name: '登记', exact: true }).click();
-    await page.getByLabel('合格成品数量', { exact: true }).fill('0.5');
+    await page.getByLabel('本次数量', { exact: true }).fill('0.5');
+    await adjustUsage(page);
     await page.screenshot({ path: test.info().outputPath(`production-only-${width}.png`), fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     // Simulate membership revocation while a form is dirty; focus refresh must remount it without asking to preserve stale edits.
     f.db.prepare('UPDATE users SET production_group_id=?,permissions_version=permissions_version+1 WHERE id=?').run(f.second.id, f.worker.id);
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-    await expect(page.getByLabel('合格成品数量', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('本次数量', { exact: true })).toHaveCount(0);
     await expect(page.getByText('暂无派给本组或本人的生产单。', { exact: true })).toBeVisible();
     expect(businessRequests).toEqual([]); expect(errors).toEqual([]);
     await page.getByRole('button', { name: '修改密码', exact: true }).click();
@@ -185,7 +187,7 @@ for (const {width, pwa} of [{width:1440}, {width:390}, {width:390,pwa:true}]) te
       await expect(page.getByText('指派人员：个人工人', { exact: true })).toBeVisible();
       await expect(page.getByText('生产指派', { exact: true })).toHaveCount(0);
       await page.getByRole('button', { name: '登记', exact: true }).click();
-      await expect(page.getByLabel('合格成品数量', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('本次数量', { exact: true })).toBeVisible();
       expect(errors).toEqual([]);
     } finally { await f.close(); }
   });

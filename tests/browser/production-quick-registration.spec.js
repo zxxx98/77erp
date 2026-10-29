@@ -174,6 +174,7 @@ test('quick final output allows actual usage adjustments and root output consume
     expect(order.stages.find(stage => stage.path === '1').available_quantity).toBe(2);
     expect(order.receipt_documents).toHaveLength(0);
     for (const id of ['n0', 'n1', 'n2']) await report('', id, 1);
+    await page.getByText('重新读取单据', { exact: true }).click();
     await page.getByRole('button', { name: '重新读取生产单', exact: true }).click();
     await expect(quantity).toHaveValue('');
     await chooseOutput(false); await quantity.fill('1');
