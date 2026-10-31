@@ -1,3 +1,4 @@
+import { productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -41,7 +42,8 @@ async function approveReceipts(page, f) {
   const { documents } = await response.json();
   expect(documents.length).toBeGreaterThan(0);
   for (const receipt of documents) await f.post(`/production-receipts/${receipt.id}/confirm`, { version: receipt.version });
-  await page.getByRole('button', { name: '刷新单据与库存', exact: true }).click();
+  await productionAction(page, '刷新单据与库存');
+  await page.getByRole('tab', { name: '概览', exact: true }).click();
   await expect(page.getByRole('region', { name: '生产入库进度' })).toContainText('待入库0');
 }
 
@@ -260,11 +262,11 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await expect(page.locator('.production-material').nth(1)).toContainText('计划用量2 米');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
     await page.getByRole('button', { name: '登记', exact: true }).click();
+    await page.getByLabel('本次数量', { exact: true }).fill('6');
+    await adjustUsage(page);
     await expect(page.getByLabel('包装纸箱实际耗料', { exact: true })).toHaveValue('0.15');
     await expect(page.getByLabel('分摊辅料实际耗料', { exact: true })).toHaveValue('2');
-    page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button', { name: '本批登记并结束生产', exact: true }).click();
-    await expect(page.locator('.bom-success')).toContainText('待仓库批准入库');
+    await submitProductionBatch(page, true);
     await approveReceipts(page, f);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[1].id).stock).toBe(9.85);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(products[2].id).stock).toBe(8);
@@ -337,8 +339,8 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) {
       await page.getByRole('button', { name: '复制', exact: true }).click();
       await expect(page.getByText('成品：示例桌子', { exact: true })).toBeVisible();
       await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('桌子配方副本');
-      await chooseOption(page.getByRole('combobox', { name: '桌面材料用料方式', exact: true }), 'stock');
-      await chooseOption(page.getByRole('combobox', { name: '桌面材料用料方式', exact: true }), 'explode');
+      await page.getByRole('button', { name: '取消下级配方关联', exact: true }).click();
+      await page.locator('details').filter({ has: page.getByText('下级配方关联（可选）', { exact: true }) }).evaluate(element => { element.open = true; });
       await page.getByRole('button', { name: `选择下级配方 桌面替代配方 #${alternate.id}`, exact: true }).click();
       await page.getByRole('button', { name: '查看下级配方', exact: true }).click();
       await expect(page.locator('.bom-child-preview')).toContainText('螺丝材料 · 6 颗');
@@ -366,22 +368,23 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) {
       await expect(page.getByRole('heading', { name: '生产单详情', exact: true })).toBeVisible();
       await f.post(`/boms/${alternate.id}`, { ...childBody, name: alternate.name, version: alternate.version, items: [{ ...childBody.items[0], quantity: 9 }] });
       await page.getByRole('button', { name: '登记', exact: true }).click();
+      await page.getByLabel('本次数量', { exact: true }).fill('3');
+      await adjustUsage(page);
       await expect(page.getByLabel('螺丝材料实际耗料', { exact: true })).toHaveValue('6');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      page.once('dialog', dialog => dialog.accept());
-      await page.getByRole('button', { name: '本批登记并继续生产', exact: true }).click();
-      await expect(page.locator('.bom-success')).toContainText('继续生产');
+      await submitProductionBatch(page);
       await approveReceipts(page, f);
       await page.getByRole('button', { name: '登记', exact: true }).click();
+      await page.getByLabel('本次数量', { exact: true }).fill('1');
+      await adjustUsage(page);
       await expect(page.getByLabel('螺丝材料实际耗料', { exact: true })).toHaveValue('2');
-      page.once('dialog', dialog => dialog.accept());
-      await page.getByRole('button', { name: '本批登记并结束生产', exact: true }).click();
+      await submitProductionBatch(page, true);
       await approveReceipts(page, f);
       await expect(page.locator('.production-summary')).toContainText('4 张');
       const stock = f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[2].id).stock;
       expect(stock).toBe(8);
       expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[4].id).stock).toBe(92);
-      await page.getByRole('button', { name: '作废生产单', exact: true }).click();
+      await productionAction(page, '作废生产单');
       await page.getByLabel('作废原因', { exact: true }).fill('多层生产回退');
       page.once('dialog', dialog => dialog.accept());
       await page.getByRole('button', { name: '确认作废', exact: true }).click();

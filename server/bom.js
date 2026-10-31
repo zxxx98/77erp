@@ -1,3 +1,4 @@
+import { buildProductionSupply } from './production-supply.js';
 import { routeBinding } from './process-routes.js';
 import { validQuantity } from '../shared/quantity.js';
 import { createHash } from 'node:crypto';
@@ -154,7 +155,7 @@ export function bomProcessOverview(db, warehouseId, id) {
   });
 }
 
-export function calculateBom(db, warehouse, id, productionQuantity, version, schemaVersion) {
+export function calculateBom(db, warehouse, id, productionQuantity, version, schemaVersion, supplyChoices) {
   if (!validQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 4 位小数。');
   return readSnapshot(db, () => {
     const bom = getBom(db, warehouse.id, id);
@@ -165,7 +166,9 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
       if (!cache.has(childId)) cache.set(childId, getBom(db, warehouse.id, childId));
       return cache.get(childId);
     };
-    const nodes = buildBomNodes(bom, load), result = calculateBomNodes(nodes, productionQuantity);
+    const supply = supplyChoices === undefined ? null : buildProductionSupply(bom, load, productionQuantity, supplyChoices,
+      productId => db.prepare('SELECT id,name,version,enabled FROM boms WHERE warehouse_id=? AND product_id=? ORDER BY name,id').all(warehouse.id, productId));
+    const nodes = supply ? supply.nodes : buildBomNodes(bom, load), result = calculateBomNodes(nodes, productionQuantity);
     if (result.multi_level && schemaVersion !== 2) fail('此BOM包含多层配方，请刷新页面后重新测算。', 409);
     const rows = result.rows.map(row => {
       const product = db.prepare('SELECT stock FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, warehouse.id);
@@ -182,8 +185,8 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
       [...b.items, ...b.scraps].map(row => [row.product_id, row.quantity, row.quantity_fraction, row.loss_rate, row.usage_mode, row.child_bom_id, row.note, row.method, row.source_product_id,
         row.product.name, row.product.barcode, row.product.specification, row.product.active, row.product.unit, row.product.unit_round_up])]);
     return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity, loss_method: bom.loss_method,
-      schema_version: 2, multi_level: result.multi_level, nodes: withCurrentProductionTypes(db, warehouse.id, result.nodes),
-      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints, routeFingerprints])).digest('hex'),
+      schema_version: 2, supplies: supply?.supplies, multi_level: result.multi_level, nodes: withCurrentProductionTypes(db, warehouse.id, result.nodes),
+      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints, routeFingerprints, ...(supply ? [supplyChoices, supplyChoices.some(row => row.mode === 'partial') ? productionQuantity : null] : [])])).digest('hex'),
       scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
         planned_quantity: scrapExpectedQuantity({ ...row, unit_round_up: row.product.unit_round_up }, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
       quantity_decimals: 4, production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };

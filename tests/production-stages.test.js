@@ -32,7 +32,7 @@ async function fixture(t, { repeated = false } = {}) {
   const complete = (o, path, quantity, items, extra = {}) => command(`/production-orders/${o.id}/stages/complete`, { version: o.version, path, completed_quantity: quantity, items: items.map(([path, quantity]) => ({path, quantity, variance_reason: ''})), scraps: [], note: '', finish_order: false, ...extra });
   const batches = (o, path) => request(`/production-orders/${o.id}/stages/batches?path=${path}&offset=0&limit=20`).then(ok);
   const voidBatch = (o, id) => command(`/production-orders/${o.id}/stages/batches/${id}/void`, {version:o.version,reason:'登记错误'});
-  return { db, request, command, ok, a, b, c, root, create, get, active, complete, batches, voidBatch };
+  return { db, request, command, ok, a, b, c, root, child, create, get, active, complete, batches, voidBatch };
 }
 
 test('stage A→B→C registration consumes raw pool once, retains WIP, and projects root receipts', async t => {
@@ -99,7 +99,7 @@ test('untouched historic drafts explicitly enable from saved snapshot; plans ref
 test('backup roundtrip retains WIP and rejects cross-source, quantity and cost corruption',async t=>{
   const f=await fixture(t); let o=await f.active();
   o=f.ok(await f.complete(o,'1',12,[['1.1',36]]));
-  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 41);
+  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 42);
   let preview=f.ok(await f.request('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
   o=await f.get(o.id);assert.equal(o.stages[1].available_quantity,12);
@@ -278,4 +278,107 @@ test('backup replay preserves zero-quantity provenance cents and source correcti
   f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
   o=f.ok(await f.voidBatch(o,(await f.batches(o,'')).batches[0].id));o=f.ok(await f.voidBatch(o,(await f.batches(o,'1')).batches[0].id));
   assert.equal(o.items[0].available_quantity,60);f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+});
+
+
+test('order supply choices split stock and production, conserve costs and survive restore and reversal', async t => {
+  const f = await fixture(t);
+  f.db.prepare('UPDATE products SET stock=20,inventory_value_cents=4000 WHERE id=?').run(f.b);
+  const choices = [{ path: '1', mode: 'partial', child_bom_id: f.child.id, stock_quantity: 5 }];
+  const body = { bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 10, note: '', supply_choices: choices };
+  const plan = f.ok(await f.command('/production-orders/prepare', body));
+  assert.deepEqual(plan.rows.map(row => [row.product_id,row.required]), [[f.b,5],[f.c,45]]);
+  assert.deepEqual(plan.nodes.map(row => [row.path,row.usage_mode,row.required]), [['1','stock',5],['2','explode',15],['2.1','stock',45]]);
+  assert.equal((await f.command('/production-orders', { ...body, structure_token: 'stale' })).status,409);
+  let o = f.ok(await f.command('/production-orders', { ...body, structure_token: plan.structure_token }));
+  assert.deepEqual(o.stages.map(row => [row.path,row.planned_quantity]), [['',10],['2',15]]);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.b).stock,20);
+  o = f.ok(await f.command(`/production-orders/${o.id}/start`, { version: o.version }));
+  const doc = o.material_documents[0]; f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version }));
+  o = await f.get(o.id);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.b).stock,15);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.c).stock,55);
+  o = f.ok(await f.complete(o,'2',15,[['2.1',45]]));
+  o = f.ok(await f.complete(o,'',10,[['1',5],['2',15]]));
+  assert.deepEqual(o.items.map(row => [row.product_id,row.actual_quantity]), [[f.b,5],[f.c,45]]);
+  assert.equal(o.total_cost_cents,5500);
+  assert.equal(o.work_in_progress_cost_cents,0);
+  const backup = f.ok(await f.request('/backup'));
+  const preview = f.ok(await f.request('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
+  const bad = structuredClone(backup); bad.data.production_bom_nodes[0].supply_fraction = '1/2';
+  assert.equal((await f.request('/backup/preview',{backup:bad})).status,400);
+  o = await f.get(o.id);
+  const upper = (await f.batches(o,'')).batches[0], lower = (await f.batches(o,'2')).batches[0];
+  assert.equal((await f.voidBatch(o,lower.id)).status,409);
+  o = f.ok(await f.voidBatch(o,upper.id));
+  o = f.ok(await f.voidBatch(o,lower.id));
+  assert.deepEqual(o.items.map(row => [row.product_id,row.available_quantity]), [[f.b,5],[f.c,45]]);
+  assert.equal(f.ok(await f.request(`/boms/${f.root.id}`)).items[0].usage_mode,'explode');
+});
+
+test('supply choices allow stock-only and explicit alternate recipes without modifying the BOM', async t => {
+  const f = await fixture(t);
+  const body = { bom_id:f.root.id,bom_version:f.root.version,planned_quantity:10,note:'',supply_choices:[{path:'1',mode:'stock'}] };
+  const plan = f.ok(await f.command('/production-orders/prepare',body));
+  assert.deepEqual(plan.rows.map(row=>[row.product_id,row.required]),[[f.b,20]]);
+  let o = f.ok(await f.command('/production-orders',{...body,structure_token:plan.structure_token}));
+  assert.equal(o.stage_workflow,0); assert.equal(o.items[0].planned_quantity,20);
+  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+  const alt = f.ok(await f.command('/boms',{name:'alternate',product_id:f.b,base_quantity:1,base_unit:'kg',enabled:1,note:'',items:[{product_id:f.c,quantity:4,unit:'kg',note:''}]}));
+  const alternate = f.ok(await f.command('/production-orders/prepare',{...body,supply_choices:[{path:'1',mode:'produce',child_bom_id:alt.id}]}));
+  assert.equal(alternate.rows[0].required,80);
+  for (const supply_choices of [
+    [{path:'1',mode:'partial',stock_quantity:20}],
+    [{path:'1',mode:'partial',stock_quantity:0}],
+    [{path:'1',mode:'partial',stock_quantity:0.00001}],
+    [{path:'1',mode:'produce',child_bom_id:f.root.id}],
+    [{path:'1',mode:'stock'},{path:'1.1',mode:'stock'}],
+    [{path:'1',mode:'stock'},{path:'1',mode:'produce'}],
+  ]) assert.equal((await f.command('/production-orders/prepare',{...body,supply_choices})).status,400);
+});
+
+test('partial supply rounds fractional demand once and preserves exact allocation in stages', async t => {
+  const f = await fixture(t);
+  const root = f.ok(await f.command(`/boms/${f.root.id}`,{...f.root,items:[{...f.root.items[0],quantity:0.3334,quantity_fraction:'1/3'}]}));
+  const body = {bom_id:root.id,bom_version:root.version,planned_quantity:10,note:'',supply_choices:[{path:'1',mode:'partial',stock_quantity:1}]};
+  const plan=f.ok(await f.command('/production-orders/prepare',body));
+  assert.deepEqual(plan.nodes.map(row=>row.required),[1,2.3334,7.0002]);
+  const o=f.ok(await f.command('/production-orders',{...body,structure_token:plan.structure_token}));
+  const { stageStandardQuantity } = await import('../shared/production-stages.js');
+  assert.deepEqual(o.stages[0].items.map(row=>stageStandardQuantity(row,10)),[1,2.3334]);
+  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+});
+
+
+test('unlinked BOM lines can choose production and older backups keep their saved defaults', async t => {
+  const f = await fixture(t);
+  const root = f.ok(await f.command(`/boms/${f.root.id}`,{...f.root,items:[{...f.root.items[0],usage_mode:'stock',child_bom_id:null}]}));
+  const body = {bom_id:root.id,bom_version:root.version,planned_quantity:10,note:'',supply_choices:[]};
+  const stockPlan=f.ok(await f.command('/production-orders/prepare',body));
+  assert.equal(stockPlan.supplies[0].mode,'stock');
+  assert.equal(stockPlan.supplies[0].recipe_options[0].id,f.child.id);
+  const choices=[{path:'1',mode:'produce',child_bom_id:f.child.id}];
+  const plan=f.ok(await f.command('/production-orders/prepare',{...body,supply_choices:choices}));
+  const o=f.ok(await f.command('/production-orders',{...body,supply_choices:choices,structure_token:plan.structure_token}));
+  assert.equal(o.items[0].planned_quantity,60);
+  const backup=f.ok(await f.request('/backup')); backup.version=41;
+  for(const node of backup.data.production_bom_nodes) delete node.supply_fraction;
+  const preview=f.ok(await f.request('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
+  const restored=await f.get(o.id);
+  assert.ok(restored.nodes.every(node=>node.supply_fraction===''));
+  assert.equal(f.ok(await f.request(`/boms/${root.id}`)).items[0].usage_mode,'stock');
+});
+
+test('whole subassemblies expand the rounded production share when a draft is rescaled', async t => {
+  const f=await fixture(t);
+  f.db.prepare('UPDATE products SET unit_round_up=1 WHERE id=?').run(f.b);
+  const body={bom_id:f.root.id,bom_version:f.root.version,planned_quantity:10,note:'',supply_choices:[{path:'1',mode:'partial',stock_quantity:5}]};
+  const plan=f.ok(await f.command('/production-orders/prepare',body));
+  let o=f.ok(await f.command('/production-orders',{...body,structure_token:plan.structure_token}));
+  o=f.ok(await f.command(`/production-orders/${o.id}`,{version:o.version,planned_quantity:1,note:''}));
+  assert.equal(o.stages[1].planned_quantity,2);
+  assert.deepEqual(o.items.map(row=>row.planned_quantity),[1,6]);
+  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
 });

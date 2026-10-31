@@ -288,7 +288,7 @@ test('permission and warehouse checks protect all quality endpoints, including r
 test('quality references and versions round trip backups, reject tampering and retain R2 on reset',async t=>{
   const f=await fixture(t);await f.configure(credentials);let row=(await f.request('/quality/templates',f.upload())).data;
   row=(await f.request(`/quality/templates/${row.id}/publish`,{version:row.version})).data;
-  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 41);assert.equal(backup.data.quality_template_files.length,1);assert.ok(!JSON.stringify(backup).includes('test-secret'));
+  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 42);assert.equal(backup.data.quality_template_files.length,1);assert.ok(!JSON.stringify(backup).includes('test-secret'));
   const bad=structuredClone(backup);bad.data.quality_templates[0].file_id=999;
   assert.equal((await f.request('/backup/preview',{backup:bad})).status,400);
   const preview=await f.request('/backup/preview',{backup});assert.equal(preview.status,200,JSON.stringify(preview.data));assert.equal(preview.data.quality_files,1);
@@ -393,7 +393,7 @@ test('each selected Sheet independently binds automatically, manually or not at 
   const skipped=await f.save(p2,multiSample,{...selection,bindings:bindingBody(p2.bindings.map(binding=>({...binding,mode:'none',product_id:null})))});
   assert.equal(skipped.status,200,JSON.stringify(skipped.data));assert.ok(skipped.data.bindings.every(binding=>binding.product===null));
   assert.deepEqual((await f.request(`/quality/acceptances/${saved.id}/download`)).data,multiSample);
-  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 41);
+  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 42);
   const bp=await f.request('/backup/preview',{backup});assert.equal(bp.status,200,JSON.stringify(bp.data));
   assert.equal((await f.request('/backup/restore',{backup,...bp.data,confirmation:'RESTORE_BUSINESS_DATA',request_id:randomUUID()})).status,200);
   assert.deepEqual((await f.request(`/quality/acceptances/${saved.id}`)).data.bindings,saved.bindings);
@@ -545,7 +545,7 @@ test('acceptance storage failure and concurrent template changes never leave par
 test('acceptances round trip backup, reject tampered results and foreign revisions, and keep originals on reset',async t=>{
   const f=await publishedAcceptanceFixture(t,verticalDefinition(),verticalSample),p=(await f.preview()).data;
   const saved=(await f.save(p)).data;assert.ok(saved.id);assert.equal(saved.result.value.采购明细.length,2);
-  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 41);assert.equal(backup.data.quality_acceptances.length,1);
+  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 42);assert.equal(backup.data.quality_acceptances.length,1);
   const other=(await f.request(`/quality/templates/${f.row.id}/copy`,{})).data;
   await f.request(`/quality/templates/${other.id}/publish`,{version:other.version});
   const withOther=(await f.request('/backup')).data;
@@ -619,7 +619,7 @@ test('grouped acceptances and old flat acceptances both survive backups, with no
   const old=(await f.save((await f.preview()).data)).data;assert.equal(old.result.schemaVersion,undefined);
   const selection={sheet_names:JSON.stringify(dataSheetNames)},p=(await f.preview(multiSample,selection)).data;
   const saved=(await f.save(p,multiSample,selection)).data;assert.ok(saved.id);
-  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 41);assert.equal(backup.data.quality_acceptances.length,2);
+  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 42);assert.equal(backup.data.quality_acceptances.length,2);
   const preview=await f.request('/backup/preview',{backup});assert.equal(preview.status,200,JSON.stringify(preview.data));
   const bad=structuredClone(backup);const row=bad.data.quality_acceptances.find(a=>a.id===saved.id);const result=JSON.parse(row.result);result.value.一批到货.公司名称='篡改';row.result=JSON.stringify(result);
   assert.equal((await f.request('/backup/preview',{backup:bad})).status,400);
@@ -698,7 +698,7 @@ test('chart routes enforce warehouse and permissions; backup v22 roundtrips char
   const user=(await f.request('/users')).data.find(user=>user.id===uid);
   await grantPosition(f.db, (path, body, method) => f.request(path, body, method), uid, ['quality']);
   assert.equal((await f.request('/quality/charts',undefined,'GET',1,cookie)).status,200);
-  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 41);assert.equal(backup.data.quality_charts.length,1);
+  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 42);assert.equal(backup.data.quality_charts.length,1);
   for(const mutate of [r=>{r.revision_id=999999;},r=>{r.warehouse_id=other;},r=>{const c=JSON.parse(r.config);c.metric.value.fieldId='missing';r.config=JSON.stringify(c);}]){
     const bad=structuredClone(backup);mutate(bad.data.quality_charts[0]);assert.equal((await f.request('/backup/preview',{backup:bad})).status,400);
   }
@@ -1052,7 +1052,7 @@ test('quality checks require explicit confirmation, preserve immutable results a
   const draft=await f.request(`/quality/templates/${f.row.id}/draft`,{version:f.row.version,name:f.row.name,note:'新限值',definition:next},'PUT');assert.equal(draft.status,200);
   assert.equal((await f.request(`/quality/templates/${f.row.id}/publish`,{version:draft.data.version})).status,200);
   assert.deepEqual((await f.request(`/quality/acceptances/${saved.data.id}`)).data.result,saved.data.result);
-  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 41);
+  const backup=(await f.request('/backup')).data;assert.equal(backup.version, 42);
   const missing=structuredClone(backup);missing.data.quality_acceptances[0].checks_acknowledged=0;
   assert.equal((await f.request('/backup/preview',{backup:missing})).status,400);
   const tampered=structuredClone(backup);const snapshot=JSON.parse(tampered.data.quality_acceptances[0].result);snapshot.sheets[0].checks[0].status='fail';tampered.data.quality_acceptances[0].result=JSON.stringify(snapshot);

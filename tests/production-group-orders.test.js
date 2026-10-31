@@ -252,7 +252,7 @@ test('assignment backups migrate old single-group orders and never grant cross-i
   const f=await fixture(t), g=await organization(f), person=await g.user('backup-assignee',['production_register'],null);
   const order=await f.create({production_group_ids:[g.a,g.b],user_ids:[person.id]});
   const backup=f.ok(await f.request('/backup'));
-  assert.equal(backup.version,41);
+  assert.equal(backup.version,42);
   const restore=async backup=>{ const preview=await f.command('/backup/preview',{backup}); if(preview.status!==200)return preview; return f.command('/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA'}); };
   const invalid=structuredClone(backup);invalid.data.production_orders[0].assigned_users='[{"id":1,"name":"x"},{"id":1,"name":"x"}]';
   assert.equal((await restore(invalid)).status,400);

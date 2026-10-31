@@ -248,16 +248,17 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} /></FormField></label>
           <label>{pt("production.standardLossRate2")}<FormField value={item.loss_rate} required maxLength={20} label={pt("production.standardLossRate3", { v0: item.product.name })}><AntInput aria-label={pt("production.standardLossRate3", { v0: item.product.name })} aria-describedby="bom-loss-help" inputMode="decimal" maxLength={20}  value={item.loss_rate} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, loss_rate: e.target.value } : row) })} /></FormField></label>
-          <label className="bom-material-usage">{pt("production.materialSupplyMethod")}<Select aria-label={pt("production.supplyMethod", { v0: item.product.name })} value={item.usage_mode ?? 'stock'} disabled={action.busy}
-            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, usage_mode: e, child_bom_id: null, child_bom: null } : row) })}>
-            <option value="stock">{pt("production.issueThisMaterial")}</option><option value="explode">{pt("production.expandChildBom")}</option>
-          </Select></label>
           <label className="bom-material-note">{pt("production.materialNote")}<AntInput aria-label={pt("production.note2", { v0: item.product.name })} maxLength={200} value={item.note} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
           <Button type="button" icon={Trash2} disabled={action.busy} aria-label={pt("production.removeMaterial", { v0: item.product.name })} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>{pt("production.remove")}</Button>
           <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} lossMethod={editor.loss_method} />
-          {item.usage_mode === 'explode' && <ChildBomPicker item={item} data={queryData} disabled={action.busy}
-            onChange={patch => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, ...patch } : row) })} />}
+          <details className="bom-disclosure" open={item.usage_mode === 'explode' || undefined}>
+            <summary>{pt('production.supplyBomHint')}</summary>
+            <p className="bom-hint">{pt('production.supplyBomDescription')}</p>
+            <ChildBomPicker item={item} data={queryData} disabled={action.busy} recipeOnly
+              onChange={patch => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, ...patch, usage_mode: 'explode' } : row) })} />
+            {item.child_bom_id && <Button type="button" disabled={action.busy} onClick={() => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, usage_mode: 'stock', child_bom_id: null, child_bom: null } : row) })}>{pt('production.supplyRemoveReference')}</Button>}
+          </details>
         </div>)}</div>
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>{pt("production.scrapOutput")}</h2><span className="bom-hint">{pt("production.optional")} {editor.scraps.length} {pt("production.label100Types")}</span></div>

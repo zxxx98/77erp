@@ -112,6 +112,8 @@ export function migrateProduction(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS production_bom_nodes (id INTEGER PRIMARY KEY, production_id INTEGER NOT NULL REFERENCES production_orders(id), ${columns.join(',')}, UNIQUE(production_id,path));
     CREATE INDEX IF NOT EXISTS production_bom_node_product ON production_bom_nodes(product_id);
     CREATE INDEX IF NOT EXISTS production_bom_node_parent_product ON production_bom_nodes(bom_product_id);`);
+  if (!db.prepare('PRAGMA table_info(production_bom_nodes)').all().some(c => c.name === 'supply_fraction'))
+    db.exec("ALTER TABLE production_bom_nodes ADD COLUMN supply_fraction TEXT NOT NULL DEFAULT ''");
   if (!db.prepare('PRAGMA table_info(production_bom_nodes)').all().some(c => c.name === 'unit_round_up'))
     db.exec('ALTER TABLE production_bom_nodes ADD COLUMN unit_round_up INTEGER NOT NULL DEFAULT 0 CHECK(unit_round_up IN (0,1))');
   for (const table of ['production_items', 'production_orders', 'production_scraps'])
@@ -244,7 +246,7 @@ function prepareProduction(db, req) {
   if (!isId(req.body.bom_id) || !isId(req.body.bom_version)) fail('请选择BOM并核对版本。');
   const product = db.prepare('SELECT p.unit_round_up FROM boms b JOIN products p ON p.id=b.product_id WHERE b.id=? AND b.warehouse_id=?').get(req.body.bom_id, req.warehouse.id);
   if (validQuantity(req.body.planned_quantity, true)) req.body.planned_quantity = materialQuantity(req.body.planned_quantity, product);
-  return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version, req.body.schema_version));
+  return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version, req.body.schema_version, req.body.supply_choices));
 }
 
 export function installProduction(app, db) {
@@ -359,7 +361,7 @@ export function installProduction(app, db) {
     validateProductionPlan(req.body);
     const targets = assignmentTargets(req.body);
     const plan = prepareProduction(db, req), bom = getBom(db, req.warehouse.id, plan.bom_id);
-    if (plan.multi_level && req.body.structure_token !== plan.structure_token) fail('下级配方已变化或尚未预览，请重新测算后保存。当前填写内容已保留。', 409);
+    if ((plan.multi_level || req.body.supply_choices !== undefined) && req.body.structure_token !== plan.structure_token) fail('下级配方已变化或尚未预览，请重新测算后保存。当前填写内容已保留。', 409);
     const at = new Date().toISOString(), owner = actor(req), number = `SC${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
     const id = Number(db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,
       product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,

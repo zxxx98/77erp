@@ -7,13 +7,13 @@ import { ChevronDown } from 'lucide-react';
 import { useQuery, queryPath } from '../queries.js';
 import { Button, QueryStatus } from '../components/common.jsx';
 
-export function ChildBomPicker({ item, data, disabled, onChange }) {
+export function ChildBomPicker({ item, data, disabled, onChange, recipeOnly = false }) {
   useLocale();
   const [q, setQ] = useState(''), [offset, setOffset] = useState(0), [preview, setPreview] = useState(null);
   const list = useQuery(queryPath('/boms', { product_id: item.product_id, q, offset, limit: 10 }), data, 150);
   const selected = item.child_bom;
   return <div className="bom-child-picker">
-    <p className="bom-hint">{pt("production.thisSemiFinishedItemIsNeitherIssuedNor2")}</p>
+    {!recipeOnly && <p className="bom-hint">{pt("production.thisSemiFinishedItemIsNeitherIssuedNor2")}</p>}
     {item.child_bom_id && <p className="bom-child-selected">{pt("production.childRecipe2")}<strong>{selected?.name || pt("production.selectedRecipe")} #{item.child_bom_id}</strong>{selected && !selected.enabled && pt("production.disabled3")}</p>}
     <details className="bom-disclosure bom-child-choices" open={!item.child_bom_id}>
       <summary><span>{item.child_bom_id ? pt("production.changeChildRecipe") : pt("production.selectChildRecipeRequired")}</span><ChevronDown className="bom-disclosure-chevron" size={18} aria-hidden="true" /></summary>

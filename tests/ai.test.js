@@ -1172,6 +1172,12 @@ test('AI queries explicit alternate and multilevel recipes, exposes snapshot sou
   assert.equal(result().nodes[1].current_production_type, '原料');
   assert.match(f.calls.at(-1).body.tools.find(tool => tool.function.name === 'calculate_bom').function.description, /生产类型不决定供料方式/);
   const plan = result();
+  f.use('calculate_bom', { bom_id: root.id, production_quantity: 2, supply_choices: [{path:'1',mode:'partial',stock_quantity:0.5,child_bom_id:child.id}] });
+  await f.chat(f.staff);
+  assert.deepEqual(result().rows.map(row=>[row.product_id,row.required]),[[intermediate.id,0.5],[raw.id,4.5]]);
+  assert.equal(result().nodes[0].supply_fraction,'500000/2000000');
+  assert.match(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description,/supply_fraction/);
+  assert.ok(!JSON.stringify(result()).includes('cost_cents'));
   const created = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), schema_version: 2, stage_schema_version: 1, bom_id: root.id, bom_version: root.version, planned_quantity: 2, note: '', structure_token: plan.structure_token });
   assert.equal(created.status, 200, JSON.stringify(created.data));
   f.db.prepare('UPDATE products SET production_type=? WHERE id=?').run('成品', raw.id);

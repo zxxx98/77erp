@@ -177,3 +177,6 @@
   .production-list-shortcuts { flex-wrap: nowrap; overflow-x: auto; padding: 2px 0 8px; }
   .production-list-shortcuts > .btn { flex-shrink: 0; }
 }
+
+.production-supply-row { padding: 14px 0; border-bottom: 1px solid var(--border, #e5e7eb); }
+.production-supply-row .bom-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }

@@ -164,7 +164,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
             const key = itemKey(order, row), source = sourceFor(row);
             return <div className="registration-material" key={key}>
               <strong>{source.name}</strong>
-              {order.stage_workflow && <small className="bom-hint">{t('registration.layer', { path: source.path })}</small>}
+              {order.stage_workflow && <small className="bom-hint">{t('registration.layer', { path: source.path })} · {t(source.usage_mode === 'explode' ? 'production.supplyProduce' : 'production.supplyStock')}</small>}
               {source.available_quantity != null && <p className="bom-hint">{t('production.available')} {count(source.available_quantity)} {source.unit}</p>}
               <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.name })} inputMode="decimal" disabled={action.busy} value={row.quantity} onChange={event => patchItem(key, { quantity: event.target.value })} /></label>
               {order.stage_workflow

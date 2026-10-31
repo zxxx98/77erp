@@ -1,11 +1,17 @@
 import { bomRequiredQuantity } from './bom.js';
 import { materialQuantity } from './quantity.js';
-import { calculateBomNodes } from './bom-expansion.js';
+import { calculateBomNodes, supplyFraction } from './bom-expansion.js';
 
 export function stageDisplayStandardQuantity(item, outputQuantity) {
   if (outputQuantity === 0) return 0;
-  const quantity = bomRequiredQuantity(item.quantity, outputQuantity, item.bom_base_quantity,
+  let quantity = bomRequiredQuantity(item.quantity, outputQuantity, item.bom_base_quantity,
     item.quantity_fraction, item.loss_rate, item.loss_method, 6);
+  if (item.supply_fraction) {
+    const [n, d] = supplyFraction(item.supply_fraction);
+    const gross = materialQuantity(quantity, item);
+    const scale = item.unit_round_up ? 1 : 1000000;
+    quantity = Number((BigInt(Math.round(gross * scale)) * n + d - 1n) / d) / scale;
+  }
   return item.unit_round_up ? Math.ceil(quantity) : quantity;
 }
 

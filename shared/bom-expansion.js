@@ -5,7 +5,7 @@ export const BOM_MAX_DEPTH = 10;
 export const BOM_MAX_NODES = 2000;
 export const BOM_MAX_MATERIALS = 500;
 export const bomUsageLabels = { stock: '领用本物料', explode: '展开下级 BOM' };
-export const BOM_NODE_COLUMNS = ['path','parent_path','bom_id','bom_version','bom_name','bom_product_id','bom_product_name','bom_base_quantity','bom_base_unit','loss_method','product_id','name','barcode','specification','unit','quantity','quantity_fraction','loss_rate','usage_mode','child_bom_id','note','position','unit_round_up'];
+export const BOM_NODE_COLUMNS = ['path','parent_path','bom_id','bom_version','bom_name','bom_product_id','bom_product_name','bom_base_quantity','bom_base_unit','loss_method','product_id','name','barcode','specification','unit','quantity','quantity_fraction','loss_rate','usage_mode','child_bom_id','note','position','unit_round_up','supply_fraction'];
 const fail = message => { throw new Error(message); };
 const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
 const ratio = (n, d = 1n) => {
@@ -22,14 +22,36 @@ const rounded = (value, integer = false, decimals = 4) => {
   return Number(scaled) / outputScale;
 };
 
+export function supplyFraction(value) {
+  if (typeof value !== 'string' || !/^[1-9]\d{0,14}\/[1-9]\d{0,14}$/.test(value)) fail('生产用料分配比例无效。');
+  const parts = value.split('/').map(BigInt);
+  if (parts[0] >= parts[1]) fail('生产用料分配比例需大于零且小于一。');
+  return parts;
+}
+
 function itemRatio(node) {
   const net = node.quantity_fraction ? node.quantity_fraction.split('/').map(BigInt) : decimal(node.quantity);
   const base = decimal(node.bom_base_quantity), scale = BigInt(100 * QUANTITY_SCALE), rate = BigInt(quantityUnits(node.loss_rate));
   return multiply(multiply(net, [base[1], base[0]]), node.loss_method === 'external' ? [scale + rate, scale] : [scale, scale - rate]);
 }
 
+// Keep exact parent amounts when building an order incrementally.
+export function calculateBomNode(node, parentAmount, productionQuantity, decimals = 4) {
+  const parent = parentAmount || decimal(productionQuantity);
+  let amount = multiply(parent, itemRatio(node));
+  // Whole intermediate products need a whole production quantity before expansion.
+  if (node.usage_mode === 'explode' && node.unit_round_up) amount = [BigInt(rounded(amount, true, decimals)), 1n];
+  if (node.supply_fraction) {
+    const share = supplyFraction(node.supply_fraction);
+    amount = multiply(decimal(rounded(amount, !!node.unit_round_up, 4)), share);
+    if (node.usage_mode === 'explode') amount = decimal(rounded(amount, !!node.unit_round_up, 4));
+  }
+  return { amount, required: rounded(amount, !!node.unit_round_up, decimals) };
+}
+
 // Both live calculations and immutable production snapshots use these exact
-// rational paths. Rounded node quantities are for display only.
+// rational paths. Split inputs round their gross demand once before sharing it;
+// other rounded node quantities are for display only.
 export function calculateBomNodes(nodes, productionQuantity, decimals = 4) {
   if (!validStoredQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 4 位小数。');
   const values = new Map(), totals = new Map(), leaves = new Map();
@@ -37,15 +59,13 @@ export function calculateBomNodes(nodes, productionQuantity, decimals = 4) {
   const calculated = nodes.map(node => {
     const parent = node.parent_path ? values.get(node.parent_path) : decimal(productionQuantity);
     if (!parent) fail('BOM节点父子关联或排序无效。');
-    let amount = multiply(parent, itemRatio(node));
-    // Whole intermediate products need a whole production quantity before expansion.
-    if (node.usage_mode === 'explode' && node.unit_round_up) amount = [BigInt(rounded(amount, true, decimals)), 1n];
+    const { amount, required } = calculateBomNode(node, parent, productionQuantity, decimals);
     values.set(node.path, amount);
     if (node.usage_mode === 'stock') {
       totals.set(node.product_id, add(totals.get(node.product_id) || [0n, 1n], amount));
       leaves.set(node.product_id, [...(leaves.get(node.product_id) || []), node]);
     }
-    return { ...node, required: rounded(amount, !!node.unit_round_up, decimals) };
+    return { ...node, required };
   });
   const rows = [...totals].map(([product_id, amount]) => {
     const sources = leaves.get(product_id), first = sources[0];
@@ -85,7 +105,7 @@ export function buildBomNodes(root, loadBom, { availability = true, scrapRules =
         name: item.product?.name || item.name, barcode: item.product?.barcode || item.barcode,
         specification: item.product?.specification ?? item.specification ?? '', unit: item.unit, quantity: item.quantity,
         quantity_fraction: item.quantity_fraction ?? '', loss_rate: item.loss_rate ?? 0, usage_mode: mode,
-        unit_round_up: item.product?.unit_round_up ?? item.unit_round_up ?? 0, child_bom_id: item.child_bom_id ?? null, note: item.note, position: nodes.length };
+        unit_round_up: item.product?.unit_round_up ?? item.unit_round_up ?? 0, child_bom_id: item.child_bom_id ?? null, supply_fraction: '', note: item.note, position: nodes.length };
       nodes.push(node);
       if (mode === 'explode') {
         const child = loadBom(item.child_bom_id);
@@ -117,7 +137,7 @@ export function validateExpansionScraps(scraps, nodes) {
 
 export function validateSnapshotNodes(order, nodes) {
   if (!Array.isArray(nodes) || !nodes.length || nodes.length > BOM_MAX_NODES) fail('生产配方节点数量无效。');
-  const paths = new Map(), definitions = new Map(), contexts = new Map(), products = new Map();
+  const paths = new Map(), definitions = new Map(), contexts = new Map(), products = new Map(), recipes = new Map();
   const text = (v, max, required = false) => typeof v === 'string' && v.length <= max && (!required || v.trim());
   for (const node of nodes) {
     if (!text(node.path, 80, true) || !/^[1-9]\d*(\.[1-9]\d*)*$/.test(node.path) || paths.has(node.path) ||
@@ -126,6 +146,8 @@ export function validateSnapshotNodes(order, nodes) {
         !text(node.bom_name, 100, true) || !text(node.bom_product_name, 100, true) || !validStoredQuantity(node.bom_base_quantity, true) || !text(node.bom_base_unit, 100, true) ||
         !text(node.name, 100, true) || !text(node.barcode, 100, true) || !text(node.specification, 500) || !text(node.unit, 100, true) || !text(node.note, 200) ||
         node.position !== paths.size) fail('生产配方节点字段或路径无效。');
+    if (node.supply_fraction) supplyFraction(node.supply_fraction);
+    else if (node.supply_fraction !== '' && node.supply_fraction !== undefined) fail('生产用料分配比例无效。');
     validateBomQuantity(node.quantity, node.quantity_fraction); validateBomLossRate(node.loss_rate); validateBomLossMethod(node.loss_method);
     if (![0, 1].includes(node.unit_round_up ?? 0)) fail('生产物料取整属性无效。');
     const productSignature = JSON.stringify([node.name, node.barcode, node.specification, node.unit, node.unit_round_up ?? 0]);
@@ -143,14 +165,39 @@ export function validateSnapshotNodes(order, nodes) {
       product: { name: first.bom_product_name }, base_quantity: first.bom_base_quantity, base_unit: first.bom_base_unit,
       loss_method: first.loss_method, note: '', enabled: 1, warehouse_id: order.warehouse_id,
       items: group.map(row => ({ ...row, product: { name: row.name, barcode: row.barcode, specification: row.specification, unit_round_up: row.unit_round_up ?? 0 } })), scraps: [] };
-    validateBom(bom);
-    const signature = JSON.stringify([header(first), bom.items.map(row => [row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.usage_mode, row.child_bom_id, row.note])]);
-    if (definitions.has(bom.id) && definitions.get(bom.id).signature !== signature) fail('同一生产配方的重复引用内容不一致。');
-    definitions.set(bom.id, { bom, signature });
+    // Each order chooses recipes independently for every occurrence of a material.
+    // A partial supply is represented by adjacent stock / production inputs.
+    const unique = [];
+    for (let i = 0; i < bom.items.length; i++) {
+      const row = bom.items[i];
+      if (row.supply_fraction) {
+        const next = bom.items[++i];
+        if (!next || row.usage_mode !== 'stock' || next.usage_mode !== 'explode' || !next.supply_fraction ||
+            ['product_id','quantity','quantity_fraction','loss_rate','unit','note'].some(key => row[key] !== next[key])) fail('生产用料分配节点不一致。');
+        const a = supplyFraction(row.supply_fraction), b = supplyFraction(next.supply_fraction);
+        if (a[0]*b[1]+b[0]*a[1] !== a[1]*b[1]) fail('生产用料分配比例不守恒。');
+      }
+      unique.push(row);
+    }
+    validateBom({ ...bom, items: unique });
+    const signature = JSON.stringify([header(first), unique.map(row => [row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.note])]);
+    if (recipes.has(bom.id) && recipes.get(bom.id) !== signature) fail('同一生产配方的重复引用内容不一致。');
+    recipes.set(bom.id, signature);
+    definitions.set(parentPath, bom);
   }
-  const root = definitions.get(order.bom_id)?.bom;
-  if (!root || root.version !== order.bom_version || root.name !== order.bom_name || root.product_id !== order.product_id || root.product.name !== order.product_name || root.base_quantity !== order.base_quantity || root.base_unit !== order.unit || root.loss_method !== order.loss_method) fail('生产根配方快照不一致。');
-  const rebuilt = buildBomNodes(root, id => definitions.get(id)?.bom, { availability: false, scrapRules: false });
-  if (JSON.stringify(rebuilt.map(node => BOM_NODE_COLUMNS.map(key => node[key]))) !== JSON.stringify(nodes.map(node => BOM_NODE_COLUMNS.map(key => node[key])))) fail('生产配方节点结构或内容不一致。');
+  const root = definitions.get('');
+  if (!root || root.id !== order.bom_id || root.version !== order.bom_version || root.name !== order.bom_name || root.product_id !== order.product_id || root.product.name !== order.product_name || root.base_quantity !== order.base_quantity || root.base_unit !== order.unit || root.loss_method !== order.loss_method) fail('生产根配方快照不一致。');
+  const traversal = [];
+  function visit(path, ancestors = []) {
+    const bom = definitions.get(path);
+    if (!bom || ancestors.includes(bom.id) || ancestors.length >= BOM_MAX_DEPTH) fail('生产配方子节点缺失或循环引用。');
+    for (const row of contexts.get(path)) {
+      traversal.push(row);
+      if (row.usage_mode === 'explode') visit(row.path, [...ancestors, bom.id]);
+      else if (row.product_id === order.product_id) fail('最终领料不能包含本单成品。');
+    }
+  }
+  visit('');
+  if (traversal.length !== nodes.length || traversal.some((node, i) => node !== nodes[i])) fail('生产配方节点结构或排序无效。');
   return calculateBomNodes(nodes, order.planned_quantity, order.quantity_decimals ?? 6);
 }

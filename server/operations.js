@@ -435,7 +435,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 41,
+    version: 42,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -444,11 +444,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 42) for (const node of data.production_bom_nodes || []) node.supply_fraction = '';
     if (value.version < 41) for (const order of data.production_orders || []) { order.assigned_groups = '[]'; order.assigned_users = '[]'; }
     if (value.version < 39) {
       for (const table of [...processRouteTables, ...productionOperationTables]) data[table] = [];

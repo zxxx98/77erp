@@ -1,3 +1,4 @@
+import { ProductionSupply } from '../features/ProductionSupply.jsx';
 import { ProductionAssignments } from '../features/ProductionAssignments.jsx';
 import { productionAssignments, productionAssignmentNames } from '../../shared/production-assignment.js';
 import { ProductionOperations, OperationWorkerSelect } from '../features/ProductionOperations.jsx';
@@ -168,9 +169,36 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const update = value => { setEditor(previous => ({ ...previous, ...value })); action.setError(''); };
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
-      body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity } });
-    setEditor(previous => ({ kind: 'new', note: previous?.note || '', planned_quantity: String(plan.production_quantity), plan }));
+      body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity, supply_choices: [] } });
+    setEditor(previous => ({ kind: 'new', note: previous?.note || '', planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
   };
+  const supplyStale = editor?.kind === 'new' && editor.plan && (Number(editor.planned_quantity) !== editor.plan.production_quantity || JSON.stringify(editor.supply_choices) !== JSON.stringify(editor.plan.prepared_choices || []));
+  const supplyRequest = (draft, signal) => {
+    const choices = (draft.supply_choices || []).map(row => ({ ...row, ...(row.mode === 'partial' ? { stock_quantity: parseQuantity(row.stock_quantity, true) } : {}) }));
+    return api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id, signal,
+      body: { schema_version: 2, bom_id: draft.plan.bom_id, bom_version: draft.plan.version,
+        planned_quantity: parseQuantity(draft.planned_quantity, true), supply_choices: choices } })
+      .then(plan => ({ plan: { ...plan, prepared_choices: choices }, supply_choices: choices, planned_quantity: String(plan.production_quantity) }));
+  };
+  const recalculateSupply = () => action.run(async () => update(await supplyRequest(editor)));
+  useEffect(() => {
+    if (!supplyStale) return;
+    // Wait for a complete input, then refresh all descendants together.
+    try {
+      parseQuantity(editor.planned_quantity, true);
+      for (const choice of editor.supply_choices || []) {
+        if (choice.mode === 'partial') parseQuantity(choice.stock_quantity, true);
+        if (choice.mode !== 'stock' && !choice.child_bom_id) return;
+      }
+    } catch { return; }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      supplyRequest(editor, controller.signal).then(next => {
+        if (!controller.signal.aborted) update(next);
+      }).catch(error => { if (!controller.signal.aborted) action.setError(error.message); });
+    }, 400);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [editor?.kind, editor?.plan, editor?.planned_quantity, editor?.supply_choices, data.warehouse_id]);
   const initial = useRef(false);
   useEffect(() => {
     if (!initialBom || initial.current) return;
@@ -249,7 +277,17 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         const body = { planned_quantity: parseQuantity(editor.planned_quantity, true), note: editor.note };
         validateProductionPlan(body);
         const path = editor.kind === 'new' ? '/production-orders' : `/production-orders/${detail.id}`;
-        if (editor.kind === 'new') { body.bom_id = editor.plan.bom_id; body.bom_version = editor.plan.version; body.structure_token = editor.plan.structure_token; }
+        if (editor.kind === 'new') {
+          let prepared = editor;
+          if (supplyStale) {
+            prepared = { ...editor, ...await supplyRequest(editor) };
+            if (JSON.stringify(editor.supply_choices) !== JSON.stringify(editor.plan.prepared_choices || []) || editor.plan.supplies?.some(row => row.mode === 'partial')) {
+              update(prepared); throw new Error(pt('production.supplyReviewBeforeSave'));
+            }
+            if (prepared.plan.structure_token !== editor.plan.structure_token) { update(prepared); throw new Error(pt('production.supplyReviewBeforeSave')); }
+          }
+          body.supply_choices = prepared.supply_choices || []; body.bom_id = prepared.plan.bom_id; body.bom_version = prepared.plan.version; body.structure_token = prepared.plan.structure_token;
+        }
         else body.version = detail.version;
         await saved(await send(path, body, options), pt("production.productionDraftSavedStockUnchanged"));
       } else if (editor.kind === 'complete') {
@@ -370,11 +408,12 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
             <label>{pt("production.voidReason")}<FormField value={editor.reason} required maxLength={500} label={pt("production.voidReason")}><AntInput.TextArea aria-label={pt("production.voidReason")}  rows={3} maxLength={500} value={editor.reason} disabled={action.busy} onChange={e => update({ reason: e.target.value })} /></FormField></label>
           </>}
         </section>}
+        {editor.kind === 'new' && source && <ProductionSupply supplies={source.supplies || []} choices={editor.supply_choices || []} onChange={supply_choices => update({ supply_choices })} onCalculate={recalculateSupply} stale={supplyStale} disabled={action.busy} />}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}
           {(source.multi_level || source.snapshot_format === 2) && <details className="production-disclosure"><summary>{pt("production.recipeStructure")}</summary>
-            <p className="bom-warning">{pt("production.expandedByGrossRequirementsWithoutDeductingIntermediateStock")}</p>
+            <p className="bom-hint">{pt(editor.kind === 'new' ? "production.supplySnapshotHint" : "production.expandedByGrossRequirementsWithoutDeductingIntermediateStock")}</p>
             <BomStructure nodes={source.nodes} quantity={planning ? editor.planned_quantity : editor.completed_quantity || source.planned_quantity} isSnapshot={source.snapshot_format === 2} />
           </details>}
           <Materials rows={rows} issued={!!source.material_workflow && editor.kind === 'complete'} nodes={source.snapshot_format === 2 || source.multi_level ? source.nodes : undefined} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity} lossMethod={source.loss_method}

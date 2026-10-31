@@ -35,7 +35,7 @@ async function fixture(page, worker = false) {
   await post(`/production-material-documents/${doc.id}/confirm`, { version: doc.version });
   if (worker) await post('/auth/login', { username: 'stageworker', password: 'Test-worker-123' });
   const get = async () => (await page.request.get(`${base}/api/production-orders/${draft.id}`)).json();
-  return { base, db, post, get, draft, output, half, raw, close: async () => {
+  return { base, db, post, get, draft, parent, child, output, half, raw, close: async () => {
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close();
   } };
 }
@@ -218,4 +218,46 @@ test('production-only mobile worker registers stages without costs or management
     await page.getByRole('button', { name: '查看批次 分层成品', exact: true }).click();
     await expect(page.getByRole('button', { name: '作废第 1 批', exact: true })).toHaveCount(0);
   } finally { await f.close(); }
+});
+
+
+for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} chooses partial stock supply while creating an order`, async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const context = mode === 'pwa' ? await browser.newContext({ locale:'zh-CN', serviceWorkers:'allow', viewport:{width:390,height:844}, userAgent:iphone }) : null;
+  if (context) page = await context.newPage();
+  if (mode !== 'desktop') {
+    await page.setViewportSize({width:390,height:844});
+    await page.addInitScript(ua => Object.defineProperty(navigator,'userAgent',{value:ua}),iphone);
+  }
+  const f = await fixture(page), errors = [];
+  page.on('pageerror',error => errors.push(error.message));
+  try {
+    f.db.prepare('UPDATE products SET stock=8,inventory_value_cents=800 WHERE id=?').run(f.half.id);
+    await page.goto(`${f.base}/#production`);
+    if (context) await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button',{name:'新建生产单',exact:true}).click();
+    await page.getByRole('button',{name:/^选择配方 分层成品 · 成品配方 #/}).click();
+    await page.getByLabel('计划产量',{exact:true}).fill('10');
+    const { chooseOption } = await import('./dropdown-helpers.js');
+    const source = page.getByRole('combobox',{name:'分层半成品［1］用料来源',exact:true});
+    await chooseOption(source,'stock');
+    await expect(page.getByRole('combobox',{name:'分层半成品［1］本次生产配方',exact:true})).toHaveCount(0);
+    await chooseOption(source,'produce');
+    await chooseOption(source,'partial');
+    await page.getByLabel('分层半成品［1］库存领用数量',{exact:true}).fill('5');
+    await page.getByRole('button',{name:'重新测算用料',exact:true}).click();
+    await expect(page.locator('.production-supply')).toContainText('本层需求 20 件 · 当前库存 8 件');
+    await expect(page.locator('.production-supply')).toContainText('库存领用 5 件 · 本单生产 15 件');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path:test.info().outputPath('production-supply.png'), fullPage:true });
+    await expect(page.locator('.production-material').filter({has:page.getByText('分层半成品',{exact:true})})).toContainText('5 件');
+    await page.getByRole('button',{name:'保存生产草稿',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
+    const order = f.db.prepare('SELECT * FROM production_orders ORDER BY id DESC LIMIT 1').get();
+    const items = f.db.prepare('SELECT product_id,planned_quantity FROM production_items WHERE production_id=? ORDER BY position').all(order.id);
+    expect(items.map(row=>[row.product_id,row.planned_quantity])).toEqual([[f.half.id,5],[f.raw.id,45]]);
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.half.id).stock).toBe(8);
+    expect(f.db.prepare('SELECT usage_mode FROM bom_items WHERE bom_id=?').get(f.parent.id).usage_mode).toBe('explode');
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context?.close(); }
 });
