@@ -75,7 +75,7 @@ async function organization(f) {
   const group = name => Number(f.db.prepare('INSERT INTO production_groups(name,description,created_at,updated_at) VALUES (?,\'\',?,?)').run(name,at,at).lastInsertRowid);
   const a=group('A组'), b=group('B组');
   const user = async (username, permissions, groupId) => {
-    const created = await f.request('/users', {position_id:readonlyPositionId(f.db),username,password:'Test-staff-123'});
+    const created = await f.request('/users', {position_id:readonlyPositionId(f.db),username,employee_no:username,password:'Test-staff-123'});
     assert.equal(created.status,201,JSON.stringify(created.data)); const row=created.data;
     f.ok(await grantPosition(f.db,(path,body,method)=>f.request(path,body,{method}),row.id,permissions));
     f.db.prepare('UPDATE users SET production_group_id=? WHERE id=?').run(groupId,row.id);

@@ -60,6 +60,7 @@ for (const mobile of [false, true]) {
       await page.getByLabel('新账号', { exact: true }).fill('staff');
       await page.getByLabel('账号名称', { exact: true }).fill('张三');
       await page.getByLabel('初始密码', { exact: true }).fill('Test-password-123');
+      await page.getByLabel('工号', { exact: true }).fill('E-1001');
       await page.getByRole('button', { name: '新增账号', exact: true }).click();
       const row = page.locator('.user-row').filter({ hasText: 'staff' });
       await expect(row).toContainText('张三');

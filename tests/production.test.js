@@ -391,7 +391,7 @@ test('inactive goods and changed units block completion; drafts can be voided wi
 
 test('production permission is independent of BOM, writes and financial reads are scoped, and void also requires corrections', async t => {
   const f = await fixture(t), order = await f.create();
-  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'producer', password: 'Test-staff-123' })).data;
+  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'producer', employee_no: 'producer', password: 'Test-staff-123' })).data;
   const cookie = (await f.request('/auth/login', { username: 'producer', password: 'Test-staff-123' }, { cookie: null })).cookie;
   const permissions = async permissions => f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), user.id, permissions));
   const asStaff = { cookie };
@@ -682,7 +682,7 @@ test('scrap rows remain warehouse-scoped and production-only permissions cannot 
   assert.equal((await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [{ ...rule, product_id: remoteScrap }] }))).status, 400);
   const bom = f.ok(await f.command(`/boms/${f.bom.id}`, f.definition({ version: f.bom.version, scraps: [rule] })));
   const order = await f.create({ bom_version: bom.version });
-  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'scrapworker', password: 'Test-staff-123' })).data;
+  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'scrapworker', employee_no: 'scrapworker', password: 'Test-staff-123' })).data;
   const cookie = (await f.request('/auth/login', { username: 'scrapworker', password: 'Test-staff-123' }, { cookie: null })).cookie;
   f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), user.id, ['production']));
   const body = f.completion(order, { items: [{ product_id: f.material, quantity: 0 }, { product_id: f.second, quantity: 1 }],
@@ -934,7 +934,7 @@ test('batch backup validates child relations, aggregate facts and void state; le
 
 test('batch corrections require correction permission and nested costs stay hidden after finance permission is removed', async t => {
   const f = await fixture(t), order = await f.create();
-  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'batchworker', password: 'Test-staff-123' })).data.id;
+  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'batchworker', employee_no: 'batchworker', password: 'Test-staff-123' })).data.id;
   const cookie = (await f.request('/auth/login', { username: 'batchworker', password: 'Test-staff-123' }, { cookie: null })).cookie;
   const permissions = async values => {
     const version = f.db.prepare('SELECT permissions_version FROM users WHERE id=?').get(user).permissions_version;

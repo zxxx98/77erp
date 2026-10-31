@@ -40,7 +40,7 @@ for (const scenario of [
       await post('/auth/setup', { username: 'owner', password: 'Test-admin-123' });
       await post('/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' });
       for (const username of ['staff', 'staff_with_a_long_name_123456789']) {
-        await post('/users', { position_id: await browserPosition(context.request), username, password: 'Test-admin-123', role: 'employee' });
+        await post('/users', { position_id: await browserPosition(context.request), username, employee_no: username, password: 'Test-admin-123', role: 'employee' });
       }
       const products = [];
       for (const [index, name, note] of [[1, '短物料', ''], [2, '有额外说明的物料', '有备注的卡片与其他卡片的操作区应对齐']]) {

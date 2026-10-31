@@ -119,7 +119,7 @@ test('production manager with correction permission can void; group registration
   const f=await fixture(t); const groupResult=await f.request('/production-groups',{name:'车间一组',note:''});assert.equal(groupResult.status,201,JSON.stringify(groupResult.data));const group=groupResult.data;
   const user=async(username,permissions,access_mode='standard',groupId=null)=>{
     const pos=await f.request('/positions',{name:username,description:'',permissions,access_mode});assert.equal(pos.status,201,JSON.stringify(pos.data));
-    const u=await f.request('/users',{username,password:'Test-staff-123',position_id:pos.data.id,production_group_id:groupId});assert.equal(u.status,201,JSON.stringify(u.data));
+    const u=await f.request('/users',{username,employee_no:username,password:'Test-staff-123',position_id:pos.data.id,production_group_id:groupId});assert.equal(u.status,201,JSON.stringify(u.data));
     return {cookie:(await f.request('/auth/login',{username,password:'Test-staff-123'},{cookie:null})).cookie,id:u.data.id};
   };
   const manager=await user('stage-manager',['production','corrections']),worker=await user('stage-worker',['production_register'],'production_only',group.id);

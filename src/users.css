@@ -5,7 +5,7 @@
 .user-table td { vertical-align: middle; }
 .user-table td strong { color: var(--text-strong, #1c2433); font-size: 12px; }
 .user-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
-.user-table td:first-child > .btn { margin-top: 8px; }
+.user-account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .user-table .btn { white-space: nowrap; }
 .user-table td:nth-child(3), .user-table td:last-child { width: 1%; }
 .user-table td:nth-child(3) .dropdown { width: 132px; }

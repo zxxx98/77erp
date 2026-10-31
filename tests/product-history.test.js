@@ -69,7 +69,7 @@ test('price audit captures actual before/after values and actor atomically, incl
 
 test('price history is restricted to finance permission and records the authenticated employee', async t => {
   const f = await fixture(t);
-  const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'editor', password: 'Test-staff-123' })).data.id;
+  const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'editor', employee_no: 'editor', password: 'Test-staff-123' })).data.id;
   assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['basic_view', 'products'])).status, 200);
   const auth = (await f.request('/auth/login', { username: 'editor', password: 'Test-staff-123' }, 'POST', 1, null)).cookie;
   const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
@@ -161,7 +161,7 @@ test('history requires login, keeps stocktake permissions and omits financial fi
   const f = await fixture(t);
   await f.order('in', 1);
   await f.command('/stocktakes', { reason: '盘点权限', items: [{ product_id: f.product, expected_stock: 1, counted: 1 }] });
-  const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'reader', password: 'Test-staff-123' })).data.id;
+  const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'reader', employee_no: 'reader', password: 'Test-staff-123' })).data.id;
   const cookie = (await f.request('/auth/login', { username: 'reader', password: 'Test-staff-123' }, 'POST', 1, null)).cookie;
   const path = `/products/${f.product}/history`;
   assert.equal((await f.request(path, undefined, 'GET', 1, null)).status, 401);

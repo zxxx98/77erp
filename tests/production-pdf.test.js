@@ -17,7 +17,7 @@ async function fixture(t) {
  const bom=(await req('/boms',{request_id:randomUUID(),name:'中文配方',product_id:parent,base_quantity:1,base_unit:'件',note:'',enabled:1,items:[{product_id:material,quantity:2,unit:'件',note:'不可遗漏材料备注'}]})).data;
  const at=new Date().toISOString(); const group=Number(db.prepare("INSERT INTO production_groups(name,description,created_at,updated_at) VALUES ('一组','',?,?)").run(at,at).lastInsertRowid);
  const order=(await req('/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:10,note:'PDF中文备注',production_group_id:group})).data;
- const user=(await req('/users',{username:'pdfworker',password:'Test-staff-123',position_id:readonlyPositionId(db)})).data;
+ const user=(await req('/users',{username:'pdfworker',password:'Test-staff-123',position_id:readonlyPositionId(db),employee_no:'pdfworker'})).data;
  await grantPosition(db,(path,body,method)=>req(path,body,{method}),user.id,['production_register']);
  db.prepare("UPDATE positions SET access_mode='production_only' WHERE id=(SELECT position_id FROM users WHERE id=?)").run(user.id);
  db.prepare('UPDATE users SET production_group_id=? WHERE id=?').run(group,user.id);

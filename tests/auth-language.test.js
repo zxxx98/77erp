@@ -33,7 +33,7 @@ test('language is nullable, strictly validated, private to the authenticated acc
     assert.equal((await request('/auth/status', { cookie: owner.cookie })).data.language, language);
   }
   await request('/auth/language', { method: 'PATCH', cookie: owner.cookie, body: { language: 'vi' } });
-  const other = await request('/users', { method: 'POST', cookie: owner.cookie, body: { username: 'other', password: credentials.password, role: 'admin' } });
+  const other = await request('/users', { method: 'POST', cookie: owner.cookie, body: { username: 'other', employee_no: 'other', password: credentials.password, role: 'admin' } });
   assert.equal(other.status, 201);
   assert.equal(db.prepare('SELECT language FROM users WHERE id=?').get(other.data.id).language, null);
   const switched = await request('/auth/login', { method: 'POST', body: { ...credentials, username: 'other' } });
@@ -56,7 +56,7 @@ test('language is nullable, strictly validated, private to the authenticated acc
 test('production-only accounts can change their own language without warehouse or administration permission', async t => {
   const { db, request, owner, credentials } = await fixture(t);
   const position = db.prepare("INSERT INTO positions(name,permissions,access_mode,created_at,updated_at) VALUES ('Language test','[]','production_only',?,?)").run(new Date().toISOString(), new Date().toISOString());
-  const created = await request('/users', { method: 'POST', cookie: owner.cookie, body: { username: 'worker', password: credentials.password, position_id: Number(position.lastInsertRowid) } });
+  const created = await request('/users', { method: 'POST', cookie: owner.cookie, body: { username: 'worker', employee_no: 'worker', password: credentials.password, position_id: Number(position.lastInsertRowid) } });
   assert.equal(created.status, 201);
   const login = await request('/auth/login', { method: 'POST', body: { username: 'worker', password: credentials.password } });
   const saved = await request('/auth/language?warehouse_id=999', { method: 'PATCH', cookie: login.cookie, body: { language: 'en' } });

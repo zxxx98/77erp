@@ -39,7 +39,7 @@ test('configuration is administrator-only, redacted, persists across updates and
   assert.equal((await f.request('/settings/imagebed', 'PUT', { ...config, secret: '', upload_folder: '77erp/new' })).status, 200);
   assert.equal(f.db.prepare('SELECT secret FROM imagebed_settings').get().secret, config.secret);
   for (const path of ['/data', '/backup']) assert.ok(!JSON.stringify((await f.request(path)).data).includes(config.secret));
-  await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'employee', password: 'Test-employee-123', role: 'employee' });
+  await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'employee', employee_no: 'employee', password: 'Test-employee-123', role: 'employee' });
   await grantPosition(f.db, (path, body, method) => f.request(path, method, body), f.db.prepare('SELECT id FROM users WHERE username=?').get('employee').id, ['products']);
   const employee = (await f.request('/auth/login', 'POST', { username: 'employee', password: 'Test-employee-123' })).cookie;
   assert.equal((await f.request('/settings/imagebed', 'GET', undefined, { Cookie: employee })).status, 403);

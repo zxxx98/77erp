@@ -75,7 +75,7 @@ test('deletion rejects stock, valuation, stock adjustments and template referenc
 test('employees cannot change listing state or delete products', async t => {
   const f = await fixture(t);
   const id = (await f.request('/products', 'POST', product)).data.id;
-  assert.equal((await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db),username: 'staff', password: 'Test-staff-123'})).status, 201);
+  assert.equal((await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db),username: 'staff', employee_no: 'staff', password: 'Test-staff-123'})).status, 201);
   const login = await f.request('/auth/login', 'POST', {username: 'staff', password: 'Test-staff-123'});
   assert.equal(login.status, 200);
   assert.equal((await f.request(`/products/${id}/status`, 'POST', {active: 0}, 1, true, login.cookie)).status, 403);
@@ -132,7 +132,7 @@ test('batch status and delete endpoints validate inputs, enforce permissions and
   }
 
   // Permissions: legacy employee is forbidden, configured employee without products is forbidden, with products is allowed
-  const createdEmp = await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'legacy_emp', password: 'Test-staff-123' });
+  const createdEmp = await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'legacy_emp', employee_no: 'legacy_emp', password: 'Test-staff-123' });
   assert.equal(createdEmp.status, 201);
   const empId = createdEmp.data.id;
   legacyPosition(f.db, empId);

@@ -20,7 +20,7 @@ async function fixture(page, worker = false) {
   const group = worker ? await post('/production-groups', { name: '分层生产组', description: '' }) : null;
   if (worker) {
     const position = await post('/positions', { name: '分层登记岗位', access_mode: 'production_only', permissions: ['production_register'] });
-    await post('/users', { username: 'stageworker', password: 'Test-worker-123', role: 'employee', position_id: position.id, production_group_id: group.id });
+    await post('/users', { username: 'stageworker', employee_no: 'stageworker', password: 'Test-worker-123', role: 'employee', position_id: position.id, production_group_id: group.id });
   }
   const product = name => post('/products', { name, barcode: randomUUID(), category: '生产', unit: '件', cost: 1, price: 2, threshold: 0 });
   const output = await product('分层成品'), half = await product('分层半成品'), raw = await product('分层原料');

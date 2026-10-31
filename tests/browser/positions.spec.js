@@ -48,6 +48,7 @@ for (const width of [1440, 390, 320]) {
       for (const username of ['staffone', 'stafftwo']) {
         await page.getByLabel('新账号', { exact: true }).fill(username);
         await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
+        await page.getByLabel('工号', { exact: true }).fill(`NO-${username}`);
         await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '仓管', exact: true }).check();
         await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '财务兼岗', exact: true }).check();
         await page.getByRole('button', { name: '新增账号', exact: true }).click();
@@ -148,7 +149,7 @@ test('administrator downgrade requires a selected position and employee reassign
     const positions = await (await page.request.get(f.base + '/api/positions')).json();
     const readonly = positions.find(position => position.name === '只读员工');
     const second = await (await page.request.post(f.base + '/api/positions', { data: { name: '财务', description: '', permissions: ['finance'] } })).json();
-    await (await page.request.post(f.base + '/api/users', { data: { username: 'secondadmin', password: 'Strong-password-123', role: 'admin' } })).json();
+    await (await page.request.post(f.base + '/api/users', { data: { username: 'secondadmin', employee_no: 'secondadmin', password: 'Strong-password-123', role: 'admin' } })).json();
     await page.goto(f.base);
     await page.getByRole('button', { name: '系统设置', exact: true }).click();
     await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: /用户管理/ }).click();

@@ -23,7 +23,7 @@ async function fixture(t) {
   };
   const admin = (await request(null, '/auth/setup', 'POST', { username: 'owner', password: 'Test-password-123' })).cookie;
   await request(admin, '/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
-  const staffId = (await request(admin, '/users', 'POST', { position_id: readonlyPositionId(db), username: 'staff', password: 'Test-password-123' })).data.id;
+  const staffId = (await request(admin, '/users', 'POST', { position_id: readonlyPositionId(db), username: 'staff', employee_no: 'staff', password: 'Test-password-123' })).data.id;
   const staff = (await request(null, '/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' })).cookie;
   const grant = async (permissions) => {
     const result = await grantPosition(db, (path, body, method) => request(admin, path, method, body), staffId, ['basic_view', ...permissions]);

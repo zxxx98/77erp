@@ -24,6 +24,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   if (!userColumns.some(c => c.name === 'permissions')) db.exec('ALTER TABLE users ADD COLUMN permissions TEXT');
   if (!userColumns.some(c => c.name === 'permissions_version')) db.exec('ALTER TABLE users ADD COLUMN permissions_version INTEGER NOT NULL DEFAULT 1');
   if (!userColumns.some(c => c.name === 'name')) db.exec("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''");
+  if (!userColumns.some(c => c.name === 'employee_no')) db.exec("ALTER TABLE users ADD COLUMN employee_no TEXT NOT NULL DEFAULT ''");
   db.exec(`CREATE TABLE IF NOT EXISTS user_permission_changes (
     id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
     changed_by INTEGER NOT NULL REFERENCES users(id), before_permissions TEXT, after_permissions TEXT NOT NULL,
@@ -58,13 +59,14 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     }
   }
   const initialized = () => !!db.prepare("SELECT 1 FROM users LIMIT 1").get();
-  const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, role: user.role, language: user.language ?? null,
+  const publicUser = (user) => ({ id: user.id, username: user.username, name: user.name || user.username, employee_no: user.employee_no ?? '', role: user.role, language: user.language ?? null,
     ...(user.role === 'admin' ? { permissions: permissionKeys, legacy_permissions: false, position_id: null, position_name: null, position_ids: [], position_names: [], positions: [], access_mode: 'standard' } : positionAuthorization(db, user)),
     production_group_id: user.production_group_id ?? null,
     production_group_name: user.production_group_id ? db.prepare('SELECT name FROM production_groups WHERE id=?').get(user.production_group_id)?.name ?? null : null,
     permissions_version: user.permissions_version ?? 1 });
   const validUsername = (value) => typeof value === 'string' && /^[A-Za-z0-9_.-]{3,32}$/.test(value.trim());
   const validName = (value) => typeof value === 'string' && value.length <= 60;
+  const validEmployeeNo = (value) => typeof value === 'string' && value.trim().length >= 1 && value.trim().length <= 60;
   const validPassword = (value) => typeof value === 'string' && value.length >= 8 && value.length <= 128;
   const passwordFields = async (password) => {
     const salt = randomBytes(16).toString('hex');
@@ -89,7 +91,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   };
   const sessionUser = (req) => {
     const token = sessionToken(req);
-    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.role,u.language,u.position_id,u.production_group_id,u.permissions_version FROM auth_sessions s
+    const user = token ? db.prepare(`SELECT u.id,u.username,u.name,u.employee_no,u.role,u.language,u.position_id,u.production_group_id,u.permissions_version FROM auth_sessions s
       JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1`)
       .get(digest(token), Date.now()) : undefined;
     return user ? publicUser(user) : undefined;
@@ -326,11 +328,12 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   });
   installPositions(app, db);
   installProductionGroups(app, db);
-  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,name,role,active,created_at,position_id,production_group_id,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
+  app.get('/api/users', (_, res) => res.json(db.prepare('SELECT id,username,name,employee_no,role,active,created_at,position_id,production_group_id,permissions_version FROM users ORDER BY id').all().map(user => ({ ...publicUser(user), active: user.active, created_at: user.created_at }))));
   app.post('/api/users', async (req, res) => {
-    const { username, password, role = 'employee', name = '' } = req.body || {};
+    const { username, password, role = 'employee', name = '', employee_no = '' } = req.body || {};
     if (!validUsername(username) || !validPassword(password) || !validName(name) || !['admin','employee'].includes(role))
       return res.status(400).json({ error: '请填写有效账号、8–128 位密码、角色及最多 60 个字的名称。' });
+    if (!validEmployeeNo(employee_no)) return res.status(400).json({ error: '工号需为 1–60 个字符。' });
     try { if (role === 'employee') requirePositions(db, req.body); }
     catch (error) { return res.status(error.status || 400).json({ error: error.message }); }
     const [salt, hash] = await passwordFields(password);
@@ -341,8 +344,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       const positions = role === 'employee' ? requirePositions(db, req.body) : [];
       const position = positions[0];
       const group = role === 'employee' ? requireProductionGroup(db,req.body.production_group_id ?? null) : null;
-      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,permissions,position_id,production_group_id) VALUES (?,?,?,?,?,?,'[]',?,?)")
-        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), position?.id ?? null,group?.id ?? null);
+      const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,employee_no,permissions,position_id,production_group_id) VALUES (?,?,?,?,?,?,?,'[]',?,?)")
+        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), employee_no.trim(), position?.id ?? null,group?.id ?? null);
       if (position) {
         assignPositions(db,Number(result.lastInsertRowid),positions);
         recordPositionChange(db, req, '新员工分配岗位', position.id, Number(result.lastInsertRowid), null, {position_ids: positions.map(position => position.id)});
@@ -364,6 +367,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const { role, active } = req.body || {};
     if (!['admin','employee'].includes(role) || ![0,1].includes(active) || (req.body.name !== undefined && !validName(req.body.name)))
       return res.status(400).json({ error: '请选择有效角色、账号状态，并填写最多 60 个字的名称。' });
+    if (req.body.employee_no !== undefined && !validEmployeeNo(req.body.employee_no))
+      return res.status(400).json({ error: '工号需为 1–60 个字符。' });
     // Same recheck as the other account endpoints: a concurrent demotion must not slip through.
     if (sessionUser(req)?.role !== 'admin') return res.status(401).json({ error: '登录或权限已变化，请重新登录。' });
     db.exec('BEGIN IMMEDIATE');
@@ -386,8 +391,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (req.body.production_group_id !== undefined && req.body.production_group_id !== user.production_group_id) {
         db.exec('ROLLBACK'); return res.status(409).json({error:'请通过调整生产组操作提交当前权限版本。'});
       }
-      db.prepare('UPDATE users SET role=?,active=?,name=?,position_id=?,production_group_id=?,permissions_version=permissions_version+? WHERE id=?')
-        .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), positionId, role === 'admin' ? null : user.production_group_id, role !== user.role ? 1 : 0, user.id);
+      db.prepare('UPDATE users SET role=?,active=?,name=?,employee_no=?,position_id=?,production_group_id=?,permissions_version=permissions_version+? WHERE id=?')
+        .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), req.body.employee_no === undefined ? user.employee_no : req.body.employee_no.trim(), positionId, role === 'admin' ? null : user.production_group_id, role !== user.role ? 1 : 0, user.id);
       if (positions) assignPositions(db,user.id,positions);
       if (role !== user.role) recordPositionChange(db, req, '账号类型变更岗位', positionId, user.id, {position_ids:beforePositions}, {position_ids:positions.map(position => position.id)});
       if (!active || role !== user.role) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(user.id);

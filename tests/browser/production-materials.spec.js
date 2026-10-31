@@ -159,8 +159,8 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} multi
   try {
     const started = await f.post(`/production-orders/${f.order.id}/start`, { version: f.order.version });
     await f.post(`/production-material-documents/${started.material_documents[0].id}/confirm`, { version: started.material_documents[0].version });
-    const producer = await f.post('/users', { position_id: await browserPosition(page.request, ['production'], f.base), username: 'receiptproducer', password: 'Test-producer-123' });
-    const warehouse = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'purchase'], f.base), username: 'receiptwarehouse', password: 'Test-warehouse-123' });
+    const producer = await f.post('/users', { position_id: await browserPosition(page.request, ['production'], f.base), username: 'receiptproducer', employee_no: 'receiptproducer', password: 'Test-producer-123' });
+    const warehouse = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'purchase'], f.base), username: 'receiptwarehouse', employee_no: 'receiptwarehouse', password: 'Test-warehouse-123' });
     await f.post('/auth/login', { username: 'receiptproducer', password: 'Test-producer-123' });
     await page.goto(`${f.base}/#production`);
     await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
@@ -205,7 +205,7 @@ test('warehouse staff can approve issues without production or finance permissio
   const f = await fixture(page);
   try {
     await f.post(`/production-orders/${f.order.id}/start`, { version: f.order.version });
-    const user = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'sale'], f.base), username: 'warehouseonly', password: 'Warehouse-test-123' });
+    const user = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'sale'], f.base), username: 'warehouseonly', employee_no: 'warehouseonly', password: 'Warehouse-test-123' });
     await f.post('/auth/logout', {});
     await f.post('/auth/login', { username: 'warehouseonly', password: 'Warehouse-test-123' });
     await page.goto(`${f.base}/#sales`);

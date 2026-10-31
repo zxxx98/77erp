@@ -39,12 +39,27 @@ test('administrator creates accounts, protects the last administrator, resets pa
     page.once('dialog', d => d.accept());
     await owner.getByRole('button', { name: '停用', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('最后一个管理员');
+    await expect(owner).toContainText('工号：未填写');
     await page.getByLabel('新账号', { exact: true }).fill('staff');
     await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
     await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '只读员工', exact: true }).check();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('请填写工号');
+    await page.getByLabel('工号', { exact: true }).fill('E-001');
+    await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const employee = page.locator('.user-row').filter({ hasText: 'staff' });
     await expect(employee).toBeVisible();
+    await expect(employee).toContainText('工号：E-001');
+    await employee.getByRole('button', { name: '修改工号', exact: true }).click();
+    const numberDialog = page.getByRole('dialog', { name: '修改 staff 的工号', exact: true });
+    await numberDialog.getByLabel('工号', { exact: true }).fill('');
+    await numberDialog.getByRole('button', { name: '保存工号', exact: true }).click();
+    await expect(numberDialog.getByRole('alert')).toContainText('请填写工号');
+    await numberDialog.getByLabel('工号', { exact: true }).fill('E-002');
+    await numberDialog.getByRole('button', { name: '保存工号', exact: true }).click();
+    await expect(numberDialog).toHaveCount(0);
+    await expect(employee).toContainText('工号：E-002');
+    expect(f.db.prepare("SELECT employee_no FROM users WHERE username='staff'").get().employee_no).toBe('E-002');
     await employee.getByRole('button', { name: '重置密码', exact: true }).click();
     await page.getByLabel('重置后的密码', { exact: true }).fill('Reset-password-456');
     page.once('dialog', d => d.accept());
@@ -70,7 +85,7 @@ test('employee sees shared business data and own templates, opens orders with an
   page.on('pageerror', e => errors.push(e.message));
   try {
     await ensureContact(page.request, '员工供应商', { base: f.base });
-    await f.adminRequest('/users', { position_id: readonlyPositionId(f.db), username: 'staff', password: 'Employee-password-123' });
+    await f.adminRequest('/users', { position_id: readonlyPositionId(f.db), username: 'staff', employee_no: 'E-100', password: 'Employee-password-123' });
     // Existing employees keep their former product, order and own-template access.
     legacyPosition(f.db, f.db.prepare("SELECT id FROM users WHERE username='staff'").get().id);
     await f.adminRequest('/templates', { name: '管理员模板', request_id: 'admin-template', type: 'in', partner: '管理员模板', note: '', items: [{product_id: 1, quantity: 1, price: 10}] });
@@ -143,6 +158,7 @@ test('administrator configures position modules including AI and changes take ef
     await page.getByRole('button', { name: /用户管理/ }).click();
     await page.getByLabel('新账号', { exact: true }).fill('staff');
     await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-123');
+    await page.getByLabel('工号', { exact: true }).fill('E-003');
     await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '只读员工', exact: true }).check();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const row = page.locator('.user-row').filter({ hasText: 'staff' });

@@ -85,7 +85,7 @@ test('production mode keeps quality permission checks and account preferences is
   await page.goto('/#quality');
   await expect(page.getByRole('group', { name: '业务模式' }).getByRole('button', { name: '生产', exact: true })).toHaveAttribute('aria-pressed', 'true');
   const username = `mode-reader-${Date.now()}`;
-  expect((await page.request.post('/api/users', { data: { position_id: await browserPosition(page.request), username, password: 'Reader-password-123', role: 'employee' } })).status()).toBe(201);
+  expect((await page.request.post('/api/users', { data: { position_id: await browserPosition(page.request), username, employee_no: username, password: 'Reader-password-123', role: 'employee' } })).status()).toBe(201);
   expect((await page.request.post('/api/auth/login', { data: { username, password: 'Reader-password-123' } })).ok()).toBe(true);
   await page.goto('/');
   await expect(page.getByRole('group', { name: '业务模式' }).getByRole('button', { name: '仓储', exact: true })).toHaveAttribute('aria-pressed', 'true');

@@ -66,7 +66,7 @@ test('preferences sync across tabs, isolate accounts and are available to employ
   await login(page.request);
   const positionId = await browserPosition(page.request);
   const username = `pref-${randomUUID().slice(0, 8)}`;
-  expect((await page.request.post('/api/users', { data: { username, password: 'Employee-pass-123', role: 'employee', name: '习惯测试员工', position_id: positionId } })).ok()).toBe(true);
+  expect((await page.request.post('/api/users', { data: { username, employee_no: username, password: 'Employee-pass-123', role: 'employee', name: '习惯测试员工', position_id: positionId } })).ok()).toBe(true);
   await page.goto('/#products');
   const settings = await desktopPreferences(page);
   const second = await context.newPage();
@@ -139,7 +139,7 @@ test('production-only mobile accounts can configure habits and return closes the
     };
     const group = await post('/production-groups', { name: `偏好班组-${tag}` });
     const position = await post('/positions', { name: `偏好岗位-${tag}`, access_mode: 'production_only', permissions: ['production_register'] });
-    await post('/users', { username: `worker-${tag}`, password: 'Worker-password-123', role: 'employee', position_id: position.id, production_group_id: group.id });
+    await post('/users', { username: `worker-${tag}`, employee_no: `worker-${tag}`, password: 'Worker-password-123', role: 'employee', position_id: position.id, production_group_id: group.id });
     await post('/auth/logout', {});
     await post('/auth/login', { username: `worker-${tag}`, password: 'Worker-password-123' });
     const page = await context.newPage();

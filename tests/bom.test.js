@@ -353,7 +353,7 @@ test('BOM backup restores all relations, rejects tampering, refreshes edit versi
 test('BOM permission independently gates all endpoints without granting inventory writes or revealing financial values', async t => {
   const f = await fixture(t), bom = await f.create();
   assert.equal((await f.request('/boms', undefined, { cookie: null })).status, 401);
-  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'bomstaff', password: 'Test-staff-123' })).data.id;
+  const user = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'bomstaff', employee_no: 'bomstaff', password: 'Test-staff-123' })).data.id;
   const staff = (await f.request('/auth/login', { username: 'bomstaff', password: 'Test-staff-123' }, { cookie: null })).cookie;
   assert.equal((await f.request('/boms', undefined, { cookie: staff })).status, 403);
   assert.equal((await f.command(`/boms/${bom.id}/delete`, { version: bom.version }, { cookie: staff })).status, 403);

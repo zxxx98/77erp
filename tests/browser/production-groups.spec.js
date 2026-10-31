@@ -13,7 +13,7 @@ async function fixture(page, accessMode = 'production_only') {
   const group = await post('/production-groups', { name: '装配一组', description: '装配登记' });
   const second = await post('/production-groups', { name: '装配二组' });
   const position = await post('/positions', { name: '仅生产岗位', access_mode: accessMode, permissions: ['production_register'] });
-  const worker = await post('/users', { username: 'worker', password: 'Worker-password-123', role: 'employee', position_id: position.id, production_group_id: group.id });
+  const worker = await post('/users', { username: 'worker', employee_no: 'worker', password: 'Worker-password-123', role: 'employee', position_id: position.id, production_group_id: group.id });
   const products = [];
   for (const [name, barcode] of [['组内成品', 'GROUP-FINISH'], ['登记材料', 'GROUP-MATERIAL']]) products.push(await post('/products', { name, barcode, unit: '件', category: '生产', cost: 1, price: 2, threshold: 0 }));
   const bom = await post('/boms', { name: '小组配方', product_id: products[0].id, base_quantity: 1, base_unit: '件', note: '', enabled: 1, items: [{ product_id: products[1].id, quantity: 1, unit: '件', note: '' }] });
@@ -101,6 +101,7 @@ test('admin configures groups, strict positions, optional employee membership an
     await nav.getByRole('button', { name: /用户管理/ }).click();
     await page.getByLabel('新账号', { exact: true }).fill('newworker');
     await page.getByLabel('初始密码', { exact: true }).fill('Worker-password-123');
+    await page.getByLabel('工号', { exact: true }).fill('E-newworker');
     await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '新增登记岗位', exact: true }).check();
     await page.getByRole('button', { name: '新增账号', exact: true }).click();
     const row = page.locator('.user-row').filter({ hasText: 'newworker' });
@@ -164,7 +165,7 @@ for (const {width, pwa} of [{width:1440}, {width:390}, {width:390,pwa:true}]) te
         expect(response.ok(), await response.text()).toBe(true); return response.json();
       };
       const position = await post('/positions', { name: '个人生产登记', access_mode: 'production_only', permissions: ['production_register'] });
-      const individual = await post('/users', { username: 'individual', name: '个人工人', password: 'Worker-password-123', role: 'employee', position_id: position.id });
+      const individual = await post('/users', { username: 'individual', employee_no: 'individual', name: '个人工人', password: 'Worker-password-123', role: 'employee', position_id: position.id });
       await page.goto(f.base + '/#production');
       if (pwa) await page.evaluate(() => navigator.serviceWorker.ready);
       await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();

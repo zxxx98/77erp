@@ -21,7 +21,7 @@ async function fixture(page) {
   const other = await post('/production-groups', { name: '扫码二组' });
   const position = await post('/positions', { name: '扫码生产岗位', access_mode: 'production_only', permissions: ['production_register'] });
   for (const [username, production_group_id] of [['scanworker', group.id], ['otherworker', other.id], ['nogroup', null]]) {
-    await post('/users', { username, password, position_id: position.id, production_group_id });
+    await post('/users', { username, employee_no: username, password, position_id: position.id, production_group_id });
   }
   const warehouse = await post('/warehouses', { name: '扫码任务仓' }); warehouseId = warehouse.id;
   const product = await post('/products', { name: '扫码任务成品', barcode: 'PDF-SCAN-F', unit: '件', category: '生产', cost: 0, price: 0, threshold: 0 });

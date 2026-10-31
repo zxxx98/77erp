@@ -107,7 +107,7 @@ test('one-off inspection requires a manually entered future date; permissions an
   }
   const warehouse = (await f.request('/warehouses', 'POST', { name: '其他仓库' })).data.id;
   assert.equal((await f.request(`/products/${p.id}/inspect`, 'POST', { version: p.version, next_date: '2099-01-01' }, warehouse)).status, 400);
-  const employee = await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'staff', password: 'Test-password-123', role: 'employee' });
+  const employee = await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'staff', employee_no: 'staff', password: 'Test-password-123', role: 'employee' });
   const session = (await f.request('/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' }, 1, null)).cookie;
   const body = { version: p.version, next_date: '2099-01-01' };
   assert.equal((await f.request(`/products/${p.id}/inspect`, 'POST', body, 1, session)).status, 403);

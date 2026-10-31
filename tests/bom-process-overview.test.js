@@ -102,7 +102,7 @@ test('BOM overview fails selected missing or foreign child recipes', async t => 
 test('BOM overview enforces BOM permissions and rejects cycles and excessive depth', async t => {
   const f = await fixture(t);
   const position = f.ok(await f.request('/positions', { name: '仅物料', permissions: ['products'] }));
-  f.ok(await f.request('/users', { username: 'overviewreader', password: 'Overview-test-123', role: 'employee', position_id: position.id }));
+  f.ok(await f.request('/users', { username: 'overviewreader', employee_no: 'overviewreader', password: 'Overview-test-123', role: 'employee', position_id: position.id }));
   const login = await f.request('/auth/login', { username: 'overviewreader', password: 'Overview-test-123' }, { cookie: 'no-session' });
   assert.equal((await f.request(`/boms/${f.root.id}/process-overview`, undefined, { cookie: login.cookie })).status, 403);
   f.db.prepare("UPDATE bom_items SET product_id=?,usage_mode='explode',child_bom_id=? WHERE bom_id=?").run(f.output, f.root.id, f.child.id);

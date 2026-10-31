@@ -31,7 +31,7 @@ async function fixture(t, dbPath = ':memory:', historicalProduction = true) {
     return { status: res.status, data, cookie: res.headers.get('set-cookie')?.split(';')[0] };
   };
   const admin = (await request(null, '/auth/setup', { username: 'owner', password: 'Strong-password-123' })).cookie;
-  const id = (await request(admin, '/users', { position_id: readonlyPositionId(db), username: 'staff', password: 'Strong-password-123' })).data.id;
+  const id = (await request(admin, '/users', { position_id: readonlyPositionId(db), username: 'staff', employee_no: 'staff', password: 'Strong-password-123' })).data.id;
   const staff = (await request(null, '/auth/login', { username: 'staff', password: 'Strong-password-123' })).cookie;
   const permissions = async values => {
     assert.equal((await grantPosition(db, (path, body, method) => request(admin, path, body, method), id, ['basic_view', ...values])).status, 200);

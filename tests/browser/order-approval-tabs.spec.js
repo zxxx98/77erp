@@ -121,7 +121,7 @@ test('approval counts retry, failed approval keeps detail, cancellation updates 
     await detail.getByRole('button',{name:'确认取消申请',exact:true}).click();
     await expect(detail).toHaveCount(0);
     await expect(page.getByRole('tab',{name:/领料.*补料待出库/})).toContainText('10');
-    const readonly=await f.post('/users',{position_id:await browserPosition(page.request, [], f.base),username:'tabreader',password:'Test-reader-123'});
+    const readonly=await f.post('/users',{position_id:await browserPosition(page.request, [], f.base),username:'tabreader',employee_no:'tabreader',password:'Test-reader-123'});
     await f.post('/auth/login',{username:'tabreader',password:'Test-reader-123'});
     await page.reload();
     await expect(page.getByRole('tablist',{name:'单据分类'}).getByRole('tab')).toHaveCount(1);

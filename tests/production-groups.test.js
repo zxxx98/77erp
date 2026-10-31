@@ -21,7 +21,7 @@ async function fixture(t) {
     const r=await request(admin,'/positions',{name,permissions,access_mode}); assert.equal(r.status,201,JSON.stringify(r.data)); return r.data;
   };
   const user = async (username,position_id,production_group_id=null) => {
-    const r=await request(admin,'/users',{username,password,position_id,production_group_id}); assert.equal(r.status,201,JSON.stringify(r.data));
+    const r=await request(admin,'/users',{username,password,position_id,production_group_id,employee_no:username}); assert.equal(r.status,201,JSON.stringify(r.data));
     const login=await request(null,'/auth/login',{username,password}); return {...login.data,id:r.data.id,cookie:login.cookie};
   };
   return {db,request,admin,group,position,user};
@@ -47,7 +47,7 @@ test('groups support optional membership, versioned edits and protected deletion
   current=(await f.request(worker.cookie,'/auth/status')).data;
   assert.equal((await f.request(f.admin,`/users/${worker.id}/production-group`,{production_group_id:null,version:current.permissions_version},'PUT')).status,200);
   assert.equal((await f.request(f.admin,`/production-groups/${a.id}`,{version:r.data.version},'DELETE')).status,200);
-  assert.equal((await f.request(f.admin,'/users',{username:'invalid',password,position_id:p.id,production_group_id:999})).status,400);
+  assert.equal((await f.request(f.admin,'/users',{username:'invalid',password,position_id:p.id,production_group_id:999,employee_no:'invalid'})).status,400);
 });
 
 test('production-only positions deny all other business endpoints and expose minimal bootstrap',async t => {

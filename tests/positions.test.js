@@ -49,7 +49,7 @@ async function fixture(t, path = ':memory:') {
     assert.equal(r.status, 201, JSON.stringify(r.data)); return r.data;
   };
   const user = async (username, position_id) => {
-    const r = await request(admin, '/users', {username, password, position_id});
+    const r = await request(admin, '/users', {username, password, position_id, employee_no: username});
     assert.equal(r.status, 201, JSON.stringify(r.data));
     return {id: r.data.id, cookie: (await request(null, '/auth/login', {username, password})).cookie};
   };
@@ -161,10 +161,10 @@ test('administrator-only position routes validate data and protect admin changes
     {name:'合法',permissions:['fake']}, {name:'合法',permissions:['sale','sale']}, {name:'合法',permissions:[],legacy_permissions:true}])
     assert.equal((await f.request(f.admin, '/positions', body)).status, 400);
   assert.equal((await f.request(f.admin, '/positions', {name:' 仓管 ',permissions:[]})).status, 409);
-  assert.equal((await f.request(f.admin, '/users', {username:'nojob',password})).status, 400);
-  assert.equal((await f.request(f.admin, '/users', {username:'badjob',password,position_id:999})).status, 400);
+  assert.equal((await f.request(f.admin, '/users', {username:'nojob',password,employee_no:'nojob'})).status, 400);
+  assert.equal((await f.request(f.admin, '/users', {username:'badjob',password,position_id:999,employee_no:'badjob'})).status, 400);
   assert.equal((await f.request(f.admin, '/users/1', {role:'employee',active:1,position_id:p.id}, 'PUT')).status, 409);
-  const second = await f.request(f.admin, '/users', {username:'owner2',password,role:'admin'});
+  const second = await f.request(f.admin, '/users', {username:'owner2',password,role:'admin',employee_no:'owner2'});
   assert.equal(second.status, 201);
   assert.equal((await f.request(f.admin, `/users/${second.data.id}`, {role:'employee',active:1}, 'PUT')).status, 400);
   assert.equal((await f.request(f.admin, `/users/${second.data.id}`, {role:'employee',active:1,position_id:p.id}, 'PUT')).status, 200);
@@ -249,7 +249,7 @@ test('existing login sessions and pre-upgrade user revision triggers keep follow
 test('deleting a position during employee creation cannot leave an orphan or crash after password hashing', async t => {
   const f = await fixture(t), p = await f.position('并发岗位');
   const [created, deleted] = await Promise.all([
-    f.request(f.admin, '/users', {username:'racing',password,position_id:p.id}),
+    f.request(f.admin, '/users', {username:'racing',password,position_id:p.id,employee_no:'racing'}),
     f.request(f.admin, `/positions/${p.id}`, {version:p.version}, 'DELETE'),
   ]);
   if (deleted.status === 200) {
@@ -264,7 +264,7 @@ test('deleting a position during employee creation cannot leave an orphan or cra
 
 test('multiple positions combine grants and revoke secondary grants in existing sessions with versioned audit', async t => {
   const f = await fixture(t), p = await f.position('入库员', ['basic_view','purchase']), q = await f.position('出库员', ['sale']);
-  const created = await f.request(f.admin,'/users',{username:'multi',password,position_ids:[q.id,p.id]});
+  const created = await f.request(f.admin,'/users',{username:'multi',password,position_ids:[q.id,p.id],employee_no:'multi'});
   assert.equal(created.status,201);
   const id = created.data.id, login = await f.request(null,'/auth/login',{username:'multi',password});
   const state = async () => (await f.request(login.cookie,'/auth/status')).data;
@@ -300,7 +300,7 @@ test('multiple position validation is atomic, old assignment API still works, an
   const a = await f.user('alice',p.id);
   let version = (await f.request(a.cookie,'/auth/status')).data.permissions_version;
   for (const position_ids of [[],null,'1',[p.id,p.id],[p.id,999],['1'],[0],[-1],[1.5]]) {
-    assert.equal((await f.request(f.admin,'/users',{username:'invalid',password,position_ids})).status,400);
+    assert.equal((await f.request(f.admin,'/users',{username:'invalid',password,position_ids,employee_no:'invalid'})).status,400);
     assert.equal((await f.request(f.admin,`/users/${a.id}/position`,{position_ids,version},'PUT')).status,400);
   }
   assert.equal(f.db.prepare("SELECT 1 FROM users WHERE username='invalid'").get(),undefined);

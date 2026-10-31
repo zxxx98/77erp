@@ -246,7 +246,7 @@ test('canceling installation does not report success and changing to an app wind
 test('session replacement isolates drafts by account and hides read-only employee actions and costs', async ({ browser }) => {
   const { context, page } = await mobile(browser);
   const username = `pwa-reader-${Date.now()}`;
-  expect((await context.request.post('/api/users', { data: { position_id: await browserPosition(context.request), username, password: 'Reader-password-123', role: 'employee' } })).status()).toBe(201);
+  expect((await context.request.post('/api/users', { data: { position_id: await browserPosition(context.request), username, employee_no: username, password: 'Reader-password-123', role: 'employee' } })).status()).toBe(201);
   const product = await fixtureProduct(context, 2);
   await ensureContact(context.request, '仅管理员可见的草稿');
   await page.reload();
@@ -306,7 +306,7 @@ test('a session changed in another tab cannot reassign an open draft to the new 
   const { context, page } = await mobile(browser);
   const original = await (await context.request.get('/api/auth/status')).json();
   const username = `pwa-second-${Date.now()}`;
-  expect((await context.request.post('/api/users', { data: { username, password: 'Second-password-123', role: 'admin' } })).status()).toBe(201);
+  expect((await context.request.post('/api/users', { data: { username, employee_no: username, password: 'Second-password-123', role: 'admin' } })).status()).toBe(201);
   await ensureContact(context.request, '原账号正在编辑');
   await page.reload();
   await page.getByRole('button', { name: '入库', exact: true }).click();

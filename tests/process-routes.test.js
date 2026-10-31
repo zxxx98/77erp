@@ -49,7 +49,7 @@ test('route deletion checks versions, warehouse and permissions, and supports sa
   const warehouse = f.ok(await f.request('/warehouses', { name: '删除隔离仓' }));
   assert.equal((await f.command(path, { version: f.route.version }, { warehouseId: warehouse.id })).status, 404);
   const position = f.ok(await f.command('/positions', { name: '工艺只读', permissions: ['products', 'production'] }));
-  f.ok(await f.command('/users', { username: 'routereader', password: 'Reader-test-123', role: 'employee', position_id: position.id }));
+  f.ok(await f.command('/users', { username: 'routereader', employee_no: 'routereader', password: 'Reader-test-123', role: 'employee', position_id: position.id }));
   const login = await f.request('/auth/login', { username: 'routereader', password: 'Reader-test-123' }, { cookie: 'no-session' });
   const readOnly = { cookie: login.cookie };
   assert.equal((await f.request(`/process-routes/${f.route.id}`, undefined, readOnly)).status, 200);
@@ -170,8 +170,8 @@ test('half-finished and root routes register output once and reverse with the ex
 test('group workers can report only themselves and their orders, including before idempotent replay',async t=>{
   const f=await fixture(t);const group=f.ok(await f.command('/production-groups',{name:'路线生产组',description:''}));
   const position=f.ok(await f.command('/positions',{name:'路线岗位',access_mode:'production_only',permissions:['production_register']}));
-  const worker=f.ok(await f.command('/users',{username:'routeworker',password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:group.id,name:'李四'}));
-  const another=f.ok(await f.command('/users',{username:'routeother',password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:group.id,name:'张三'}));
+  const worker=f.ok(await f.command('/users',{username:'routeworker',employee_no:'routeworker',password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:group.id,name:'李四'}));
+  const another=f.ok(await f.command('/users',{username:'routeother',employee_no:'routeother',password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:group.id,name:'张三'}));
   let order=await f.start(await f.create({production_group_id:group.id}));
   order=f.ok(await f.report(order,'cut',2,'',{worker_id:worker.id}));assert.equal(order.operation_routes[0].reports[0].worker_name,'李四');assert.equal(order.operation_routes[0].reports[0].registered_by_name,'routeadmin');
   const login=await f.request('/auth/login',{username:'routeworker',password:'Worker-test-123'}),options={cookie:login.cookie};
@@ -225,7 +225,7 @@ for (const multi of [false,true]) test(`started ${multi ? 'layered' : 'single-le
   const a=f.ok(await f.command('/production-groups',{name:'主生产组'})), b=f.ok(await f.command('/production-groups',{name:'协作组'}));
   const position=f.ok(await f.command('/positions',{name:'协作登记',access_mode:'production_only',permissions:['production_register']}));
   const employee=async(username,groupId)=>{
-    const user=f.ok(await f.command('/users',{username,password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:groupId}));
+    const user=f.ok(await f.command('/users',{username,employee_no:username,password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:groupId}));
     const login=await f.request('/auth/login',{username,password:'Worker-test-123'},{cookie:'no-session'});
     return {...user,cookie:login.cookie};
   };

@@ -461,6 +461,7 @@ test("employee can execute but cannot manage, reuse another user preview, or byp
   await f.request("/users", "POST", {
     position_id: readonlyPositionId(f.db), position_id: readonlyPositionId(f.db),
     username: "worker",
+    employee_no: "worker",
     password: "Test-worker-123",
     role: "employee",
   });

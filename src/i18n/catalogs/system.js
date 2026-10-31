@@ -2215,6 +2215,46 @@ export default {
     "For example: Zhang San",
     "Ví dụ: Trương San"
   ],
+  "system.employee.no": [
+    "工号",
+    "Employee number",
+    "Mã nhân viên"
+  ],
+  "system.employee.no.2": [
+    "工号：",
+    "Employee number:",
+    "Mã nhân viên:"
+  ],
+  "system.for.example.1001": [
+    "例如：1001",
+    "For example: 1001",
+    "Ví dụ: 1001"
+  ],
+  "system.please.enter.the.employee.no": [
+    "请填写工号。",
+    "Please enter the employee number.",
+    "Vui lòng nhập mã nhân viên."
+  ],
+  "system.modify.employee.no": [
+    "修改工号",
+    "Modify employee number",
+    "Sửa mã nhân viên"
+  ],
+  "system.modify.the.employee.no.of": [
+    "修改 {{v0}} 的工号",
+    "Modify the employee number of {{v0}}",
+    "Sửa mã nhân viên của {{v0}}"
+  ],
+  "system.save.employee.no": [
+    "保存工号",
+    "Save employee number",
+    "Lưu mã nhân viên"
+  ],
+  "system.employee.no.updated": [
+    "工号已更新",
+    "Employee number updated",
+    "Đã cập nhật mã nhân viên"
+  ],
   "system.initial.password": [
     "初始密码",
     "Initial password",

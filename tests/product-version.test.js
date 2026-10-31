@@ -34,7 +34,7 @@ async function fixture(t) {
 
 test('two users saving the same version produce one success and one actionable conflict without partial writes', async t => {
   const f = await fixture(t);
-  await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'staff', password: 'Test-password-123', role: 'employee' });
+  await f.request('/users', 'POST', { position_id: readonlyPositionId(f.db), username: 'staff', employee_no: 'staff', password: 'Test-password-123', role: 'employee' });
   await grantPosition(f.db, (path, body, method) => f.request(path, method, body), f.db.prepare('SELECT id FROM users WHERE username=?').get('staff').id, ['products']);
   const employee = (await f.request('/auth/login', 'POST', { username: 'staff', password: 'Test-password-123' }, 1, null)).cookie;
   const original = f.current();

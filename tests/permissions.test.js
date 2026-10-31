@@ -19,7 +19,7 @@ async function fixture(t) {
     return { status: result.status, data: await result.json(), cookie: result.headers.get('set-cookie')?.split(';')[0] };
   };
   const admin = (await request(null, '/auth/setup', { username: 'owner', password })).cookie;
-  const id = (await request(admin, '/users', { position_id: readonlyPositionId(db), username: 'staff', password })).data.id;
+  const id = (await request(admin, '/users', { position_id: readonlyPositionId(db), username: 'staff', employee_no: 'staff', password })).data.id;
   const cookie = (await request(null, '/auth/login', { username: 'staff', password })).cookie;
   const set = async permissions => {
     const result = await grantPosition(db, (path, body, method) => request(admin, path, body, method), id, permissions);

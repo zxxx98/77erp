@@ -131,7 +131,7 @@ test('approval rechecks all stock atomically and return balances after concurren
 test('production requests and warehouse approval have independent permissions, directional reads and finance redaction', async t => {
   const f = await fixture(t);
   const user = async (username, permissions) => {
-    const created = await f.request('/users', { position_id: readonlyPositionId(f.db), username, password: 'Test-staff-123' }); assert.equal(created.status, 201);
+    const created = await f.request('/users', { position_id: readonlyPositionId(f.db), username, employee_no: username, password: 'Test-staff-123' }); assert.equal(created.status, 201);
     f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), created.data.id, permissions));
     const cookie = (await f.request('/auth/login', { username, password: 'Test-staff-123' }, { cookie: null })).cookie;
     return { cookie, id: created.data.id };

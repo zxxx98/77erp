@@ -25,7 +25,7 @@ async function fixture(t, path = ':memory:') {
   // Existing database fixtures have already initialized the owner.
   if (!admin) admin = (await request(null, '/auth/login', { username: 'owner', password })).cookie;
   const user = async (username, role = 'employee') => {
-    const created = await request(admin, '/users', { position_id: readonlyPositionId(db), username, password, role });
+    const created = await request(admin, '/users', { position_id: readonlyPositionId(db), username, password, role, employee_no: `NO-${username}` });
     assert.equal(created.status, 201);
     // Exercise upgraded employees with their original capabilities in the legacy regression cases.
     if (role === 'employee') legacyPosition(db, created.data.id);
@@ -100,9 +100,9 @@ test('account management hides secrets, revokes sessions, protects the last acti
   const list = await f.request(f.admin, '/users');
   assert.equal(list.data.length, 2);
   assert.equal(list.data[0].password_hash, undefined);
-  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'staff', password })).status, 409);
-  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'bad space', password })).status, 400);
-  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'another', password: 'short' })).status, 400);
+  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'staff', password, employee_no: 'NO-staff' })).status, 409);
+  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'bad space', password, employee_no: 'NO-bad' })).status, 400);
+  assert.equal((await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'another', password: 'short', employee_no: 'NO-another' })).status, 400);
   assert.equal((await f.request(f.admin, '/users/1', { role: 'employee', active: 1, position_id: readonlyPositionId(f.db) }, 'PUT')).status, 409);
   assert.equal((await f.request(f.admin, '/users/1', { role: 'admin', active: 0 }, 'PUT')).status, 409);
   assert.equal((await f.request(f.admin, `/users/${employee.id}`, { role: 'employee', active: 0 }, 'PUT')).status, 200);
@@ -185,6 +185,7 @@ test('legacy administrator migrates with the same password and data, invalidates
   // Close the fixture's SQLite handle before removing its files on Windows.
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   assert.equal(f.db.prepare('SELECT password_hash FROM users WHERE id=1').get().password_hash, hash);
+  assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=1').get().employee_no, '');
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, stock);
   assert.equal(f.db.prepare("SELECT 1 FROM sqlite_master WHERE name='administrator'").get(), undefined);
   assert.equal(f.db.prepare("SELECT 1 FROM auth_sessions WHERE token_hash='legacy-token'").get(), undefined);
@@ -372,7 +373,7 @@ test('a conflicting account upgrade fails loudly and leaves the legacy administr
 test('account names are optional, validated, reflected in active sessions and snapshotted in business records', async t => {
   const f = await fixture(t);
   const name = '张'.repeat(60);
-  const created = await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'named', password, name });
+  const created = await f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username: 'named', password, name, employee_no: 'NO-named' });
   assert.equal(created.status, 201);
   const login = await f.request(null, '/auth/login', { username: 'named', password });
   assert.equal(login.data.name, name);
@@ -394,4 +395,34 @@ test('account names are optional, validated, reflected in active sessions and sn
   const backup = (await f.request(f.admin, '/backup')).data;
   const preview = (await f.request(f.admin, '/backup/preview', { backup })).data;
   assert.equal((await f.command(f.admin, '/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' })).status, 200);
+});
+
+test('employee numbers are required for new accounts, default to empty for existing ones, and stay editable', async t => {
+  const f = await fixture(t);
+  const body = { position_id: readonlyPositionId(f.db), username: 'numbered', password };
+  for (const employee_no of [undefined, null, 7, '', '   ', '号'.repeat(61)]) {
+    const response = await f.request(f.admin, '/users', employee_no === undefined ? body : { ...body, employee_no });
+    assert.equal(response.status, 400, JSON.stringify(employee_no));
+    assert.equal(response.data.code, 'VALIDATION_USER_EMPLOYEE_NO_INVALID');
+  }
+  assert.equal(f.db.prepare("SELECT 1 FROM users WHERE username='numbered'").get(), undefined);
+  const created = await f.request(f.admin, '/users', { ...body, employee_no: '  E-1001  ' });
+  assert.equal(created.status, 201);
+  const login = await f.request(null, '/auth/login', { username: 'numbered', password });
+  assert.equal(login.data.employee_no, 'E-1001');
+  const list = (await f.request(f.admin, '/users')).data;
+  assert.equal(list.find(user => user.id === created.data.id).employee_no, 'E-1001');
+  // Accounts created before the field existed keep an empty number until an administrator fills it in.
+  assert.equal(list.find(user => user.id === 1).employee_no, '');
+  const update = next => f.request(f.admin, `/users/${created.data.id}`, { role: 'employee', active: 1, ...next }, 'PUT');
+  assert.equal((await update({})).status, 200);
+  assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=?').get(created.data.id).employee_no, 'E-1001');
+  for (const employee_no of [null, 7, '', '   ', '号'.repeat(61)]) assert.equal((await update({ employee_no })).status, 400);
+  assert.equal((await update({ employee_no: ' E-2002 ' })).status, 200);
+  assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=?').get(created.data.id).employee_no, 'E-2002');
+  assert.equal((await f.request(login.cookie, '/auth/status')).data.employee_no, 'E-2002');
+  assert.equal((await update({ name: '李四' })).status, 200);
+  assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=?').get(created.data.id).employee_no, 'E-2002');
+  assert.equal((await f.request(f.admin, '/users/1', { role: 'admin', active: 1, employee_no: 'A-0001' }, 'PUT')).status, 200);
+  assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=1').get().employee_no, 'A-0001');
 });
