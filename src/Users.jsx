@@ -107,7 +107,7 @@ export function UserManager({ Modal, onChanged }) {
         setUsername(''); setPassword(''); setName('');
       }, translate("system.account.has.been.created")); }}>{translate("system.add.account")}</AntButton>
     </div>
-    {error && !nameUser && !positionUser && <p role="alert" className="form-error">{error}</p>}
+    {error && !nameUser && !positionUser && !resetUser && <p role="alert" className="form-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <div className="table-scroll user-list">
       <table className="data-table user-table">
@@ -126,7 +126,7 @@ export function UserManager({ Modal, onChanged }) {
                 if (window.confirm(translate("system.account.3", { v0: user.active ? translate("system.deactivate") : translate("system.activate"), v1: user.username }))) void update(user, { active: user.active ? 0 : 1 });
               }}>{user.active ? translate("system.deactivate") : translate("system.activate")}</AntButton>
               {user.role === 'employee' ? <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPermissionUser(user); setError(''); }}>{translate("system.view.permissions")}</AntButton> : <span className="muted">{translate("system.all.permissions")}</span>}
-              <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(user); setResetPassword(''); }}>{translate("system.reset.password")}</AntButton>
+              <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(user); setResetPassword(''); setError(''); }}>{translate("system.reset.password")}</AntButton>
             </div></td>
           </tr>)}
         </tbody>
@@ -166,16 +166,18 @@ export function UserManager({ Modal, onChanged }) {
         }}>{translate("system.save.post")}</AntButton></div>
       </div>
     </Modal>}
-    {resetUser && <div className="account-fields">
-      <h4>{translate("system.reset")}{" "}{resetUser.username}{" "}{translate("system.password.2")}</h4>
-      <label>{translate("system.password.after.reset")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={resetPassword} onChange={e => setResetPassword(e.target.value)} disabled={busy} /></label>
-      <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
-        if (window.confirm(translate("system.reset.s.password.and.log.out.of.all.devices.with.this", { v0: resetUser.username }))) void run(async () => {
-          await api(`/users/${resetUser.id}/password`, { method: 'POST', body: { password: resetPassword } });
-          setResetUser(null); setResetPassword('');
-        }, translate("system.password.reset"));
-      }}>{translate("system.confirm.password.reset")}</AntButton>
-      <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(null); setResetPassword(''); }}>{translate("system.cancel.reset")}</AntButton>
-    </div>}
+    {resetUser && <Modal title={`${translate("system.reset")} ${resetUser.username} ${translate("system.password.2")}`} onClose={() => { if (!busy) { setResetUser(null); setResetPassword(''); setError(''); } }}>
+      <div className="form-body account-fields">
+        <label>{translate("system.password.after.reset")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={resetPassword} onChange={e => setResetPassword(e.target.value)} disabled={busy} /></label>
+        {error && <p role="alert" className="form-error">{error}</p>}
+        <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
+          if (window.confirm(translate("system.reset.s.password.and.log.out.of.all.devices.with.this", { v0: resetUser.username }))) void run(async () => {
+            await api(`/users/${resetUser.id}/password`, { method: 'POST', body: { password: resetPassword } });
+            setResetUser(null); setResetPassword('');
+          }, translate("system.password.reset"));
+        }}>{translate("system.confirm.password.reset")}</AntButton>
+        <AntButton type="default" htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setResetUser(null); setResetPassword(''); setError(''); }}>{translate("system.cancel.reset")}</AntButton>
+      </div>
+    </Modal>}
   </section>;
 }
