@@ -1,7 +1,7 @@
 import { operationAllocation } from '../shared/operation-overflow.js';
 import { productionRegistrationGroup } from './production-access.js';
 import { recordOperationOutput, voidOperationOutput } from './process-routes.js';
-import { deriveProductionStages, stageDisplayStandardQuantity } from '../shared/production-stages.js';
+import { deriveProductionStages, stageDisplayStandardQuantity, productionStageItems, stageInputCanBeZero } from '../shared/production-stages.js';
 import { addQuantity, materialQuantity, validQuantity, validStoredQuantity, quantityUnits, QUANTITY_SCALE } from '../shared/quantity.js';
 import { allocate } from './commerce.js';
 import { hasPermission } from '../shared/permissions.js';
@@ -99,7 +99,7 @@ export function readProductionStages(db, order) {
     const batches=ledger.batches.filter(b=>b.path===s.path&&b.status==='active'), remaining=batches.map(b=>stageBatchRemaining(b,ledger.allocations,ledger.allocationComponents));
     const completed=sum(batches,'completed_quantity'), available=sum(remaining,'quantity');
     const activeIds=new Set(batches.map(b=>b.id));
-    const items=order.nodes.filter(n=>n.parent_path===s.path).map(n=>{
+    const items=productionStageItems(order,s.path).map(n=>{
       let standard_quantity=null;
       try { standard_quantity=stageDisplayStandardQuantity(n,completed); } catch { /* Keep historical actuals readable when cumulative standards exceed limits. */ }
       return {...n,standard_quantity,actual_quantity:sum(ledger.inputs.filter(i=>i.path===n.path&&activeIds.has(i.batch_id)),'quantity')};
@@ -142,7 +142,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if(typeof path!=='string'||!o.stages.some(s=>s.path===path))fail('生产层不存在。',404);
     if(!/^\d+$/.test(offset)||!Number.isSafeInteger(Number(offset))||!/^\d+$/.test(limit)||Number(limit)<1||Number(limit)>100)fail('批次分页参数无效。');
     const total=db.prepare('SELECT COUNT(*) n FROM production_stage_batches WHERE production_id=? AND path=?').get(o.id,path).n;
-    const ledger=stageLedger(db,o.id),batches=ledger.batches.filter(b=>b.path===path).slice(Number(offset),Number(offset)+Number(limit)).map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id).map(i=>({...o.nodes.find(n=>n.path===i.path),...i,actual_quantity:i.quantity,
+    const ledger=stageLedger(db,o.id),batches=ledger.batches.filter(b=>b.path===path).slice(Number(offset),Number(offset)+Number(limit)).map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id).map(i=>({...productionStageItems(o,b.path).find(n=>n.path===i.path),...i,actual_quantity:i.quantity,
       allocations:db.prepare('SELECT a.*,b.path AS source_path,b.batch_number AS source_batch_number FROM production_stage_allocations a JOIN production_stage_batches b ON b.id=a.source_batch_id WHERE a.input_id=? ORDER BY a.id').all(i.id)}))}));
     return {batches,total,has_more:Number(offset)+batches.length<total};
   }));
@@ -153,7 +153,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if(!validQuantity(req.body.completed_quantity,true)||req.body.note!==undefined&&(typeof req.body.note!=='string'||req.body.note.length>500)||typeof req.body.finish_order!=='boolean')fail('请核对本批产量、备注及继续生产选项。');
     if(s.path!==''&&(req.body.finish_order||req.body.scraps?.length))fail('半成品层只能登记继续，不登记废料或结束整单。');
     if(!Array.isArray(req.body.items)||req.body.items.length!==s.items.length||new Set(req.body.items.map(i=>i?.path)).size!==s.items.length)fail('请核对全部直属投入，路径不能重复或增删。');
-    const actuals=s.items.map(n=>{const a=req.body.items.find(i=>i?.path===n.path);if(!a||!validQuantity(a.quantity,n.usage_mode==='explode')||a.variance_reason!==undefined&&(typeof a.variance_reason!=='string'||a.variance_reason.length>500))fail('直属投入需为有效数量且最多 4 位小数；半成品投入必须大于零。');
+    const actuals=s.items.map(n=>{const a=req.body.items.find(i=>i?.path===n.path);if(!a||!validQuantity(a.quantity,!stageInputCanBeZero(n,s.items))||a.variance_reason!==undefined&&(typeof a.variance_reason!=='string'||a.variance_reason.length>500))fail('直属投入需为有效数量且最多 4 位小数；有库存投入的半成品允许本单投入为零。');
       const p=db.prepare('SELECT * FROM products WHERE id=?').get(n.product_id);if(!p||p.warehouse_id!==o.warehouse_id||p.unit!==n.unit||p.unit_round_up!==n.unit_round_up)fail(`${n.name}单位或取整规则已变化。`,409);if(!p.active)fail(`${n.name}已停用。`);
       return {...n,quantity:materialQuantity(a.quantity,n),variance_reason:(a.variance_reason||'').trim()};});
     if(!actuals.some(a=>a.quantity>0))fail('至少一种直属投入需大于零。');
@@ -259,14 +259,16 @@ export function validateProductionStageBackup(data) {
       rootIds.add(root.id);
     }else if(b.root_batch_id!==null)fail('半成品批次不能关联仓库成品批次。');
     const nodes=data.production_bom_nodes.filter(n=>n.production_id===order.id&&n.parent_path===b.path),rows=[...inputs.values()].filter(i=>i.batch_id===b.id);
-    if(rows.length!==nodes.length||!rows.some(i=>i.quantity>0))fail('备份直属投入不完整。');
+    if(nodes.some(node=>!rows.some(row=>row.path===node.path))||!rows.some(i=>i.quantity>0))fail('备份直属投入不完整。');
     if(rows.reduce((n,i)=>n+i.cost_cents,0)!==b.total_cost_cents)fail('备份层级批次投入成本不一致。');
   }
   for(const i of inputs.values()){
-    const b=batches.get(i.batch_id),node=b&&data.production_bom_nodes.find(n=>n.production_id===b.production_id&&n.parent_path===b.path&&n.path===i.path),k=`input:${i.batch_id}:${i.path}`;
-    if(!b||!node||unique.has(k)||i.product_id!==node.product_id||i.usage_mode!==node.usage_mode||!validQuantity(i.quantity,i.usage_mode==='explode')||node.unit_round_up&&!Number.isInteger(i.quantity)||!money(i.cost_cents)||i.quantity===0&&i.cost_cents!==0||!text(i.variance_reason,500))fail('备份层级直属投入无效。');
+    const b=batches.get(i.batch_id), order=b&&orders.get(b.production_id);
+    const choices=b?productionStageItems({...order,nodes:data.production_bom_nodes.filter(n=>n.production_id===order.id),items:data.production_items.filter(item=>item.production_id===order.id)},b.path):[];
+    const node=choices.find(n=>n.path===i.path),k=`input:${i.batch_id}:${i.path}`;
+    if(!b||!node||unique.has(k)||i.product_id!==node.product_id||i.usage_mode!==node.usage_mode||!validQuantity(i.quantity,!stageInputCanBeZero(node,choices))||node.unit_round_up&&!Number.isInteger(i.quantity)||!money(i.cost_cents)||i.quantity===0&&i.cost_cents!==0||!text(i.variance_reason,500))fail('备份层级直属投入无效。');
     unique.add(k);const parts=[...allocations.values()].filter(a=>a.input_id===i.id);
-    if(i.usage_mode==='stock'?parts.length!==0:!parts.length||sum(parts,'quantity')!==i.quantity||parts.reduce((n,a)=>n+a.cost_cents,0)!==i.cost_cents)fail('备份半成品分配与投入不一致。');
+    if(i.usage_mode==='stock'?parts.length!==0:(i.quantity>0&&!parts.length)||sum(parts,'quantity')!==i.quantity||parts.reduce((n,a)=>n+a.cost_cents,0)!==i.cost_cents)fail('备份半成品分配与投入不一致。');
   }
   for(const a of allocations.values()){
     const i=inputs.get(a.input_id),consumer=i&&batches.get(i.batch_id),source=batches.get(a.source_batch_id),k=`allocation:${a.input_id}:${a.source_batch_id}`;

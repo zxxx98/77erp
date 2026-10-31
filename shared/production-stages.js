@@ -3,7 +3,7 @@ import { materialQuantity } from './quantity.js';
 import { calculateBomNodes, supplyFraction } from './bom-expansion.js';
 
 export function stageDisplayStandardQuantity(item, outputQuantity) {
-  if (outputQuantity === 0) return 0;
+  if (outputQuantity === 0 || item.is_supplemental_input) return 0;
   let quantity = bomRequiredQuantity(item.quantity, outputQuantity, item.bom_base_quantity,
     item.quantity_fraction, item.loss_rate, item.loss_method, 6);
   if (item.supply_fraction) {
@@ -32,4 +32,37 @@ export function deriveProductionStages(order) {
       loss_method: first.loss_method, planned_quantity: path ? calculated.nodes.find(n => n.path === path).required : order.planned_quantity,
       items: children };
   });
+}
+
+
+// Additional issued materials are separate stock inputs, never edits to BOM nodes.
+export function productionStageItems(order, path) {
+  const direct = order.nodes.filter(node => node.parent_path === path);
+  const outputId = path ? order.nodes.find(node => node.path === path)?.product_id : order.product_id;
+  const extras = (order.items || []).filter(item => item.product_id !== outputId &&
+    !direct.some(node => node.usage_mode === 'stock' && node.product_id === item.product_id) &&
+    (item.base_quantity === 0 || direct.some(node => node.usage_mode === 'explode' && node.product_id === item.product_id)));
+  return [...direct, ...extras.map(item => ({ ...item, path: `@stock:${path || 'root'}:${item.product_id}`, parent_path: path,
+    usage_mode: 'stock', quantity: 0, quantity_fraction: '', loss_rate: 0, loss_method: order.loss_method,
+    bom_base_quantity: 1, is_supplemental_input: true }))];
+}
+
+export function stageInputCanBeZero(item, items) {
+  return item.usage_mode !== 'explode' || items.some(row => row.usage_mode === 'stock' && row.product_id === item.product_id);
+}
+
+export function stageInputDefaults(items, quantity) {
+  const rows = items.map(item => ({ path: item.path, quantity: stageStandardQuantity(item, quantity), variance_reason: '' }));
+  const remaining = new Map(items.filter(item => item.usage_mode === 'stock').map(item => [item.product_id, item.available_quantity || 0]));
+  for (const item of items.filter(item => item.usage_mode === 'explode')) {
+    const stock = items.find(row => row.usage_mode === 'stock' && row.product_id === item.product_id);
+    if (!stock) continue;
+    const row = rows.find(row => row.path === item.path), replacement = rows.find(row => row.path === stock.path);
+    const available = Math.max(0, (remaining.get(item.product_id) || 0) - replacement.quantity);
+    const replace = Math.min(available, Math.max(0, row.quantity - (item.available_quantity || 0)));
+    row.quantity = Math.round((row.quantity - replace) * 10000) / 10000;
+    replacement.quantity = Math.round((replacement.quantity + replace) * 10000) / 10000;
+    remaining.set(item.product_id, Math.max(0, available - replace));
+  }
+  return rows.map(row => ({ ...row, quantity: String(row.quantity) }));
 }

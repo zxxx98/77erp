@@ -1,6 +1,6 @@
 import { calculateBomNodes } from '../shared/bom-expansion.js';
 import { productionItemQuantity } from '../shared/production.js';
-import { stageStandardQuantity } from '../shared/production-stages.js';
+import { stageInputDefaults } from '../shared/production-stages.js';
 import { scrapExpectedQuantity } from '../shared/scrap.js';
 
 // A route snapshot and BOM path identify the operation, never its display name.
@@ -54,11 +54,9 @@ export function registrationDefaults(order, target, quantity) {
   if (!target.output) return { items: [], scraps: [] };
   const standards = !order.stage_workflow && order.snapshot_format === 2
     ? new Map(calculateBomNodes(order.nodes, quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
-  const items = target.layer.items.map(item => ({
-    ...(order.stage_workflow ? { path: item.path } : {}), product_id: item.product_id,
-    quantity: String(order.stage_workflow ? stageStandardQuantity(item, quantity) : productionItemQuantity(item, quantity, order, standards)),
-    variance_reason: '',
-  }));
+  const items = order.stage_workflow
+    ? stageInputDefaults(target.layer.items, quantity).map(row => ({ ...row, product_id: target.layer.items.find(item=>item.path===row.path).product_id }))
+    : target.layer.items.map(item => ({ product_id: item.product_id, quantity: String(productionItemQuantity(item, quantity, order, standards)), variance_reason: '' }));
   const scraps = target.path ? [] : (order.scraps || []).map(row => ({ product_id: row.product_id,
     quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity,
       items.map(item => ({ product_id: item.product_id, quantity: Number(item.quantity) })), order.quantity_decimals)), disposition: 'stock' }));

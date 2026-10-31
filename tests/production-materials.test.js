@@ -174,7 +174,7 @@ test('material approvals reject disabled products, changed units, cross-warehous
   assert.equal((await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version }, { warehouseId })).status, 404);
   assert.deepEqual(f.stock(f.material), initial);
   await f.confirm(doc); order = await f.get(order.id);
-  for (const items of [[{ product_id: f.parent, quantity: 1 }], [{ product_id: f.material, quantity: 0.00001 }], [{ product_id: f.material, quantity: -1 }], [{ product_id: f.material, quantity: 1 }, { product_id: f.material, quantity: 1 }]]) {
+  for (const items of [[{ product_id: 999999, quantity: 1 }], [{ product_id: f.material, quantity: 0.00001 }], [{ product_id: f.material, quantity: -1 }], [{ product_id: f.material, quantity: 1 }, { product_id: f.material, quantity: 1 }]]) {
     assert.equal((await f.command(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'out', items, note: '' })).status, 400);
   }
 });
@@ -501,4 +501,33 @@ test('supplement requests allow overissue while preserving original requested qu
   assert.equal(doc.status, 'confirmed'); assert.equal(doc.items[0].quantity, 1); assert.equal(doc.items[0].over_issued_quantity, 4);
   order = await f.get(order.id); assert.equal(order.items[0].issued_quantity, 25); assert.equal(order.items[0].available_quantity, 25);
   f.ok(await f.request('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
+});
+
+test('arbitrary supplemental materials retain zero standards, actual costs and historical batches', async t => {
+  const f=await fixture(t);let o=await f.start(await f.create());await f.confirm(o.material_documents[0]);o=await f.get(o.id);
+  o=f.ok(await f.complete(o));
+  const added=await f.product('ADDITIONAL');f.db.prepare('UPDATE products SET stock=100,inventory_value_cents=20000 WHERE id=?').run(added);
+  o=f.ok(await f.command(`/production-orders/${o.id}/material-requests`,{version:o.version,schema_version:2,type:'out',items:[{product_id:added,quantity:50}],note:''}));
+  await f.confirm(o.material_documents.at(-1));o=await f.get(o.id);
+  o=f.ok(await f.complete(o,0,{items:[{product_id:f.material,quantity:0},{product_id:f.second,quantity:0},{product_id:added,quantity:40}]}));
+  const item=o.items.find(i=>i.product_id===added);
+  assert.equal(item.standard_quantity,0);assert.equal(item.variance_rate,null);assert.equal(item.actual_quantity,40);assert.equal(item.cost_cents,8000);assert.equal(item.available_quantity,10);
+  const backup=f.ok(await f.request('/backup')),preview=f.ok(await f.request('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));o=await f.get(o.id);
+  o=f.ok(await f.command(`/production-orders/${o.id}/material-requests`,{version:o.version,schema_version:2,type:'in',items:[{product_id:added,quantity:10}],note:''}));await f.confirm(o.material_documents.at(-1));
+  assert.equal(f.stock(added).stock,60);assert.equal(f.stock(added).inventory_value_cents,12000);
+});
+
+test('invalid additions roll back and cancelled additions remain auditable without changing the recipe', async t => {
+  const f=await fixture(t);let o=await f.start(await f.create());await f.confirm(o.material_documents[0]);o=await f.get(o.id);
+  const added=await f.product('CANCELLED-ADDITION');
+  const count=f.db.prepare('SELECT COUNT(*) n FROM production_items').get().n;
+  assert.equal((await f.command(`/production-orders/${o.id}/material-requests`,{version:o.version,schema_version:2,type:'out',items:[{product_id:added,quantity:1},{product_id:999999,quantity:1}],note:''})).status,400);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_items').get().n,count);
+  assert.equal((await f.get(o.id)).version,o.version);
+  o=f.ok(await f.command(`/production-orders/${o.id}/material-requests`,{version:o.version,schema_version:2,type:'out',items:[{product_id:added,quantity:999}],note:''}));
+  const doc=o.material_documents.at(-1);f.ok(await f.command(`/production-material-documents/${doc.id}/cancel`,{version:doc.version,reason:'不需要'}));
+  o=await f.get(o.id);assert.equal(o.items.find(i=>i.product_id===added).available_quantity,0);
+  assert.equal(o.items.find(i=>i.product_id===added).planned_quantity,0);
+  const backup=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup}));
 });

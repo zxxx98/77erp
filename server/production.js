@@ -191,7 +191,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     assertProductionOrderAccess(user, order);
     order.product = publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(order.product_id));
     order.items = db.prepare('SELECT * FROM production_items WHERE production_id=? ORDER BY position,id').all(id).map(item => ({
-      ...item, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(item.product_id)),
+      ...item, is_supplemental: item.base_quantity === 0, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(item.product_id)),
     }));
     order.scraps = db.prepare('SELECT * FROM production_scraps WHERE production_id=? ORDER BY position,id').all(id).map(row => ({
       ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id)),
@@ -605,7 +605,8 @@ export function validateProductionBackup(data) {
     const nodes = (nodeGroups.get(order.id) || []).sort((a,b) => a.position-b.position);
     if (![1, 2].includes(order.snapshot_format) || (order.snapshot_format === 1 && nodes.length)) fail('备份生产配方快照格式无效。');
     const expanded = order.snapshot_format === 2 ? validateSnapshotNodes(order, nodes) : null;
-    if (expanded && (!expanded.multi_level || expanded.rows.length !== rows.length)) fail('备份多层生产材料汇总无效。');
+    const recipeRows = rows.filter(row => row.base_quantity !== 0);
+    if (expanded && (!expanded.multi_level || expanded.rows.length !== recipeRows.length)) fail('备份多层生产材料汇总无效。');
     for (const key of ['assigned_groups', 'assigned_users']) {
       let entries;
       try { entries = JSON.parse(order[key]); } catch { fail('备份生产指派无效。'); }
@@ -619,7 +620,7 @@ export function validateProductionBackup(data) {
         !text(order.number, 100, true) || !/^SC\d{8}-[a-f0-9]{12}$/.test(order.number) || numbers.has(order.number) || !text(order.bom_name, 100, true) ||
         boms.get(order.bom_id)?.warehouse_id !== order.warehouse_id || products.get(order.product_id)?.warehouse_id !== order.warehouse_id ||
         !text(order.product_name, 100, true) || !text(order.barcode, 100, true) || !text(order.specification, 500) || !text(order.unit, 100, true) ||
-        ![4,6].includes(order.quantity_decimals) || ![0,1].includes(order.unit_round_up) || !validQuantity(order.base_quantity, true) || !rows.length || rows.length > (expanded ? 500 : 100) ||
+        ![4,6].includes(order.quantity_decimals) || ![0,1].includes(order.unit_round_up) || !validQuantity(order.base_quantity, true) || !rows.length || recipeRows.length > (expanded ? 500 : 100) ||
         new Set(rows.map(row => row.product_id)).size !== rows.length || new Set(rows.map(row => row.position)).size !== rows.length ||
         !text(order.created_by_name, 60, true) || !text(order.updated_by_name, 60, true) || !date(order.created_at) || !date(order.updated_at) ||
         !text(order.completed_by_name, 60) || !text(order.voided_by_name, 60) || !text(order.void_reason, 500) ||
@@ -630,7 +631,7 @@ export function validateProductionBackup(data) {
       fail('备份生产单字段、状态或关联无效。');
     numbers.add(order.number);
     const scraps = scrapGroups.get(order.id) || [];
-    validateScrapRules(scraps, order.product_id, rows);
+    validateScrapRules(scraps, order.product_id, recipeRows);
     if (expanded) validateExpansionScraps(scraps, nodes);
     if (new Set(scraps.map(row => row.position)).size !== scraps.length) fail('备份生产废料排序重复。');
     for (const row of scraps) {
@@ -644,17 +645,20 @@ export function validateProductionBackup(data) {
         fail('备份生产废料数量、处理方式或快照无效。');
     }
     for (const row of rows) {
+      const supplemental = row.base_quantity === 0;
+      if (supplemental && (!order.material_workflow || row.base_quantity_fraction !== '' || row.loss_rate !== 0 || row.planned_quantity !== 0 ||
+          !data.production_material_documents.some(doc => doc.production_id === order.id && doc.kind === 'supplement' && data.production_material_document_items.some(item=>item.document_id===doc.id && item.product_id===row.product_id)))) fail('备份补料材料来源无效。');
       if (![0,1].includes(row.unit_round_up)) fail('备份材料取整属性无效。');
-      if (!expanded) validateBomLossRate(row.loss_rate);
+      if (!expanded || supplemental) validateBomLossRate(row.loss_rate);
       else {
         if (row.base_quantity !== null || row.base_quantity_fraction !== null || row.loss_rate !== null) fail('多层生产材料不能伪造单层基准用量。');
         const expected = expanded.rows[row.position];
         if (!expected || ['product_id','name','barcode','specification','unit','note','unit_round_up'].some(key => row[key] !== expected[key])) fail('备份生产材料与节点来源快照不一致。');
       }
-      if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || row.product_id === order.product_id ||
+      if (products.get(row.product_id)?.warehouse_id !== order.warehouse_id || !supplemental && row.product_id === order.product_id ||
           !text(row.name, 100, true) || !text(row.barcode, 100, true) || !text(row.specification, 500) || !text(row.unit, 100, true) || !text(row.note, 200) || !text(row.variance_reason, 500) || (!completed && row.variance_reason !== '') ||
-          !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= (expanded ? 500 : 100) || (!expanded && !validQuantity(row.base_quantity, true)) ||
-          row.planned_quantity !== (expanded ? expanded.rows.find(item => item.product_id === row.product_id)?.required : productionItemQuantity(row, order.planned_quantity, order)) ||
+          !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= rows.length || (!expanded && !supplemental && !validQuantity(row.base_quantity, true)) ||
+          row.planned_quantity !== (supplemental ? 0 : expanded ? expanded.rows.find(item => item.product_id === row.product_id)?.required : productionItemQuantity(row, order.planned_quantity, order)) ||
           (completed ? !validQuantity(row.actual_quantity) || !money(row.cost_cents) || !order.stage_workflow && row.actual_quantity === 0 && row.cost_cents !== 0 : row.actual_quantity !== null || row.cost_cents !== null))
         fail('备份生产材料数量、成本或快照无效。');
     }

@@ -187,12 +187,25 @@ export function installProductionMaterials(app, db, { route, current, version, u
     if (!order.material_workflow || !['in_progress', 'completed'].includes(order.status) || type === 'out' && order.status === 'completed')
       fail('仅生产中的单据可补料，生产中或已完成单据可退料。', 409);
     assertNoPendingMaterials(db, order);
-    if (!['in','out'].includes(type) || !Array.isArray(items) || !items.length || items.length > order.items.length || new Set(items.map(row => row?.product_id)).size !== items.length)
+    if (!['in','out'].includes(type) || !Array.isArray(items) || !items.length || items.length > 500 || new Set(items.map(row => row?.product_id)).size !== items.length)
       fail('请核对补料或退料方向及材料明细，材料不能重复。');
     if (typeof note !== 'string' || note.length > 500) fail('申请备注最多 500 字。');
     units(order);
     const normalized = items.map(row => {
-      const item = order.items.find(item => item.product_id === row?.product_id);
+      if (!isId(row?.product_id) || !validQuantity(row.quantity, true)) fail('请选择物料，申请数量需为正数且最多 4 位小数。');
+      let item = order.items.find(item => item.product_id === row.product_id);
+      if (!item && type === 'out') {
+        const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, order.warehouse_id);
+        if (!product || !product.active) fail('补料物料需属于当前仓库且已启用。');
+        const position = Math.max(-1, ...order.items.map(item => item.position)) + 1;
+        db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,base_quantity_fraction,loss_rate,planned_quantity,note,position,unit_round_up,actual_quantity,cost_cents)
+          VALUES (?,?,?,?,?,?,0,'',0,0,'',?,?,?,?)`).run(order.id,product.id,product.name,product.barcode,product.specification,product.unit,position,product.unit_round_up,order.completed_at ? 0 : null,order.completed_at ? 0 : null);
+        // Historical batches did not consume materials added afterwards.
+        db.prepare(`INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason)
+          SELECT id,?,0,0,'' FROM production_batches WHERE production_id=?`).run(product.id,order.id);
+        item = db.prepare('SELECT * FROM production_items WHERE production_id=? AND product_id=?').get(order.id,product.id);
+        order.items.push(item);
+      }
       if (!item || !validQuantity(row.quantity, true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
       const quantity = materialQuantity(row.quantity, item);
       if (type === 'in' && quantity > item.available_quantity) fail(`${item.name}退料超过已领未耗余额。`);

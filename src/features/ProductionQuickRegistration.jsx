@@ -1,3 +1,4 @@
+import { stageInputCanBeZero } from '../../shared/production-stages.js';
 import { operationAllocation } from '../../shared/operation-overflow.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
@@ -59,7 +60,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   const select = row => { setSelectedId(row.id); clear(); setMessage(''); action.setError(''); setPicker(false); };
 
   let defaults = { items: [], scraps: [] }, defaultsError = '', allocations = [];
-  const sourceFor = row => order.stage_workflow ? order.nodes.find(item => item.path === row.path) : target.layer.items.find(item => item.product_id === row.product_id);
+  const sourceFor = row => order.stage_workflow ? order.stages.flatMap(stage=>stage.items).find(item => item.path === row.path) : target.layer.items.find(item => item.product_id === row.product_id);
   let outputQuantity;
   if (target && quantity.trim()) {
     try {
@@ -96,7 +97,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       } else {
         const actuals = items.map(row => {
           const source = sourceFor(row);
-          return { ...row, quantity: materialQuantity(parseQuantity(row.quantity, order.stage_workflow && source.usage_mode === 'explode'), source) };
+          return { ...row, quantity: materialQuantity(parseQuantity(row.quantity, order.stage_workflow && !stageInputCanBeZero(source, order.stages.find(stage => stage.path === source.parent_path).items)), source) };
         });
         const actualScraps = scraps.map(row => ({ ...row, quantity: materialQuantity(parseQuantity(row.quantity), order.scraps.find(item => item.product_id === row.product_id)) }));
         body = { ...operation, completed_quantity: value, items: actuals, scraps: actualScraps, note, finish_order: false };
@@ -164,11 +165,11 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
             const key = itemKey(order, row), source = sourceFor(row);
             return <div className="registration-material" key={key}>
               <strong>{source.name}</strong>
-              {order.stage_workflow && <small className="bom-hint">{t('registration.layer', { path: source.path })} · {t(source.usage_mode === 'explode' ? 'production.supplyProduce' : 'production.supplyStock')}</small>}
+              {order.stage_workflow && <small className="bom-hint">{source.is_supplemental_input ? t('production.supplementalInput') : t('registration.layer', { path: source.path })} · {t(source.usage_mode === 'explode' ? 'production.supplyProduce' : 'production.supplyStock')}</small>}
               {source.available_quantity != null && <p className="bom-hint">{t('production.available')} {count(source.available_quantity)} {source.unit}</p>}
-              <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.name })} inputMode="decimal" disabled={action.busy} value={row.quantity} onChange={event => patchItem(key, { quantity: event.target.value })} /></label>
+              <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.is_supplemental_input ? `${source.name}（${t('production.supplementalInput')}）` : source.name })} inputMode="decimal" disabled={action.busy} value={row.quantity} onChange={event => patchItem(key, { quantity: event.target.value })} /></label>
               {order.stage_workflow
-                ? <label>{t('production.usageVarianceReason2')}<Input.TextArea rows={2} aria-label={t('production.usageVarianceReason', { v0: source.name })} maxLength={500} disabled={action.busy} value={row.variance_reason} onChange={event => patchItem(key, { variance_reason: event.target.value })} /></label>
+                ? <label>{t('production.usageVarianceReason2')}<Input.TextArea rows={2} aria-label={t('production.usageVarianceReason', { v0: source.is_supplemental_input ? `${source.name}（${t('production.supplementalInput')}）` : source.name })} maxLength={500} disabled={action.busy} value={row.variance_reason} onChange={event => patchItem(key, { variance_reason: event.target.value })} /></label>
                 : <MaterialVariance row={{ ...source, ...row }} analysis={productionMaterialAnalysis(source, outputQuantity, order.base_quantity, Number(row.quantity), order.loss_method, order.snapshot_format === 2 ? order.nodes : undefined, order.quantity_decimals)} complete disabled={action.busy} onReason={(_, variance_reason) => patchItem(key, { variance_reason })} />}
             </div>;
           })}

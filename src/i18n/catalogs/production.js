@@ -1283,6 +1283,8 @@ export default {
     "Return materials",
     "Trả nguyên liệu"
   ],
+  "production.supplementalInput": ["补料投入", "Supplemental input", "Nguyên liệu bổ sung"],
+  "production.unrestrictedSupplementHint": ["可添加当前仓库任意已启用物料，包括本单生产的半成品；补料不限计划数量，未耗用的余料可退回仓库。新增物料不改变配方，标准用量为 0。", "Add any active material in this warehouse, including semi-finished goods produced in this order. Supplements have no planned quantity limit; unused materials can be returned. Added materials do not change the recipe and have a standard quantity of 0.", "Có thể thêm mọi vật tư đang hoạt động trong kho, kể cả bán thành phẩm sản xuất trong lệnh. Không giới hạn theo kế hoạch; vật tư chưa dùng có thể trả kho. Vật tư thêm không đổi công thức và có định mức bằng 0."],
   "production.supplementMaterials": [
     "补料",
     "Supplement materials",

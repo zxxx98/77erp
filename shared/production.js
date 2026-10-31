@@ -5,6 +5,7 @@ import { bomRequiredQuantity } from './bom.js';
 export const productionStatusLabels = { draft: '待生产', awaiting_materials: '待领料', in_progress: '生产中', completed: '已完工', void: '已作废' };
 export const productionPlannedQuantity = bomRequiredQuantity;
 export function productionItemQuantity(item, quantity, order, standards) {
+  if (item.base_quantity === 0) return 0;
   if (order.snapshot_format === 2 || order.multi_level) {
     if (standards) return standards.get(item.product_id);
     const row = calculateBomNodes(order.nodes, quantity, order.quantity_decimals ?? 6).rows.find(row => row.product_id === item.product_id);
@@ -42,12 +43,12 @@ export function validateProductionCompletion(value, items, stored = false) {
 export function productionMaterialAnalysis(item, completedQuantity, baseQuantity, actualQuantity, lossMethod = 'internal', nodes, decimals = 4) {
   try {
     if (!validStoredQuantity(actualQuantity)) throw new Error('实际耗料无效。');
-    const rawStandard = nodes instanceof Map ? nodes.get(item.product_id) : nodes ? calculateBomNodes(nodes, completedQuantity, decimals).rows.find(row => row.product_id === item.product_id).required : productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate, lossMethod, decimals);
+    const rawStandard = item.base_quantity === 0 ? 0 : nodes instanceof Map ? nodes.get(item.product_id) : nodes ? calculateBomNodes(nodes, completedQuantity, decimals).rows.find(row => row.product_id === item.product_id).required : productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate, lossMethod, decimals);
     const standard = item.unit_round_up ? Math.ceil(rawStandard) : rawStandard;
-    if (!validStoredQuantity(standard, true)) throw new Error('标准耗料无效。');
+    if (!validStoredQuantity(standard, item.base_quantity !== 0)) throw new Error('标准耗料无效。');
     const difference = quantityUnits(actualQuantity) - quantityUnits(standard);
     return { standard_quantity: standard, variance_quantity: difference / QUANTITY_SCALE,
-      variance_rate: difference * 100 / quantityUnits(standard), analysis_error: '' };
+      variance_rate: standard === 0 ? null : difference * 100 / quantityUnits(standard), analysis_error: '' };
   } catch {
     return { standard_quantity: null, variance_quantity: null, variance_rate: null,
       analysis_error: '标准耗料暂无法计算，请核对合格产量、实际耗料和本单配方；标准数量超出上限时仅保留实际记录。' };

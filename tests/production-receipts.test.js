@@ -85,7 +85,7 @@ test('confirmed receipt reversal preserves exact stock and cost and rejects insu
 test('receipt backups validate immutable batch snapshots, statuses and actor metadata; restore keeps pending receipts', async t => {
   const f = await fixture(t); let order = await f.start(await f.create()); await f.confirm(order.material_documents[0]);
   order = f.ok(await f.complete(await f.get(order.id))); const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 42);
+  assert.equal(backup.version, 43);
   for (const mutate of [
     d=>d.production_receipts[0].quantity++, d=>d.production_receipts[0].batch_id=999,
     d=>d.production_receipts[0].status='confirmed', d=>d.production_receipts[0].confirmed_at=new Date().toISOString(),

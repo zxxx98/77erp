@@ -63,7 +63,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} sea
   } finally { await f.close(); await context.close(); }
 });
 
-for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} unfiltered operations scroll past disabled root steps to semi-finished work`, async ({ browser }) => {
+for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} unfiltered operations scroll past zero-availability root steps to semi-finished work`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? { viewport: { width: 1280, height: 600 } } : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage(), f = await fixture(page);
   try {
@@ -74,7 +74,8 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} unf
     const dialog = page.getByRole('dialog', { name: '选择工序', exact: true });
     const scroller = mode === 'desktop' ? dialog : dialog.locator('.form-body');
     await expect(dialog.getByRole('radio')).toHaveCount(8);
-    await expect(dialog.getByRole('radio').nth(1)).toBeDisabled();
+    await expect(dialog.getByRole('radio').nth(1)).toBeEnabled();
+    await expect(dialog.getByRole('radio').nth(1)).toHaveAccessibleName(/可报 0 件/);
     await expect.poll(() => scroller.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(100);
     if (mode !== 'desktop') {
       const session = await context.newCDPSession(page), box = await scroller.boundingBox();

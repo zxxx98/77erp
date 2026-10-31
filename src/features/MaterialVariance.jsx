@@ -19,7 +19,7 @@ export function MaterialVariance({ row, analysis, complete, disabled, onReason }
       <div className={available && difference > 0 ? 'production-overuse' : available && difference < 0 ? 'production-saving' : ''}>
         <small>{pt("production.usageVariance")}{available ? ` · ${direction}` : ''}</small><span>{available ? `${difference > 0 ? '+' : ''}${count(difference)} ${row.unit}` : '—'}</span>
       </div>
-      <div><small>{pt("production.varianceRate")}</small><span>{available ? rate(analysis.variance_rate) : '—'}</span></div>
+      <div><small>{pt("production.varianceRate")}</small><span>{analysis.variance_rate != null ? rate(analysis.variance_rate) : '—'}</span></div>
     </div>
     {productionMessage(analysis.analysis_error) && <p className="bom-warning">{productionMessage(analysis.analysis_error)}</p>}
     {complete ? <label>{pt("production.usageVarianceReasonOptional")}<AntInput.TextArea aria-label={pt("production.usageVarianceReason", { v0: row.name })} rows={2} maxLength={500}

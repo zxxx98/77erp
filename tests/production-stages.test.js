@@ -99,7 +99,7 @@ test('untouched historic drafts explicitly enable from saved snapshot; plans ref
 test('backup roundtrip retains WIP and rejects cross-source, quantity and cost corruption',async t=>{
   const f=await fixture(t); let o=await f.active();
   o=f.ok(await f.complete(o,'1',12,[['1.1',36]]));
-  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 42);
+  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 43);
   let preview=f.ok(await f.request('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
   o=await f.get(o.id);assert.equal(o.stages[1].available_quantity,12);
@@ -381,4 +381,35 @@ test('whole subassemblies expand the rounded production share when a draft is re
   assert.equal(o.stages[1].planned_quantity,2);
   assert.deepEqual(o.items.map(row=>row.planned_quantity),[1,6]);
   f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+});
+
+test('produce-only semi can be supplemented over plan after a batch, consumed from stock, returned and restored', async t => {
+  const f=await fixture(t); let o=await f.active(); const nodes=structuredClone(o.nodes);
+  o=f.ok(await f.complete(o,'1',2,[['1.1',6]]));
+  o=f.ok(await f.complete(o,'',1,[['1',2]]));
+  f.db.prepare('UPDATE products SET stock=30,inventory_value_cents=9000 WHERE id=?').run(f.b);
+  o=f.ok(await f.command(`/production-orders/${o.id}/material-requests`,{version:o.version,type:'out',items:[{product_id:f.b,quantity:25}],note:'超计划半成品补料'}));
+  let doc=o.material_documents.at(-1);
+  f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));o=await f.get(o.id);
+  const path=`@stock:root:${f.b}`;
+  assert.equal(o.stages[0].items.find(i=>i.path===path).available_quantity,25);
+  assert.equal(o.items.find(i=>i.product_id===f.b).is_supplemental,true);
+  o=f.ok(await f.complete(o,'',10,[['1',0],[path,20]]));
+  assert.equal(o.items.find(i=>i.product_id===f.c).available_quantity,54);
+  assert.equal(o.items.find(i=>i.product_id===f.b).available_quantity,5);
+  assert.equal(o.items.find(i=>i.product_id===f.b).standard_quantity,0);
+  assert.deepEqual(o.nodes,nodes);
+  const last=(await f.batches(o,'')).batches.at(-1);
+  assert.equal(last.total_cost_cents,6000);
+  let backup=f.ok(await f.request('/backup'));
+  let preview=f.ok(await f.request('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));o=await f.get(o.id);
+  o=f.ok(await f.command(`/production-orders/${o.id}/material-requests`,{version:o.version,type:'in',items:[{product_id:f.b,quantity:5}],note:'退多领'}));
+  doc=o.material_documents.at(-1);f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));o=await f.get(o.id);
+  o=f.ok(await f.voidBatch(o,last.id));
+  assert.equal(o.items.find(i=>i.product_id===f.b).available_quantity,20);
+  o=f.ok(await f.command(`/production-orders/${o.id}/material-requests`,{version:o.version,type:'in',items:[{product_id:f.b,quantity:20}],note:'退回撤销耗用'}));
+  doc=o.material_documents.at(-1);f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.b).stock,30);
+  backup=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup}));
 });

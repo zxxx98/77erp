@@ -1205,6 +1205,13 @@ test('AI queries explicit alternate and multilevel recipes, exposes snapshot sou
   assert.match(system, /多份匹配时须让用户明确选择/); assert.match(system, /不抵扣中间半成品库存/);
   assert.match(system, /分层生产单/);
   assert.match(system, /不重复扣/);
+  let supplemental = await command(`/production-orders/${created.data.id}/material-requests`, { version: (await f.request(f.admin, `/production-orders/${created.data.id}`)).data.version, type: 'out', items: [{product_id: intermediate.id, quantity: 10}], note: '' });
+  f.use('get_production_order', {production_id: created.data.id}); await f.chat(f.staff);
+  assert.equal(result().items.find(item=>item.product_id===intermediate.id).is_supplemental,true);
+  assert.equal(result().stages[0].items.find(item=>item.is_supplemental_input).product_id,intermediate.id);
+  assert.ok(!JSON.stringify(result()).includes('cost_cents'));
+  assert.match(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description,/数量不受BOM或计划上限限制/);
+  assert.equal(supplemental.material_documents.at(-1).items[0].quantity,10);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM ai_actions').get().n, 0);
 });
 

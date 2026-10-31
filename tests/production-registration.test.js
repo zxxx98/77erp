@@ -65,3 +65,13 @@ test('ordinary final output fills actual inputs and scrap while intermediate ope
   assert.equal(defaults.scraps[0].quantity, '0.8');
   assert.equal(defaults.scraps[0].disposition, 'stock');
 });
+
+test('semi defaults use produced balance first, stock for its deficit and zero for unrelated additions', () => {
+  const standard={product_id:2,path:'1',parent_path:'',usage_mode:'explode',quantity:2,quantity_fraction:'',bom_base_quantity:1,loss_rate:0,loss_method:'internal',unit_round_up:0,available_quantity:3};
+  const stock={...standard,path:'@stock:root:2',usage_mode:'stock',is_supplemental_input:true,quantity:0,available_quantity:20};
+  const extra={...stock,product_id:3,path:'@stock:root:3',available_quantity:100};
+  const order={stage_workflow:1,stages:[],scraps:[]},target={output:true,path:'',layer:{items:[standard,stock,extra]}};
+  assert.deepEqual(registrationDefaults(order,target,5).items.map(i=>[i.path,i.quantity]),[['1','3'],['@stock:root:2','7'],['@stock:root:3','0']]);
+  stock.available_quantity=2;
+  assert.deepEqual(registrationDefaults(order,target,5).items.map(i=>i.quantity),['8','2','0']);
+});

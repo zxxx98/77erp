@@ -261,3 +261,47 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} chooses partial s
     expect(errors).toEqual([]);
   } finally { await f.close(); await context?.close(); }
 });
+
+for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} supplements produce-only semi without a plan cap and returns unused stock`, async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const context=mode==='pwa'?await browser.newContext({locale:'zh-CN',serviceWorkers:'allow',viewport:{width:390,height:844},userAgent:iphone}):null;
+  if(context)page=await context.newPage();
+  if(mode!=='desktop') {await page.setViewportSize({width:390,height:844});await page.addInitScript(ua=>Object.defineProperty(navigator,'userAgent',{value:ua}),iphone);}
+  const f=await fixture(page),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  try {
+    f.db.prepare('UPDATE products SET stock=30,inventory_value_cents=9000 WHERE id=?').run(f.half.id);
+    await page.goto(`${f.base}/#production`);if(context)await page.evaluate(()=>navigator.serviceWorker.ready);
+    await page.getByRole('button',{name:`查看生产单 ${f.draft.number}`,exact:true}).click();
+    await page.getByRole('tab',{name:'物料',exact:true}).click();
+    await page.getByRole('button',{name:'申请补料',exact:true}).click();
+    await page.getByRole('searchbox',{name:'搜索材料',exact:true}).fill('分层半成品');
+    await page.getByRole('button',{name:'添加材料 分层半成品',exact:true}).click();
+    await page.getByLabel('分层半成品补料数量',{exact:true}).fill('25');
+    await page.getByRole('button',{name:'提交补料申请',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
+    let o=await f.get(),doc=o.material_documents.at(-1);
+    expect(doc.items[0].quantity).toBe(25);
+    await f.post(`/production-material-documents/${doc.id}/confirm`,{version:doc.version});
+    await page.reload();
+    await page.getByRole('button',{name:`查看生产单 ${f.draft.number}`,exact:true}).click();
+    await page.getByRole('tab',{name:'生产进度',exact:true}).click();
+    await page.getByRole('button',{name:'登记 分层成品',exact:true}).click();
+    await page.getByLabel('本次数量',{exact:true}).fill('10');
+    await adjustUsage(page);
+    await expect(page.getByLabel('分层半成品实际耗料',{exact:true})).toHaveValue('0');
+    await expect(page.getByLabel('分层半成品（补料投入）实际耗料',{exact:true})).toHaveValue('20');
+    await submitProductionBatch(page);
+    await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
+    o=await f.get();expect(o.items.find(i=>i.product_id===f.half.id).available_quantity).toBe(5);
+    expect(o.items.find(i=>i.product_id===f.raw.id).available_quantity).toBe(60);
+    await page.getByRole('tab',{name:'物料',exact:true}).click();
+    await page.getByRole('button',{name:'申请退料',exact:true}).click();
+    await page.getByLabel('分层半成品退料数量',{exact:true}).fill('5');
+    await page.getByLabel('分层原料退料数量',{exact:true}).fill('0');
+    await page.getByRole('button',{name:'提交退料申请',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'生产单详情',exact:true})).toBeVisible();
+    o=await f.get();doc=o.material_documents.at(-1);await f.post(`/production-material-documents/${doc.id}/confirm`,{version:doc.version});
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.half.id).stock).toBe(10);
+    expect(errors).toEqual([]);
+  } finally {await f.close();if(context)await context.close();}
+});

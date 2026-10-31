@@ -10,7 +10,7 @@ import { useBusiness } from '../business-api.js';
 import { useQuery } from '../queries.js';
 import { api } from '../api.js';
 import { parseQuantity, materialQuantity, addQuantity } from '../../shared/quantity.js';
-import { stageDisplayStandardQuantity, stageStandardQuantity } from '../../shared/production-stages.js';
+import { stageDisplayStandardQuantity, stageStandardQuantity, stageInputCanBeZero, stageInputDefaults } from '../../shared/production-stages.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import { ScrapOutputs } from './ScrapOutputs.jsx';
 import './production-stages.css';
@@ -64,7 +64,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     else if (history) { if (initialHistoryPath !== undefined) onBack(); else { setHistory(null); setVoiding(null); } }
     else onBack();
   });
-  const defaults = (target, quantity) => target.items.map(item => ({ path: item.path, quantity: String(stageStandardQuantity(item, quantity)), variance_reason: '' }));
+  const defaults = (target, quantity) => stageInputDefaults(target.items, quantity);
   const begin = (target, operation = null, workerId = undefined) => action.run(async () => {
     if (!operation && order.operation_routes?.some(route => route.path === target.path)) { setOperationPath(target.path); return; }
     const quantity = materialQuantity(operation?.available_quantity ?? (Math.max(0, target.planned_quantity - target.completed_quantity) || 1), target);
@@ -82,7 +82,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       const quantity = materialQuantity(parseQuantity(form.completed_quantity, true), stage);
       const items = form.items.map(row => {
         const item = stage.items.find(item => item.path === row.path);
-        const actual = materialQuantity(parseQuantity(row.quantity, item.usage_mode === 'explode'), item);
+        const actual = materialQuantity(parseQuantity(row.quantity, !stageInputCanBeZero(item, stage.items)), item);
         if (actual > item.available_quantity) throw new Error(pt("production.insufficientAvailableFirst", { v0: item.name, v1: item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials") }));
         return { ...row, quantity: actual };
       });
@@ -136,7 +136,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
         {stage.items.map(item => {
           const actual = form.items.find(row => row.path === item.path), standard = standards.get(item.path);
           return <article className="stage-input" key={item.path}>
-            <div><strong>{item.name}</strong><p className="bom-hint">{item.usage_mode === 'explode' ? pt("production.semiFinishedInThisOrder") : pt("production.issuedRawMaterials")} · {item.usage_mode === 'explode' ? pathLabel(byPath.get(item.path)) : item.path}</p></div>
+            <div><strong>{item.name}</strong><p className="bom-hint">{item.usage_mode === 'explode' ? pt("production.semiFinishedInThisOrder") : pt("production.issuedRawMaterials")} · {item.is_supplemental_input ? pt('production.supplementalInput') : item.usage_mode === 'explode' ? pathLabel(byPath.get(item.path)) : item.path}</p></div>
             <div className="stage-input-numbers"><span>{pt("production.standardInput2")} <strong>{standard === undefined ? '—' : count(standard)} {item.unit}</strong></span><span>{pt("production.available")} <strong>{count(item.available_quantity)} {item.unit}</strong></span></div>
             <label>{pt("production.actualInput")}{item.unit}）<Input aria-label={pt("production.actualInput2", { v0: item.name })} inputMode="decimal" disabled={locked} value={actual.quantity} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, quantity: event.target.value } : row) })} /></label>
             {Number(actual.quantity) > item.available_quantity && <p className="bom-warning">{pt("production.insufficientAvailableQuantityFirst")}{item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials")}。</p>}
