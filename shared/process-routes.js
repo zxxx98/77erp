@@ -11,6 +11,8 @@ export function validateProcessGraph(graph) {
         typeof node.note !== 'string' || node.note.length > 500 ||
         ![node.x, node.y].every(value => Number.isFinite(value) && value >= 0 && value <= 10000))
       fail('工序编号、名称、作业说明或位置无效。');
+    if (node.acceptance_template_id != null && (!Number.isSafeInteger(node.acceptance_template_id) || node.acceptance_template_id < 1)) fail('请选择有效验收模板。');
+    if (node.acceptance_revision_id != null && (!node.acceptance_template_id || !Number.isSafeInteger(node.acceptance_revision_id) || node.acceptance_revision_id < 1)) fail('验收模板版本无效。');
     ids.add(node.id);
   }
   const seen = new Set(), incoming = new Map(graph.nodes.map(n => [n.id, []])), outgoing = new Map(graph.nodes.map(n => [n.id, []]));

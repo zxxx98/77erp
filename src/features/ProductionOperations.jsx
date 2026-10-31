@@ -1,10 +1,12 @@
+import { WorkbookResults } from '../pages/quality-shared.jsx';
+import { useOperationAcceptance, operationAcceptanceAllowed } from './OperationAcceptance.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useBusiness } from '../business-api.js';
 import { useQuery } from '../queries.js';
 import { api } from '../api.js';
 import { usePermissions } from '../permissions.jsx';
-import { Button, PageHeading, QueryStatus, Badge } from '../components/common.jsx';
+import { Button, Modal, PageHeading, QueryStatus, Badge } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { Select } from '../Dropdown.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
@@ -29,10 +31,11 @@ export function OperationWorkerSelect({ order, warehouseId, value, onChange, dis
 export function ProductionOperations({ order, path = '', data, canRegister, onRegister, onOutput, onBack, onSaved, onActivity }) {
   useLocale();
   const { can, user } = usePermissions(), action = useBusiness();
+  const acceptance=useOperationAcceptance();
   const route = order.operation_routes.find(r => r.path === path), layer = order.stages?.find(s => s.path === path);
   const unit = layer?.unit || order.unit;
   const [workerId, setWorkerId] = useState(user.id), [form, setForm] = useState(null), [voiding, setVoiding] = useState(null), [selected, setSelected] = useState('');
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useState(0), [acceptanceDetail,setAcceptanceDetail]=useState(null);
   const historyData = useMemo(() => ({ warehouse_id: data.warehouse_id, version: order.version }), [data.warehouse_id, order.version]);
   const historyQuery = useQuery(`/production-orders/${order.id}/operations/reports?${new URLSearchParams({ snapshot_id: String(route.id), offset: String(offset) })}`, historyData);
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph');
@@ -47,10 +50,12 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
   const leave = fn => { if (!action.busy && (!dirty || window.confirm(t('route.unsaved')))) { action.setError(''); fn(); } };
-  const send = (suffix, body) => action.send(`/production-orders/${order.id}${suffix}`, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...body }, { warehouseId: data.warehouse_id });
+  const send = async (suffix, body) => action.send(`/production-orders/${order.id}${suffix}`, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...await acceptance.enrich(`/production-orders/${order.id}${suffix}`,body,{warehouseId:data.warehouse_id}) }, { warehouseId: data.warehouse_id });
   const back = () => leave(() => { if (form || voiding) { setForm(null); setVoiding(null); } else onBack(); });
   const activeNode = form ? route.operations.find(n => n.id === form.node_id) : null;
-  return <div className="production-stages process-page"><PageHeading title={t('route.progress')} description={`${order.number} · ${layer?.name || order.product_name} · ${route.route_name}`}><Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{t(form || voiding ? 'route.backOperations' : 'route.backOrder')}</Button></PageHeading>
+  return <div className="production-stages process-page">{acceptance.dialog}
+    {acceptanceDetail&&<Modal title={t('route.acceptanceRecord')} subtitle={acceptanceDetail.number} wide onClose={()=>setAcceptanceDetail(null)}><div className="form-body"><p>{acceptanceDetail.note}</p><p>{acceptanceDetail.created_by_name} · {new Date(acceptanceDetail.created_at).toLocaleString(getFormatLocale())}</p>{acceptanceDetail.reports.map(report=><p key={report.id}>{report.worker_name} · {count(report.quantity)} {unit} · {t(report.status==='void'?'route.voided':'route.active')} {report.void_reason}</p>)}<WorkbookResults definition={acceptanceDetail.definition} preview={acceptanceDetail.result}/></div></Modal>}
+    <PageHeading title={t('route.progress')} description={`${order.number} · ${layer?.name || order.product_name} · ${route.route_name}`}><Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{t(form || voiding ? 'route.backOperations' : 'route.backOrder')}</Button></PageHeading>
     <section className="panel bom-section">
       <div className="process-progress-top">
         <div className="process-progress-intro">
@@ -84,6 +89,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                 </div>
                 {node.is_output ? <Badge tone="blue">{t('route.output')}</Badge> : isStart ? <Badge tone="green">{t('route.start')}</Badge> : null}
               </div>
+              {node.acceptance_template_id && <Badge tone="orange">{t('route.acceptanceRequired')}</Badge>}
               {node.note && <p className="process-operation-note">{node.note}</p>}
               <p className="bom-hint">{t('route.predecessors')}: {node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}</p>
               <dl className="process-operation-stats">
@@ -91,7 +97,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                 {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t('route.available')}</dt><dd>{count(node.available_quantity)} {unit}</dd></div>}
               </dl>
               {canRegister && <div className="process-operation-card-action">
-                <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' })}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
+                <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { if(!operationAcceptanceAllowed(node,can)) return; return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
               </div>}
             </article>;
           })}
@@ -137,6 +143,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             </div>
             <p className="process-history-people">{t('route.worker')}: {report.worker_name} · {t('route.recorder')}: {report.registered_by_name}</p>
             <p className="bom-hint">{new Date(report.created_at).toLocaleString(getFormatLocale())}</p>
+            {report.acceptance_id && <Button disabled={action.busy} onClick={()=>action.run(async()=>setAcceptanceDetail(await api(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`,{warehouseId:data.warehouse_id})))}>{t('route.acceptanceRecord')} #{report.acceptance_id}</Button>}
             {report.note && <p className="process-history-note">{report.note}</p>}
             {report.status === 'void' && <p className="process-history-void-reason">{t('route.reason')}: {report.void_reason}</p>}
             {report.output_kind && <p className="bom-hint">{t('route.outputVoidHint')}</p>}

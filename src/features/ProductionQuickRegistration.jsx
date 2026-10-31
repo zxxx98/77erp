@@ -1,3 +1,4 @@
+import { useOperationAcceptance, operationAcceptanceAllowed } from './OperationAcceptance.jsx';
 import { stageInputCanBeZero } from '../../shared/production-stages.js';
 import { operationAllocation } from '../../shared/operation-overflow.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -36,6 +37,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   useLocale();
   const { user, can } = usePermissions();
   const action = useBusiness();
+  const acceptance=useOperationAcceptance();
   const targets = useMemo(() => registrationTargets(order), [order]);
   const [selectedId, setSelectedId] = useState(() => {
     const initial = targets.find(row => row.id === initialTargetId || row.layer.pool_paths?.some(path => JSON.stringify([path, row.node?.id ?? null]) === initialTargetId));
@@ -60,7 +62,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   useEffect(() => () => onActivity?.(null), [onActivity]);
   const leave = fn => { if (!action.busy && (!dirty || window.confirm(t('route.unsaved')))) { action.setError(''); fn(); } };
   const clear = () => { setQuantity(''); setNote(''); setOverrides({ items: {}, scraps: {} }); setExpanded(false); };
-  const select = row => { setSelectedId(row.id); clear(); setMessage(''); action.setError(''); setPicker(false); };
+  const select = row => { if(!operationAcceptanceAllowed(row.node,can))return; setSelectedId(row.id); clear(); setMessage(''); action.setError(''); setPicker(false); };
 
   let defaults = { items: [], scraps: [] }, defaultsError = '', allocations = [];
   const sourceFor = row => order.stage_workflow ? order.stages.flatMap(stage=>stage.items).find(item => item.path === row.path) : target.layer.items.find(item => item.product_id === row.product_id);
@@ -89,6 +91,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     event.preventDefault();
     action.run(async () => {
       if (!target) throw new Error(t('registration.chooseOperation'));
+      if(!operationAcceptanceAllowed(target.node,can)) return;
       if (!registerable) throw new Error(t('registration.closed'));
       if (defaultsError) { if (target.output) setExpanded(true); throw new Error(defaultsError); }
       const value = parseQuantity(quantity, true);
@@ -117,7 +120,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       }
       try {
         const result = await action.send(`/production-orders/${order.id}${suffix}`, {
-          schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...body,
+          schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...await acceptance.enrich(`/production-orders/${order.id}${suffix}`,body,{warehouseId:data.warehouse_id}),
         }, { warehouseId: data.warehouse_id });
         clear();
         setMessage(t('registration.saved', { name: target.name, quantity: count(value), unit: target.unit }));
@@ -134,6 +137,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     </Radio></div>)}
   </div>;
   return <div className="production-quick-registration">
+    {acceptance.dialog}
     <PageHeading title={t('production.productionRegistration')} description={`${order.number} · ${order.product_name}`}>
       <Button icon={ArrowLeft} disabled={action.busy} onClick={() => leave(onBack)}>{t('production.backToOrderDetails')}</Button>
     </PageHeading>

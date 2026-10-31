@@ -3,6 +3,8 @@ import { previewDefinition } from '../shared/quality-template.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
+// Voided operation inspections remain auditable, but no longer contribute to charts.
+export const activeQualityAcceptance = (alias='a') => `(NOT EXISTS (SELECT 1 FROM production_operation_reports p WHERE p.acceptance_id=${alias}.id) OR EXISTS (SELECT 1 FROM production_operation_reports p WHERE p.acceptance_id=${alias}.id AND p.status='active'))`;
 export function migrateQualityCharts(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS quality_charts (
     id INTEGER PRIMARY KEY, warehouse_id INTEGER NOT NULL REFERENCES warehouses(id), template_id INTEGER NOT NULL REFERENCES quality_templates(id),
@@ -28,7 +30,7 @@ export function qualityChartRevision(db,warehouseId,id) {
   return row;
 }
 export function qualityChartEntries(db,warehouseId,templateId,filters={}) {
-  const clauses=['a.warehouse_id=?','a.template_id=?'],args=[warehouseId,templateId];
+  const clauses=['a.warehouse_id=?','a.template_id=?',activeQualityAcceptance()],args=[warehouseId,templateId];
   if(filters.acceptanceId){clauses.push('a.id=?');args.push(filters.acceptanceId);}
   if(filters.productId){clauses.push("EXISTS (SELECT 1 FROM json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=?)");args.push(filters.productId);}
   const rows=db.prepare(`SELECT a.id,a.number,a.name,a.result,a.bindings,r.definition FROM quality_acceptances a JOIN quality_template_revisions r ON r.id=a.revision_id WHERE ${clauses.join(' AND ')} ORDER BY a.id LIMIT 2001`).all(...args);
@@ -82,7 +84,7 @@ export function installQualityCharts(router,db,{run,transaction,owner}) {
   router.get('/chart-sources/:revision',run(req=>source(revision(req,req.params.revision))));
   router.get('/chart-acceptances',run(req=>{
     const templateId=Number(req.query.template_id),q=String(req.query.q||'').trim().slice(0,100);
-    const rows=db.prepare(`SELECT id,name,number FROM quality_acceptances WHERE warehouse_id=? AND template_id=? AND (instr(name,?)>0 OR instr(number,?)>0) ORDER BY id DESC LIMIT 101`).all(req.warehouse.id,templateId,q,q);
+    const rows=db.prepare(`SELECT id,name,number FROM quality_acceptances a WHERE ${activeQualityAcceptance()} AND warehouse_id=? AND template_id=? AND (instr(name,?)>0 OR instr(number,?)>0) ORDER BY id DESC LIMIT 101`).all(req.warehouse.id,templateId,q,q);
     return {acceptances:rows.slice(0,100),has_more:rows.length>100};
   }));
   router.get('/charts',run(req=>{
@@ -96,7 +98,7 @@ export function installQualityCharts(router,db,{run,transaction,owner}) {
     const productId=Number(req.params.product);if(!Number.isSafeInteger(productId)||productId<1)throw error('物料编号无效。');product(req,productId);
     const rows=db.prepare(`SELECT c.*,r.name AS template_name FROM quality_charts c JOIN quality_template_revisions r ON r.id=c.revision_id
       WHERE c.warehouse_id=? AND c.enabled=1 AND json_extract(c.config,'$.kind')='material'
-      AND EXISTS (SELECT 1 FROM quality_acceptances a,json_each(a.bindings) b WHERE a.warehouse_id=c.warehouse_id AND a.template_id=c.template_id AND json_extract(b.value,'$.product_id')=?) ORDER BY c.id DESC`).all(req.warehouse.id,productId);
+      AND EXISTS (SELECT 1 FROM quality_acceptances a,json_each(a.bindings) b WHERE a.warehouse_id=c.warehouse_id AND a.template_id=c.template_id AND ${activeQualityAcceptance()} AND json_extract(b.value,'$.product_id')=?) ORDER BY c.id DESC`).all(req.warehouse.id,productId);
     return {charts:rows.map(row=>({...row,config:JSON.parse(row.config)}))};
   }));
   router.post('/charts/preview',run(req=>{

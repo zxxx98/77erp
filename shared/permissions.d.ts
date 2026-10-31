@@ -1,4 +1,4 @@
-export type PermissionKey = 'basic_view' | 'production_register' | 'ai' | 'products' | 'purchase' | 'sale' | 'corrections' | 'transfer' | 'stocktake' | 'business' | 'quality' | 'bom' | 'production' | 'finance' | 'data_io';
+export type PermissionKey = 'operation_accept' | 'basic_view' | 'production_register' | 'ai' | 'products' | 'purchase' | 'sale' | 'corrections' | 'transfer' | 'stocktake' | 'business' | 'quality' | 'bom' | 'production' | 'finance' | 'data_io';
 export type PermissionUser = { role?: string; permissions?: string[]; legacy_permissions?: boolean; standard_permissions?: string[]; access_mode?: string };
 export const permissionOptions: { key: PermissionKey; label: string; description: string }[];
 export const permissionKeys: PermissionKey[];

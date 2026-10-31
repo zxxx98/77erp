@@ -21,6 +21,7 @@ export function ProcessRoutes({ data }) {
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [selected, setSelected] = useState('');
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph'), [connecting, setConnecting] = useState(null), [message, setMessage] = useState('');
   const queryData = useMemo(() => ({ ...data, routeRevision: revision }), [data, revision]);
+  const templates = useQuery(editor ? '/process-routes/acceptance-templates' : null, data);
   const list = useQuery(queryPath('/process-routes', { q, status, offset }), queryData, 150);
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
@@ -161,6 +162,12 @@ export function ProcessRoutes({ data }) {
           </div>
           <label>{t('route.nodeName')}<Input aria-label={t('route.nodeName')} value={node.name} maxLength={80} disabled={action.busy} onChange={event => patchNode({ name: event.target.value })} /></label>
           <label>{t('route.nodeNote')}<Input.TextArea rows={3} aria-label={t('route.nodeNote')} value={node.note} maxLength={500} disabled={action.busy} onChange={event => patchNode({ note: event.target.value })} /></label>
+          <label>{t('route.acceptanceTemplate')}<Select aria-label={t('route.acceptanceTemplate')} value={node.acceptance_template_id ?? ''} disabled={action.busy || templates.loading} onChange={value => patchNode({acceptance_template_id:value ? Number(value) : null})}>
+            <option value="">{t('route.noAcceptance')}</option>
+            {node.acceptance_template_id && !templates.result?.templates.some(row=>row.id===node.acceptance_template_id) && <option value={node.acceptance_template_id}>#{node.acceptance_template_id}</option>}
+            {templates.result?.templates.map(row=><option key={row.id} value={row.id}>{row.name} · v{row.revision} (#{row.id})</option>)}
+          </Select></label><QueryStatus query={templates}/>
+          <p className="bom-hint">{t('route.acceptanceBindingHint')}</p>
           {graph.nodes.length > 1 && <fieldset className="process-predecessors" disabled={action.busy}>
             <legend>{t('route.predecessors')}</legend>
             {graph.nodes.filter(n => n.id !== node.id).map(parent => {

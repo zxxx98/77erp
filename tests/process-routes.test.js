@@ -1,3 +1,7 @@
+import { qualityChartEntries } from '../server/quality-charts.js';
+import ExcelJS from 'exceljs';
+import { readQualityWorkbook } from '../server/quality-workbook.js';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -7,8 +11,8 @@ import { validateProcessGraph, arrangeProcessGraph } from '../shared/process-rou
 const node = (id, name = id) => ({ id, name, note: '', x: 24, y: 24 });
 const serial = { nodes: [node('cut','下料'),node('weld','焊接'),node('out','检验')], edges: [{from:'cut',to:'weld'},{from:'weld',to:'out'}] };
 const parallel = { nodes: [node('cut'),node('part'),node('out')], edges: [{from:'cut',to:'out'},{from:'part',to:'out'}] };
-async function fixture(t, { multi = false, graph = serial, routed = true, repeated = false } = {}) {
-  const {app,db}=createApp(':memory:'); const server=app.listen(0,'127.0.0.1'); await new Promise(resolve=>server.once('listening',resolve));
+async function fixture(t, { multi = false, graph = serial, routed = true, repeated = false, qualityStorage } = {}) {
+  const {app,db}=createApp(':memory:', {qualityStorage}); const server=app.listen(0,'127.0.0.1'); await new Promise(resolve=>server.once('listening',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();});
   let cookie;
   const request=async(path,body,options={})=>{const response=await fetch(`http://127.0.0.1:${server.address().port}/api${path}`,{method:options.method||(body===undefined?'GET':'POST'),headers:{'Content-Type':'application/json',Cookie:options.cookie||cookie||'','X-Warehouse-ID':String(options.warehouseId||1)},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};};
@@ -196,7 +200,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version,43);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version,44);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);
@@ -285,4 +289,144 @@ test('shared operations aggregate predecessors across paths, register output onc
   const cut=history.reports.find(r=>r.node_id==='cut');
   assert.equal((await f.command(`/production-orders/${order.id}/operations/${cut.id}/void`,{version:order.version,reason:'前序核对'})).status,409);
   f.ok(await f.command('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+});
+
+async function acceptanceFixture(t, config={}) {
+  const objects=new Map();
+  const storage={async put(c,key,bytes){objects.set(key,Buffer.from(bytes));},async get(c,key){if(!objects.has(key))throw new Error('missing');return objects.get(key);},async remove(c,key){objects.delete(key);}};
+  const f=await fixture(t,{...config,qualityStorage:storage});
+  const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('验收');sheet.getCell('A1').value='测量值';sheet.getCell('B1').value=10;
+  const buffer=Buffer.from(await book.xlsx.writeBuffer()),workbook=await readQualityWorkbook(buffer);
+  const definition={sheetName:'验收',fields:[{id:'measurement',name:'测量值',type:'number',labelRegion:'A1',valueRegion:'B1',required:true}]};
+  const credentials={account_id:'a'.repeat(32),bucket:'erp-backups',access_key:'test-access',secret_key:'test-secret'};
+  const settings=f.ok(await f.request('/settings/r2-backup'));
+  f.ok(await f.request('/settings/r2-backup',{...settings,...credentials},{method:'PUT'}));
+  const now=new Date().toISOString();objects.set('excel/templates/source.xlsx',buffer);
+  const fid=Number(f.db.prepare('INSERT INTO quality_template_files(warehouse_id,account_id,bucket,object_key,filename,size,sha256,workbook,created_at) VALUES (1,?,?,?,?,?,?,?,?)').run(credentials.account_id,credentials.bucket,'excel/templates/source.xlsx','工序验收.xlsx',buffer.length,createHash('sha256').update(buffer).digest('hex'),JSON.stringify(workbook),now).lastInsertRowid);
+  const templateId=Number(f.db.prepare('INSERT INTO quality_templates(warehouse_id,name,file_id,definition,enabled,created_by_name,updated_by_name,created_at,updated_at) VALUES (1,?,?,?,1,?,?,?,?)').run('工序测量',fid,JSON.stringify(definition),'routeadmin','routeadmin',now,now).lastInsertRowid);
+  const revisionId=Number(f.db.prepare('INSERT INTO quality_template_revisions(template_id,revision,file_id,name,definition,created_by_name,created_at) VALUES (?,1,?,?,?,?,?)').run(templateId,fid,'工序测量',JSON.stringify(definition),'routeadmin',now).lastInsertRowid);
+  f.db.prepare('UPDATE quality_templates SET published_revision=? WHERE id=?').run(revisionId,templateId);
+  const graph=structuredClone(serial);for(const node of graph.nodes)node.acceptance_template_id=templateId;
+  f.route=f.ok(await f.command(`/process-routes/${f.route.id}`,{...f.route,graph}));
+  const acceptance={revision_id:revisionId,values:{B1:'12'},passed:true};
+  return {...f,storage,objects,templateId,revisionId,acceptance};
+}
+
+test('operation acceptance validates binding, fixes revisions and enforces a separate permission on reports and final output',async t=>{
+  const f=await acceptanceFixture(t);
+  const group=f.ok(await f.command('/production-groups',{name:'验收组'}));
+  const position=f.ok(await f.command('/positions',{name:'验收登记岗位',access_mode:'production_only',permissions:['production_register']}));
+  const user=f.ok(await f.command('/users',{username:'inspector',employee_no:'inspector',password:'Worker-test-123',role:'employee',position_id:position.id,production_group_id:group.id}));
+  const login=await f.request('/auth/login',{username:'inspector',password:'Worker-test-123'},{cookie:'no-session'}),options={cookie:login.cookie};
+  let order=await f.start(await f.create({production_group_id:group.id}));
+  assert.equal(order.operation_routes[0].operations[0].acceptance_revision_id,f.revisionId);
+  const templatePath=`/production-orders/${order.id}/operations/acceptance-template?path=&node_id=cut`;
+  for(const response of [await f.request(templatePath,undefined,options),await f.report(order,'cut',1,'',{},options),await f.complete(order,1,'',{},options)]){
+    assert.equal(response.status,403);assert.equal(response.data.error,'该工序需要验收，请通知验收员');
+  }
+  assert.equal(f.objects.size,1);
+  f.ok(await f.request(`/positions/${position.id}`,{...position,permissions:['production_register','operation_accept']},{method:'PUT'}));
+  f.ok(await f.request(templatePath,undefined,options));
+  assert.equal((await f.request('/quality/templates',undefined,options)).status,403);
+  assert.equal((await f.request(`/production-orders/${order.id}/operations/acceptances/9999`,undefined,options)).status,404);
+  assert.equal((await f.report(order,'cut',1,'',{},options)).status,400);
+  assert.equal((await f.report(order,'cut',1,'',{operation_acceptance:{...f.acceptance,passed:false}},options)).status,400);
+  assert.equal((await f.report(order,'cut',1,'',{operation_acceptance:{...f.acceptance,values:{B1:''}}},options)).status,400);
+  assert.equal((await f.report(order,'cut',1,'',{operation_acceptance:{...f.acceptance,values:{A1:'绕过标题',B1:'1'}}},options)).status,400);
+  assert.equal(f.objects.size,1);
+  // The production snapshot retains the old published revision even after disabling.
+  f.db.prepare('UPDATE quality_templates SET enabled=0 WHERE id=?').run(f.templateId);
+  const request_id=randomUUID(),body={request_id,operation_acceptance:f.acceptance};
+  const before=order;
+  order=f.ok(await f.report(order,'cut',2,'',body,options));
+  assert.deepEqual(f.ok(await f.report(before,'cut',2,'',body,options)),order);
+  const report=order.operation_routes[0].reports[0];assert.ok(report.acceptance_id);
+  const detail=f.ok(await f.request(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`,undefined,options));
+  assert.equal(detail.result.sheets[0].value.测量值,12);assert.equal(detail.created_by_name,'inspector');
+  const saved=f.ok(await f.request(`/quality/acceptances/${report.acceptance_id}`));
+  assert.equal(saved.revision_id,f.revisionId);assert.equal(saved.bindings[0].product_id,f.half);
+  assert.equal(f.objects.size,2);
+  const file=f.db.prepare('SELECT f.* FROM quality_template_files f JOIN quality_acceptances a ON a.file_id=f.id WHERE a.id=?').get(report.acceptance_id);
+  const actual=new ExcelJS.Workbook();await actual.xlsx.load(f.objects.get(file.object_key));assert.equal(actual.getWorksheet('验收').getCell('B1').value,12);
+  assert.equal((await f.request(`/quality/acceptances/${report.acceptance_id}`,{}, {method:'DELETE'})).status,409);
+  order=f.ok(await f.report(order,'weld',2,'',{operation_acceptance:f.acceptance},options));
+  // Output and consumption must roll back together with the acceptance.
+  const objectsBefore=f.objects.size;
+  assert.equal((await f.complete(order,3,'',{operation_acceptance:f.acceptance},options)).status,409);
+  assert.equal(f.objects.size,objectsBefore);
+  order=f.ok(await f.complete(order,1,'',{operation_acceptance:f.acceptance},options));assert.equal(order.completed_quantity,1);
+  assert.ok(order.operation_routes[0].reports.find(r=>r.node_id==='out').acceptance_id);
+  f.db.prepare('UPDATE positions SET permissions=? WHERE id=?').run(JSON.stringify(['production_register']),position.id);
+  assert.equal((await f.report(before,'cut',2,'',body,options)).status,403);
+  assert.equal(user.id,report.worker_id);
+});
+
+test('acceptance rolls back on invalid predecessors, survives void and backup restore, and preserves old backups',async t=>{
+  const f=await acceptanceFixture(t);let order=await f.start(await f.create());
+  assert.equal((await f.report(order,'weld',1,'',{operation_acceptance:f.acceptance})).status,409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,0);assert.equal(f.objects.size,1);
+  order=f.ok(await f.report(order,'cut',2,'',{operation_acceptance:f.acceptance}));
+  const report=order.operation_routes[0].reports[0];
+  assert.equal(qualityChartEntries(f.db,1,f.templateId).length,1);
+  order=f.ok(await f.command(`/production-orders/${order.id}/operations/${report.id}/void`,{version:order.version,reason:'重新检验'}));
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,1);
+  const detail=f.ok(await f.request(`/quality/acceptances/${report.acceptance_id}`));assert.equal(detail.operation_reports[0].status,'void');
+  assert.equal(qualityChartEntries(f.db,1,f.templateId).length,0);
+  const backup=f.ok(await f.request('/backup')),preview=f.ok(await f.command('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
+  assert.equal((await f.get(order.id)).operation_routes[0].reports[0].acceptance_id,report.acceptance_id);
+  for(const mutate of [b=>b.data.production_operation_reports[0].acceptance_id=null,b=>b.data.production_routes[0].graph=JSON.stringify({...JSON.parse(b.data.production_routes[0].graph),nodes:JSON.parse(b.data.production_routes[0].graph).nodes.map(n=>({...n,acceptance_revision_id:9999}))})]){
+    const bad=structuredClone(backup);mutate(bad);assert.equal((await f.command('/backup/preview',{backup:bad})).status,400);
+  }
+  f.db.prepare("UPDATE production_orders SET status='void' WHERE id=?").run(order.id);
+  const voided=await f.get(order.id);
+  assert.equal((await f.command(`/production-orders/${order.id}/delete`,{version:voided.version})).status,409);
+  f.ok(await f.command('/settings/reset',{confirmation:'RESET_BUSINESS_DATA'}));
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,0);
+});
+
+test('acceptance storage failure and permission revocation during upload leave no report or acceptance',async t=>{
+  const f=await acceptanceFixture(t);let order=await f.start(await f.create());
+  const realPut=f.storage.put;
+  f.storage.put=async()=>{throw new Error('storage unavailable');};
+  assert.equal((await f.report(order,'cut',1,'',{operation_acceptance:f.acceptance})).status,502);
+  assert.equal(f.objects.size,1);assert.equal((await f.get(order.id)).version,order.version);
+  const position=f.ok(await f.command('/positions',{name:'可撤销验收岗位',permissions:['production','operation_accept']}));
+  f.storage.put=async(...args)=>{await realPut(...args);f.db.prepare("UPDATE users SET role='employee',position_id=? WHERE username='routeadmin'").run(position.id);f.db.prepare('UPDATE positions SET permissions=? WHERE id=?').run('["production"]',position.id);};
+  const result=await f.report(order,'cut',1,'',{operation_acceptance:f.acceptance});
+  assert.equal(result.status,403);assert.equal(result.data.error,'该工序需要验收，请通知验收员');
+  assert.equal(f.objects.size,1);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,0);
+});
+
+test('route acceptance bindings reject drafts, disabled and foreign templates, and new orders capture the current publication',async t=>{
+  const f=await acceptanceFixture(t);
+  const bind=id=>f.command(`/process-routes/${f.route.id}`,{...f.route,graph:{...serial,nodes:serial.nodes.map(n=>({...n,acceptance_template_id:id}))}});
+  assert.equal((await bind(-1)).status,400);assert.equal((await bind(9999)).status,400);
+  f.db.prepare('UPDATE quality_templates SET enabled=0 WHERE id=?').run(f.templateId);
+  assert.equal((await bind(f.templateId)).status,400);
+  await assert.rejects(()=>f.create(),/停用|未发布/);
+  f.db.prepare('UPDATE quality_templates SET enabled=1 WHERE id=?').run(f.templateId);
+  const old=await f.create();
+  const r=f.db.prepare('SELECT * FROM quality_template_revisions WHERE id=?').get(f.revisionId);
+  const next=Number(f.db.prepare('INSERT INTO quality_template_revisions(template_id,revision,file_id,name,definition,created_by_name,created_at) VALUES (?,2,?,?,?,?,?)').run(r.template_id,r.file_id,r.name,r.definition,r.created_by_name,r.created_at).lastInsertRowid);
+  f.db.prepare('UPDATE quality_templates SET published_revision=? WHERE id=?').run(next,f.templateId);
+  const newer=await f.create();
+  assert.equal((await f.get(old.id)).operation_routes[0].operations[0].acceptance_revision_id,f.revisionId);
+  assert.equal(newer.operation_routes[0].operations[0].acceptance_revision_id,next);
+  const warehouse=f.ok(await f.request('/warehouses',{name:'跨仓模板验证'}));
+  assert.equal((await f.command('/process-routes',{name:'跨仓工艺',note:'',enabled:1,graph:f.route.graph},{warehouseId:warehouse.id})).status,400);
+});
+
+test('revoking production management during acceptance upload cannot end an order using group registration rights',async t=>{
+  const f=await acceptanceFixture(t),group=f.ok(await f.command('/production-groups',{name:'权限竞态生产组'}));
+  f.db.prepare("UPDATE users SET production_group_id=? WHERE username='routeadmin'").run(group.id);
+  let order=await f.start(await f.create({production_group_id:group.id}));
+  order=f.ok(await f.report(order,'cut',1,'',{operation_acceptance:f.acceptance}));
+  order=f.ok(await f.report(order,'weld',1,'',{operation_acceptance:f.acceptance}));
+  const position=f.ok(await f.command('/positions',{name:'仅验收登记',access_mode:'production_only',permissions:['production_register','operation_accept']}));
+  const realPut=f.storage.put,objectsBefore=f.objects.size;
+  f.storage.put=async(...args)=>{await realPut(...args);f.db.prepare("UPDATE users SET role='employee',position_id=? WHERE username='routeadmin'").run(position.id);};
+  const result=await f.complete(order,1,'',{finish_order:true,operation_acceptance:f.acceptance});
+  assert.equal(result.status,403);assert.match(result.data.error,/不能结束生产/);
+  assert.equal(f.objects.size,objectsBefore);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n,0);
 });

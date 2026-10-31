@@ -2,7 +2,7 @@ import { remapChecks, needsQualityReview } from '../shared/quality-checks.js';
 import express from 'express';
 import multer from 'multer';
 import { randomUUID, createHash, createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { qualityStorage } from './quality-storage.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validateDefinition, previewDefinition, parseRegion } from '../shared/quality-template.js';
 import { parseAcceptance } from '../shared/quality-acceptance.js';
@@ -135,17 +135,8 @@ export function validateQualityBackup(data) {
 
   validateQualityChartsBackup(data);
 }
-function clientFor(c) {
-  return new S3Client({ region:'auto', endpoint:`https://${c.account_id}.r2.cloudflarestorage.com`, credentials:{accessKeyId:c.access_key,secretAccessKey:c.secret_key}, maxAttempts:2 });
-}
-const storage = {
-  async put(c,key,buffer) { const client=clientFor(c); try { await client.send(new PutObjectCommand({Bucket:c.bucket,Key:key,Body:buffer,ContentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',IfNoneMatch:'*'}),{abortSignal:AbortSignal.timeout(60000)}); } finally {client.destroy();} },
-  async get(c,key) { const client=clientFor(c); try { const r=await client.send(new GetObjectCommand({Bucket:c.bucket,Key:key}),{abortSignal:AbortSignal.timeout(60000)}); if(r.ContentLength>10485760) {r.Body.destroy();throw error('原文件大小无效。');} return Buffer.from(await r.Body.transformToByteArray()); } finally {client.destroy();} },
-  async head(c,key) { const client=clientFor(c); try { await client.send(new HeadObjectCommand({Bucket:c.bucket,Key:key}),{abortSignal:AbortSignal.timeout(15000)}); } finally {client.destroy();} },
-  async remove(c,key) { const client=clientFor(c); try { await client.send(new DeleteObjectCommand({Bucket:c.bucket,Key:key}),{abortSignal:AbortSignal.timeout(15000)}); } finally {client.destroy();} },
-};
 export function installQuality(app, db, options = {}) {
-  const router = express.Router(), store = options.qualityStorage || storage;
+  const router = express.Router(), store = options.qualityStorage || qualityStorage;
   const previewSecret = randomBytes(32);
   const upload = multer({storage:multer.memoryStorage(),limits:{fileSize:10485760,files:1,fields:10,fieldSize:2*1024*1024}}).single('file');
   const r2 = () => JSON.parse(db.prepare('SELECT config FROM r2_backup_settings WHERE id=1').get().config);
@@ -199,7 +190,7 @@ export function installQuality(app, db, options = {}) {
   const acceptanceDetail = row => {
     const revision = db.prepare('SELECT revision,name,definition FROM quality_template_revisions WHERE id=?').get(row.revision_id);
     const file = db.prepare('SELECT filename FROM quality_template_files WHERE id=?').get(row.file_id);
-    return {...row,bindings:JSON.parse(row.bindings),result:JSON.parse(row.result),definition:JSON.parse(revision.definition),revision:revision.revision,template_name:revision.name,filename:file.filename};
+    return {...row,operation_reports:db.prepare('SELECT p.id,p.production_id,p.node_id,p.quantity,p.status,p.void_reason,o.number AS production_number FROM production_operation_reports p JOIN production_orders o ON o.id=p.production_id WHERE p.acceptance_id=? ORDER BY p.id').all(row.id),bindings:JSON.parse(row.bindings),result:JSON.parse(row.result),definition:JSON.parse(revision.definition),revision:revision.revision,template_name:revision.name,filename:file.filename};
   };
   const activeRevision = req => {
     const id = Number(req.body.template_id), revisionId = Number(req.body.revision_id);
@@ -354,6 +345,7 @@ export function installQuality(app, db, options = {}) {
   }));
   router.delete('/acceptances/:id',run(req=>transaction(()=>{
     const row=acceptance(req);
+    if (db.prepare('SELECT 1 FROM production_operation_reports WHERE acceptance_id=? LIMIT 1').get(row.id)) throw error('此验收单已关联工序登记，不能删除。',409);
     db.prepare("INSERT INTO app_metadata(key,value) VALUES ('quality_acceptance_last_deleted_id',?) ON CONFLICT(key) DO UPDATE SET value=CAST(MAX(CAST(value AS INTEGER),CAST(excluded.value AS INTEGER)) AS TEXT)").run(String(row.id));
     // Keep originals for existing backups, as with reset and template replacement.
     db.prepare('DELETE FROM quality_acceptances WHERE id=?').run(row.id);

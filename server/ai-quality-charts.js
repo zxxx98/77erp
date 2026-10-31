@@ -1,6 +1,6 @@
 import { aggregateQualityChart, chartDateTypes, chartDimensionTypes, chartFields, chartTypeLabels, metricLabels, refKey, validateChart } from '../shared/quality-charts.js';
 import { acceptanceSheetResults } from '../shared/quality-bindings.js';
-import { createQualityChart, normalizeQualityChart, qualityChartEntries, qualityChartRevision } from './quality-charts.js';
+import { activeQualityAcceptance, createQualityChart, normalizeQualityChart, qualityChartEntries, qualityChartRevision } from './quality-charts.js';
 
 const fail=message=>{throw new Error(message);};
 const validId=id=>Number.isSafeInteger(id)&&id>0;
@@ -9,7 +9,7 @@ const text=value=>String(value).slice(0,160);
 export function aiChartTemplates(db,warehouseId,query='') {
   if(typeof query!=='string'||query.length>100)fail('模板查询条件最多100字。');
   const rows=db.prepare(`SELECT t.id AS template_id,r.id AS revision_id,r.name,r.revision,t.enabled,
-    (SELECT COUNT(*) FROM quality_acceptances a WHERE a.template_id=t.id AND a.warehouse_id=t.warehouse_id) AS acceptance_count
+    (SELECT COUNT(*) FROM quality_acceptances a WHERE a.template_id=t.id AND a.warehouse_id=t.warehouse_id AND ${activeQualityAcceptance()}) AS acceptance_count
     FROM quality_templates t JOIN quality_template_revisions r ON r.id=t.published_revision
     WHERE t.warehouse_id=? AND instr(r.name,?)>0 ORDER BY t.id DESC LIMIT 51`).all(warehouseId,query);
   return {templates:rows.slice(0,50),has_more:rows.length>50,chart_types:chartTypeLabels,aggregations:metricLabels};

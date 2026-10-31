@@ -160,8 +160,8 @@ export function installPositions(app, db) {
       fail('请填写 1–60 字的岗位名称和最多 200 字的说明。');
     const permissions=normalizePermissions(body.permissions), access_mode=body.access_mode ?? before?.access_mode ?? 'standard';
     if (!['standard','production_only'].includes(access_mode)) fail('请选择有效的岗位访问模式。');
-    if (access_mode === 'production_only' && (permissions.length !== 1 || permissions[0] !== 'production_register'))
-      fail('仅生产作业岗位只能配置本组生产登记权限。');
+    if (access_mode === 'production_only' && (!permissions.includes('production_register') || permissions.some(key => !['production_register','operation_accept'].includes(key))))
+      fail('仅生产作业岗位需要本组生产登记权限，可另配工序验收权限。');
     return {name:body.name.trim(),description:(body.description ?? '').trim(),permissions,access_mode};
   };
   app.get('/api/positions', route(() => db.prepare(`${selectPosition} ORDER BY p.id`).all().map(present)));

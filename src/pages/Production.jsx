@@ -1,3 +1,4 @@
+import { useOperationAcceptance } from '../features/OperationAcceptance.jsx';
 import { ProductPicker } from '../features/ProductPicker.jsx';
 import { ProductionSupply } from '../features/ProductionSupply.jsx';
 import { ProductionAssignments } from '../features/ProductionAssignments.jsx';
@@ -142,8 +143,9 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const [processDiagramOpen, setProcessDiagramOpen] = useState(false);
   useEffect(() => setProcessDiagramOpen(false), [detail?.id]);
   const stageSession = useRef(0);
+  const acceptance=useOperationAcceptance();
   const action = useBusiness();
-  const send = (path, body, options) => action.send(path, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, ...body }, options);
+  const send = async (path, body, options) => action.send(path, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, ...await acceptance.enrich(path,body,options) }, options);
   const listData = useMemo(() => ({ ...data, productionRevision: revision }), [data, revision]);
   const list = useQuery(queryPath('/production-orders', { q, status, offset }), listData, 150);
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
@@ -385,7 +387,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       return { ...row, planned_quantity, expected_quantity, actual: actual?.quantity, disposition: actual?.disposition };
     });
     const name = editor.kind === 'new' ? source?.product.name : detail.product_name, unit = editor.kind === 'new' ? source?.product.unit : detail.unit;
-    return <div className="bom-page production-page">
+    return <div className="bom-page production-page">{acceptance.dialog}
       {heading({ new: pt("production.newProductionOrder"), edit: pt("production.editProductionDraft"), complete: pt("production.productionRegistration"), void: pt("production.voidProductionOrder"), void_batch: pt("production.voidCompletionBatch") }[editor.kind], planning ? pt("production.selectARecipeAndPlannedOutputThenSave") : `${detail.number} · ${detail.product_name}`, detail ? pt("production.backToOrderDetails") : pt("production.backToProductionOrders"))}
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onSubmitCapture={event => { submitter.current = event.nativeEvent.submitter?.value; }} onFinish={submit}>
         {editor.kind === 'new' && <BomPicker data={listData} disabled={action.busy} onSelect={bom => action.run(() => chooseBom(bom))} />}

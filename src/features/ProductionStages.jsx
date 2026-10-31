@@ -1,3 +1,4 @@
+import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { ProductionOperations, OperationWorkerSelect } from './ProductionOperations.jsx';
 import { pooledProductionStages } from '../../shared/production-pools.js';
 import { productionMessage } from '../i18n/production-errors.js';
@@ -38,6 +39,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const [scope, setScope] = useState(''), [search, setSearch] = useState('');
   const [form, setForm] = useState(null), [baseline, setBaseline] = useState('');
   const [history, setHistory] = useState(() => initialHistoryPath !== undefined ? { path: initialHistoryPath, offset: 0 } : null), [voiding, setVoiding] = useState(null);
+  const acceptance=useOperationAcceptance();
   const action = useBusiness(), locked = busy || action.busy;
   const displayStages = useMemo(() => pooledProductionStages(order), [order]);
   const byPath = useMemo(() => new Map([...order.stages, ...displayStages].map(stage => [stage.path, stage])), [order.stages, displayStages]);
@@ -77,7 +79,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   });
   const patch = update => { setForm(previous => ({ ...previous, ...update })); action.setError(''); };
   const historyQuery = useQuery(history ? `/production-orders/${order.id}/stages/batches?${new URLSearchParams({ path: history.path, offset: String(history.offset), limit: '20' })}` : null, data);
-  const send = (path, body) => action.send(`/production-orders/${order.id}${path}`, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...body }, { warehouseId: data.warehouse_id });
+  const send = async (path, body) => action.send(`/production-orders/${order.id}${path}`, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...await acceptance.enrich(`/production-orders/${order.id}${path}`,body,{warehouseId:data.warehouse_id}) }, { warehouseId: data.warehouse_id });
   const submit = event => {
     event.preventDefault();
     const finish = management && stage.path === '' && event.nativeEvent.submitter?.value === 'finish';
@@ -121,7 +123,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     return root && (root.receipt_status === 'confirmed' || !root.receipt_required);
   };
   if (operationPath !== null) return <ProductionOperations order={order} path={operationPath} data={data} canRegister={canRegister} onRegister={onRegister} onActivity={setOperationActivity} onSaved={onSaved} onBack={() => initialOperationPath !== undefined ? onBack() : setOperationPath(null)} onOutput={(node, workerId) => begin(byPath.get(operationPath), node, workerId)} />;
-  return <div className="production-stages">
+  return <div className="production-stages">{acceptance.dialog}
     <PageHeading title={heading} description={`${order.number} · ${stage ? pathLabel(stage) : history ? pathLabel(byPath.get(history.path)) : order.product_name}`}>
       <Button icon={ArrowLeft} disabled={locked} onClick={back}>{form || history && initialHistoryPath === undefined ? pt("production.backToLevelSelection") : pt("production.backToOrderDetails")}</Button>
     </PageHeading>

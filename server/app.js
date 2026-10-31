@@ -306,7 +306,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   installQuality(app, db, { ...options, sessionUser });
   installProcessRoutes(app, db, { operationRequest, saveOperationRequest });
   installBom(app, db);
-  installProduction(app, db);
+  installProduction(app, db, { ...options, sessionUser });
   installImagebed(app, db, options);
   const { catalogValues } = installCatalog(app, db);
   const dataRevision = installDataUpdates(app, db);
@@ -746,8 +746,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       db.exec("BEGIN IMMEDIATE");
       const counts = { action: '重置业务数据', products: db.prepare('SELECT COUNT(*) AS n FROM products').get().n, orders: db.prepare('SELECT COUNT(*) AS n FROM orders').get().n };
       clearStockQr(db);
-      clearQuality(db);
       clearProduction(db);
+      clearQuality(db);
       clearBom(db);
       clearProcessRoutes(db);
       db.exec("UPDATE ai_conversations SET auth_context=''; UPDATE ai_actions SET expires_at=0 WHERE result IS NULL;");

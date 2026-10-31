@@ -1,5 +1,12 @@
 // Exact system validation messages, shared by browser and API localization.
 export const processRouteMessages = {
+  OPERATION_ACCEPTANCE_ORDER_DELETE: ['此生产单已关联工序验收单，不能删除，请保留作废记录。','This production order has linked acceptance forms and cannot be deleted. Keep its voided records.','Lệnh sản xuất có phiếu nghiệm thu liên kết nên không thể xóa. Vui lòng giữ bản ghi đã hủy.'],
+  OPERATION_ACCEPTANCE_PERMISSION: ['该工序需要验收，请通知验收员','This operation requires acceptance. Please notify an inspector.','Công đoạn này cần nghiệm thu. Vui lòng thông báo người nghiệm thu.'],
+  OPERATION_ACCEPTANCE_FORM: ['请填写本工序验收单，并确认验收合格后登记。','Complete this operation acceptance form and confirm it passed before reporting.','Điền phiếu nghiệm thu và xác nhận đạt trước khi ghi nhận.'],
+  OPERATION_ACCEPTANCE_INVALID: ['验收单仍有填写错误，请核对必填项及字段格式。','The acceptance form has errors. Check required fields and formats.','Phiếu nghiệm thu có lỗi. Kiểm tra trường bắt buộc và định dạng.'],
+  OPERATION_ACCEPTANCE_REVIEW: ['验收单存在系统核对差异或待确认项，请核实并修正后登记。','Resolve acceptance discrepancies and pending checks before reporting.','Xử lý sai lệch và mục chờ xác nhận trước khi ghi nhận.'],
+  OPERATION_ACCEPTANCE_DELETE: ['此验收单已关联工序登记，不能删除。','This acceptance form is linked to an operation report and cannot be deleted.','Phiếu nghiệm thu liên kết với ghi nhận công đoạn nên không thể xóa.'],
+  OPERATION_POSITION_PERMISSIONS: ['仅生产作业岗位需要本组生产登记权限，可另配工序验收权限。','Production-only positions require group registration permission and may also have operation acceptance permission.','Vị trí chỉ sản xuất cần quyền ghi nhận của tổ và có thể thêm quyền nghiệm thu công đoạn.'],
   OVERFLOW_QUANTITY: ['工序数量需为正数，最多 4 位小数。', 'Operation quantity must be positive with at most 4 decimal places.', 'Số lượng công đoạn phải dương, tối đa 4 chữ số thập phân.'],
   OVERFLOW_SELECTION: ['请选择有效工序。', 'Select a valid operation.', 'Chọn công đoạn hợp lệ.'],
   OVERFLOW_ROUNDING: ['工序数量必须符合物料取整规则。', 'Operation quantity must follow the material rounding rule.', 'Số lượng công đoạn phải tuân theo quy tắc làm tròn vật tư.'],

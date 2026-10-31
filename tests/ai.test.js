@@ -1345,6 +1345,8 @@ test('AI reads process routes and operation snapshots without granting route wri
   assert.match(f.calls.at(-1).body.messages[0].content,/中间工序不扣料/);
   assert.match(f.calls.at(-1).body.messages[0].content,/BOM.*工艺流程图/);
   assert.match(f.calls.at(-1).body.messages[0].content,/虚线.*供料.*不指定.*工序/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/operation_accept.*工序验收权限/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/该工序需要验收，请通知验收员/);
   assert.match(f.calls.at(-1).body.messages[0].content,/删除工艺路线须由具有BOM管理权限的用户/);
   assert.match(f.calls.at(-1).body.messages[0].content,/AI不创建、修改或删除工艺路线/);
   assert.ok(!f.calls.at(-1).body.tools.some(tool=>/^(?:preview|save|report|void).*route/.test(tool.function.name)));

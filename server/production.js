@@ -1,3 +1,4 @@
+import { createOperationAcceptanceService, assertOperationAcceptancePermission } from './operation-acceptance.js';
 import { positionAuthorization } from './positions.js';
 import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
 import { productionOperationTables, captureProductionRoutes, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
@@ -249,13 +250,15 @@ function prepareProduction(db, req) {
   return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version, req.body.schema_version, req.body.supply_choices));
 }
 
-export function installProduction(app, db) {
-  const route = (fn, write = false, authorize) => (req, res) => {
+export function installProduction(app, db, options = {}) {
+  const acceptances=createOperationAcceptanceService(db,options);
+  const route = (fn, write = false, authorize) => async (req, res) => {
+    let prepared=null;
     try {
       // Every production operation rechecks current access before idempotent replay.
       const path = req.path.toLowerCase().replace(/\/+$/, '');
       if (path.startsWith('/api/production-orders')) {
-        const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches|\/operation-workers|\/operations\/reports)?)?$/.test(path);
+        const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches|\/operation-workers|\/operations\/(?:reports|acceptance-template|acceptances\/\d+))?)?$/.test(path);
         const operationReport = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/report$/.test(path);
         const register = operationReport || req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
         if (!hasPermission(req.user, 'production')) {
@@ -273,14 +276,40 @@ export function installProduction(app, db) {
         if (stored?.warehouse_id === req.warehouse.id && stored.stage_workflow && req.body.stage_schema_version !== 1) fail('此生产单使用分层生产，请刷新页面后操作。', 409);
       }
       if (authorize) authorize(req);
+      const registration = write && /\/(?:operations\/report|(?:stages\/)?complete)$/.test(path);
+      if(registration) {
+        assertOperationAcceptancePermission(db,req);
+        const previous=operationRequest(db,req);
+        if(!previous.previous) {
+          const order=db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id);
+          if(!order) fail('生产单不存在或不属于当前仓库。',404);
+          assertProductionOrderAccess(req.user,order);
+          if(order.version!==req.body.version) fail('生产单已变化，请刷新后核对。',409);
+          prepared=await acceptances.prepare(req);
+          req.operationAcceptance=prepared;
+          // Storage I/O must happen outside the SQLite transaction. Recheck the
+          // session and assignment after it, before the normal transaction checks.
+          if(options.sessionUser) {
+            const fresh=options.sessionUser(req);
+            if(!fresh) fail('登录已失效，请重新登录。',401);
+            req.user=fresh;
+          }
+          assertProductionOrderAccess(req.user,db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id)||{});
+          assertOperationAcceptancePermission(db,req);
+          if(!hasPermission(req.user,'production') && !path.endsWith('/operations/report') && req.body.finish_order!==false) fail('生产登记必须保留生产单，不能结束生产。',403);
+          if(!hasPermission(req.user,'production') && req.body.worker_id != null && req.body.worker_id!==req.user.id) fail('仅可登记本人作业。',403);
+        }
+      }
       if (write) db.exec('BEGIN IMMEDIATE');
       const request = write ? operationRequest(db, req) : null;
-      const result = request?.previous || fn(req);
+      const result = request?.previous || (write ? fn(req) : await fn(req));
       if (write) { if (!request.previous) saveOperationRequest(db, request, result); db.exec('COMMIT'); }
       res.json(isGroupProductionWorker(req.user) ? productionWorkerProjection(result) : hasPermission(req.user, 'finance') ? result : productionWithoutCosts(result));
     } catch (error) {
       if (write && db.isTransaction) db.exec('ROLLBACK');
       res.status(error.status || 400).json({ error: error.message });
+    } finally {
+      if(prepared && (!prepared.id || !db.prepare('SELECT 1 FROM quality_acceptances WHERE id=? AND file_id IN (SELECT id FROM quality_template_files WHERE object_key=?)').get(prepared.id,prepared.key))) await prepared.cleanup();
     }
   };
   const productionGroup = id => {
@@ -334,6 +363,8 @@ export function installProduction(app, db) {
       if (active && !row.product.active) fail(`${row.name}已停用，请先核对物料。`);
     }
   };
+  app.get('/api/production-orders/:id/operations/acceptances/:acceptanceId', route(req=>{current(req);return acceptances.detail(req);}));
+  app.get('/api/production-orders/:id/operations/acceptance-template', route(req => { current(req); return acceptances.template(req); }));
   installProductionOperations(app, db, { route, current, version });
   installProductionMaterials(app, db, { route, current, version, units });
   installProductionReceipts(app, db, {route});
@@ -555,6 +586,7 @@ export function installProduction(app, db) {
   app.post('/api/production-orders/:id/delete', route(req => {
     const order = current(req); version(req, order);
     if (order.status !== 'void') fail('仅已作废的生产单可以删除，请先作废。', 409);
+    if(db.prepare('SELECT 1 FROM production_operation_reports WHERE production_id=? AND acceptance_id IS NOT NULL LIMIT 1').get(order.id)) fail('此生产单已关联工序验收单，不能删除，请保留作废记录。',409);
     deleteProductionOperations(db, order.id);
     deleteProductionStages(db, order.id);
     db.prepare('DELETE FROM production_receipt_items WHERE document_id IN (SELECT id FROM production_receipts WHERE production_id=?)').run(order.id);

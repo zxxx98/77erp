@@ -1,3 +1,4 @@
+import { saveOperationAcceptance, acceptancePermissionMessage } from './operation-acceptance.js';
 import { operationAllocation } from '../shared/operation-overflow.js';
 import { productionPools, stagePoolPaths, productionPoolOrder } from '../shared/production-pools.js';
 import { isProductionAssignee } from '../shared/production-assignment.js';
@@ -33,6 +34,9 @@ export function migrateProcessRoutes(db) {
     CREATE INDEX IF NOT EXISTS operation_reports_order ON production_operation_reports(production_id,id);
     CREATE INDEX IF NOT EXISTS production_routes_source ON production_routes(route_id);
     INSERT OR IGNORE INTO app_metadata(key,value) VALUES ('process_route_version','0');`);
+  if (!db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'acceptance_id'))
+    db.exec('ALTER TABLE production_operation_reports ADD COLUMN acceptance_id INTEGER REFERENCES quality_acceptances(id)');
+  db.exec('CREATE INDEX IF NOT EXISTS operation_reports_acceptance ON production_operation_reports(acceptance_id,status)');
   for (const [table, column] of [['products', 'default_route_id'], ['boms', 'route_override_id']])
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} INTEGER REFERENCES process_routes(id)`);
@@ -90,6 +94,13 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     if (old && body.version !== old.version) fail('工艺路线已变化，请重新读取后核对。当前填写内容已保留。', 409);
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 100 || typeof body.note !== 'string' || body.note.length > 1000 || ![0,1].includes(body.enabled)) fail('路线名称、说明或启用状态无效。');
     validateProcessGraph(body.graph);
+    body.graph = {...body.graph,nodes:body.graph.nodes.map(({acceptance_revision_id,acceptance_template_name,...node})=>{
+      if(node.acceptance_template_id) {
+        const template=db.prepare('SELECT enabled,published_revision FROM quality_templates WHERE id=? AND warehouse_id=?').get(node.acceptance_template_id,req.warehouse.id);
+        if(!template?.enabled || !template.published_revision) fail('请选择当前仓库已启用且已发布的验收模板。');
+      }
+      return node;
+    })};
     const at = new Date().toISOString();
     let routeId = old?.id;
     if (old) db.prepare('UPDATE process_routes SET name=?,note=?,enabled=?,graph=?,updated_by_name=?,updated_at=? WHERE id=?')
@@ -109,6 +120,7 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
       .map(row => ({ ...row, graph: parseGraph(row.graph), product_count: db.prepare('SELECT COUNT(*) n FROM products WHERE default_route_id=?').get(row.id).n, bom_count: db.prepare('SELECT COUNT(*) n FROM boms WHERE route_override_id=?').get(row.id).n }));
     return { routes, total, has_more: Number(offset) + routes.length < total };
   }));
+  app.get('/api/process-routes/acceptance-templates', route(req => ({templates:db.prepare(`SELECT t.id,r.name,r.revision FROM quality_templates t JOIN quality_template_revisions r ON r.id=t.published_revision WHERE t.warehouse_id=? AND t.enabled=1 ORDER BY r.name,t.id`).all(req.warehouse.id)})));
   app.get('/api/process-routes/:id', route(req => get(req.warehouse.id, req.params.id)));
   app.post('/api/process-routes', route(save, true));
   app.post('/api/process-routes/:id', route(save, true));
@@ -139,8 +151,13 @@ export function captureProductionRoutes(db, order) {
     if (!binding?.route_id) continue;
     const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(binding.route_id, order.warehouse_id);
     if (!route?.enabled) fail('生产物料关联的工艺路线已停用，请先重新配置。', 409);
-    parseGraph(route.graph);
-    db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph) VALUES (?,?,?,?,?,?)').run(order.id, layer.path, route.id, route.version, route.name, route.graph);
+    const graph=parseGraph(route.graph);
+    for (const node of graph.nodes) if(node.acceptance_template_id) {
+      const template=db.prepare('SELECT t.enabled,t.published_revision,r.name FROM quality_templates t LEFT JOIN quality_template_revisions r ON r.id=t.published_revision WHERE t.id=? AND t.warehouse_id=?').get(node.acceptance_template_id,order.warehouse_id);
+      if(!template?.enabled || !template.published_revision) fail('工序绑定的验收模板已停用或未发布，请先重新配置。',409);
+      node.acceptance_revision_id=template.published_revision; node.acceptance_template_name=template.name;
+    }
+    db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph) VALUES (?,?,?,?,?,?)').run(order.id, layer.path, route.id, route.version, route.name, JSON.stringify(graph));
   }
 }
 
@@ -171,6 +188,7 @@ function operationInput(db, req, order, path, quantity, output) {
   if (req.body.operation_schema_version !== 1) fail('此单使用工序登记，请刷新页面后按工序操作。', 409);
   const node = route.operations.find(n => n.id === req.body.operation_node_id);
   if (!node || node.is_output !== output) fail(output ? '请从最终产出工序登记产量和实际耗料。' : '最终工序请使用产出登记入口。');
+  if (node.acceptance_template_id && !hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
   const layer = order.stages?.find(s => s.path === path) || order;
   const product = db.prepare('SELECT active,unit,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(layer.product_id,order.warehouse_id);
   if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
@@ -186,8 +204,9 @@ function nextOperationSequence(db, productionId) {
 }
 function insertReport(db, req, order, input, quantity, kind = null, batchId = null) {
   if (!input) return;
-  db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(order.id, input.route.id, input.node.id, quantity, input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id));
+  const acceptanceId=saveOperationAcceptance(db,req,order,input);
+  db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(order.id, input.route.id, input.node.id, quantity, input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId);
 }
 export function recordOperationOutput(db, req, order, path, quantity, kind, batchId) {
   const input = operationInput(db, req, order, path, quantity, true);
@@ -265,11 +284,18 @@ export function validateProcessRouteBackup(data) {
   const warehouses = new Set(data.warehouses.map(row => row.id)), snapshots = new Map();
   const text = (value, max, required = false) => typeof value === 'string' && value.length <= max && (!required || !!value.trim());
   const association = value => value === null || id(value);
+  const checkTemplates = (graph,warehouseId,snapshot=false) => {
+    for(const node of graph.nodes) if(node.acceptance_template_id) {
+      const template=data.quality_templates.find(t=>t.id===node.acceptance_template_id && t.warehouse_id===warehouseId);
+      if(!template) fail('备份工序验收模板关联无效。');
+      if(snapshot && !data.quality_template_revisions.some(r=>r.id===node.acceptance_revision_id && r.template_id===template.id)) fail('备份工序验收版本无效。');
+    }
+  };
   const names = new Set();
   for (const row of routes.values()) {
     if (!warehouses.has(row.warehouse_id) || !text(row.name, 100, true) || !text(row.note, 1000) || ![0,1].includes(row.enabled) || !id(row.version) ||
         !text(row.created_by_name, 100, true) || !text(row.updated_by_name, 100, true) || !Number.isFinite(Date.parse(row.created_at)) || !Number.isFinite(Date.parse(row.updated_at)) || names.has(`${row.warehouse_id}:${row.name}`)) fail('备份工艺路线无效。');
-    names.add(`${row.warehouse_id}:${row.name}`); parseGraph(row.graph);
+    names.add(`${row.warehouse_id}:${row.name}`); checkTemplates(parseGraph(row.graph),row.warehouse_id);
   }
   for (const [table, column] of [['products','default_route_id'], ['boms','route_override_id']]) for (const row of data[table]) {
     if (!association(row[column]) || row[column] !== null && routes.get(row[column])?.warehouse_id !== row.warehouse_id) fail('备份工艺路线绑定跨仓或无效。');
@@ -279,9 +305,10 @@ export function validateProcessRouteBackup(data) {
     const order = orders.get(row.production_id), key = `${row.production_id}:${row.path}`;
     if (!order || routes.get(row.route_id)?.warehouse_id !== order.warehouse_id || !id(row.route_version) || !text(row.route_name, 100, true) || typeof row.path !== 'string' || keys.has(key) ||
         (order.stage_workflow ? !data.production_stages.some(s => s.production_id === order.id && s.path === row.path) : row.path !== '')) fail('备份生产工艺快照无效。');
+    checkTemplates(parseGraph(row.graph),order.warehouse_id,true);
     keys.add(key); snapshots.set(row.id, { ...row, graph: parseGraph(row.graph), reports: [] });
   }
-  const outputs = new Set();
+  const outputs = new Set(), acceptanceOwners = new Map();
   for (const row of data.production_operation_reports) {
     const snapshot = snapshots.get(row.route_snapshot_id), order = orders.get(row.production_id);
     if (!snapshot || snapshot.production_id !== row.production_id || !order || !validQuantity(row.quantity, true) || !['active','void'].includes(row.status) ||
@@ -290,6 +317,14 @@ export function validateProcessRouteBackup(data) {
         (row.status === 'active' ? row.voided_sequence !== null || row.voided_at !== null || row.void_reason !== '' || row.voided_by_name !== '' : !id(row.voided_sequence) || row.voided_sequence <= row.created_sequence || !row.void_reason.trim() || !row.voided_by_name.trim() || !Number.isFinite(Date.parse(row.voided_at)) || row.voided_at < row.created_at)) fail('备份工序登记无效。');
     const node = snapshot.graph.nodes.find(n => n.id === row.node_id), output = validateProcessGraph(snapshot.graph).output;
     if (!node) fail('备份工序登记节点无效。');
+    if(!association(row.acceptance_id)) fail('备份工序验收单编号无效。');
+    if(node.acceptance_template_id) {
+      const acceptance=data.quality_acceptances.find(a=>a.id===row.acceptance_id);
+      const acceptanceOwner=JSON.stringify([order.id,node.id,row.registered_by_name,row.worker_name]);
+      if(acceptanceOwners.has(row.acceptance_id) && acceptanceOwners.get(row.acceptance_id)!==acceptanceOwner) fail('验收单不能关联不同生产单、工序或作业员工。');
+      acceptanceOwners.set(row.acceptance_id,acceptanceOwner);
+      if(!acceptance || acceptance.warehouse_id!==order.warehouse_id || acceptance.template_id!==node.acceptance_template_id || acceptance.revision_id!==node.acceptance_revision_id || acceptance.created_by_name!==row.registered_by_name) fail('备份工序验收单关联无效。');
+    } else if(row.acceptance_id!==null) fail('未绑定模板的工序不能关联验收单。');
     const layer = order.stage_workflow ? data.production_stages.find(s => s.production_id === order.id && s.path === snapshot.path) : order;
     if (layer.unit_round_up && !Number.isInteger(row.quantity)) fail('备份工序数量不符合物料取整规则。');
     if (row.node_id === output) {
