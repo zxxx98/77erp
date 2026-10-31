@@ -25,6 +25,12 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
   if (!userColumns.some(c => c.name === 'permissions_version')) db.exec('ALTER TABLE users ADD COLUMN permissions_version INTEGER NOT NULL DEFAULT 1');
   if (!userColumns.some(c => c.name === 'name')) db.exec("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''");
   if (!userColumns.some(c => c.name === 'employee_no')) db.exec("ALTER TABLE users ADD COLUMN employee_no TEXT NOT NULL DEFAULT ''");
+  // Empty numbers belong to accounts created before the field existed, so only filled values must be unique.
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_employee_no_unique ON users(employee_no) WHERE employee_no <> ''");
+  } catch (error) {
+    throw new Error(`工号唯一性约束创建失败，请先修改或删除重复的工号：${error.message}`);
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS user_permission_changes (
     id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
     changed_by INTEGER NOT NULL REFERENCES users(id), before_permissions TEXT, after_permissions TEXT NOT NULL,
@@ -344,8 +350,13 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       const positions = role === 'employee' ? requirePositions(db, req.body) : [];
       const position = positions[0];
       const group = role === 'employee' ? requireProductionGroup(db,req.body.production_group_id ?? null) : null;
+      const employeeNo = employee_no.trim();
+      // Checked inside the write transaction so concurrent requests cannot register the same number twice.
+      if (db.prepare('SELECT 1 FROM users WHERE employee_no=?').get(employeeNo)) {
+        db.exec('ROLLBACK'); return res.status(409).json({ error: '该工号已被使用。' });
+      }
       const result = db.prepare("INSERT INTO users(username,password_salt,password_hash,role,created_at,name,employee_no,permissions,position_id,production_group_id) VALUES (?,?,?,?,?,?,?,'[]',?,?)")
-        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), employee_no.trim(), position?.id ?? null,group?.id ?? null);
+        .run(username.trim(), salt, hash, role, new Date().toISOString(), name.trim(), employeeNo, position?.id ?? null,group?.id ?? null);
       if (position) {
         assignPositions(db,Number(result.lastInsertRowid),positions);
         recordPositionChange(db, req, '新员工分配岗位', position.id, Number(result.lastInsertRowid), null, {position_ids: positions.map(position => position.id)});
@@ -357,7 +368,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       db.exec('ROLLBACK');
       if (error.status) return res.status(error.status).json({ error: error.message });
       if (!error.message.includes('UNIQUE')) throw error;
-      res.status(409).json({ error: '该账号已存在。' });
+      res.status(409).json({ error: error.message.includes('employee_no') ? '该工号已被使用。' : '该账号已存在。' });
     }
   });
   app.put('/api/users/:id/permissions', (req, res) => {
@@ -391,15 +402,19 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (req.body.production_group_id !== undefined && req.body.production_group_id !== user.production_group_id) {
         db.exec('ROLLBACK'); return res.status(409).json({error:'请通过调整生产组操作提交当前权限版本。'});
       }
+      const employeeNo = req.body.employee_no === undefined ? user.employee_no : req.body.employee_no.trim();
+      if (employeeNo && db.prepare('SELECT 1 FROM users WHERE employee_no=? AND id<>?').get(employeeNo, user.id)) {
+        db.exec('ROLLBACK'); return res.status(409).json({ error: '该工号已被使用。' });
+      }
       db.prepare('UPDATE users SET role=?,active=?,name=?,employee_no=?,position_id=?,production_group_id=?,permissions_version=permissions_version+? WHERE id=?')
-        .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), req.body.employee_no === undefined ? user.employee_no : req.body.employee_no.trim(), positionId, role === 'admin' ? null : user.production_group_id, role !== user.role ? 1 : 0, user.id);
+        .run(role, active, req.body.name === undefined ? user.name : req.body.name.trim(), employeeNo, positionId, role === 'admin' ? null : user.production_group_id, role !== user.role ? 1 : 0, user.id);
       if (positions) assignPositions(db,user.id,positions);
       if (role !== user.role) recordPositionChange(db, req, '账号类型变更岗位', positionId, user.id, {position_ids:beforePositions}, {position_ids:positions.map(position => position.id)});
       if (!active || role !== user.role) db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(user.id);
       if (role !== user.role || active !== user.active) queueNotification(db, req, 'admin_action', { action: '修改账号角色／状态', target_user: user.username, before_role: user.role, role, before_active: user.active, active }, { global: true });
       db.exec('COMMIT');
       res.json({ ok: true });
-    } catch (error) { db.exec('ROLLBACK'); if (error.status) return res.status(error.status).json({error:error.message}); throw error; }
+    } catch (error) { db.exec('ROLLBACK'); if (error.status) return res.status(error.status).json({error:error.message}); if (error.message.includes('UNIQUE')) return res.status(409).json({ error: '该工号已被使用。' }); throw error; }
   });
   app.post('/api/users/:id/password', async (req, res) => {
     if (!validPassword(req.body?.password)) return res.status(400).json({ error: '密码需为 8–128 位字符。' });

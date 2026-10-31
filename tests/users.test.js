@@ -426,3 +426,28 @@ test('employee numbers are required for new accounts, default to empty for exist
   assert.equal((await f.request(f.admin, '/users/1', { role: 'admin', active: 1, employee_no: 'A-0001' }, 'PUT')).status, 200);
   assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=1').get().employee_no, 'A-0001');
 });
+
+test('employee numbers are unique across accounts, enforced by the database, and editable only to free values', async t => {
+  const f = await fixture(t), alice = await f.user('alice'), bobby = await f.user('bobby');
+  const create = (username, employee_no) => f.request(f.admin, '/users', { position_id: readonlyPositionId(f.db), username, password, employee_no });
+  for (const employee_no of ['NO-alice', '  NO-alice  ']) {
+    const denied = await create('alice2', employee_no);
+    assert.equal(denied.status, 409, employee_no);
+    assert.equal(denied.data.code, 'VALIDATION_USER_EMPLOYEE_NO_TAKEN');
+  }
+  assert.equal(f.db.prepare("SELECT 1 FROM users WHERE username='alice2'").get(), undefined);
+  // Matching is exact: a different case is a different employee number.
+  assert.equal((await create('alice2', 'no-alice')).status, 201);
+  // The constraint lives in the schema, not only in the API check.
+  assert.throws(() => f.db.prepare('UPDATE users SET employee_no=? WHERE id=?').run('NO-alice', bobby.id), /UNIQUE/);
+  const update = (id, employee_no) => f.request(f.admin, `/users/${id}`, { role: 'employee', active: 1, employee_no }, 'PUT');
+  const taken = await update(bobby.id, ' NO-alice ');
+  assert.equal(taken.status, 409);
+  assert.equal(taken.data.code, 'VALIDATION_USER_EMPLOYEE_NO_TAKEN');
+  assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=?').get(bobby.id).employee_no, 'NO-bobby');
+  assert.equal((await update(bobby.id, 'NO-bobby')).status, 200);
+  // Accounts upgraded with empty numbers coexist, and a released number becomes available again.
+  f.db.prepare("UPDATE users SET employee_no='' WHERE id IN (?,?)").run(alice.id, bobby.id);
+  assert.equal((await update(alice.id, 'NO-alice')).status, 200);
+  assert.equal(f.db.prepare('SELECT employee_no FROM users WHERE id=?').get(bobby.id).employee_no, '');
+});

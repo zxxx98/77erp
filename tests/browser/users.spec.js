@@ -60,6 +60,13 @@ test('administrator creates accounts, protects the last administrator, resets pa
     await expect(numberDialog).toHaveCount(0);
     await expect(employee).toContainText('工号：E-002');
     expect(f.db.prepare("SELECT employee_no FROM users WHERE username='staff'").get().employee_no).toBe('E-002');
+    await page.getByLabel('新账号', { exact: true }).fill('staff2');
+    await page.getByLabel('初始密码', { exact: true }).fill('Employee-password-456');
+    await page.getByRole('group', { name: '新账号岗位', exact: true }).getByRole('checkbox', { name: '只读员工', exact: true }).check();
+    await page.getByLabel('工号', { exact: true }).fill('E-002');
+    await page.getByRole('button', { name: '新增账号', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('该工号已被使用');
+    await expect(page.locator('.user-row').filter({ hasText: 'staff2' })).toHaveCount(0);
     await employee.getByRole('button', { name: '重置密码', exact: true }).click();
     await page.getByLabel('重置后的密码', { exact: true }).fill('Reset-password-456');
     page.once('dialog', d => d.accept());
