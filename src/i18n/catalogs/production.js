@@ -1,5 +1,10 @@
 // System UI only. Stored template content, values and material identifiers are not translated.
 export default {
+  'production.sharedSemiFinished': ['共用半成品', 'Shared semi-finished product', 'Bán thành phẩm dùng chung'],
+  'production.poolHint': ['只登记本次实际产量和耗料，用途由后续生产实际领用时确定。共用余额仅限本生产单，不计入仓库库存。', 'Record actual output and inputs. Usage is determined when subsequent production consumes it. The shared balance belongs to this order, not warehouse stock.', 'Ghi sản lượng và tiêu hao thực tế. Xác định mục đích khi công đoạn sau sử dụng. Số dư dùng chung chỉ thuộc lệnh này, không phải tồn kho.'],
+  'production.poolUsage': ['查看实际领用去向', 'View actual usage', 'Xem nơi sử dụng thực tế'],
+  'production.poolUnused': ['尚未领用', 'Not yet consumed', 'Chưa sử dụng'],
+  'production.poolBatchNote': ['线盘号／批次备注', 'Reel number / batch note', 'Số cuộn / ghi chú lô'],
   "production.supplyAllocation": ["库存领用 {{stock}} {{unit}} · 本单生产 {{produce}} {{unit}}", "From stock {{stock}} {{unit}} · Produce {{produce}} {{unit}}", "Lấy từ kho {{stock}} {{unit}} · Sản xuất {{produce}} {{unit}}"],
   "production.supplyReviewBeforeSave": ["已重新测算，请核对用料后再次保存。", "Recalculated. Review materials before saving again.", "Đã tính lại. Kiểm tra nguyên liệu rồi lưu lại."],
   "production.supplyTitle": ["本次半成品用料安排", "Subassembly supply for this order", "Cấp bán thành phẩm cho lệnh này"],

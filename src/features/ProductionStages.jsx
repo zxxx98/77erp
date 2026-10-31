@@ -1,4 +1,5 @@
 import { ProductionOperations, OperationWorkerSelect } from './ProductionOperations.jsx';
+import { pooledProductionStages } from '../../shared/production-pools.js';
 import { productionMessage } from '../i18n/production-errors.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
@@ -20,7 +21,7 @@ const time = value => new Date(value).toLocaleString(getFormatLocale(), { hour12
 
 export function ProductionStageSummary({ order, onOpen, disabled }) {
   useLocale();
-  const children = order.stages.filter(stage => stage.path !== '');
+  const children = pooledProductionStages(order).filter(stage => stage.path !== '');
   const started = children.filter(stage => stage.completed_quantity > 0).length;
   const remaining = children.filter(stage => stage.available_quantity > 0);
   return <section className="panel bom-section" aria-label={pt("production.productionProgressByLevel")}>
@@ -38,9 +39,11 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const [form, setForm] = useState(null), [baseline, setBaseline] = useState('');
   const [history, setHistory] = useState(() => initialHistoryPath !== undefined ? { path: initialHistoryPath, offset: 0 } : null), [voiding, setVoiding] = useState(null);
   const action = useBusiness(), locked = busy || action.busy;
-  const byPath = useMemo(() => new Map(order.stages.map(stage => [stage.path, stage])), [order.stages]);
+  const displayStages = useMemo(() => pooledProductionStages(order), [order]);
+  const byPath = useMemo(() => new Map([...order.stages, ...displayStages].map(stage => [stage.path, stage])), [order.stages, displayStages]);
   const stage = form ? byPath.get(form.path) : null;
   const pathLabel = value => {
+    if (value?.pool_paths) return `${pt('production.sharedSemiFinished')} · ${value.name}`;
     const parts = [], seen = new Set();
     for (let current = value; current && !seen.has(current.path); current = current.path ? byPath.get(current.parent_path) : null) {
       seen.add(current.path); parts.unshift(current.name);
@@ -110,9 +113,9 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   }) : [];
   const heading = stage ? pt("production.register3", { v0: stage.path ? pt("production.semiFinishedProduct") : pt("production.finishedProduct") }) : history ? pt("production.levelBatchRecords") : pt("production.selectProductionLevel");
   const notices = <>{productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}</>;
-  const visible = order.stages.filter(item => search.trim()
+  const visible = displayStages.filter(item => search.trim()
     ? `${item.name} ${item.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
-    : item.path === scope || item.path !== '' && item.parent_path === scope);
+    : item.path === scope || item.path !== '' && (item.parent_path === scope || item.pool_paths?.some(path => order.stages.find(s => s.path === path)?.parent_path === scope)));
   const requiresReceiptPermission = batch => {
     const root = batch.root_batch_id && order.batches.find(row => row.id === batch.root_batch_id);
     return root && (root.receipt_status === 'confirmed' || !root.receipt_required);
@@ -160,7 +163,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
         <p className="bom-hint">{batch.created_by_name} · {time(batch.created_at)}</p>
         {batch.note && <p className="production-note">{batch.note}</p>}
         <details><summary>{pt("production.viewBatchInputs")}</summary>{batch.items?.map(item => {
-          const source = byPath.get(history.path)?.items.find(input => input.path === item.path);
+          const source = order.stages.find(s => s.path === batch.path)?.items.find(input => input.path === item.path);
           let standard = null;
           try { if (source) standard = stageDisplayStandardQuantity(source, batch.completed_quantity); } catch { /* Show actual records if standards exceed limits. */ }
           return <div className="production-batch-material" key={item.path ?? item.id}><strong>{item.name}</strong>

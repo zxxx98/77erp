@@ -9,6 +9,9 @@ export function operationAllocation(order, path, nodeId, quantity) {
   const node = route?.operations.find(row => row.id === nodeId);
   if (!layer || !node) throw new Error('请选择有效工序。');
   if (layer.unit_round_up && !Number.isInteger(quantity)) throw new Error('工序数量必须符合物料取整规则。');
+  // Shared stages already expose pooled predecessor progress. Register once;
+  // the next production layer determines the actual destination on consumption.
+  if (order.stage_workflow && order.nodes?.length) return [{ path, node_id: nodeId, layer, node, quantity }];
   const peers = layers.filter(row => row.path !== path && row.product_id === layer.product_id && row.bom_id === layer.bom_id && row.bom_version === layer.bom_version && row.unit === layer.unit && row.unit_round_up === layer.unit_round_up);
   const candidates = [layer, ...peers].flatMap(row => {
     const snapshot = order.operation_routes.find(r => r.path === row.path);

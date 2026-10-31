@@ -216,7 +216,6 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     order.material_documents = materialDocuments(db, id, warehouseId);
     readProductionStages(db, order);
     if (order.material_workflow) order.items = materialBalances(order);
-    populateStageBalances(order);
     delete order.stage_direct_batches;
     const counted = summaryBatches(order);
     if (order.batches.length) {
@@ -237,6 +236,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
       ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method, standardsFor(order.completed_quantity), order.quantity_decimals)
       : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
     readProductionRoutes(db, order);
+    populateStageBalances(order);
     order.captured_at = new Date().toISOString();
     return isGroupProductionWorker(user) ? productionWorkerProjection(order) : costs ? order : productionWithoutCosts(order);
   });

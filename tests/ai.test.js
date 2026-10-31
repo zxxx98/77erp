@@ -256,6 +256,9 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} productio
   assert.match(prompt, /生产单保存自己的损耗率快照/);
   assert.match(prompt, /variance_rate是以标准耗料为分母的百分数/);
   assert.match(prompt, /不按计划产量或当前BOM重算/);
+  assert.match(prompt, /stage_pools共用半成品/);
+  assert.match(prompt, /后续生产实际领用时归集数量和成本/);
+  assert.match(prompt, /不能重复相加/);
   assert.match(prompt, /AI不创建、修改、完工、作废或删除生产单/);
   assert.match(prompt, /删除会清理耗料、废料、批次、配方快照和相关物料操作历史，不再次变动库存和成本/);
   assert.match(prompt, /绝不能用采购入库、销售出库、盘点等工具代替生产记账/);

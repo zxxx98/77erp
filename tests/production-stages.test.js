@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 import { migrateProduction } from '../server/production.js';
 import { stageStandardQuantity } from '../shared/production-stages.js';
+import { pooledProductionStages } from '../shared/production-pools.js';
+import { registrationTargets } from '../src/production-registration.js';
 import { migrateProductionStages, productionStageTables } from '../server/production-stages.js';
 
 async function fixture(t, { repeated = false } = {}) {
@@ -150,7 +152,7 @@ test('six decimal provenance may round to zero without invalidating genuine posi
   const backup=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup}));
 });
 
-test('three-level repeated child recipes keep path balances separate and aggregate only raw provenance',async t=>{
+test('shared semi-finished output supplies either branch with FIFO costs, usage and retained historical paths',async t=>{
   const f=await fixture(t);
   const product=async name=>{const r=await f.request('/products',{name,barcode:`STAGE-${name}`,category:'生产',unit:'kg',cost:1,price:2,threshold:0});assert.equal(r.status,201);return r.data.id;};
   const d=await product('D'),e=await product('E'),child=f.root.items[0].child_bom_id;
@@ -162,14 +164,31 @@ test('three-level repeated child recipes keep path balances separate and aggrega
   let o=f.ok(await f.command('/production-orders',{...body,structure_token:plan.structure_token}));
   o=f.ok(await f.command(`/production-orders/${o.id}/start`,{version:o.version}));const doc=o.material_documents[0];f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));o=await f.get(o.id);
   assert.deepEqual(o.stages.map(s=>s.path),['','1','1.1','2','2.1']);
-  o=f.ok(await f.complete(o,'1.1',2,[['1.1.1',6]]));assert.equal((await f.complete(o,'2',1,[['2.1',1]])).status,400);
-  o=f.ok(await f.complete(o,'2.1',1,[['2.1.1',3]]));o=f.ok(await f.complete(o,'1',1,[['1.1',1]]));o=f.ok(await f.complete(o,'2',1,[['2.1',1]]));
+  o=f.ok(await f.complete(o,'1.1',2,[['1.1.1',6]]));
+  assert.equal(o.stages.find(s=>s.path==='2').items[0].available_quantity,2);
+  assert.equal(pooledProductionStages(o).filter(s=>s.product_id===f.b).length,1);
+  assert.equal(registrationTargets(o).filter(target=>target.layer.product_id===f.b).length,1);
+  o=f.ok(await f.complete(o,'2',1,[['2.1',1]]));
+  const rightBatch=(await f.batches(o,'2')).batches[0];
+  assert.equal(rightBatch.items[0].allocations[0].source_path,'1.1');
+  const source=(await f.batches(o,'1.1')).batches[0];
+  assert.equal((await f.voidBatch(o,source.id)).status,409);
+  assert.equal((await f.complete(o,'1',2,[['1.1',2]])).status,400);
+  o=f.ok(await f.complete(o,'2.1',1,[['2.1.1',3]]));o=f.ok(await f.complete(o,'1',1,[['1.1',1]]));
+  assert.equal((await f.batches(o,'1.1')).total,2);
+  assert.equal((await f.batches(o,'2.1')).total,2);
+  assert.deepEqual(o.stage_pools[0].pool_usages.map(u=>[u.path,u.quantity]).sort(),[['1',1],['2',1]]);
   o=f.ok(await f.complete(o,'',1,[['1',1],['2',1],['3',1]]));
   assert.equal(o.items[0].available_quantity,4);assert.equal(o.items[0].actual_quantity,7);assert.equal(o.items[0].direct_consumed_quantity,10);
-  assert.equal(o.stages.find(s=>s.path==='1.1').available_quantity,1);assert.equal(o.stages.find(s=>s.path==='2.1').available_quantity,0);
+  assert.equal(o.stages.find(s=>s.path==='1.1').available_quantity,0);assert.equal(o.stages.find(s=>s.path==='2.1').available_quantity,1);
   assert.equal(o.total_cost_cents,700);assert.equal(o.work_in_progress_cost_cents,300);
   for(const id of [f.b,d,e])assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(id).stock,0);
-  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+  const backup=f.ok(await f.request('/backup')),preview=f.ok(await f.request('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
+  o=await f.get(o.id);assert.equal(o.stage_pools[0].available_quantity,1);
+  const upper=(await f.batches(o,'')).batches[0];o=f.ok(await f.voidBatch(o,upper.id));
+  o=f.ok(await f.voidBatch(o,rightBatch.id));assert.equal(o.stage_pools[0].available_quantity,2);
+  assert.equal(o.stage_pools[0].pool_usages.length,1);
 });
 
 test('all half batches must be corrected before order void; returned pools permit deletion with clean foreign keys',async t=>{

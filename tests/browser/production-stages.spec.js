@@ -6,7 +6,7 @@ import { productionRegistrationUrl } from '../../shared/production-link.js';
 
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 
-async function fixture(page, worker = false) {
+async function fixture(page, worker = false, shared = false) {
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -27,7 +27,17 @@ async function fixture(page, worker = false) {
   db.prepare('UPDATE products SET stock=100,inventory_value_cents=10000 WHERE id=?').run(raw.id);
   const bom = (product_id, name, items) => post('/boms', { product_id, name, base_quantity: 1, base_unit: '件', note: '', enabled: 1, items });
   const child = await bom(half.id, '半成品配方', [{ product_id: raw.id, quantity: 3, unit: '件', note: '' }]);
-  const parent = await bom(output.id, '成品配方', [{ product_id: half.id, quantity: 2, unit: '件', note: '', usage_mode: 'explode', child_bom_id: child.id }]);
+  let parent;
+  if (shared) {
+    const route = await post('/process-routes', { name: '绞合路线', note: '', enabled: 1, graph: { nodes: [{ id: 'out', name: '绞合', note: '', x: 24, y: 24 }], edges: [] } });
+    db.prepare('UPDATE products SET default_route_id=? WHERE id=?').run(route.id, half.id);
+    const branches = [];
+    for (const name of ['芯线黑色', '芯线白色']) {
+      const productRow = await product(name), recipe = await bom(productRow.id, name + '配方', [{ product_id: half.id, quantity: 1, unit: '件', note: '', usage_mode: 'explode', child_bom_id: child.id }]);
+      branches.push({ product_id: productRow.id, quantity: 1, unit: '件', note: '', usage_mode: 'explode', child_bom_id: recipe.id });
+    }
+    parent = await bom(output.id, '黑白芯线配方', branches);
+  } else parent = await bom(output.id, '成品配方', [{ product_id: half.id, quantity: 2, unit: '件', note: '', usage_mode: 'explode', child_bom_id: child.id }]);
   const plan = await post('/production-orders/prepare', { bom_id: parent.id, bom_version: parent.version, planned_quantity: 10 });
   const draft = await post('/production-orders', { bom_id: parent.id, bom_version: parent.version, planned_quantity: 10, structure_token: plan.structure_token, note: '', production_group_id: group?.id });
   const started = await post(`/production-orders/${draft.id}/start`, { version: draft.version });
@@ -304,4 +314,60 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} supplements produ
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.half.id).stock).toBe(10);
     expect(errors).toEqual([]);
   } finally {await f.close();if(context)await context.close();}
+});
+
+for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers one shared semi-finished task and consumes it for black and white cores`, async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const context = mode === 'pwa' ? await browser.newContext({ locale: 'zh-CN', serviceWorkers: 'allow', viewport: { width: 390, height: 844 }, userAgent: iphone }) : null;
+  if (context) page = await context.newPage();
+  if (mode !== 'desktop') {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone);
+  }
+  const f = await fixture(page, true, true), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await page.goto(`${f.base}/#production`);
+    if (context) await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: `查看生产单 ${f.draft.number}`, exact: true }).click();
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
+    const shared = page.locator('.production-progress-item').filter({ hasText: '共用半成品' });
+    await expect(shared).toHaveCount(1);
+    await expect(shared).toContainText('芯线黑色、芯线白色');
+    await expect(shared).toContainText('/ 20 件');
+    await shared.getByText('工序进度与登记（1）', { exact: true }).click();
+    await page.getByRole('button', { name: '登记 绞合', exact: true }).click();
+    await expect(page.getByRole('radio', { name: /绞合/ })).toHaveCount(1);
+    await page.getByLabel('本次数量', { exact: true }).fill('16');
+    await page.getByLabel('线盘号／批次备注', { exact: true }).fill('R001');
+    await adjustUsage(page);
+    await expect(page.getByLabel('分层原料实际耗料', { exact: true })).toHaveValue('48');
+    await submitProductionBatch(page);
+    let order = await f.get();
+    expect(order.stage_pools[0].completed_quantity).toBe(16);
+    expect(order.stage_pools[0].available_quantity).toBe(16);
+    expect(order.receipt_documents).toHaveLength(0);
+    for (const [name, quantity] of [['芯线黑色', '5'], ['芯线白色', '8']]) {
+      await page.getByRole('tab', { name: '生产进度', exact: true }).click();
+      await page.getByRole('button', { name: `登记 ${name}`, exact: true }).click();
+      await page.getByLabel('本次数量', { exact: true }).fill(quantity);
+      await adjustUsage(page);
+      await expect(page.getByLabel('分层半成品实际耗料', { exact: true })).toHaveValue(quantity);
+      await submitProductionBatch(page);
+    }
+    order = await f.get();
+    expect(order.stage_pools[0].available_quantity).toBe(3);
+    expect(order.stage_pools[0].consumed_quantity).toBe(13);
+    expect(order.stage_pools[0].pool_usages.map(row => [row.name, row.quantity])).toEqual([['芯线黑色', 5], ['芯线白色', 8]]);
+    expect(order.items[0].available_quantity).toBe(12);
+    expect(JSON.stringify(order)).not.toMatch(/cost_cents/);
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
+    await shared.getByText('查看实际领用去向', { exact: true }).click();
+    await expect(shared).toContainText('芯线黑色 · 1: 5 件');
+    await expect(shared).toContainText('芯线白色 · 2: 8 件');
+    await shared.getByRole('button', { name: '查看批次 分层半成品', exact: true }).click();
+    await expect(page.getByText('R001', { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context?.close(); }
 });

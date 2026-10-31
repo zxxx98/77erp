@@ -256,28 +256,33 @@ for (const multi of [false,true]) test(`started ${multi ? 'layered' : 'single-le
 });
 
 
-test('overflow reports and final outputs split across identical material paths atomically and replay safely', async t => {
+test('shared operations aggregate predecessors across paths, register output once and replay safely', async t => {
   const f = await fixture(t, { multi: true, repeated: true });
   let order = await f.start(await f.create());
   const paths = order.stages.filter(s => s.product_id === f.half).map(s => s.path);
   assert.equal(paths.length, 2);
   order = f.ok(await f.report(order, 'cut', 16, paths[0], { auto_overflow: true }));
-  assert.deepEqual(paths.map(path => order.operation_routes.find(r => r.path === path).operations[0].completed_quantity), [10,6]);
+  assert.deepEqual(paths.map(path => order.operation_routes.find(r => r.path === path).operations[0].completed_quantity), [16,16]);
   const before = order.version;
-  assert.equal((await f.report(order, 'weld', 17, paths[0], { auto_overflow: true })).status, 400);
+  assert.equal((await f.report(order, 'weld', 17, paths[0], { auto_overflow: true })).status, 409);
   assert.equal((await f.get(order.id)).version, before);
-  order = f.ok(await f.report(order, 'weld', 16, paths[0], { auto_overflow: true }));
-  const allocations = paths.map((path,i) => ({path,quantity:i?6:10,items:[{path:path+'.1',quantity:(i?6:10)*2}]}));
-  const body = { request_id:randomUUID(),version:order.version,path:paths[0],operation_node_id:'out',completed_quantity:16,finish_order:false,note:'跨路径登记',scraps:[],auto_overflow:true,allocations };
-  const invalid = structuredClone(body); invalid.request_id=randomUUID(); invalid.allocations[1].items[0].quantity=9999;
+  order = f.ok(await f.report(order, 'weld', 16, paths[1], { auto_overflow: true }));
+  const allocations = [{path:paths[0],quantity:16,items:[{path:paths[0]+'.1',quantity:32}]}];
+  const body = { request_id:randomUUID(),version:order.version,path:paths[0],operation_node_id:'out',completed_quantity:16,finish_order:false,note:'线盘 R001',scraps:[],auto_overflow:true,allocations };
+  const invalid = structuredClone(body); invalid.request_id=randomUUID(); invalid.allocations[0].items[0].quantity=9999;
   assert.equal((await f.command(`/production-orders/${order.id}/stages/complete`,invalid)).status,400);
   order = await f.get(order.id);
   assert.equal(order.stages.find(s=>s.path===paths[0]).completed_quantity,0);
   order = f.ok(await f.command(`/production-orders/${order.id}/stages/complete`,body));
-  assert.deepEqual(paths.map(path=>order.stages.find(s=>s.path===path).completed_quantity),[10,6]);
-  assert.deepEqual(paths.map(path=>order.stages.find(s=>s.path===path).items[0].actual_quantity),[20,12]);
+  assert.deepEqual(paths.map(path=>order.stages.find(s=>s.path===path).completed_quantity),[16,0]);
+  assert.deepEqual(paths.map(path=>order.stages.find(s=>s.path===path).items[0].actual_quantity),[32,0]);
   assert.equal(order.completed_quantity ?? 0,0);
   const replay=f.ok(await f.command(`/production-orders/${order.id}/stages/complete`,body));
   assert.equal(replay.version,order.version);
+  assert.equal(order.stage_pools[0].completed_quantity,16);
+  const history=f.ok(await f.request(`/production-orders/${order.id}/operations/reports?snapshot_id=${order.operation_routes.find(r=>r.path===paths[1]).id}`));
+  assert.equal(history.total,3);
+  const cut=history.reports.find(r=>r.node_id==='cut');
+  assert.equal((await f.command(`/production-orders/${order.id}/operations/${cut.id}/void`,{version:order.version,reason:'前序核对'})).status,409);
   f.ok(await f.command('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
 });

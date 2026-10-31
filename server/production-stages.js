@@ -1,4 +1,5 @@
 import { operationAllocation } from '../shared/operation-overflow.js';
+import { stagePoolPaths, productionPoolOrder, pooledProductionStages, productionPoolPathMap } from '../shared/production-pools.js';
 import { productionRegistrationGroup } from './production-access.js';
 import { recordOperationOutput, voidOperationOutput } from './process-routes.js';
 import { deriveProductionStages, stageDisplayStandardQuantity, productionStageItems, stageInputCanBeZero } from '../shared/production-stages.js';
@@ -109,11 +110,22 @@ export function readProductionStages(db, order) {
   });
   order.direct_material_cost_cents=order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.reduce((n,i)=>n+i.cost_cents,0),0);
   order.work_in_progress_cost_cents=order.stages.filter(s=>s.path!=='').reduce((n,s)=>n+s.available_cost_cents,0);
+  const byBatch=new Map(ledger.batches.map(b=>[b.id,b])),byInput=new Map(ledger.inputs.map(i=>[i.id,i]));
+  const byStage=new Map(order.stages.map(s=>[s.path,s])),usages=new Map();
+  for(const allocation of ledger.allocations){
+    const consumer=byBatch.get(byInput.get(allocation.input_id).batch_id),source=byBatch.get(allocation.source_batch_id);
+    const destinations=usages.get(source.path)||new Map(),prior=destinations.get(consumer.path);
+    destinations.set(consumer.path,{path:consumer.path,name:byStage.get(consumer.path).name,quantity:addQuantity(prior?.quantity||0,allocation.quantity)});
+    usages.set(source.path,destinations);
+  }
+  for(const stage of order.stages)stage.pool_usages=[...(usages.get(stage.path)?.values()||[])];
   if(!Number.isSafeInteger(order.direct_material_cost_cents)||!Number.isSafeInteger(order.work_in_progress_cost_cents))fail('分层生产累计成本超出范围。');
 }
 export function populateStageBalances(order) {
   if(!order.stage_workflow)return;
-  for(const stage of order.stages)stage.items=stage.items.map(n=>({...n,available_quantity:n.usage_mode==='explode'?order.stages.find(s=>s.path===n.path).available_quantity:order.items.find(i=>i.product_id===n.product_id).available_quantity}));
+  const pools=productionPoolPathMap(order),byStage=new Map(order.stages.map(s=>[s.path,s]));
+  for(const stage of order.stages)stage.items=stage.items.map(n=>({...n,available_quantity:n.usage_mode==='explode'?sum((pools.get(n.path)||[n.path]).map(path=>byStage.get(path)),'available_quantity'):order.items.find(i=>i.product_id===n.product_id).available_quantity}));
+  order.stage_pools=pooledProductionStages(order).filter(stage=>stage.pool_paths);
 }
 export function assertStagesFinished(order) {
   const remaining=(order.stages||[]).filter(s=>s.path!==''&&s.available_quantity!==0);
@@ -141,8 +153,8 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     const o=stageOrder(req),{path,offset='0',limit='20'}=req.query;
     if(typeof path!=='string'||!o.stages.some(s=>s.path===path))fail('生产层不存在。',404);
     if(!/^\d+$/.test(offset)||!Number.isSafeInteger(Number(offset))||!/^\d+$/.test(limit)||Number(limit)<1||Number(limit)>100)fail('批次分页参数无效。');
-    const total=db.prepare('SELECT COUNT(*) n FROM production_stage_batches WHERE production_id=? AND path=?').get(o.id,path).n;
-    const ledger=stageLedger(db,o.id),batches=ledger.batches.filter(b=>b.path===path).slice(Number(offset),Number(offset)+Number(limit)).map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id).map(i=>({...productionStageItems(o,b.path).find(n=>n.path===i.path),...i,actual_quantity:i.quantity,
+    const paths=stagePoolPaths(o,path),ledger=stageLedger(db,o.id),all=ledger.batches.filter(b=>paths.includes(b.path)),total=all.length;
+    const batches=all.slice(Number(offset),Number(offset)+Number(limit)).map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id).map(i=>({...productionStageItems(o,b.path).find(n=>n.path===i.path),...i,actual_quantity:i.quantity,
       allocations:db.prepare('SELECT a.*,b.path AS source_path,b.batch_number AS source_batch_number FROM production_stage_allocations a JOIN production_stage_batches b ON b.id=a.source_batch_id WHERE a.input_id=? ORDER BY a.id').all(i.id)}))}));
     return {batches,total,has_more:Number(offset)+batches.length<total};
   }));
@@ -158,7 +170,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
       return {...n,quantity:materialQuantity(a.quantity,n),variance_reason:(a.variance_reason||'').trim()};});
     if(!actuals.some(a=>a.quantity>0))fail('至少一种直属投入需大于零。');
     const output=db.prepare('SELECT * FROM products WHERE id=?').get(s.product_id);if(output.unit!==s.unit||output.unit_round_up!==s.unit_round_up||!output.active)fail('本层产品已停用或单位、取整规则已变化。',409);
-    const q=materialQuantity(req.body.completed_quantity,s),ledger=stageLedger(db,o.id),count=ledger.batches.filter(b=>b.path===s.path).length;
+    const q=materialQuantity(req.body.completed_quantity,s),ledger=stageLedger(db,o.id),count=ledger.batches.filter(b=>b.path===s.path).length,pools=productionPoolPathMap(o);
     if(count>=1000||ledger.batches.length>=10000)fail('层级批次达到上限（每层 1000 批、整单 10000 批，含作废），请拆分生产单。');
     if(!validStoredQuantity(addQuantity(s.completed_quantity,q),true))fail('累计产量超出范围。');
     const registrationGroup=productionRegistrationGroup(req.user,o);
@@ -170,12 +182,15 @@ export function installProductionStages(app,db,{route,current,version,units,upda
       let cost=0;const splits=[];
       if(a.usage_mode==='stock'){const p=pool.get(a.product_id);if(a.quantity>p.quantity)fail(`${a.name}已领未耗余额不足（当前 ${p.quantity} ${a.unit}）。请补料或核对实际投入。`);cost=a.quantity?allocate(p.cost_cents,a.quantity,p.quantity):0;p.quantity=addQuantity(p.quantity,-a.quantity);p.cost_cents-=cost;merge({product_id:a.product_id,quantity:a.quantity,cost_cents:cost});}
       else {
-        let need=a.quantity;for(const source of ledger.batches.filter(b=>b.path===a.path&&b.status==='active')){if(!need)break;const left=stageBatchRemaining(source,ledger.allocations,ledger.allocationComponents);if(!left.quantity)continue;
+        const sourcePaths=pools.get(a.path)||[a.path];
+        let need=a.quantity;for(const source of ledger.batches.filter(b=>sourcePaths.includes(b.path)&&b.status==='active')){if(!need)break;const left=stageBatchRemaining(source,ledger.allocations,ledger.allocationComponents);if(!left.quantity)continue;
           const used=Math.min(need,left.quantity),c=allocate(left.cost_cents,used,left.quantity),parts=allocateStageComponents(left.components,used,left.quantity,c);splits.push({source,quantity:used,cost_cents:c,parts});cost+=c;need=addQuantity(need,-used);}
         if(need)fail(`${a.name}来源层［${a.path}］半成品余额不足（还缺 ${need} ${a.unit}），请先登记下层生产。`);
       }
       const inputId=Number(db.prepare('INSERT INTO production_stage_inputs(batch_id,path,product_id,usage_mode,quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?,?,?)').run(id,a.path,a.product_id,a.usage_mode,a.quantity,cost,a.variance_reason).lastInsertRowid);
-      for(const split of splits){const aid=Number(db.prepare('INSERT INTO production_stage_allocations(input_id,source_batch_id,quantity,cost_cents) VALUES (?,?,?,?)').run(inputId,split.source.id,split.quantity,split.cost_cents).lastInsertRowid);for(const c of split.parts){db.prepare('INSERT INTO production_stage_allocation_components(allocation_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(aid,c.product_id,c.quantity,c.cost_cents);merge(c);}}
+      for(const split of splits){const aid=Number(db.prepare('INSERT INTO production_stage_allocations(input_id,source_batch_id,quantity,cost_cents) VALUES (?,?,?,?)').run(inputId,split.source.id,split.quantity,split.cost_cents).lastInsertRowid);
+        ledger.allocations.push({id:aid,input_id:inputId,source_batch_id:split.source.id,quantity:split.quantity,cost_cents:split.cost_cents});
+        for(const c of split.parts){db.prepare('INSERT INTO production_stage_allocation_components(allocation_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(aid,c.product_id,c.quantity,c.cost_cents);ledger.allocationComponents.push({...c,allocation_id:aid});merge(c);}}
       total+=cost;if(!Number.isSafeInteger(total))fail('本批成本超出范围。');
     }
     for(const c of components.values())db.prepare('INSERT INTO production_stage_components(batch_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(id,c.product_id,c.quantity,c.cost_cents);
@@ -232,6 +247,7 @@ export function validateProductionStageBackup(data) {
   const tables=Object.fromEntries(productionStageTables.map(t=>[t,data[t]||[]]));
   const keyed=t=>{const rows=tables[t],m=new Map(rows.map(r=>[r.id,r]));if(m.size!==rows.length||rows.some(r=>!Number.isSafeInteger(r.id)||r.id<1))fail('备份分层记录编号无效或重复。');return m;};
   const stages=keyed('production_stages'), batches=keyed('production_stage_batches'),inputs=keyed('production_stage_inputs'),allocations=keyed('production_stage_allocations');
+  const poolOrders=new Map([...orders.values()].map(order=>[order.id,productionPoolPathMap(productionPoolOrder(data,order))]));
   keyed('production_stage_components');keyed('production_stage_allocation_components');
   const unique=new Set(),rootIds=new Set();
   for(const order of orders.values()) {
@@ -272,7 +288,7 @@ export function validateProductionStageBackup(data) {
   }
   for(const a of allocations.values()){
     const i=inputs.get(a.input_id),consumer=i&&batches.get(i.batch_id),source=batches.get(a.source_batch_id),k=`allocation:${a.input_id}:${a.source_batch_id}`;
-    if(!i||i.usage_mode!=='explode'||!source||!consumer||unique.has(k)||source.production_id!==consumer.production_id||source.path!==i.path||source.id>=consumer.id||source.created_at>consumer.created_at||
+    if(!i||i.usage_mode!=='explode'||!source||!consumer||unique.has(k)||source.production_id!==consumer.production_id||!(poolOrders.get(consumer.production_id).get(i.path)||[i.path]).includes(source.path)||source.id>=consumer.id||source.created_at>consumer.created_at||
       !validStoredQuantity(a.quantity,true)||a.quantity>source.completed_quantity||stages.get(source.stage_id).unit_round_up&&!Number.isInteger(a.quantity)||!money(a.cost_cents)||a.cost_cents>source.total_cost_cents||consumer.status==='active'&&source.status!=='active')fail('备份半成品来源跨单、层级或状态依赖无效。');
     unique.add(k);const parts=tables.production_stage_allocation_components.filter(c=>c.allocation_id===a.id);
     if(!parts.length||parts.reduce((n,c)=>n+c.cost_cents,0)!==a.cost_cents)fail('备份半成品分配组成成本不一致。');
@@ -301,14 +317,14 @@ export function validateProductionStageBackup(data) {
     const root=active.filter(b=>b.path==='').reduce((n,b)=>n+b.total_cost_cents,0);
     if(direct!==root+wip.reduce((n,b)=>n+b.cost_cents,0)||o.status==='completed'&&wip.some(b=>b.quantity!==0))fail('备份整单分层成本或结束状态不守恒。');
   }
-  validateStageAllocationHistory(tables,batches,inputs,allocations);
+  validateStageAllocationHistory(tables,batches,inputs,allocations,poolOrders);
 }
 
 // Current balances alone cannot prove an immutable transfer: reducing its
 // quantity must also change its cents and raw provenance. Reproduce the source
 // balances that existed when each consumer was registered, restoring the exact
 // saved shares on correction rather than applying an original batch ratio.
-function validateStageAllocationHistory(tables,batches,inputs,allocations) {
+function validateStageAllocationHistory(tables,batches,inputs,allocations,poolOrders) {
   const groupBy=(rows,key)=>{
     const groups=new Map();
     for(const row of rows){const k=key(row),group=groups.get(k)||[];group.push(row);groups.set(k,group);}
@@ -344,14 +360,19 @@ function validateStageAllocationHistory(tables,batches,inputs,allocations) {
     }
   };
   const matchesCreation=batch=>{
+    const working=new Map();
     for(const input of batchInputs.get(batch.id)||[]){
       if(input.usage_mode!=='explode')continue;
       let needed=input.quantity,index=0;
       const saved=inputAllocations.get(input.id)||[];
-      for(const source of sourceBatches.get(`${batch.production_id}:${input.path}`)||[]){
+      // Historical path-specific FIFO is retained. Cross-path transfers use pool FIFO.
+      const paths=saved.some(a=>batches.get(a.source_batch_id).path!==input.path)?poolOrders.get(batch.production_id).get(input.path):[input.path];
+      const sources=paths.flatMap(path=>sourceBatches.get(`${batch.production_id}:${path}`)||[]).sort((a,b)=>a.id-b.id);
+      for(const source of sources){
         if(!needed)break;
         if(!live.has(source.id))continue;
-        const left=remaining.get(source.id);
+        if(!working.has(source.id)) { const original=remaining.get(source.id); working.set(source.id,{...original,components:new Map([...original.components].map(([id,c])=>[id,{...c}]))}); }
+        const left=working.get(source.id);
         if(!left.quantity)continue;
         const quantity=Math.min(needed,left.quantity),cost=allocate(left.cost_cents,quantity,left.quantity);
         const allocation=saved[index++];
@@ -359,6 +380,8 @@ function validateStageAllocationHistory(tables,batches,inputs,allocations) {
         const expected=allocateStageComponents([...left.components.values()],quantity,left.quantity,cost);
         const actual=allocationComponents.get(allocation.id)||[];
         if(expected.length!==actual.length||expected.some(e=>{const a=actual.find(a=>a.product_id===e.product_id);return !a||a.quantity!==e.quantity||a.cost_cents!==e.cost_cents;}))return false;
+        left.quantity=addQuantity(left.quantity,-quantity);left.cost_cents-=cost;
+        for(const part of actual){const component=left.components.get(part.product_id);component.quantity=addQuantity(component.quantity,-part.quantity);component.cost_cents-=part.cost_cents;}
         needed=addQuantity(needed,-quantity);
       }
       if(needed||index!==saved.length)return false;

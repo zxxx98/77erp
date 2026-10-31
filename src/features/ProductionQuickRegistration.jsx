@@ -37,7 +37,10 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   const { user, can } = usePermissions();
   const action = useBusiness();
   const targets = useMemo(() => registrationTargets(order), [order]);
-  const [selectedId, setSelectedId] = useState(() => targets.some(row => row.id === initialTargetId) ? initialTargetId : targets.length === 1 ? targets[0].id : '');
+  const [selectedId, setSelectedId] = useState(() => {
+    const initial = targets.find(row => row.id === initialTargetId || row.layer.pool_paths?.some(path => JSON.stringify([path, row.node?.id ?? null]) === initialTargetId));
+    return initial?.id ?? (targets.length === 1 ? targets[0].id : '');
+  });
   const [quantity, setQuantity] = useState(''), [note, setNote] = useState('');
   const [workerId, setWorkerId] = useState(user.id);
   const [overrides, setOverrides] = useState({ items: {}, scraps: {} });
@@ -149,6 +152,8 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           disabled={action.busy || !target || !registerable} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
       </label>
       <p className="bom-hint">{target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(target.node.available_quantity), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
+      {target?.layer.pool_paths && <p className="bom-hint">{t('production.poolHint')}</p>}
+      {target?.layer.pool_paths && <label>{t('production.poolBatchNote')}<Input.TextArea aria-label={t('production.poolBatchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
       {(allocations.length > 1 || allocations.length === 1 && allocations[0].path !== target.path) && <div className="registration-allocation" role="status"><p className="bom-hint">{t('registration.overflowHint')}</p><ul>{allocations.map(part => <li key={part.path}>{part.layer.name} · {t('registration.layer', { path: part.path || t('production.finalProduct') })}: {count(part.quantity)} {target.unit}</li>)}</ul></div>}
       {target?.output && <p className="bom-hint">{t('registration.standardUsage')}{!target.path && ` ${t('registration.pendingReceipt')}`}</p>}
       {!registerable && <p className="bom-warning" role="status">{t('registration.closed')}</p>}
@@ -176,7 +181,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           <Button disabled={action.busy || !quantity} onClick={() => setOverrides({ items: {}, scraps: {} })}>{t('production.fillUsageFromThisBatchSOutput')}</Button>
           <ScrapOutputs rows={scrapRows} materials={target.layer.items} complete disabled={action.busy} onChange={patchScrap} />
         </>}
-        <label>{t('production.batchNote')}<Input.TextArea aria-label={t('production.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>
+        {!target?.layer.pool_paths && <label>{t('production.batchNote')}<Input.TextArea aria-label={t('production.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
       </details>
       {action.error && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
       {message && <p className="bom-success" role="status">{message}</p>}

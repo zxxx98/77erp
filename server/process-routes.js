@@ -1,4 +1,5 @@
 import { operationAllocation } from '../shared/operation-overflow.js';
+import { productionPools, stagePoolPaths, productionPoolOrder } from '../shared/production-pools.js';
 import { isProductionAssignee } from '../shared/production-assignment.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validQuantity, addQuantity } from '../shared/quantity.js';
@@ -148,6 +149,13 @@ export function readProductionRoutes(db, order) {
     const graph = parseGraph(row.graph), all = db.prepare('SELECT * FROM production_operation_reports WHERE route_snapshot_id=? ORDER BY id').all(row.id);
     return { ...row, graph, operations: processProgress(graph, all), reports: all.slice(-100).reverse(), report_count: all.length };
   });
+  for (const group of productionPools(order)) {
+    if (group.length < 2) continue;
+    const routes = order.operation_routes.filter(r => group.some(s => s.path === r.path));
+    const ids = new Set(routes.map(r => r.id));
+    const reports = db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? ORDER BY id').all(order.id).filter(r => ids.has(r.route_snapshot_id));
+    for (const route of routes) Object.assign(route, { operations: processProgress(route.graph, reports), reports: reports.slice(-100).reverse(), report_count: reports.length });
+  }
 }
 
 function operationWorker(db, req, order) {
@@ -191,7 +199,8 @@ export function voidOperationOutput(db, kind, batchId, owner, at, reason) {
   if (report) db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE output_kind=? AND output_batch_id=? AND status='active'").run(reason, owner, at, nextOperationSequence(db, report.production_id), kind, batchId);
 }
 export function assertOperationsFinished(db, productionId) {
-  const order = { id: productionId }; readProductionRoutes(db, order);
+  const order = { id: productionId, stages: db.prepare('SELECT * FROM production_stages WHERE production_id=?').all(productionId),
+    nodes: db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(productionId) }; readProductionRoutes(db, order);
   for (const route of order.operation_routes) {
     const output = route.operations.find(n => n.is_output).completed_quantity;
     if (route.operations.some(n => n.completed_quantity !== output)) fail('仍有工序在制数量，请完成流转或纠正错误报工后再结束生产。', 409);
@@ -210,8 +219,10 @@ export function installProductionOperations(app, db, { route, current, version }
     const order = current(req), { snapshot_id, offset = '0', limit = '20' } = req.query;
     if (typeof snapshot_id !== 'string' || !/^\d+$/.test(snapshot_id) || !order.operation_routes.some(r => r.id === Number(snapshot_id)) ||
         typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) || typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100) fail('工序记录筛选或分页参数无效。');
-    const total = db.prepare('SELECT COUNT(*) n FROM production_operation_reports WHERE production_id=? AND route_snapshot_id=?').get(order.id, Number(snapshot_id)).n;
-    const reports = db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? AND route_snapshot_id=? ORDER BY id DESC LIMIT ? OFFSET ?').all(order.id, Number(snapshot_id), Number(limit), Number(offset));
+    const snapshot = order.operation_routes.find(r => r.id === Number(snapshot_id));
+    const paths = stagePoolPaths(order, snapshot.path), ids = new Set(order.operation_routes.filter(r => paths.includes(r.path)).map(r => r.id));
+    const all = db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? ORDER BY id DESC').all(order.id).filter(r => ids.has(r.route_snapshot_id)), total = all.length;
+    const reports = all.slice(Number(offset), Number(offset) + Number(limit));
     return { reports, total, has_more: Number(offset) + reports.length < total };
   }));
   app.post('/api/production-orders/:id/operations/report', route(req => {
@@ -238,7 +249,8 @@ export function installProductionOperations(app, db, { route, current, version }
     if (!report || report.status !== 'active') fail('工序记录不存在或已作废。', 404);
     if (report.output_kind) fail('最终工序记录请通过对应产出批次作废。', 409);
     const snapshot = order.operation_routes.find(r => r.id === report.route_snapshot_id);
-    const remaining = processProgress(snapshot.graph, db.prepare("SELECT * FROM production_operation_reports WHERE route_snapshot_id=? AND id!=?").all(snapshot.id, report.id));
+    const paths = stagePoolPaths(order, snapshot.path), ids = new Set(order.operation_routes.filter(r => paths.includes(r.path)).map(r => r.id));
+    const remaining = processProgress(snapshot.graph, db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? AND id!=?').all(order.id, report.id).filter(r => ids.has(r.route_snapshot_id)));
     for (const node of remaining) for (const parent of node.predecessors)
       if (node.completed_quantity > remaining.find(n => n.id === parent).completed_quantity) fail('后序已有报工，请先作废依赖的后序记录。', 409);
     const at = new Date().toISOString();
@@ -291,8 +303,20 @@ export function validateProcessRouteBackup(data) {
   // Persisted event sequences make same-millisecond registrations and corrections
   // unambiguous. Replay every route so balanced current totals cannot hide an
   // output that was reported before its predecessors existed.
+  const replaySnapshots=[];
+  for (const order of orders.values()) {
+    const poolOrder=productionPoolOrder(data,order);
+    const grouped=new Set();
+    for(const group of productionPools(poolOrder)){
+      const members=[...snapshots.values()].filter(s=>s.production_id===order.id&&group.some(stage=>stage.path===s.path));
+      if(!members.length)continue;
+      members.forEach(s=>grouped.add(s.id));
+      replaySnapshots.push({...members[0],reports:members.flatMap(s=>s.reports)});
+    }
+    replaySnapshots.push(...[...snapshots.values()].filter(s=>s.production_id===order.id&&!grouped.has(s.id)));
+  }
   const sequences = new Map();
-  for (const snapshot of snapshots.values()) {
+  for (const snapshot of replaySnapshots) {
     const events = snapshot.reports.flatMap(report => [{ sequence: report.created_sequence, report, create: true }, ...(report.status === 'void' ? [{ sequence: report.voided_sequence, report, create: false }] : [])]).sort((a,b) => a.sequence - b.sequence);
     const used = sequences.get(snapshot.production_id) || new Set(); sequences.set(snapshot.production_id,used);
     const active = new Map();
@@ -304,12 +328,13 @@ export function validateProcessRouteBackup(data) {
         if (node.completed_quantity > progress.find(n => n.id === parent).completed_quantity) fail('备份工序事件顺序无效。');
     }
   }
-  for (const snapshot of snapshots.values()) {
+  for (const snapshot of replaySnapshots) {
     const order = orders.get(snapshot.production_id), operations = processProgress(snapshot.graph, snapshot.reports);
     if (operations.some(n => !validQuantity(n.completed_quantity))) fail('备份工序累计数量无效。');
     for (const node of operations) for (const parent of node.predecessors) if (node.completed_quantity > operations.find(n => n.id === parent).completed_quantity) fail('备份工序前后数量不守恒。');
     const kind = order.stage_workflow ? 'stage' : 'batch';
-    for (const batch of (kind === 'stage' ? data.production_stage_batches : data.production_batches).filter(b => b.production_id === order.id && (kind !== 'stage' || b.path === snapshot.path)))
+    const paths=stagePoolPaths(productionPoolOrder(data,order),snapshot.path);
+    for (const batch of (kind === 'stage' ? data.production_stage_batches : data.production_batches).filter(b => b.production_id === order.id && (kind !== 'stage' || paths.includes(b.path))))
       if (!outputs.has(`${kind}:${batch.id}`)) fail('备份产出批次缺少最终工序记录。');
     if (order.status === 'completed' && operations.some(n => n.completed_quantity !== operations.find(n => n.is_output).completed_quantity) ||
         order.status === 'void' && operations.some(n => n.completed_quantity !== 0)) fail('备份已结束生产单仍有工序在制数量。');

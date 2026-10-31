@@ -542,7 +542,7 @@ for (const mode of ['desktop', 'iPhone 13']) test(`${mode} nested overview expan
 });
 
 
-for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} previews and saves overflow across identical operation paths`, async ({ browser }) => {
+for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers shared operation output without choosing a destination`, async ({ browser }) => {
   const context=await browser.newContext({locale:'zh-CN',...(mode==='desktop'?{}:devices['iPhone 13']),serviceWorkers:mode==='pwa'?'allow':'block'});
   const page=await context.newPage(),f=await fixture(page,{multi:true,repeated:true}),errors=[];
   page.on('pageerror',error=>errors.push(error.message));
@@ -552,16 +552,15 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} previews and save
     order=await f.post(`/production-orders/${order.id}/operations/report`,{version:order.version,path:paths[0],operation_node_id:'cut',quantity:16,note:'',auto_overflow:true});
     await page.goto(f.link);
     await expect(page.getByRole('heading',{name:'生产登记',exact:true})).toBeVisible();
-    await page.locator('.registration-picker-trigger').click();
-    await page.locator('.registration-picker-modal .registration-operation').filter({hasText:'检验'}).filter({hasText:'黑芯'}).click();
+    await page.locator('.registration-operation').filter({hasText:'检验'}).filter({hasText:'共用半成品'}).click();
     await page.getByLabel('本次数量',{exact:true}).fill('16');
-    await expect(page.locator('.registration-allocation')).toContainText('10');
-    await expect(page.locator('.registration-allocation')).toContainText('6');
+    await expect(page.locator('.registration-allocation')).toHaveCount(0);
+    await expect(page.getByLabel('线盘号／批次备注',{exact:true})).toBeVisible();
     await page.getByRole('button',{name:'提交登记',exact:true}).click();
     await expect(page.getByRole('status').filter({hasText:'已登记'})).toBeVisible();
     order=await f.get();
-    expect(paths.map(path=>order.stages.find(s=>s.path===path).completed_quantity)).toEqual([10,6]);
-    expect(paths.map(path=>order.stages.find(s=>s.path===path).items[0].actual_quantity)).toEqual([20,12]);
+    expect(paths.map(path=>order.stages.find(s=>s.path===path).completed_quantity)).toEqual([16,0]);
+    expect(paths.map(path=>order.stages.find(s=>s.path===path).items[0].actual_quantity)).toEqual([32,0]);
     expect(errors).toEqual([]);
   } finally {await f.close();await context.close();}
 });

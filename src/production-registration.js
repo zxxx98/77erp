@@ -1,11 +1,13 @@
 import { calculateBomNodes } from '../shared/bom-expansion.js';
 import { productionItemQuantity } from '../shared/production.js';
 import { stageInputDefaults } from '../shared/production-stages.js';
+import { pooledProductionStages } from '../shared/production-pools.js';
+import { t } from './i18n/index.js';
 import { scrapExpectedQuantity } from '../shared/scrap.js';
 
 // A route snapshot and BOM path identify the operation, never its display name.
 export function registrationTargets(order) {
-  const layers = order.stage_workflow ? order.stages : [{ ...order, path: '' }];
+  const layers = order.stage_workflow ? pooledProductionStages(order) : [{ ...order, path: '' }];
   const byPath = new Map(layers.map(layer => [layer.path, layer]));
   const ancestors = layer => {
     const chain = [], seen = new Set();
@@ -43,7 +45,7 @@ export function registrationTargets(order) {
       branch = row.ancestors.slice(common).map(stage => stage.name).join(' / ');
     }
     return { ...row,
-      context: [names(row) > 1 && row.routeName, routes(row) > 1 && row.bomName, branch].filter(Boolean).join(' · '),
+      context: row.layer.pool_paths ? `${t('production.sharedSemiFinished')} · ${row.layer.name}` : [names(row) > 1 && row.routeName, routes(row) > 1 && row.bomName, branch].filter(Boolean).join(' · '),
       showPath: boms(row) > 1, showStep: paths(row) > 1,
     };
   });
