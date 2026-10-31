@@ -1,5 +1,12 @@
 // Exact system validation messages, shared by browser and API localization.
 export const processRouteMessages = {
+  OVERFLOW_QUANTITY: ['工序数量需为正数，最多 4 位小数。', 'Operation quantity must be positive with at most 4 decimal places.', 'Số lượng công đoạn phải dương, tối đa 4 chữ số thập phân.'],
+  OVERFLOW_SELECTION: ['请选择有效工序。', 'Select a valid operation.', 'Chọn công đoạn hợp lệ.'],
+  OVERFLOW_ROUNDING: ['工序数量必须符合物料取整规则。', 'Operation quantity must follow the material rounding rule.', 'Số lượng công đoạn phải tuân theo quy tắc làm tròn vật tư.'],
+  OVERFLOW_CAPACITY: ['相同工序剩余可登记数量不足，请核对计划数量及前序报工。', 'Insufficient remaining capacity across matching operations. Check planned quantities and predecessor reports.', 'Các công đoạn tương ứng không đủ số lượng còn lại. Kiểm tra kế hoạch và ghi nhận công đoạn trước.'],
+  OVERFLOW_CONTINUE: ['自动分配登记必须继续生产。', 'Automatic allocation requires keeping production open.', 'Phân bổ tự động yêu cầu tiếp tục sản xuất.'],
+  OVERFLOW_DETAILS: ['请核对工序分配明细。', 'Verify the operation allocation details.', 'Kiểm tra chi tiết phân bổ công đoạn.'],
+  OVERFLOW_CHANGED: ['工序分配已变化，请刷新后核对。', 'Operation allocation changed. Refresh and verify.', 'Phân bổ công đoạn đã thay đổi. Làm mới và kiểm tra.'],
   OPERATION_PRODUCT_CHANGED: ['生产物料已停用、单位或取整规则已变化，请先核对。', 'The production material is disabled or its unit or rounding rule changed. Verify before reporting.', 'Vật tư sản xuất đã tắt hoặc đơn vị, quy tắc làm tròn đã thay đổi. Kiểm tra trước khi ghi nhận.'],
   OPERATION_BACKUP_EVENT: ['备份工序事件顺序无效。', 'Invalid operation event sequence in backup.', 'Thứ tự sự kiện công đoạn trong bản sao không hợp lệ.'],
   ROUTE_SELECTION_INVALID: ['请选择有效工艺路线。', 'Select a valid process route.', 'Chọn quy trình hợp lệ.'],

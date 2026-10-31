@@ -16,6 +16,7 @@ export default {
   'registration.wholeQuantity': ['本工序数量必须为整数。', 'This operation requires a whole number.', 'Số lượng công đoạn này phải là số nguyên.'],
   'registration.exceedsAvailable': ['本次数量超过前序可用数量，请核对或重新读取生产单。', 'Quantity exceeds the available predecessor output. Check or reload the order.', 'Số lượng vượt đầu ra khả dụng của công đoạn trước. Kiểm tra hoặc tải lại lệnh.'],
   'registration.saved': ['已登记 {{name}}：{{quantity}} {{unit}}，可继续填写下一次。', 'Reported {{name}}: {{quantity}} {{unit}}. Ready for the next report.', 'Đã ghi {{name}}: {{quantity}} {{unit}}. Có thể nhập lần tiếp theo.'],
+  'registration.overflowHint': ['当前项优先，超出计划的数量自动补到相同物料、配方及工序的其他路径；各项分别记录耗料。', 'Fill the selected item first, then allocate overflow to other paths with the same material, BOM and operation. Inputs are recorded separately.', 'Ưu tiên mục đã chọn, sau đó phân bổ phần vượt kế hoạch sang các nhánh cùng vật tư, BOM và công đoạn. Đầu vào được ghi nhận riêng.'],
   'registration.qr': ['生产登记二维码', 'Production registration QR code', 'Mã QR ghi nhận sản xuất'],
   'registration.qrHint': ['手机扫码后选择工序、填写数量并提交。需登录有本单权限的账号。', 'Scan on your phone, select an operation, enter a quantity and submit. Sign in with access to this order.', 'Quét bằng điện thoại, chọn công đoạn, nhập số lượng rồi gửi. Đăng nhập tài khoản có quyền với lệnh này.'],
   'registration.qrUnavailable': ['登记二维码暂不可用，请刷新页面后重试。', 'Registration QR code unavailable. Refresh and retry.', 'Mã QR chưa khả dụng. Vui lòng tải lại trang rồi thử lại.'],

@@ -7,7 +7,7 @@ import { validateProcessGraph, arrangeProcessGraph } from '../shared/process-rou
 const node = (id, name = id) => ({ id, name, note: '', x: 24, y: 24 });
 const serial = { nodes: [node('cut','下料'),node('weld','焊接'),node('out','检验')], edges: [{from:'cut',to:'weld'},{from:'weld',to:'out'}] };
 const parallel = { nodes: [node('cut'),node('part'),node('out')], edges: [{from:'cut',to:'out'},{from:'part',to:'out'}] };
-async function fixture(t, { multi = false, graph = serial, routed = true } = {}) {
+async function fixture(t, { multi = false, graph = serial, routed = true, repeated = false } = {}) {
   const {app,db}=createApp(':memory:'); const server=app.listen(0,'127.0.0.1'); await new Promise(resolve=>server.once('listening',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();});
   let cookie;
@@ -22,7 +22,16 @@ async function fixture(t, { multi = false, graph = serial, routed = true } = {})
   db.prepare('UPDATE products SET stock=1000,inventory_value_cents=100000 WHERE id=?').run(raw);
   const bom=async(product_id,items,name)=>ok(await command('/boms',{name,product_id,base_quantity:1,base_unit:'件',note:'',enabled:1,items}));
   const child=await bom(half,[{product_id:raw,quantity:2,unit:'件',note:''}],'凳架配方');
-  const root=multi?await bom(output,[{product_id:half,quantity:1,unit:'件',note:'',usage_mode:'explode',child_bom_id:child.id}],'凳子配方'):child;
+  let branches;
+  if (repeated) {
+    branches = [];
+    for (const name of ['黑芯', '白芯']) {
+      const product_id = await product(name);
+      const branch = await bom(product_id, [{product_id:half,quantity:1,unit:'件',note:'',usage_mode:'explode',child_bom_id:child.id}], name+'配方');
+      branches.push({product_id,quantity:1,unit:'件',note:'',usage_mode:'explode',child_bom_id:branch.id});
+    }
+  }
+  const root=repeated?await bom(output,branches,'双支配方'):multi?await bom(output,[{product_id:half,quantity:1,unit:'件',note:'',usage_mode:'explode',child_bom_id:child.id}],'凳子配方'):child;
   const create=async(extra={})=>{const plan=ok(await command('/production-orders/prepare',{bom_id:root.id,bom_version:root.version,planned_quantity:10}));return ok(await command('/production-orders',{bom_id:root.id,bom_version:root.version,planned_quantity:10,note:'',structure_token:plan.structure_token,...extra}));};
   const get=id=>request(`/production-orders/${id}`).then(ok);
   const start=async(order)=>{const started=ok(await command(`/production-orders/${order.id}/start`,{version:order.version}));const doc=started.material_documents[0];ok(await command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));return get(order.id);};
@@ -244,4 +253,31 @@ for (const multi of [false,true]) test(`started ${multi ? 'layered' : 'single-le
   assert.equal(reports.find(report=>report.node_id==='out').worker_id,person.id);
   const batch=f.db.prepare(`SELECT production_group_id,created_by FROM ${multi?'production_stage_batches':'production_batches'} WHERE production_id=? ORDER BY id DESC`).get(order.id);
   assert.equal(batch.created_by,person.id);assert.equal(batch.production_group_id,null);
+});
+
+
+test('overflow reports and final outputs split across identical material paths atomically and replay safely', async t => {
+  const f = await fixture(t, { multi: true, repeated: true });
+  let order = await f.start(await f.create());
+  const paths = order.stages.filter(s => s.product_id === f.half).map(s => s.path);
+  assert.equal(paths.length, 2);
+  order = f.ok(await f.report(order, 'cut', 16, paths[0], { auto_overflow: true }));
+  assert.deepEqual(paths.map(path => order.operation_routes.find(r => r.path === path).operations[0].completed_quantity), [10,6]);
+  const before = order.version;
+  assert.equal((await f.report(order, 'weld', 17, paths[0], { auto_overflow: true })).status, 400);
+  assert.equal((await f.get(order.id)).version, before);
+  order = f.ok(await f.report(order, 'weld', 16, paths[0], { auto_overflow: true }));
+  const allocations = paths.map((path,i) => ({path,quantity:i?6:10,items:[{path:path+'.1',quantity:(i?6:10)*2}]}));
+  const body = { request_id:randomUUID(),version:order.version,path:paths[0],operation_node_id:'out',completed_quantity:16,finish_order:false,note:'跨路径登记',scraps:[],auto_overflow:true,allocations };
+  const invalid = structuredClone(body); invalid.request_id=randomUUID(); invalid.allocations[1].items[0].quantity=9999;
+  assert.equal((await f.command(`/production-orders/${order.id}/stages/complete`,invalid)).status,400);
+  order = await f.get(order.id);
+  assert.equal(order.stages.find(s=>s.path===paths[0]).completed_quantity,0);
+  order = f.ok(await f.command(`/production-orders/${order.id}/stages/complete`,body));
+  assert.deepEqual(paths.map(path=>order.stages.find(s=>s.path===path).completed_quantity),[10,6]);
+  assert.deepEqual(paths.map(path=>order.stages.find(s=>s.path===path).items[0].actual_quantity),[20,12]);
+  assert.equal(order.completed_quantity ?? 0,0);
+  const replay=f.ok(await f.command(`/production-orders/${order.id}/stages/complete`,body));
+  assert.equal(replay.version,order.version);
+  f.ok(await f.command('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
 });

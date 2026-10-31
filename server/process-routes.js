@@ -1,3 +1,4 @@
+import { operationAllocation } from '../shared/operation-overflow.js';
 import { isProductionAssignee } from '../shared/production-assignment.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validQuantity, addQuantity } from '../shared/quantity.js';
@@ -217,9 +218,15 @@ export function installProductionOperations(app, db, { route, current, version }
     const order = current(req); version(req, order);
     if (order.status !== 'in_progress') fail('仅生产中可以登记工序。', 409);
     if (typeof req.body.path !== 'string') fail('请选择生产层。');
-    const input = operationInput(db, req, order, req.body.path, req.body.quantity, false);
-    if (!input) fail('此生产层没有工艺路线。');
-    insertReport(db, req, order, input, req.body.quantity);
+    const allocations = req.body.auto_overflow === true
+      ? operationAllocation(order, req.body.path, req.body.operation_node_id, req.body.quantity)
+      : [{ path: req.body.path, node_id: req.body.operation_node_id, quantity: req.body.quantity }];
+    for (const allocation of allocations) {
+      const part = { ...req, body: { ...req.body, operation_node_id: allocation.node_id } };
+      const input = operationInput(db, part, order, allocation.path, allocation.quantity, false);
+      if (!input) fail('此生产层没有工艺路线。');
+      insertReport(db, part, order, input, allocation.quantity);
+    }
     db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(), actor(req), order.id);
     return current(req);
   }, true));

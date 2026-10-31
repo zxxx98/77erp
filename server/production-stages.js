@@ -1,3 +1,4 @@
+import { operationAllocation } from '../shared/operation-overflow.js';
 import { productionRegistrationGroup } from './production-access.js';
 import { recordOperationOutput, voidOperationOutput } from './process-routes.js';
 import { deriveProductionStages, stageDisplayStandardQuantity } from '../shared/production-stages.js';
@@ -145,7 +146,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
       allocations:db.prepare('SELECT a.*,b.path AS source_path,b.batch_number AS source_batch_number FROM production_stage_allocations a JOIN production_stage_batches b ON b.id=a.source_batch_id WHERE a.input_id=? ORDER BY a.id').all(i.id)}))}));
     return {batches,total,has_more:Number(offset)+batches.length<total};
   }));
-  app.post('/api/production-orders/:id/stages/complete',route(req=>{
+  const completeStage = req=>{
     const o=stageOrder(req); version(req,o);units(o);
     if(o.status!=='in_progress')fail('请先开始生产并由仓库批准领料后登记。',409);
     const s=o.stages.find(s=>s.path===req.body.path);if(!s)fail('生产层不存在。',404);
@@ -188,6 +189,22 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     }else db.prepare('UPDATE production_orders SET updated_by_name=?,updated_at=? WHERE id=?').run(owner,at,o.id);
     recordOperationOutput(db,req,o,s.path,q,'stage',id);
     if(req.body.finish_order){const fresh=current(req);assertNoPendingMaterials(db,fresh);assertStagesFinished(fresh);db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?").run(owner,at,o.id);}
+    return current(req);
+  };
+  app.post('/api/production-orders/:id/stages/complete',route(req=>{
+    if (req.body.auto_overflow !== true) return completeStage(req);
+    const order = stageOrder(req); version(req, order);
+    if (req.body.finish_order !== false) fail('自动分配登记必须继续生产。');
+    const allocations = operationAllocation(order, req.body.path, req.body.operation_node_id, req.body.completed_quantity);
+    if (!Array.isArray(req.body.allocations) || req.body.allocations.length !== allocations.length) fail('请核对工序分配明细。');
+    for (const [index, allocation] of allocations.entries()) {
+      const actual = req.body.allocations[index];
+      if (!actual || actual.path !== allocation.path || actual.quantity !== allocation.quantity) fail('工序分配已变化，请刷新后核对。',409);
+      const fresh = current(req);
+      completeStage({ ...req, body: { ...req.body, auto_overflow: false, version: fresh.version,
+        path: allocation.path, operation_node_id: allocation.node_id, completed_quantity: allocation.quantity,
+        items: actual.items, scraps: req.body.scraps } });
+    }
     return current(req);
   },true));
   app.post('/api/production-orders/:id/stages/batches/:batchId/void',route(req=>{

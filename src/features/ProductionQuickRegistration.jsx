@@ -1,3 +1,4 @@
+import { operationAllocation } from '../../shared/operation-overflow.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Button, Modal, PageHeading } from '../components/common.jsx';
@@ -57,13 +58,16 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   const clear = () => { setQuantity(''); setNote(''); setOverrides({ items: {}, scraps: {} }); setExpanded(false); };
   const select = row => { setSelectedId(row.id); clear(); setMessage(''); action.setError(''); setPicker(false); };
 
-  let defaults = { items: [], scraps: [] }, defaultsError = '';
+  let defaults = { items: [], scraps: [] }, defaultsError = '', allocations = [];
+  const sourceFor = row => order.stage_workflow ? order.nodes.find(item => item.path === row.path) : target.layer.items.find(item => item.product_id === row.product_id);
   let outputQuantity;
   if (target && quantity.trim()) {
     try {
       outputQuantity = parseQuantity(quantity, true);
       if (target.layer.unit_round_up && !Number.isInteger(outputQuantity)) throw new Error(t('registration.wholeQuantity'));
+      allocations = target.node ? operationAllocation(order, target.path, target.node.id, outputQuantity) : [];
       defaults = registrationDefaults(order, target, outputQuantity);
+      if (target.output && allocations.length) defaults.items = allocations.flatMap(part => registrationDefaults(order, { ...target, path: part.path, layer: part.layer }, part.quantity).items);
     } catch (error) { defaultsError = error.message; }
   }
   const items = defaults.items.map(row => ({ ...row, ...overrides.items[itemKey(order, row)] }));
@@ -84,20 +88,25 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       if (!registerable) throw new Error(t('registration.closed'));
       if (defaultsError) { if (target.output) setExpanded(true); throw new Error(defaultsError); }
       const value = parseQuantity(quantity, true);
-      if (target.node?.available_quantity != null && value > target.node.available_quantity) throw new Error(t('registration.exceedsAvailable'));
+      if (!allocations.length && target.node?.available_quantity != null && value > target.node.available_quantity) throw new Error(t('registration.exceedsAvailable'));
       let suffix, body;
       const operation = target.node ? { operation_node_id: target.node.id, worker_id: workerId } : {};
       if (!target.output) {
-        suffix = '/operations/report'; body = { path: target.path, ...operation, quantity: value, note };
+        suffix = '/operations/report'; body = { path: target.path, ...operation, quantity: value, note, auto_overflow: true };
       } else {
         const actuals = items.map(row => {
-          const source = target.layer.items.find(item => itemKey(order, item) === itemKey(order, row));
+          const source = sourceFor(row);
           return { ...row, quantity: materialQuantity(parseQuantity(row.quantity, order.stage_workflow && source.usage_mode === 'explode'), source) };
         });
         const actualScraps = scraps.map(row => ({ ...row, quantity: materialQuantity(parseQuantity(row.quantity), order.scraps.find(item => item.product_id === row.product_id)) }));
         body = { ...operation, completed_quantity: value, items: actuals, scraps: actualScraps, note, finish_order: false };
         if (order.stage_workflow) {
           suffix = '/stages/complete'; body.path = target.path;
+          if (target.node) {
+            body.auto_overflow = true;
+            body.allocations = allocations.map(part => ({ path: part.path, quantity: part.quantity,
+              items: actuals.filter(item => part.layer.items.some(source => source.path === item.path)) }));
+          }
           if (!actuals.some(item => item.quantity > 0)) throw new Error(t('production.actualInputForAtLeastOneMaterialMust'));
         } else { suffix = '/complete'; validateProductionCompletion(body, order.items); }
         validateScrapActuals(actualScraps, target.path ? [] : order.scraps || []);
@@ -114,7 +123,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   };
   const choices = rows => <div className="registration-operations" role="group" aria-label={t('registration.chooseOperation')}>
     {rows.map(row => <div key={row.id} className="registration-option-row"><Radio className="registration-operation" checked={selectedId === row.id} name={`registration-${order.id}`}
-      disabled={action.busy || !registerable || row.node?.available_quantity === 0} onChange={() => select(row)}>
+      disabled={action.busy || !registerable} onChange={() => select(row)}>
       <span className="registration-option-content"><OperationName target={row} /><span className="registration-option-quantity">{row.node?.available_quantity != null
         ? t('registration.available', { quantity: count(row.node.available_quantity), unit: row.unit })
         : t('registration.completed', { quantity: count(row.node?.completed_quantity ?? row.layer.completed_quantity ?? 0), unit: row.unit })}</span></span>
@@ -139,6 +148,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           disabled={action.busy || !target || !registerable} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
       </label>
       <p className="bom-hint">{target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(target.node.available_quantity), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
+      {(allocations.length > 1 || allocations.length === 1 && allocations[0].path !== target.path) && <div className="registration-allocation" role="status"><p className="bom-hint">{t('registration.overflowHint')}</p><ul>{allocations.map(part => <li key={part.path}>{part.layer.name} · {t('registration.layer', { path: part.path || t('production.finalProduct') })}: {count(part.quantity)} {target.unit}</li>)}</ul></div>}
       {target?.output && <p className="bom-hint">{t('registration.standardUsage')}{!target.path && ` ${t('registration.pendingReceipt')}`}</p>}
       {!registerable && <p className="bom-warning" role="status">{t('registration.closed')}</p>}
       <details className="registration-details" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
@@ -151,7 +161,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           {defaultsError && <p className="bom-warning">{productionMessage(defaultsError)}</p>}
           {!quantity && <p className="bom-hint">{t('registration.enterQuantity')}</p>}
           {items.map(row => {
-            const key = itemKey(order, row), source = target.layer.items.find(item => itemKey(order, item) === key);
+            const key = itemKey(order, row), source = sourceFor(row);
             return <div className="registration-material" key={key}>
               <strong>{source.name}</strong>
               {order.stage_workflow && <small className="bom-hint">{t('registration.layer', { path: source.path })}</small>}
@@ -169,7 +179,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       </details>
       {action.error && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
       {message && <p className="bom-success" role="status">{message}</p>}
-      <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable || target.node?.available_quantity === 0}>{t('registration.submit')}</Button>
+      <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable}>{t('registration.submit')}</Button>
       <details className="production-disclosure" open={!!action.error}><summary>{t('production.registrationTools')}</summary><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
         const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
         clear(); setMessage(''); await onSaved(latest, false);
