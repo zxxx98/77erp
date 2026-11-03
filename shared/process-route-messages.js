@@ -1,5 +1,13 @@
 // Exact system validation messages, shared by browser and API localization.
 export const processRouteMessages = {
+  PAYROLL_INVALIDDATES: ["请选择有效的工资统计日期范围。", "Choose a valid payroll date range.", "Chọn khoảng ngày thống kê lương hợp lệ."],
+  PAYROLL_INVALIDPRICE: ["工序单价需为非负数，最多 4 位小数且不超过 99999999。", "Operation price must be nonnegative, at most 99999999, with up to 4 decimals.", "Đơn giá phải không âm, không quá 99999999 và tối đa 4 chữ số thập phân."],
+  PAYROLL_INVALIDCURRENCY: ["请选择有效的工资币种。", "Select a valid payroll currency.", "Chọn tiền tệ tính lương hợp lệ."],
+  PAYROLL_INVALIDQUERY: ["工资统计成员或分页参数无效。", "Invalid payroll member or pagination.", "Thành viên hoặc phân trang không hợp lệ."],
+  PAYROLL_OVERFLOW: ["工资金额超出安全计算范围，请缩小统计范围或核对单价和倍率。", "Earnings exceed the safe calculation range. Narrow the period or check prices and multipliers.", "Lương vượt phạm vi tính an toàn. Thu hẹp khoảng ngày hoặc kiểm tra đơn giá và hệ số."],
+  PAYROLL_MISSINGSNAPSHOT: ["工序快照缺失，无法计算工资。", "Operation snapshot missing; earnings cannot be calculated.", "Thiếu bản chụp công đoạn, không thể tính lương."],
+  PAYROLL_PERMISSION: ["查看工资统计需要财务管理权限。", "Finance permission is required to view payroll.", "Cần quyền tài chính để xem thống kê lương."],
+
   OPERATION_ACCEPTANCE_ORDER_DELETE: ['此生产单已关联工序验收单，不能删除，请保留作废记录。','This production order has linked acceptance forms and cannot be deleted. Keep its voided records.','Lệnh sản xuất có phiếu nghiệm thu liên kết nên không thể xóa. Vui lòng giữ bản ghi đã hủy.'],
   OPERATION_ACCEPTANCE_PERMISSION: ['该工序需要验收，请通知验收员','This operation requires acceptance. Please notify an inspector.','Công đoạn này cần nghiệm thu. Vui lòng thông báo người nghiệm thu.'],
   OPERATION_ACCEPTANCE_FORM: ['请填写本工序验收单，并确认验收合格后登记。','Complete this operation acceptance form and confirm it passed before reporting.','Điền phiếu nghiệm thu và xác nhận đạt trước khi ghi nhận.'],

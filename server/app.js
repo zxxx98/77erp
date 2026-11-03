@@ -1,3 +1,4 @@
+import { installPayroll } from './payroll.js';
 import { migrateProcessRoutes, installProcessRoutes, routeBinding, clearProcessRoutes } from './process-routes.js';
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { installR2Backup } from './r2-backup.js';
@@ -305,6 +306,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateQuality(db);
   installQuality(app, db, { ...options, sessionUser });
   installProcessRoutes(app, db, { operationRequest, saveOperationRequest });
+  installPayroll(app, db);
   installBom(app, db);
   installProduction(app, db, { ...options, sessionUser });
   installImagebed(app, db, options);

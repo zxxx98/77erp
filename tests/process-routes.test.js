@@ -134,6 +134,26 @@ test('serial reports constrain later operations, remain separate from inventory,
   assert.equal(order.operation_routes[0].operations[0].completed_quantity,0);
 });
 
+test('operation multiplier is persisted independently of progress and survives backup', async t => {
+  const f = await fixture(t); let order = await f.start(await f.create());
+  for (const multiplier of [0, -1, null, '2', 1.00001]) assert.equal((await f.report(order, 'cut', 2, '', { multiplier })).status, 400);
+  order = f.ok(await f.report(order, 'cut', 2, '', { multiplier: 2 }));
+  order = f.ok(await f.report(order, 'weld', 2));
+  order = f.ok(await f.complete(order, 2, '', { multiplier: 1.5 }));
+  assert.equal(order.operation_routes[0].operations.find(node => node.id === 'cut').completed_quantity, 2);
+  assert.deepEqual(order.operation_routes[0].reports.map(report => report.multiplier), [1.5, 1, 2]);
+  const backup = f.ok(await f.request('/backup'));
+  const preview = f.ok(await f.command('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, token: preview.token, current_token: preview.current_token, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.deepEqual((await f.get(order.id)).operation_routes[0].reports.map(report => report.multiplier), [1.5, 1, 2]);
+  const old = structuredClone(backup); old.version = 44; for (const report of old.data.production_operation_reports) delete report.multiplier;
+  const oldPreview = f.ok(await f.command('/backup/preview', { backup: old }));
+  f.ok(await f.command('/backup/restore', { backup: old, token: oldPreview.token, current_token: oldPreview.current_token, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.ok((await f.get(order.id)).operation_routes[0].reports.every(report => report.multiplier === 1));
+  const invalid = structuredClone(backup); invalid.data.production_operation_reports[0].multiplier = 0;
+  assert.equal((await f.command('/backup/preview', { backup: invalid })).status, 400);
+});
+
 test('parallel join waits for all predecessors and partial output can complete an order with balanced operations',async t=>{
   const f=await fixture(t,{graph:parallel});let order=await f.start(await f.create());
   order=f.ok(await f.report(order,'cut',4));assert.equal((await f.complete(order,1)).status,409);
@@ -200,7 +220,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version,44);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version,45);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);

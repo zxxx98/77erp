@@ -36,6 +36,8 @@ export function migrateProcessRoutes(db) {
     INSERT OR IGNORE INTO app_metadata(key,value) VALUES ('process_route_version','0');`);
   if (!db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'acceptance_id'))
     db.exec('ALTER TABLE production_operation_reports ADD COLUMN acceptance_id INTEGER REFERENCES quality_acceptances(id)');
+  if (!db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'multiplier'))
+    db.exec('ALTER TABLE production_operation_reports ADD COLUMN multiplier REAL NOT NULL DEFAULT 1 CHECK(multiplier>0)');
   db.exec('CREATE INDEX IF NOT EXISTS operation_reports_acceptance ON production_operation_reports(acceptance_id,status)');
   for (const [table, column] of [['products', 'default_route_id'], ['boms', 'route_override_id']])
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
@@ -193,6 +195,7 @@ function operationInput(db, req, order, path, quantity, output) {
   const product = db.prepare('SELECT active,unit,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(layer.product_id,order.warehouse_id);
   if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
   if (!validQuantity(quantity, true) || layer.unit_round_up && !Number.isInteger(quantity)) fail('工序数量需为正数，最多 4 位小数，并符合物料取整规则。');
+  if (!validQuantity(req.body.multiplier === undefined ? 1 : req.body.multiplier, true)) fail('工序倍率需为正数，最多 4 位小数。');
   if (!validQuantity(addQuantity(node.completed_quantity, quantity), true)) fail('工序累计数量超出范围。');
   if (node.available_quantity !== null && quantity > node.available_quantity) fail('前置工序可用数量不足，请先核对前序报工。', 409);
   if (typeof req.body.note !== 'string' && req.body.note !== undefined || (req.body.note?.length ?? 0) > 500) fail('工序说明最多 500 字。');
@@ -205,8 +208,8 @@ function nextOperationSequence(db, productionId) {
 function insertReport(db, req, order, input, quantity, kind = null, batchId = null) {
   if (!input) return;
   const acceptanceId=saveOperationAcceptance(db,req,order,input);
-  db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(order.id, input.route.id, input.node.id, quantity, input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId);
+  db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(order.id, input.route.id, input.node.id, quantity, input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,req.body.multiplier ?? 1);
 }
 export function recordOperationOutput(db, req, order, path, quantity, kind, batchId) {
   const input = operationInput(db, req, order, path, quantity, true);
@@ -311,7 +314,7 @@ export function validateProcessRouteBackup(data) {
   const outputs = new Set(), acceptanceOwners = new Map();
   for (const row of data.production_operation_reports) {
     const snapshot = snapshots.get(row.route_snapshot_id), order = orders.get(row.production_id);
-    if (!snapshot || snapshot.production_id !== row.production_id || !order || !validQuantity(row.quantity, true) || !['active','void'].includes(row.status) ||
+    if (!snapshot || snapshot.production_id !== row.production_id || !order || !validQuantity(row.quantity, true) || !validQuantity(row.multiplier, true) || !['active','void'].includes(row.status) ||
         !association(row.worker_id) || !association(row.registered_by) || !text(row.worker_name,100,true) || !text(row.registered_by_name,100,true) || !text(row.note,500) ||
         !Number.isFinite(Date.parse(row.created_at)) || !id(row.created_sequence) || !text(row.void_reason,500) || !text(row.voided_by_name,100) ||
         (row.status === 'active' ? row.voided_sequence !== null || row.voided_at !== null || row.void_reason !== '' || row.voided_by_name !== '' : !id(row.voided_sequence) || row.voided_sequence <= row.created_sequence || !row.void_reason.trim() || !row.voided_by_name.trim() || !Number.isFinite(Date.parse(row.voided_at)) || row.voided_at < row.created_at)) fail('备份工序登记无效。');

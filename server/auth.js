@@ -267,6 +267,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       if (read && ['/workspace','/style','/updates'].includes(path) || groupProductionRoute && hasPermission(req.user,'production_register')) return next();
       return res.status(403).json({error:'此岗位仅允许查看本组生产单并登记。'});
     }
+    if (read && ['/payroll', '/payroll/members'].includes(path) && hasPermission(req.user, 'finance')) return next();
     if (groupProductionRoute && hasPermission(req.user,'production_register')) return next();
     if (read && path === '/production-groups' && hasPermission(req.user,'production')) return next();
     if (/^\/quality(?:\/|$)/.test(path) && hasPermission(req.user, 'quality')) return next();

@@ -39,7 +39,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
   const historyData = useMemo(() => ({ warehouse_id: data.warehouse_id, version: order.version }), [data.warehouse_id, order.version]);
   const historyQuery = useQuery(`/production-orders/${order.id}/operations/reports?${new URLSearchParams({ snapshot_id: String(route.id), offset: String(offset) })}`, historyData);
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph');
-  const dirty = !!form && (!!form.quantity || !!form.note) || !!voiding?.reason;
+  const dirty = !!form && (!!form.quantity || !!form.note || form.multiplier !== '1') || !!voiding?.reason;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
   useEffect(() => { onActivity?.({ form, voiding, busy: action.busy }); }, [form, voiding, action.busy, onActivity]);
   useEffect(() => () => onActivity?.(null), [onActivity]);
@@ -97,7 +97,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                 {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t('route.available')}</dt><dd>{count(node.available_quantity)} {unit}</dd></div>}
               </dl>
               {canRegister && <div className="process-operation-card-action">
-                <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { if(!operationAcceptanceAllowed(node,can)) return; return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
+                <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { if(!operationAcceptanceAllowed(node,can)) return; return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', multiplier: '1', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
               </div>}
             </article>;
           })}
@@ -106,7 +106,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
       {form && <form className="process-report-form" onSubmit={event => { event.preventDefault(); action.run(async () => {
         const quantity = parseQuantity(form.quantity, true);
         if (!window.confirm(t('route.confirmReport'))) return;
-        const result = await send('/operations/report', { path, operation_node_id: form.node_id, quantity, note: form.note, worker_id: workerId });
+        const result = await send('/operations/report', { path, operation_node_id: form.node_id, quantity, multiplier: parseQuantity(form.multiplier, true), note: form.note, worker_id: workerId });
         setForm(null); await onSaved(result, t('route.reported'));
       }); }}>
         <div className="process-report-context">
@@ -120,6 +120,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
           <label>{t('route.quantity')}（{unit}）<Input autoFocus aria-label={t('route.quantity')} inputMode="decimal" value={form.quantity} disabled={action.busy} onChange={event => { setForm({ ...form, quantity: event.target.value }); action.setError(''); }} /></label>
           {activeNode?.available_quantity > 0 && <Button disabled={action.busy} onClick={() => { setForm({ ...form, quantity: String(activeNode.available_quantity) }); action.setError(''); }}>{t('route.fillAvailable')} ({count(activeNode.available_quantity)})</Button>}
         </div>
+        <label>{t('route.multiplier')}<Input aria-label={t('route.multiplier')} inputMode="decimal" value={form.multiplier} disabled={action.busy} onChange={event => { setForm({ ...form, multiplier: event.target.value }); action.setError(''); }} /></label><p className="bom-hint">{t('route.multiplierHint')}</p>
         <label>{t('route.batchNote')}<Input.TextArea rows={3} aria-label={t('route.batchNote')} maxLength={500} value={form.note} disabled={action.busy} onChange={event => setForm({ ...form, note: event.target.value })} /></label>
         <div className="bom-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button><Button type="submit" kind="primary" busy={action.busy}>{t('route.report')}</Button></div>
       </form>}
@@ -142,6 +143,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
               <Badge tone={report.status === 'active' ? 'green' : 'gray'}>{t(report.status === 'active' ? 'route.active' : 'route.voided')}</Badge>
             </div>
             <p className="process-history-people">{t('route.worker')}: {report.worker_name} · {t('route.recorder')}: {report.registered_by_name}</p>
+            <p className="bom-hint">{t('route.multiplier')}: {count(report.multiplier)}</p>
             <p className="bom-hint">{new Date(report.created_at).toLocaleString(getFormatLocale())}</p>
             {report.acceptance_id && <Button disabled={action.busy} onClick={()=>action.run(async()=>setAcceptanceDetail(await api(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`,{warehouseId:data.warehouse_id})))}>{t('route.acceptanceRecord')} #{report.acceptance_id}</Button>}
             {report.note && <p className="process-history-note">{report.note}</p>}

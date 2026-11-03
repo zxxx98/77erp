@@ -43,14 +43,14 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     const initial = targets.find(row => row.id === initialTargetId || row.layer.pool_paths?.some(path => JSON.stringify([path, row.node?.id ?? null]) === initialTargetId));
     return initial?.id ?? (targets.length === 1 ? targets[0].id : '');
   });
-  const [quantity, setQuantity] = useState(''), [note, setNote] = useState('');
+  const [quantity, setQuantity] = useState(''), [note, setNote] = useState(''), [multiplier, setMultiplier] = useState('1');
   const [workerId, setWorkerId] = useState(user.id);
   const [overrides, setOverrides] = useState({ items: {}, scraps: {} });
   const [picker, setPicker] = useState(false), [search, setSearch] = useState('');
   const [message, setMessage] = useState(''), [expanded, setExpanded] = useState(false);
   const target = targets.find(row => row.id === selectedId);
   const registerable = order.status === 'in_progress' || !order.material_workflow && order.status === 'draft';
-  const dirty = !!quantity || !!note || Object.keys(overrides.items).length > 0 || Object.keys(overrides.scraps).length > 0;
+  const dirty = !!quantity || !!note || multiplier !== '1' || Object.keys(overrides.items).length > 0 || Object.keys(overrides.scraps).length > 0;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
   useEffect(() => {
     const before = event => { if (guard.current.busy || guard.current.dirty && !window.confirm(t('route.unsaved'))) event.preventDefault(); };
@@ -58,10 +58,10 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
-  useEffect(() => { onActivity?.({ selectedId, quantity, note, overrides, workerId, busy: action.busy }); }, [selectedId, quantity, note, overrides, workerId, action.busy, onActivity]);
+  useEffect(() => { onActivity?.({ selectedId, quantity, multiplier, note, overrides, workerId, busy: action.busy }); }, [selectedId, quantity, multiplier, note, overrides, workerId, action.busy, onActivity]);
   useEffect(() => () => onActivity?.(null), [onActivity]);
   const leave = fn => { if (!action.busy && (!dirty || window.confirm(t('route.unsaved')))) { action.setError(''); fn(); } };
-  const clear = () => { setQuantity(''); setNote(''); setOverrides({ items: {}, scraps: {} }); setExpanded(false); };
+  const clear = () => { setQuantity(''); setNote(''); setMultiplier('1'); setOverrides({ items: {}, scraps: {} }); setExpanded(false); };
   const select = row => { if(!operationAcceptanceAllowed(row.node,can))return; setSelectedId(row.id); clear(); setMessage(''); action.setError(''); setPicker(false); };
 
   let defaults = { items: [], scraps: [] }, defaultsError = '', allocations = [];
@@ -97,7 +97,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       const value = parseQuantity(quantity, true);
       if (!allocations.length && target.node?.available_quantity != null && value > target.node.available_quantity) throw new Error(t('registration.exceedsAvailable'));
       let suffix, body;
-      const operation = target.node ? { operation_node_id: target.node.id, worker_id: workerId } : {};
+      const operation = target.node ? { operation_node_id: target.node.id, worker_id: workerId, multiplier: parseQuantity(multiplier, true) } : {};
       if (!target.output) {
         suffix = '/operations/report'; body = { path: target.path, ...operation, quantity: value, note, auto_overflow: true };
       } else {
@@ -155,6 +155,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
         <Input aria-label={t('registration.quantity')} inputMode="decimal" value={quantity} placeholder={t('registration.enterQuantity')}
           disabled={action.busy || !target || !registerable} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
       </label>
+      {target?.node && <><label className="registration-quantity-label">{t('route.multiplier')}<Input aria-label={t('route.multiplier')} inputMode="decimal" value={multiplier} disabled={action.busy || !registerable} onChange={event => { setMultiplier(event.target.value); action.setError(''); }} /></label><p className="bom-hint">{t('route.multiplierHint')}</p></>}
       <p className="bom-hint">{target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(target.node.available_quantity), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
       {target?.layer.pool_paths && <p className="bom-hint">{t('production.poolHint')}</p>}
       {target?.layer.pool_paths && <label>{t('production.poolBatchNote')}<Input.TextArea aria-label={t('production.poolBatchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}

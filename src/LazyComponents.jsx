@@ -59,3 +59,5 @@ export const NotificationSettings = deferred(() => import('./NotificationSetting
 export const R2BackupSettings = deferred(() => import('./R2BackupSettings.jsx'), 'R2BackupSettings');
 
 export const PositionManager = deferred(() => import('./Positions.jsx'), 'PositionManager');
+
+export const Payroll = deferred(() => import('./pages/Payroll.jsx'), 'Payroll');

@@ -1,5 +1,5 @@
 import { t as translate, getFormatLocale } from '../i18n/index.js';
-import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, ScanLine, History, Megaphone, PackageCheck, Settings, ListTree, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, ScanLine, History, Megaphone, PackageCheck, Settings, ListTree, ClipboardList, Banknote } from 'lucide-react';
 
 export const navItems = [
   { id: 'overview', permission: 'basic_view', get name() { return translate("system.dashboard"); }, icon: LayoutDashboard, mode: 'warehouse', group: 'main', get mobile() { return translate("system.dashboard"); } },
@@ -12,6 +12,7 @@ export const navItems = [
   { id: 'quality', get name() { return translate("system.quality.management"); }, icon: PackageCheck, mode: 'production', group: 'main', get mobile() { return translate("system.quality"); }, permission: 'quality' },
   { id: 'process-routes', get name() { return translate('route.title'); }, icon: ListTree, mode: 'production', group: 'main', get mobile() { return translate('route.title'); }, permission: 'bom' },
   { id: 'bom', name: 'BOM', icon: ListTree, mode: 'production', group: 'main', mobile: 'BOM', permission: 'bom' },
+  { id: 'payroll', get name() { return translate('payroll.title'); }, icon: Banknote, mode: 'production', group: 'main', permission: 'finance' },
   { id: 'production', get name() { return translate("system.production.orders"); }, icon: ClipboardList, mode: 'production', group: 'main', get mobile() { return translate("system.production.orders"); }, permission: 'production_view' },
   { id: 'announcements', permission: 'basic_view', get name() { return translate("system.announcements"); }, icon: Megaphone, group: 'tools' },
   { id: 'more', get name() { return translate("system.workspace"); }, icon: Settings, get mobile() { return translate("system.more"); } },

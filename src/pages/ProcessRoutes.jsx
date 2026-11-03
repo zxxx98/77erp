@@ -1,3 +1,4 @@
+import { PAYROLL_CURRENCIES } from '../../shared/payroll.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ArrowLeft, GitBranch, Sparkles, Link2, Trash2 } from 'lucide-react';
 import { Button, PageHeading, QueryStatus, Badge } from '../components/common.jsx';
@@ -162,6 +163,9 @@ export function ProcessRoutes({ data }) {
           </div>
           <label>{t('route.nodeName')}<Input aria-label={t('route.nodeName')} value={node.name} maxLength={80} disabled={action.busy} onChange={event => patchNode({ name: event.target.value })} /></label>
           <label>{t('route.nodeNote')}<Input.TextArea rows={3} aria-label={t('route.nodeNote')} value={node.note} maxLength={500} disabled={action.busy} onChange={event => patchNode({ note: event.target.value })} /></label>
+          <label>{t('payroll.unitPrice')}<Input type="number" min="0" max="99999999" step="0.0001" aria-label={t('payroll.unitPrice')} value={node.unit_price ?? ''} placeholder={t('payroll.unpriced')} disabled={action.busy} onChange={event => patchNode({ unit_price: event.target.value === '' ? null : Number(event.target.value), currency: node.currency || 'CNY' })} /></label>
+          <label>{t('payroll.currency')}<Select aria-label={t('payroll.currency')} value={node.currency || 'CNY'} disabled={action.busy} onChange={currency => patchNode({ currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select></label>
+          <p className="bom-hint">{t('payroll.priceHint')}</p>
           <label>{t('route.acceptanceTemplate')}<Select aria-label={t('route.acceptanceTemplate')} value={node.acceptance_template_id ?? ''} disabled={action.busy || templates.loading} onChange={value => patchNode({acceptance_template_id:value ? Number(value) : null})}>
             <option value="">{t('route.noAcceptance')}</option>
             {node.acceptance_template_id && !templates.result?.templates.some(row=>row.id===node.acceptance_template_id) && <option value={node.acceptance_template_id}>#{node.acceptance_template_id}</option>}

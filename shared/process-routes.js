@@ -1,3 +1,4 @@
+import { validateOperationPrice } from './payroll.js';
 // A route describes operations on one production layer, in that layer's output unit.
 // Cross-layer material ratios continue to be governed by the BOM.
 export function validateProcessGraph(graph) {
@@ -13,6 +14,7 @@ export function validateProcessGraph(graph) {
       fail('工序编号、名称、作业说明或位置无效。');
     if (node.acceptance_template_id != null && (!Number.isSafeInteger(node.acceptance_template_id) || node.acceptance_template_id < 1)) fail('请选择有效验收模板。');
     if (node.acceptance_revision_id != null && (!node.acceptance_template_id || !Number.isSafeInteger(node.acceptance_revision_id) || node.acceptance_revision_id < 1)) fail('验收模板版本无效。');
+    validateOperationPrice(node);
     ids.add(node.id);
   }
   const seen = new Set(), incoming = new Map(graph.nodes.map(n => [n.id, []])), outgoing = new Map(graph.nodes.map(n => [n.id, []]));

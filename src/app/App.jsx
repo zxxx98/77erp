@@ -52,6 +52,7 @@ import {
   Quality,
   Bom,
   ProcessRoutes,
+  Payroll,
   Production,
   AnnouncementDetail,
   AnnouncementEditor,
@@ -336,6 +337,7 @@ function StandardApp({ admin, onLogout }) {
         announcementCount={announcementCount}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">{translate("system.if.you.do.not.have.quality.management.rights.please.contact.the")}</div>}
+        renderPayroll={() => can('finance') ? <Payroll key={data.warehouse_id} data={data} /> : null}
         renderProcessRoutes={() => can('bom') ? <ProcessRoutes key={data.warehouse_id} data={data} /> : null}
         renderBom={() => can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">{translate("system.if.you.do.not.have.bom.permission.please.contact.the.administrator")}</div>}
         renderProduction={() => canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">{translate("system.if.you.do.not.have.production.order.permission.please.contact.the")}</div>}
@@ -570,6 +572,7 @@ function StandardApp({ admin, onLogout }) {
               {page === 'announcements' && <Announcements data={data} openModal={setModal} />}
               {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
               {page === 'quality' && !can('quality') && <div className="info-box">{translate("system.if.you.do.not.have.quality.management.rights.please.contact.the")}</div>}
+              {page === 'payroll' && can('finance') && <Payroll key={data.warehouse_id} data={data} />}
               {page === 'process-routes' && can('bom') && <ProcessRoutes key={data.warehouse_id} data={data} />}
               {page === 'bom' && (can('bom') ? <Bom key={`${data.warehouse_id}:${bomProduct?.id || 'all'}`} data={data} initialProduct={bomProduct} onCreateProduction={can('production') ? bom => { setProductionBom(bom); navigate('production'); } : undefined} /> : <div className="info-box">{translate("system.if.you.do.not.have.bom.permission.please.contact.the.administrator")}</div>)}
               {page === 'production' && (canViewProduction(user) ? <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} initialBom={productionBom} onChanged={reload} onNavigate={navigate} onSwitchWarehouse={id => switchWarehouse(id, true)} /> : <div className="info-box">{translate("system.if.you.do.not.have.production.order.permission.please.contact.the")}</div>)}

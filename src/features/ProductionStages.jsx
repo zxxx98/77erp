@@ -73,7 +73,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const begin = (target, operation = null, workerId = undefined) => action.run(async () => {
     if (!operation && order.operation_routes?.some(route => route.path === target.path)) { setOperationPath(target.path); return; }
     const quantity = materialQuantity(operation?.available_quantity ?? (Math.max(0, target.planned_quantity - target.completed_quantity) || 1), target);
-    const next = { path: target.path, ...(operation ? { operation_node_id: operation.id, worker_id: workerId } : {}), completed_quantity: String(quantity), items: defaults(target, quantity), note: '',
+    const next = { path: target.path, ...(operation ? { operation_node_id: operation.id, worker_id: workerId, multiplier: '1' } : {}), completed_quantity: String(quantity), items: defaults(target, quantity), note: '',
       scraps: target.path ? [] : order.scraps.map(row => ({ product_id: row.product_id, quantity: '0', disposition: 'stock' })) };
     setOperationPath(null); setForm(next); setBaseline(JSON.stringify(next)); setHistory(null);
   });
@@ -95,7 +95,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       const scraps = form.scraps.map(row => ({ ...row, quantity: materialQuantity(parseQuantity(row.quantity), order.scraps.find(item => item.product_id === row.product_id)) }));
       if (stage.path === '') validateScrapActuals(scraps, order.scraps);
       if (!window.confirm(pt("production.register2", { v0: stage.name, v1: count(quantity), v2: stage.unit, v3: stage.path ? pt("production.thisSemiFinishedBatchStaysWithinTheOrder") : pt("production.thisProductBatchAwaitsWarehouseReceiptApproval"), v4: finish ? pt("production.alsoEndTheProductionOrder") : '' }))) return;
-      const result = await send('/stages/complete', { path: stage.path, ...(form.operation_node_id ? { operation_node_id: form.operation_node_id, worker_id: form.worker_id } : {}), completed_quantity: quantity, items, scraps, note: form.note, finish_order: finish });
+      const result = await send('/stages/complete', { path: stage.path, ...(form.operation_node_id ? { operation_node_id: form.operation_node_id, worker_id: form.worker_id, multiplier: parseQuantity(form.multiplier, true) } : {}), completed_quantity: quantity, items, scraps, note: form.note, finish_order: finish });
       setForm(null); setBaseline('');
       await onSaved(result, stage.path ? pt("production.semiFinishedBatchRegisteredForParentUseWarehouse") : pt("production.productBatchRegisteredAwaitingWarehouseApproval", { v0: finish ? pt("production.productionEnded") : '' }));
     });
@@ -133,6 +133,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
         <h2>{stage.name}</h2><p className="stage-path">{pathLabel(stage)}</p>
         <p className="bom-hint">{pt("production.planned")} {count(stage.planned_quantity)} {stage.unit}{pt("production.acceptedToDate")} {count(stage.completed_quantity)} {stage.unit}{pt("production.enterThisBatchSQuantity")}</p>
         <label className="production-output">{pt("production.acceptedBatchQuantity")}{stage.unit}）<Input aria-label={pt("production.acceptedBatchQuantity2")} inputMode="decimal" value={form.completed_quantity} disabled={locked} onChange={event => patch({ completed_quantity: event.target.value })} /></label>
+        {form.operation_node_id && <><label>{pt('route.multiplier')}<Input aria-label={pt('route.multiplier')} inputMode="decimal" value={form.multiplier} disabled={locked} onChange={event => patch({ multiplier: event.target.value })} /></label><p className="bom-hint">{pt('route.multiplierHint')}</p></>}
         {Number(form.completed_quantity) + stage.completed_quantity > stage.planned_quantity && <p className="bom-warning">{pt("production.thisRegistrationWillExceedPlannedOutputVerifyActual")}</p>}
         <Button disabled={locked} onClick={() => action.run(async () => patch({ items: defaults(stage, parseQuantity(form.completed_quantity, true)).map(item => ({ ...item, variance_reason: form.items.find(row => row.path === item.path).variance_reason })) }))}>{pt("production.fillUsageFromThisBatchSOutput")}</Button>
       </section>

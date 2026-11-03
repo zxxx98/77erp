@@ -1330,7 +1330,7 @@ test('AI basic queries require basic page permission even when the model forces 
 
 test('AI reads process routes and operation snapshots without granting route writes or exposing costs', async t => {
   const f = await fixture(t, ':memory:', false);
-  const graph = { nodes: [{id:'cut',name:'切割',note:'按图切割',x:24,y:24},{id:'out',name:'检验',note:'',x:244,y:24}], edges:[{from:'cut',to:'out'}] };
+  const graph = { nodes: [{id:'cut',name:'切割',note:'按图切割',x:24,y:24,unit_price:0.125,currency:'VND'},{id:'out',name:'检验',note:'',x:244,y:24}], edges:[{from:'cut',to:'out'}] };
   const route = (await f.request(f.admin,'/process-routes',{request_id:randomUUID(),name:'AI工艺路线',note:'',enabled:1,graph})).data;
   assert.ok(route.id);
   f.db.prepare('UPDATE products SET default_route_id=? WHERE id=1').run(route.id);
@@ -1343,6 +1343,8 @@ test('AI reads process routes and operation snapshots without granting route wri
   f.use('get_process_route',{route_id:route.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.deepEqual(result.graph,graph);
   f.use('get_production_order',{production_id:order.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.operation_routes[0].operations[0].name,'切割');assert.ok(!JSON.stringify(result).includes('cost_cents'));
   assert.match(f.calls.at(-1).body.messages[0].content,/中间工序不扣料/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/quantity × multiplier × 快照unit_price/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/不能从详情最近100条报工推算完整工资/);
   assert.match(f.calls.at(-1).body.messages[0].content,/BOM.*工艺流程图/);
   assert.match(f.calls.at(-1).body.messages[0].content,/虚线.*供料.*不指定.*工序/);
   assert.match(f.calls.at(-1).body.messages[0].content,/operation_accept.*工序验收权限/);
