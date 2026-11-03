@@ -7145,6 +7145,36 @@ export default {
     "(empty)",
     "(trống)"
   ],
+  "production.syncOperationPrices": [
+    "同步最新单价",
+    "Sync Latest Prices",
+    "Đồng bộ đơn giá mới nhất"
+  ],
+  "production.syncOperationPricesWarningTitle": [
+    "注意：同步工序单价风险",
+    "Caution: Risk of Syncing Operation Prices",
+    "Chú ý: Rủi ro khi đồng bộ đơn giá công đoạn"
+  ],
+  "production.syncOperationPricesWarning": [
+    "此操作将按工艺路线库中的当前单价和币种，更新本生产单全部工序的单价快照。若本生产单已有工序报工记录，这些历史报工也将按新单价重新核算计件工资，可能影响历史工资统计结果。",
+    "This will update the operation unit price and currency snapshots in this production order to match the current process routes. If reports already exist, historical reports will also be recalculated with the new prices, which may affect historical wage statistics.",
+    "Thao tác này sẽ cập nhật ảnh chụp nhanh đơn giá và loại tiền công đoạn trong lệnh sản xuất này theo quy trình hiện tại. Nếu đã có ghi nhận, sản lượng cũ cũng sẽ được tính lại theo đơn giá mới, có thể ảnh hưởng đến thống kê lương lịch sử."
+  ],
+  "production.syncOperationPricesHint": [
+    "如需继续，请确认当前工艺路线中的工序单价与币种设置准确无误。",
+    "Please confirm that the unit prices and currencies in the current process routes are accurate before proceeding.",
+    "Vui lòng xác nhận đơn giá và loại tiền trong quy trình hiện tại là chính xác trước khi tiếp tục."
+  ],
+  "production.confirmSyncPrices": [
+    "确认同步单价",
+    "Confirm Sync Prices",
+    "Xác nhận đồng bộ đơn giá"
+  ],
+  "production.syncOperationPricesSuccess": [
+    "已成功同步最新工序单价",
+    "Operation unit prices synced successfully",
+    "Đã đồng bộ đơn giá công đoạn mới nhất thành công"
+  ],
   "production.series.unboundMaterial": [
     "未绑定物料",
     "Unbound material",

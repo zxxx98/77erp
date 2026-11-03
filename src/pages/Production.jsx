@@ -141,6 +141,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const [linkLoading, setLinkLoading] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [moreOpen, setMoreOpen] = useState(false);
+  const [syncPriceConfirm, setSyncPriceConfirm] = useState(false);
+  useEffect(() => setSyncPriceConfirm(false), [detail?.id]);
   const [processDiagramOpen, setProcessDiagramOpen] = useState(false);
   useEffect(() => setProcessDiagramOpen(false), [detail?.id]);
   const stageSession = useRef(0);
@@ -500,11 +502,34 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           {(!detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')) && <p className="bom-hint">{pt('production.finishRequirements')}</p>}
         </>}
         <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
+        {management && detail.status !== 'void' && !!detail.operation_routes?.length && (
+          <Button disabled={action.busy} onClick={() => { setMoreOpen(false); setSyncPriceConfirm(true); }}>
+            {pt('production.syncOperationPrices')}
+          </Button>
+        )}
         <div className="production-detail-export"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
         <ProductionRegistrationQr order={detail} data={data} />
         <p className="bom-hint">{pt("production.thePdfQrCodeUsesThisAddressThe")} {location.origin}{pt("production.andSignInWithAnAuthorizedAccountTo")}</p>
         {management && detail.status !== 'void' && can('corrections') && <Button kind="danger" icon={XCircle} disabled={action.busy || !detail.material_workflow && detail.received_quantity > 0 && !can('purchase')} onClick={() => begin({ kind: 'void', reason: '' })}>{pt("production.voidProductionOrder")}</Button>}
         {management && detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>{pt("production.deleteProductionOrder")}</Button>}
+      </div>
+    </Modal>}
+    {syncPriceConfirm && <Modal title={pt('production.syncOperationPrices')} subtitle={detail.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>
+      <div className="form-body">
+        <div className="production-warning-box" role="alert">
+          <strong>{pt('production.syncOperationPricesWarningTitle')}</strong>
+          <p>{pt('production.syncOperationPricesWarning')}</p>
+        </div>
+        <p className="bom-hint">{pt('production.syncOperationPricesHint')}</p>
+        {action.error && <p className="form-error" role="alert">{action.error}</p>}
+        <div className="bom-actions">
+          <Button disabled={action.busy} onClick={() => setSyncPriceConfirm(false)}>{pt('production.cancel')}</Button>
+          <Button kind="primary" busy={action.busy} onClick={() => action.run(async () => {
+            const updated = await send(`/production-orders/${detail.id}/sync-operation-prices`, { version: detail.version }, { warehouseId: data.warehouse_id });
+            setSyncPriceConfirm(false);
+            await saved(updated, pt('production.syncOperationPricesSuccess'));
+          })}>{pt('production.confirmSyncPrices')}</Button>
+        </div>
       </div>
     </Modal>}
     <section className="panel production-status-panel" aria-label={pt("production.productionReceiptProgress")}>

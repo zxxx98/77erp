@@ -36,6 +36,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
   const unit = layer?.unit || order.unit;
   const [workerId, setWorkerId] = useState(user.id), [form, setForm] = useState(null), [voiding, setVoiding] = useState(null), [selected, setSelected] = useState('');
   const [offset, setOffset] = useState(0), [acceptanceDetail,setAcceptanceDetail]=useState(null);
+  const [syncPriceConfirm, setSyncPriceConfirm] = useState(false);
   const historyData = useMemo(() => ({ warehouse_id: data.warehouse_id, version: order.version }), [data.warehouse_id, order.version]);
   const historyQuery = useQuery(`/production-orders/${order.id}/operations/reports?${new URLSearchParams({ snapshot_id: String(route.id), offset: String(offset) })}`, historyData);
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph');
@@ -54,6 +55,24 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
   const back = () => leave(() => { if (form || voiding) { setForm(null); setVoiding(null); } else onBack(); });
   const activeNode = form ? route.operations.find(n => n.id === form.node_id) : null;
   return <div className="production-stages process-page">{acceptance.dialog}
+    {syncPriceConfirm && <Modal title={t('route.syncPrices')} subtitle={order.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>
+      <div className="form-body">
+        <div className="production-warning-box" role="alert">
+          <strong>{t('route.syncPricesWarningTitle')}</strong>
+          <p>{t('route.syncPricesWarning')}</p>
+        </div>
+        <p className="bom-hint">{t('route.syncPricesHint')}</p>
+        {action.error && <p className="form-error" role="alert">{action.error}</p>}
+        <div className="bom-actions">
+          <Button disabled={action.busy} onClick={() => setSyncPriceConfirm(false)}>{t('route.cancel')}</Button>
+          <Button kind="primary" busy={action.busy} onClick={() => action.run(async () => {
+            const updated = await send('/sync-operation-prices', {});
+            setSyncPriceConfirm(false);
+            await onSaved(updated, t('route.syncPricesSuccess'));
+          })}>{t('route.confirmSyncPrices')}</Button>
+        </div>
+      </div>
+    </Modal>}
     {acceptanceDetail&&<Modal title={t('route.acceptanceRecord')} subtitle={acceptanceDetail.number} wide onClose={()=>setAcceptanceDetail(null)}><div className="form-body"><p>{acceptanceDetail.note}</p><p>{acceptanceDetail.created_by_name} · {new Date(acceptanceDetail.created_at).toLocaleString(getFormatLocale())}</p>{acceptanceDetail.reports.map(report=><p key={report.id}>{report.worker_name} · {count(report.quantity)} {unit} · {t(report.status==='void'?'route.voided':'route.active')} {report.void_reason}</p>)}<WorkbookResults definition={acceptanceDetail.definition} preview={acceptanceDetail.result}/></div></Modal>}
     <PageHeading title={t('route.progress')} description={`${order.number} · ${layer?.name || order.product_name} · ${route.route_name}`}><Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{t(form || voiding ? 'route.backOperations' : 'route.backOrder')}</Button></PageHeading>
     <section className="panel bom-section">
@@ -127,7 +146,12 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
       {voiding && <form className="process-report-form" onSubmit={event => { event.preventDefault(); action.run(async () => { if (!voiding.reason.trim()) throw new Error(t('route.reason')); if (!window.confirm(t('route.confirmVoid'))) return; const result = await send(`/operations/${voiding.id}/void`, { reason: voiding.reason }); setVoiding(null); await onSaved(result, t('route.voided')); }); }}><label>{t('route.reason')}<Input.TextArea rows={3} aria-label={t('route.reason')} maxLength={500} value={voiding.reason} disabled={action.busy} onChange={event => setVoiding({ ...voiding, reason: event.target.value })} /></label><div className="bom-actions"><Button onClick={back} disabled={action.busy}>{t('route.cancel')}</Button><Button type="submit" kind="danger" busy={action.busy}>{t('route.confirmVoid')}</Button></div></form>}
     </section>
     {action.error && <p className="form-error" role="alert">{action.error}</p>}
-    <div className="bom-actions process-reload-bar"><Button icon={RefreshCw} disabled={action.busy} onClick={() => leave(() => action.run(async () => onSaved(await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id }), t('route.reload'))))}>{t('route.reload')}</Button></div>
+    <div className="bom-actions process-reload-bar">
+      <Button icon={RefreshCw} disabled={action.busy} onClick={() => leave(() => action.run(async () => onSaved(await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id }), t('route.reload'))))}>{t('route.reload')}</Button>
+      {can('production') && order.status !== 'void' && (
+        <Button disabled={action.busy} onClick={() => setSyncPriceConfirm(true)}>{t('route.syncPrices')}</Button>
+      )}
+    </div>
     {!form && !voiding && <section className="panel bom-section">
       <div className="bom-section-heading">
         <h2>{t('route.history')}</h2>

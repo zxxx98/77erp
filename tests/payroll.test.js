@@ -150,3 +150,38 @@ test('daily earnings use the requested time zone including DST, separate currenc
   assert.equal((await f.request(url + '&time_zone=Invalid%2FZone')).status, 400);
   assert.equal((await f.request(url + '&time_zone=')).status, 400);
 });
+
+test('sync operation prices updates production order route snapshot and recalculates unpriced payroll', async t => {
+  const unpricedSerial = { nodes: [node('cut','下料'),node('weld','焊接'),node('out','检验')], edges: [{from:'cut',to:'weld'},{from:'weld',to:'out'}] };
+  const f = await fixture(t, { graph: unpricedSerial });
+  const admin = f.db.prepare('SELECT id FROM users WHERE username=?').get('routeadmin').id;
+  let order = await f.start(await f.create());
+  order = f.ok(await f.report(order, 'cut', 10));
+  const url = `/payroll?worker_id=${admin}${period}`;
+  let stats = f.ok(await f.request(url));
+  assert.equal(stats.summary.unpriced_count, 1);
+  assert.equal(stats.currencies.length, 0);
+
+  const withPrice = { ...unpricedSerial, nodes: unpricedSerial.nodes.map(n => n.id === 'cut' ? { ...n, unit_price: 15, currency: 'VND' } : n) };
+  f.ok(await f.command(`/process-routes/${f.route.id}`, { name: f.route.name, note: '', enabled: 1, version: f.route.version, graph: withPrice }));
+
+  stats = f.ok(await f.request(url));
+  assert.equal(stats.summary.unpriced_count, 1);
+
+  const employeePosition = f.ok(await f.request('/positions', { name: '普通员工', access_mode: 'standard', permissions: ['basic_view'] }));
+  f.ok(await f.request('/users', { username: 'basicworker', employee_no: 'B001', name: '普通员工', password: 'Basic-1234', role: 'employee', position_id: employeePosition.id }));
+  const basicLogin = await f.request('/auth/login', { username: 'basicworker', password: 'Basic-1234' }, { cookie: ' ' });
+  const forbidden = await f.command(`/production-orders/${order.id}/sync-operation-prices`, { version: order.version }, { cookie: basicLogin.cookie });
+  assert.equal(forbidden.status, 403);
+
+  const stale = await f.command(`/production-orders/${order.id}/sync-operation-prices`, { version: order.version + 999 });
+  assert.equal(stale.status, 409);
+
+  const synced = f.ok(await f.command(`/production-orders/${order.id}/sync-operation-prices`, { version: order.version }));
+  assert.equal(synced.operation_routes[0].graph.nodes.find(n => n.id === 'cut').unit_price, 15);
+  assert.equal(synced.operation_routes[0].graph.nodes.find(n => n.id === 'cut').currency, 'VND');
+
+  stats = f.ok(await f.request(url));
+  assert.equal(stats.summary.unpriced_count, 0);
+  assert.deepEqual(stats.currencies, [{ currency: 'VND', amount_cents: 15000 }]);
+});

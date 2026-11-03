@@ -5,6 +5,7 @@ import { isProductionAssignee } from '../shared/production-assignment.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { validateProcessGraph, processProgress } from '../shared/process-routes.js';
+import { validateOperationPrice } from '../shared/payroll.js';
 
 export const processRouteTables = ['process_routes'];
 export const productionOperationTables = ['production_routes', 'production_operation_reports'];
@@ -177,6 +178,48 @@ export function readProductionRoutes(db, order) {
   }
 }
 
+export function syncProductionOperationPrices(db, req, order) {
+  if (order.status === 'void') fail('生产单已经作废。', 409);
+  const productionRoutes = db.prepare('SELECT * FROM production_routes WHERE production_id=? ORDER BY id').all(order.id);
+  if (!productionRoutes.length) fail('此生产单没有关联工艺路线。');
+  let updatedCount = 0;
+  for (const pr of productionRoutes) {
+    const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(pr.route_id, req.warehouse.id);
+    if (!route) continue;
+    const sourceGraph = parseGraph(route.graph);
+    const snapshotGraph = parseGraph(pr.graph);
+    let changed = false;
+    for (const node of snapshotGraph.nodes || []) {
+      const sourceNode = (sourceGraph.nodes || []).find(n => n.id === node.id)
+        || (sourceGraph.nodes || []).find(n => n.name === node.name);
+      if (!sourceNode) continue;
+      const newPrice = sourceNode.unit_price ?? null;
+      const newCurrency = sourceNode.currency ?? null;
+      const oldPrice = node.unit_price ?? null;
+      const oldCurrency = node.currency ?? null;
+      if (newPrice !== oldPrice || newCurrency !== oldCurrency) {
+        if (newPrice != null) {
+          validateOperationPrice({ unit_price: newPrice, currency: newCurrency });
+          node.unit_price = newPrice;
+          node.currency = newCurrency;
+        } else {
+          delete node.unit_price;
+          delete node.currency;
+        }
+        changed = true;
+        updatedCount++;
+      }
+    }
+    if (changed || route.name !== pr.route_name) {
+      db.prepare('UPDATE production_routes SET route_name=?, graph=? WHERE id=?')
+        .run(route.name, JSON.stringify(snapshotGraph), pr.id);
+    }
+  }
+  db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?')
+    .run(new Date().toISOString(), actor(req), order.id);
+  return { updatedCount };
+}
+
 function operationWorker(db, req, order) {
   const workerId = req.body.worker_id ?? req.user.id;
   if (!id(workerId)) fail('请选择有效作业员工。');
@@ -278,6 +321,11 @@ export function installProductionOperations(app, db, { route, current, version }
     const at = new Date().toISOString();
     db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE id=?").run(req.body.reason.trim(), actor(req), at, nextOperationSequence(db, order.id), report.id);
     db.prepare("UPDATE production_orders SET status='draft',updated_at=?,updated_by_name=? WHERE id=?").run(at, actor(req), order.id);
+    return current(req);
+  }, true));
+  app.post('/api/production-orders/:id/sync-operation-prices', route(req => {
+    const order = current(req); version(req, order);
+    syncProductionOperationPrices(db, req, order);
     return current(req);
   }, true));
 }

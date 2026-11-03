@@ -180,3 +180,19 @@
 
 .production-supply-row { padding: 14px 0; border-bottom: 1px solid var(--border, #e5e7eb); }
 .production-supply-row .bom-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+
+.production-warning-box {
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  color: #874d00;
+  line-height: 1.6;
+  font-size: 13px;
+}
+.production-warning-box strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: #d46b08;
+}
