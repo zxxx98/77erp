@@ -15,6 +15,16 @@ export function payrollStatistics(db, warehouseId, query) {
       query.offset !== undefined && !/^\d+$/.test(query.offset) || query.limit !== undefined && !/^\d+$/.test(query.limit)) fail('工资统计成员或分页参数无效。');
   const date = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
   if (!date(query.start_at) || !date(query.end_at) || query.start_at >= query.end_at) fail('请选择有效的工资统计日期范围。');
+  const timeZone = query.time_zone ?? 'UTC';
+  let dayFormatter;
+  try {
+    if (typeof timeZone !== 'string' || !timeZone || timeZone.length > 100) throw new Error();
+    dayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+  } catch { fail('工资统计时区无效。'); }
+  const dayOf = value => {
+    const parts = Object.fromEntries(dayFormatter.formatToParts(new Date(value)).map(part => [part.type, part.value]));
+    return `${parts.year}-${parts.month}-${parts.day}`;
+  };
   const worker = db.prepare('SELECT id,name,username,employee_no,active FROM users WHERE id=?').get(workerId);
   const rows = db.prepare(`SELECT r.*, p.number production_number, p.product_name, p.unit,
     s.path, s.route_id, s.route_name, s.graph, st.name stage_name, st.unit stage_unit
@@ -23,7 +33,7 @@ export function payrollStatistics(db, warehouseId, query) {
     LEFT JOIN production_stages st ON st.production_id=p.id AND st.path=s.path
     WHERE p.warehouse_id=? AND r.worker_id=? AND r.created_at>=? AND r.created_at<?
     ORDER BY r.created_at DESC,r.id DESC`).all(warehouseId, workerId, query.start_at, query.end_at);
-  const graphs = new Map(), currencies = new Map(), operations = new Map();
+  const graphs = new Map(), currencies = new Map(), operations = new Map(), daily = new Map();
   const summary = { report_count: rows.length, active_count: 0, void_count: 0, unpriced_count: 0, production_count: 0 };
   const productions = new Set();
   const reports = rows.map(row => {
@@ -39,7 +49,13 @@ export function payrollStatistics(db, warehouseId, query) {
     if (row.status === 'void') { summary.void_count++; return report; }
     summary.active_count++; productions.add(row.production_id);
     if (amount === null) summary.unpriced_count++;
-    else currencies.set(node.currency, safeSum(currencies.get(node.currency) || 0, amount));
+    else {
+      currencies.set(node.currency, safeSum(currencies.get(node.currency) || 0, amount));
+      const date = dayOf(row.created_at), key = `${date}:${node.currency}`;
+      const day = daily.get(key) || { date, currency: node.currency, amount_cents: 0, report_count: 0 };
+      day.amount_cents = safeSum(day.amount_cents, amount); day.report_count++;
+      daily.set(key, day);
+    }
     const key = JSON.stringify([row.route_id, row.node_id, node.name, unit, node.unit_price ?? null, node.currency ?? null]);
     const group = operations.get(key) || { key, route_name: row.route_name, operation_name: node.name, unit,
       unit_price: node.unit_price ?? null, currency: node.currency ?? null, quantity: 0, weighted_quantity: 0, report_count: 0, amount_cents: amount === null ? null : 0 };
@@ -55,6 +71,7 @@ export function payrollStatistics(db, warehouseId, query) {
   summary.production_count = productions.size;
   return { worker: worker || { id: workerId, name: rows[0]?.worker_name || '', active: 0 }, summary,
     currencies: [...currencies].map(([currency, amount_cents]) => ({ currency, amount_cents })),
+    time_zone: timeZone, daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date) || a.currency.localeCompare(b.currency)),
     operations: [...operations.values()].map(row => ({ ...row, quantity: row.quantity / 10000 })),
     reports: reports.slice(offset, offset + limit), total: reports.length, has_more: offset + limit < reports.length };
 }

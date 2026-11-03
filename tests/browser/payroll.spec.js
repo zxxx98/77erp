@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
 import { productionRegistrationUrl } from '../../shared/production-link.js';
 
-const graph = { nodes:[{id:'cut',name:'下料',note:'按图下料',x:24,y:24,unit_price:2.5,currency:'CNY'},{id:'out',name:'检验',note:'',x:244,y:24}],edges:[{from:'cut',to:'out'}] };
+const graph = { nodes:[{id:'cut',name:'下料',note:'按图下料',x:24,y:24,unit_price:2.5,currency:'CNY'},{id:'out',name:'检验',note:'',x:244,y:24,unit_price:1,currency:'USD'}],edges:[{from:'cut',to:'out'}] };
 async function fixture(page,{worker=false,multi=false,repeated=false}={}) {
   const {app,db}=createApp(':memory:');const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}`;
   const post=async(path,body)=>{const response=await page.request.post(`${base}/api${path}`,{data:{request_id:randomUUID(),schema_version:2,stage_schema_version:1,operation_schema_version:1,...body}});const result=await response.json();expect(response.ok(),JSON.stringify(result)).toBe(true);return result;};
@@ -33,12 +33,17 @@ async function fixture(page,{worker=false,multi=false,repeated=false}={}) {
 }
 
 for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures operation pay and reviews member wages`, async ({ browser }) => {
-  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'android' ? 'Pixel 7' : 'iPhone 13']), serviceWorkers: mode === 'ios-pwa' ? 'allow' : 'block' });
+  const context = await browser.newContext({ locale: 'zh-CN', timezoneId: 'Asia/Shanghai', ...(mode === 'desktop' ? {} : devices[mode === 'android' ? 'Pixel 7' : 'iPhone 13']), serviceWorkers: mode === 'ios-pwa' ? 'allow' : 'block' });
   const page = await context.newPage(), f = await fixture(page), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   try {
-    const order = await f.get();
-    await f.post(`/production-orders/${order.id}/operations/report`, {version:order.version,path:'',operation_node_id:'cut',quantity:4,multiplier:1.5,note:'工资测试'});
+    let order = await f.get();
+    order = await f.post(`/production-orders/${order.id}/operations/report`, {version:order.version,path:'',operation_node_id:'cut',quantity:4,multiplier:1.5,note:'工资测试'});
+    await f.post(`/production-orders/${order.id}/complete`, {version:order.version,path:'',operation_node_id:'out',completed_quantity:4,multiplier:2,items:[{product_id:f.raw.id,quantity:8}],scraps:[],finish_order:false,note:''});
+    const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit'}).formatToParts(new Date());
+    const yearMonth = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}`;
+    f.db.prepare("UPDATE production_operation_reports SET created_at=? WHERE node_id='cut'").run(`${yearMonth}-01T02:00:00.000Z`);
+    f.db.prepare("UPDATE production_operation_reports SET created_at=? WHERE node_id='out'").run(`${yearMonth}-02T02:00:00.000Z`);
     await page.goto(`${f.base}/#process-routes`);
     if (mode === 'ios-pwa') await page.evaluate(() => navigator.serviceWorker.ready);
     await page.getByRole('button', {name:'编辑路线',exact:true}).click();
@@ -61,13 +66,34 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
     await page.getByRole('option', {name:/routeadmin/}).click();
     await expect(page.locator('.payroll-totals')).toContainText('CNY 15.00');
     await expect(page.locator('.payroll-reports')).toContainText('4 件 × 1.5 × CNY 2.5');
-    await expect(page.locator('.payroll-table')).toContainText('6 件');
-    await page.getByRole('button', {name:'上月',exact:true}).click();
+    await expect(page.getByRole('heading', {name:'工序工资汇总',exact:true})).toHaveCount(0);
+    for (const name of ['本月','上月','刷新统计']) await expect(page.getByRole('button', {name,exact:true})).toHaveCount(0);
+    await expect(page.getByRole('heading', {name:'每日工资',exact:true})).toBeVisible();
+    await page.getByRole('combobox', {name:'图表币种',exact:true}).click();
+    await page.getByRole('option', {name:'CNY',exact:true}).click();
+    await page.getByRole('button', {name:`${yearMonth}-01 · CNY 15.00 · 1 条计薪记录`,exact:true}).click();
+    await expect(page.locator('.payroll-chart-selection')).toHaveText(`${yearMonth}-01 · CNY 15.00 · 1 条计薪记录`);
+    await page.getByRole('combobox', {name:'图表币种',exact:true}).click();
+    await page.getByRole('option', {name:'USD',exact:true}).click();
+    await expect(page.locator('.payroll-chart-selection')).toHaveText(`${yearMonth}-02 · USD 8.00 · 1 条计薪记录`);
+    const end = await page.getByLabel('结束日期',{exact:true}).inputValue();
+    await page.getByLabel('开始日期',{exact:true}).fill(`${yearMonth}-03`);
     await expect(page.getByText('该成员在所选日期内暂无报工记录。',{exact:true})).toBeVisible();
-    await page.getByRole('button', {name:'本月',exact:true}).click();
+    await page.getByLabel('开始日期',{exact:true}).fill(`${yearMonth}-01`);
     await expect(page.locator('.payroll-totals')).toContainText('CNY 15.00');
+    await expect(page.getByLabel('结束日期',{exact:true})).toHaveValue(end);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({path:`/tmp/77erp-payroll-${mode}.png`,fullPage:true});
+    await page.getByRole('link', {name:`查看生产单 ${order.number}`,exact:true}).first().click();
+    await expect(page).toHaveURL(new RegExp(`#production\\?order=${order.id}$`));
+    await expect(page.getByRole('tab', {name:'概览',exact:true})).toBeVisible();
+    await expect(page.locator('.production-page')).toContainText(order.number);
+    await page.reload();
+    await expect(page.getByRole('tab', {name:'概览',exact:true})).toBeVisible();
+    await expect(page.locator('.production-page')).toContainText(order.number);
+    await page.getByRole('button', {name:'返回生产单',exact:true}).click();
+    await expect(page).toHaveURL(/#production$/);
+    await expect(page.getByRole('button', {name:`查看生产单 ${order.number}`,exact:true})).toBeVisible();
     expect(errors).toEqual([]);
   } finally { await context.close(); await f.close(); }
 });

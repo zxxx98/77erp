@@ -10,10 +10,6 @@
 .payroll-warning {padding:14px 18px;border-radius:10px;background:#fff7e6;color:#81520a;line-height:1.7;margin:0;}
 .payroll-section {padding:20px;min-width:0;}
 .payroll-section h2 {font-size:17px;margin:0 0 16px;}
-.payroll-table {overflow:auto;}
-.payroll-table table {width:100%;border-collapse:collapse;white-space:nowrap;}
-.payroll-table th,.payroll-table td {padding:12px;text-align:left;border-bottom:1px solid var(--border,#e5e9ee);}
-.payroll-table small {display:block;margin-top:5px;}
 .payroll-reports {display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;}
 .payroll-report {padding:16px;border:1px solid var(--border,#e5e9ee);border-radius:12px;min-width:0;overflow-wrap:anywhere;}
 .payroll-report-heading,.payroll-formula {display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap;}
@@ -31,3 +27,15 @@
   .payroll-section {padding:16px;}.payroll-reports {grid-template-columns:1fr;}
   .payroll-page .page-heading {padding:0;}
 }
+.payroll-order-link {color:var(--primary,#2563eb);text-decoration:underline;text-underline-offset:3px;}
+.payroll-order-link:focus-visible {outline:2px solid var(--primary,#2563eb);outline-offset:4px;}
+.payroll-chart-heading {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:10px;}
+.payroll-chart-heading h2 {margin:0;}
+.payroll-chart-heading .dropdown {min-width:110px;}
+.payroll-chart-scroll {max-width:100%;overflow-x:auto;margin-top:18px;}
+.payroll-chart-scroll svg {display:block;width:100%;height:auto;}
+.payroll-chart-scroll text {font-size:12px;fill:var(--text-muted,#687585);font-variant-numeric:tabular-nums;}
+.payroll-chart-grid {stroke:var(--border,#e5e9ee);stroke-dasharray:3 4;}
+.payroll-chart-bar {fill:#80a9fa;cursor:pointer;}
+.payroll-chart-bar.is-selected,.payroll-chart-bar:hover,.payroll-chart-bar:focus {fill:#2563eb;stroke:#1749a6;stroke-width:2px;outline:none;}
+.payroll-chart-selection {font-size:13px;min-height:22px;margin:12px 0 0;font-variant-numeric:tabular-nums;}

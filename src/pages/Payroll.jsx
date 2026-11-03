@@ -5,11 +5,14 @@ import { Dropdown } from '../Dropdown.jsx';
 import { useQuery, queryPath } from '../queries.js';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
+import { PayrollDailyChart } from '../features/PayrollDailyChart.jsx';
+import { usePermissions } from '../permissions.jsx';
+import { canViewProduction } from '../../shared/permissions.js';
 import './payroll.css';
 
 const localDate = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-function monthRange(previous = false) {
-  const now = new Date(), start = new Date(now.getFullYear(), now.getMonth() - Number(previous), 1);
+function monthRange() {
+  const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1);
   return [localDate(start), localDate(new Date(start.getFullYear(), start.getMonth() + 1, 0))];
 }
 function boundary(value, nextDay = false) {
@@ -23,10 +26,11 @@ const amount = (cents, currency) => cents == null ? t('payroll.unpriced') : `${c
 
 export function Payroll({ data }) {
   useLocale();
+  const { user } = usePermissions();
   const [worker, setWorker] = useState(''), [dates, setDates] = useState(() => monthRange()), [offset, setOffset] = useState(0);
   const members = useQuery('/payroll/members', data);
   const start = boundary(dates[0]), end = boundary(dates[1], true), valid = start && end && start < end;
-  const query = useQuery(worker && valid ? queryPath('/payroll', { worker_id: worker, start_at: start, end_at: end, offset }) : null, data);
+  const query = useQuery(worker && valid ? queryPath('/payroll', { worker_id: worker, start_at: start, end_at: end, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone, offset }) : null, data);
   const result = query.result;
   const chooseDates = values => { setDates(values); setOffset(0); };
   return <div className="payroll-page">
@@ -37,7 +41,6 @@ export function Payroll({ data }) {
         onSelect={option => { setWorker(option.value); setOffset(0); }} />
       <label>{t('payroll.start')}<Input type="date" aria-label={t('payroll.start')} value={dates[0]} onChange={event => chooseDates([event.target.value, dates[1]])} /></label>
       <label>{t('payroll.end')}<Input type="date" aria-label={t('payroll.end')} value={dates[1]} onChange={event => chooseDates([dates[0], event.target.value])} /></label>
-      <div className="payroll-actions"><Button onClick={() => chooseDates(monthRange())}>{t('payroll.thisMonth')}</Button><Button onClick={() => chooseDates(monthRange(true))}>{t('payroll.lastMonth')}</Button><Button disabled={!worker || !valid || query.loading} onClick={query.retry}>{t('payroll.refresh')}</Button></div>
     </section>
     <QueryStatus query={members} />
     {!valid && <p role="alert" className="form-error">{t('payroll.invalidDates')}</p>}
@@ -53,15 +56,10 @@ export function Payroll({ data }) {
       <p className="payroll-hint">{t('payroll.rule')}</p>
       {result.summary.unpriced_count > 0 && <p className="payroll-warning" role="status">{t('payroll.unpricedWarning', { count: result.summary.unpriced_count })}</p>}
       {!result.total && <p className="payroll-empty">{t('payroll.empty')}</p>}
-      {result.operations.length > 0 && <section className="panel payroll-section"><h2>{t('payroll.byOperation')}</h2><div className="payroll-table"><table><thead><tr>
-        <th>{t('payroll.operation')}</th><th>{t('payroll.unitPrice')}</th><th>{t('payroll.quantity')}</th><th>{t('payroll.weighted')}</th><th>{t('payroll.activeCount')}</th><th>{t('payroll.wage')}</th>
-      </tr></thead><tbody>{result.operations.map(row => <tr key={row.key}>
-        <td><strong>{row.operation_name}</strong><small>{row.route_name}</small></td><td>{row.unit_price == null ? t('payroll.unpriced') : `${row.currency} ${number(row.unit_price)}`}</td>
-        <td>{number(row.quantity)} {row.unit}</td><td>{number(row.weighted_quantity)} {row.unit}</td><td>{row.report_count}</td><td>{amount(row.amount_cents, row.currency)}</td>
-      </tr>)}</tbody></table></div></section>}
+      <PayrollDailyChart key={`${worker}:${start}:${end}`} daily={result.daily} currencies={result.currencies} startDate={dates[0]} endDate={dates[1]} />
       {result.total > 0 && <section className="panel payroll-section"><h2>{t('payroll.details')}</h2><div className="payroll-reports">{result.reports.map(row => <article className={`payroll-report${row.status === 'void' ? ' is-void' : ''}`} key={row.id}>
         <div className="payroll-report-heading"><strong>{row.operation_name} · {row.product_name}</strong><Badge tone={row.status === 'void' ? 'gray' : 'green'}>{t(row.status === 'void' ? 'payroll.void' : 'payroll.active')}</Badge></div>
-        <p>{row.production_number} · {row.route_name}{row.path ? ` · ${t('payroll.path')} ${row.path}` : ''} · #{row.id}</p>
+        <p>{canViewProduction(user) ? <a className="payroll-order-link" href={`#production?order=${row.production_id}`} aria-label={t('payroll.openOrder', { number: row.production_number })}>{row.production_number}</a> : <span title={t('payroll.orderPermission')}>{row.production_number}</span>} · {row.route_name}{row.path ? ` · ${t('payroll.path')} ${row.path}` : ''} · #{row.id}</p>
         <div className="payroll-formula"><span>{number(row.quantity)} {row.unit} × {number(row.multiplier)} × {row.unit_price == null ? t('payroll.unpriced') : `${row.currency} ${number(row.unit_price)}`}</span><strong>{amount(row.amount_cents, row.currency)}</strong></div>
         <p>{new Date(row.created_at).toLocaleString(getFormatLocale())} · {t('payroll.worker')}: {row.worker_name} · {t('payroll.registrar')}: {row.registered_by_name}</p>
         {row.note && <p>{row.note}</p>}{row.status === 'void' && <p>{t('payroll.voidReason')}: {row.void_reason}</p>}

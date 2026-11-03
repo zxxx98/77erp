@@ -69,6 +69,7 @@ test('payroll uses immutable snapshots, active worker reports, separate currenci
   let stats = f.ok(await f.request(url + '&limit=1'));
   assert.equal(stats.total, 3); assert.equal(stats.has_more, true); assert.equal(stats.reports.length, 1);
   assert.equal(stats.summary.unpriced_count, 1);
+  assert.equal(stats.daily.reduce((sum, row) => sum + row.report_count, 0), 2);
   assert.equal(stats.summary.production_count, 1);
   assert.deepEqual(stats.currencies.sort((a,b) => a.currency.localeCompare(b.currency)), [{ currency: 'CNY', amount_cents: 1500 }, { currency: 'USD', amount_cents: 99 }]);
   const cut = stats.operations.find(row => row.operation_name === '下料');
@@ -85,6 +86,8 @@ test('payroll uses immutable snapshots, active worker reports, separate currenci
   stats = f.ok(await f.request(url));
   assert.equal(stats.summary.void_count, 1); assert.equal(stats.summary.active_count, 2);
   assert.deepEqual(stats.currencies, [{currency: 'USD', amount_cents: 99}]);
+  assert.ok(stats.daily.every(row => row.currency === 'USD'));
+  assert.equal(stats.daily.reduce((sum, row) => sum + row.amount_cents, 0), 99);
   assert.equal(stats.reports.find(row => row.id === first.id).amount_cents, 1500);
   for (const suffix of ['&offset=-1', '&limit=101', '&offset=abc']) assert.equal((await f.request(url + suffix)).status, 400);
   assert.equal((await f.request(`/payroll?worker_id=${admin}&start_at=2026-02-30T00:00:00.000Z&end_at=2027-01-01T00:00:00.000Z`)).status, 400);
@@ -117,4 +120,33 @@ test('payroll enforces finance permission and warehouse scope, attributes work t
   f.ok(await f.command('/backup/preview',{backup}));
   backup.data.process_routes[0].graph=JSON.stringify({...priced,nodes:priced.nodes.map(n=>({...n,unit_price:-1,currency:'CNY'}))});
   assert.equal((await f.command('/backup/preview',{backup})).status,400);
+});
+
+test('daily earnings use the requested time zone including DST, separate currencies and ignore pagination', async t => {
+  const f = await fixture(t, { graph: priced });
+  const admin = f.db.prepare("SELECT id FROM users WHERE username='routeadmin'").get().id;
+  let order = await f.start(await f.create());
+  const timestamps = ['2026-03-08T04:30:00.000Z', '2026-03-08T05:30:00.000Z', '2026-03-09T04:30:00.000Z'];
+  for (const created of timestamps) {
+    order = f.ok(await f.report(order, 'cut', 1));
+    f.db.prepare('UPDATE production_operation_reports SET created_at=? WHERE id=?').run(created, order.operation_routes[0].reports[0].id);
+  }
+  order = f.ok(await f.report(order, 'weld', 1));
+  f.db.prepare('UPDATE production_operation_reports SET created_at=? WHERE id=?').run(timestamps[1], order.operation_routes[0].reports[0].id);
+  const url = `/payroll?worker_id=${admin}&start_at=2026-03-07T05:00:00.000Z&end_at=2026-03-10T04:00:00.000Z`;
+  const stats = f.ok(await f.request(url + '&time_zone=America%2FNew_York&limit=1'));
+  assert.equal(stats.time_zone, 'America/New_York');
+  assert.equal(stats.reports.length, 1); assert.equal(stats.total, 4);
+  assert.deepEqual(stats.daily, [
+    { date: '2026-03-07', currency: 'CNY', amount_cents: 250, report_count: 1 },
+    { date: '2026-03-08', currency: 'CNY', amount_cents: 250, report_count: 1 },
+    { date: '2026-03-08', currency: 'USD', amount_cents: 12, report_count: 1 },
+    { date: '2026-03-09', currency: 'CNY', amount_cents: 250, report_count: 1 },
+  ]);
+  for (const total of stats.currencies) assert.equal(stats.daily.filter(row => row.currency === total.currency).reduce((sum, row) => sum + row.amount_cents, 0), total.amount_cents);
+  assert.deepEqual(f.ok(await f.request(url + '&time_zone=America%2FNew_York&limit=1&offset=1')).daily, stats.daily);
+  const shanghai = f.ok(await f.request(url + '&time_zone=Asia%2FShanghai'));
+  assert.deepEqual(shanghai.daily[0], { date: '2026-03-08', currency: 'CNY', amount_cents: 500, report_count: 2 });
+  assert.equal((await f.request(url + '&time_zone=Invalid%2FZone')).status, 400);
+  assert.equal((await f.request(url + '&time_zone=')).status, 400);
 });

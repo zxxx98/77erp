@@ -138,6 +138,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState(null), [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [message, setMessage] = useState('');
   const [stageActivity, setStageActivity] = useState(null);
+  const [linkLoading, setLinkLoading] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [moreOpen, setMoreOpen] = useState(false);
   const [processDiagramOpen, setProcessDiagramOpen] = useState(false);
@@ -212,7 +213,13 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const back = () => {
     setMoreOpen(false);
     if (action.busy || dirty && !window.confirm(pt("production.thisProductionOrderHasUnsavedChangesLeave"))) return;
-    if (editor) setEditor(null); else setDetail(null);
+    if (editor) setEditor(null);
+    else {
+      setDetail(null);
+      if (new URLSearchParams(location.hash.split('?')[1]).has('order')) {
+        if (onNavigate) onNavigate('production'); else location.hash = '#production';
+      }
+    }
     action.setError(''); setMessage('');
   };
   const open = id => action.run(async () => {
@@ -221,6 +228,30 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     if (detail?.id !== order.id) setDetailTab('overview');
     setDetail(order); setEditor(null); setMessage('');
   });
+  // A payroll report links to the regular detail view, never to registration.
+  useEffect(() => {
+    let controller;
+    const readLink = () => {
+      controller?.abort();
+      setLinkLoading(false);
+      if (!location.hash.startsWith('#production?')) return;
+      const id = new URLSearchParams(location.hash.split('?')[1]).get('order');
+      if (!id || !/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id)) || guard.current.dirty || guard.current.busy) return;
+      controller = new AbortController();
+      setLinkLoading(true);
+      const signal = controller.signal;
+      api(`/production-orders/${id}`, { warehouseId: data.warehouse_id, signal })
+        .then(order => {
+          if (signal.aborted) return;
+          setDetail(order); setDetailTab('overview'); setEditor(null); setMessage(''); action.setError('');
+        })
+        .catch(error => { if (!signal.aborted) action.setError(error.message); })
+        .finally(() => { if (!signal.aborted) setLinkLoading(false); });
+    };
+    readLink();
+    window.addEventListener('hashchange', readLink);
+    return () => { controller?.abort(); window.removeEventListener('hashchange', readLink); };
+  }, [data.warehouse_id]);
   const saved = async (order, text, stockChanged = false) => {
     setMoreOpen(false);
     if (detail?.id !== order.id) setDetailTab('overview');
@@ -320,6 +351,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{label}</Button>
   </PageHeading>;
   const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}</>;
+
+  if (linkLoading) return <p role="status">{pt('production.loadingProductionOrder')}</p>;
 
   if (editor?.kind === 'quick_registration') return <div className="bom-page production-page">
     <ProductionQuickRegistration key={`${detail.id}:${editor.session}`} order={detail} data={listData} initialTargetId={editor.targetId} onActivity={setStageActivity} onBack={back}

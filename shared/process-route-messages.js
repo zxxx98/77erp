@@ -1,5 +1,6 @@
 // Exact system validation messages, shared by browser and API localization.
 export const processRouteMessages = {
+  PAYROLL_TIME_ZONE: ["工资统计时区无效。", "Invalid payroll time zone.", "Múi giờ thống kê lương không hợp lệ."],
   PAYROLL_INVALIDDATES: ["请选择有效的工资统计日期范围。", "Choose a valid payroll date range.", "Chọn khoảng ngày thống kê lương hợp lệ."],
   PAYROLL_INVALIDPRICE: ["工序单价需为非负数，最多 4 位小数且不超过 99999999。", "Operation price must be nonnegative, at most 99999999, with up to 4 decimals.", "Đơn giá phải không âm, không quá 99999999 và tối đa 4 chữ số thập phân."],
   PAYROLL_INVALIDCURRENCY: ["请选择有效的工资币种。", "Select a valid payroll currency.", "Chọn tiền tệ tính lương hợp lệ."],

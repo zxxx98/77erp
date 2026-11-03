@@ -1344,6 +1344,7 @@ test('AI reads process routes and operation snapshots without granting route wri
   f.use('get_production_order',{production_id:order.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.operation_routes[0].operations[0].name,'切割');assert.ok(!JSON.stringify(result).includes('cost_cents'));
   assert.match(f.calls.at(-1).body.messages[0].content,/中间工序不扣料/);
   assert.match(f.calls.at(-1).body.messages[0].content,/quantity × multiplier × 快照unit_price/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/每日工资图表.*明细单号可跳转到生产单详情/);
   assert.match(f.calls.at(-1).body.messages[0].content,/不能从详情最近100条报工推算完整工资/);
   assert.match(f.calls.at(-1).body.messages[0].content,/BOM.*工艺流程图/);
   assert.match(f.calls.at(-1).body.messages[0].content,/虚线.*供料.*不指定.*工序/);
