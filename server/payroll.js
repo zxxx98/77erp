@@ -40,11 +40,12 @@ export function payrollStatistics(db, warehouseId, query) {
     if (!graphs.has(row.route_snapshot_id)) graphs.set(row.route_snapshot_id, JSON.parse(row.graph));
     const node = graphs.get(row.route_snapshot_id).nodes.find(n => n.id === row.node_id);
     if (!node) fail('工序快照缺失，无法计算工资。');
-    const amount = operationWageCents(node, row), unit = row.stage_unit ?? row.unit;
+    const multiplier = node.multiplier ?? row.multiplier ?? 1;
+    const amount = operationWageCents(node, { ...row, multiplier }), unit = row.stage_unit ?? row.unit;
     const report = { id: row.id, production_id: row.production_id, production_number: row.production_number,
       product_name: row.stage_name ?? row.product_name, path: row.path, route_name: row.route_name, operation_name: node.name,
       worker_name: row.worker_name, registered_by_name: row.registered_by_name, created_at: row.created_at,
-      quantity: row.quantity, multiplier: row.multiplier, unit, unit_price: node.unit_price ?? null, currency: node.currency ?? null,
+      quantity: row.quantity, multiplier, unit, unit_price: node.unit_price ?? null, currency: node.currency ?? null,
       amount_cents: amount, status: row.status, note: row.note, void_reason: row.void_reason };
     if (row.status === 'void') { summary.void_count++; return report; }
     summary.active_count++; productions.add(row.production_id);
@@ -61,7 +62,7 @@ export function payrollStatistics(db, warehouseId, query) {
       unit_price: node.unit_price ?? null, currency: node.currency ?? null, quantity: 0, weighted_quantity: 0, report_count: 0, amount_cents: amount === null ? null : 0 };
     group.quantity = safeSum(group.quantity, Math.round(row.quantity * 10000));
     // Weighted quantities retain eight decimals; never combine different units.
-    const weighted = BigInt(Math.round(row.quantity * 10000)) * BigInt(Math.round(row.multiplier * 10000));
+    const weighted = BigInt(Math.round(row.quantity * 10000)) * BigInt(Math.round(multiplier * 10000));
     group.weighted_quantity += Number(weighted) / 100000000;
     group.report_count++;
     if (amount !== null) group.amount_cents = safeSum(group.amount_cents, amount);

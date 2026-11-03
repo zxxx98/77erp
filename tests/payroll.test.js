@@ -45,11 +45,14 @@ const period = '&start_at=2000-01-01T00%3A00%3A00.000Z&end_at=2100-01-01T00%3A00
 const priced = { ...serial, nodes: serial.nodes.map((node, i) => ({ ...node, ...(i < 2 ? { unit_price: i ? 0.1234 : 2.5, currency: i ? 'USD' : 'CNY' } : {}) })) };
 
 test('piecework prices validate and round once with exact decimal arithmetic', () => {
+  assert.equal(operationWageCents({ unit_price: 2.5, currency: 'CNY', multiplier: 1.2 }, { quantity: 3 }), 900);
   assert.equal(operationWageCents({ unit_price: 2.5, currency: 'CNY' }, { quantity: 3, multiplier: 1.2 }), 900);
   assert.equal(operationWageCents({ unit_price: 0.005, currency: 'CNY' }, { quantity: 1, multiplier: 1 }), 1);
   assert.equal(operationWageCents({ unit_price: 0.1, currency: 'VND' }, { quantity: 0.1, multiplier: 0.5 }), 1);
   assert.equal(operationWageCents({}, { quantity: 1 }), null);
   assert.equal(operationWageCents({ unit_price: 0, currency: 'VND' }, { quantity: 1 }), 0);
+  for (const multiplier of [0, -1, null, '2', 1.00001, Infinity, NaN, 100000000])
+    assert.throws(() => validateProcessGraph({ nodes: [{ ...node('a'), multiplier }], edges: [] }), /倍率/);
   for (const unit_price of [-1, '2', 0.00001, Infinity, NaN, 100000000])
     assert.throws(() => validateProcessGraph({ nodes: [{ ...node('a'), unit_price, currency: 'CNY' }], edges: [] }), /单价/);
   assert.throws(() => validateProcessGraph({ nodes: [{ ...node('a'), unit_price: 1 }], edges: [] }), /币种/);
@@ -58,12 +61,12 @@ test('piecework prices validate and round once with exact decimal arithmetic', (
 });
 
 test('payroll uses immutable snapshots, active worker reports, separate currencies, all pages and exact date boundaries', async t => {
-  const f = await fixture(t, { graph: priced });
+  const f = await fixture(t, { graph: { ...priced, nodes: priced.nodes.map((n, i) => ({ ...n, ...(i === 0 ? { multiplier: 1.5 } : i === 1 ? { multiplier: 2 } : {}) })) } });
   const admin = f.db.prepare('SELECT id FROM users WHERE username=?').get('routeadmin').id;
   let order = await f.start(await f.create());
-  order = f.ok(await f.report(order, 'cut', 4, '', { multiplier: 1.5 }));
+  order = f.ok(await f.report(order, 'cut', 4));
   const first = order.operation_routes[0].reports[0];
-  order = f.ok(await f.report(order, 'weld', 4, '', { multiplier: 2 }));
+  order = f.ok(await f.report(order, 'weld', 4));
   order = f.ok(await f.complete(order, 2));
   const url = `/payroll?worker_id=${admin}${period}`;
   let stats = f.ok(await f.request(url + '&limit=1'));
@@ -95,7 +98,7 @@ test('payroll uses immutable snapshots, active worker reports, separate currenci
 });
 
 test('payroll enforces finance permission and warehouse scope, attributes work to worker instead of registrar, and preserves inactive members', async t => {
-  const f = await fixture(t, { graph: priced });
+  const f = await fixture(t, { graph: { ...priced, nodes: priced.nodes.map((n, i) => i === 0 ? { ...n, multiplier: 2 } : n) } });
   const position = f.ok(await f.request('/positions', { name: '财务', access_mode: 'standard', permissions: ['finance'] }));
   f.ok(await f.request('/users', {username:'accountant',employee_no:'F001',name:'财务成员',password:'Finance-1234',role:'employee',position_id:position.id}));
   const accountant = f.db.prepare("SELECT id FROM users WHERE username='accountant'").get();
@@ -103,7 +106,7 @@ test('payroll enforces finance permission and warehouse scope, attributes work t
   f.ok(await f.request('/users', {username:'workerpay',employee_no:'W001',name:'作业成员',password:'Worker-1234',role:'employee',position_id:workerPosition.id}));
   const worker = f.db.prepare("SELECT id FROM users WHERE username='workerpay'").get();
   let order = await f.start(await f.create({ user_ids: [worker.id] }));
-  order = f.ok(await f.report(order, 'cut', 3, '', {worker_id:worker.id,multiplier:2}));
+  order = f.ok(await f.report(order, 'cut', 3, '', {worker_id:worker.id}));
   const login = await f.request('/auth/login', {username:'accountant',password:'Finance-1234'}, {cookie:' '});
   const stats = f.ok(await f.request(`/payroll?worker_id=${worker.id}${period}`, undefined, {cookie:login.cookie}));
   assert.deepEqual(stats.currencies, [{ currency:'CNY',amount_cents:1500 }]);

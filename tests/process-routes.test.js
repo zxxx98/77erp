@@ -134,12 +134,15 @@ test('serial reports constrain later operations, remain separate from inventory,
   assert.equal(order.operation_routes[0].operations[0].completed_quantity,0);
 });
 
-test('operation multiplier is persisted independently of progress and survives backup', async t => {
-  const f = await fixture(t); let order = await f.start(await f.create());
-  for (const multiplier of [0, -1, null, '2', 1.00001]) assert.equal((await f.report(order, 'cut', 2, '', { multiplier })).status, 400);
-  order = f.ok(await f.report(order, 'cut', 2, '', { multiplier: 2 }));
+test('operation multiplier is configured on process route nodes, snapshotted onto reports, and survives backup', async t => {
+  const f = await fixture(t, { graph: { ...serial, nodes: serial.nodes.map(n => n.id === 'cut' ? { ...n, multiplier: 2 } : n.id === 'out' ? { ...n, multiplier: 1.5 } : n) } });
+  for (const multiplier of [0, -1, null, '2', 1.00001]) {
+    assert.equal((await f.command(`/process-routes/${f.route.id}`, { name: f.route.name, note: '', enabled: 1, version: f.route.version, graph: { ...serial, nodes: serial.nodes.map(n => n.id === 'cut' ? { ...n, multiplier } : n) } })).status, 400);
+  }
+  let order = await f.start(await f.create());
+  order = f.ok(await f.report(order, 'cut', 2));
   order = f.ok(await f.report(order, 'weld', 2));
-  order = f.ok(await f.complete(order, 2, '', { multiplier: 1.5 }));
+  order = f.ok(await f.complete(order, 2));
   assert.equal(order.operation_routes[0].operations.find(node => node.id === 'cut').completed_quantity, 2);
   assert.deepEqual(order.operation_routes[0].reports.map(report => report.multiplier), [1.5, 1, 2]);
   const backup = f.ok(await f.request('/backup'));

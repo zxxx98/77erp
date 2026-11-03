@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
 import { productionRegistrationUrl } from '../../shared/production-link.js';
 
-const graph = { nodes:[{id:'cut',name:'下料',note:'按图下料',x:24,y:24,unit_price:2.5,currency:'CNY'},{id:'out',name:'检验',note:'',x:244,y:24,unit_price:1,currency:'USD'}],edges:[{from:'cut',to:'out'}] };
+const graph = { nodes:[{id:'cut',name:'下料',note:'按图下料',x:24,y:24,multiplier:1.5,unit_price:2.5,currency:'CNY'},{id:'out',name:'检验',note:'',x:244,y:24,multiplier:2,unit_price:1,currency:'USD'}],edges:[{from:'cut',to:'out'}] };
 async function fixture(page,{worker=false,multi=false,repeated=false}={}) {
   const {app,db}=createApp(':memory:');const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}`;
   const post=async(path,body)=>{const response=await page.request.post(`${base}/api${path}`,{data:{request_id:randomUUID(),schema_version:2,stage_schema_version:1,operation_schema_version:1,...body}});const result=await response.json();expect(response.ok(),JSON.stringify(result)).toBe(true);return result;};
@@ -38,8 +38,8 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
   page.on('pageerror', error => errors.push(error.message));
   try {
     let order = await f.get();
-    order = await f.post(`/production-orders/${order.id}/operations/report`, {version:order.version,path:'',operation_node_id:'cut',quantity:4,multiplier:1.5,note:'工资测试'});
-    await f.post(`/production-orders/${order.id}/complete`, {version:order.version,path:'',operation_node_id:'out',completed_quantity:4,multiplier:2,items:[{product_id:f.raw.id,quantity:8}],scraps:[],finish_order:false,note:''});
+    order = await f.post(`/production-orders/${order.id}/operations/report`, {version:order.version,path:'',operation_node_id:'cut',quantity:4,note:'工资测试'});
+    await f.post(`/production-orders/${order.id}/complete`, {version:order.version,path:'',operation_node_id:'out',completed_quantity:4,items:[{product_id:f.raw.id,quantity:8}],scraps:[],finish_order:false,note:''});
     const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit'}).formatToParts(new Date());
     const yearMonth = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}`;
     f.db.prepare("UPDATE production_operation_reports SET created_at=? WHERE node_id='cut'").run(`${yearMonth}-01T02:00:00.000Z`);
@@ -47,6 +47,8 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
     await page.goto(`${f.base}/#process-routes`);
     if (mode === 'ios-pwa') await page.evaluate(() => navigator.serviceWorker.ready);
     await page.getByRole('button', {name:'编辑路线',exact:true}).click();
+    await expect(page.getByRole('spinbutton', {name:'工序倍率',exact:true})).toHaveValue('1.5');
+    await page.getByRole('spinbutton', {name:'工序倍率',exact:true}).fill('1.25');
     await expect(page.getByRole('spinbutton', {name:'计件单价',exact:true})).toHaveValue('2.5');
     await page.getByRole('spinbutton', {name:'计件单价',exact:true}).fill('3.25');
     await page.getByRole('combobox', {name:'工资币种',exact:true}).click();
@@ -54,6 +56,7 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
     await page.getByRole('button', {name:'保存路线',exact:true}).click();
     await expect(page.getByRole('button', {name:'编辑路线',exact:true})).toBeVisible();
     const saved = await (await page.request.get(`${f.base}/api/process-routes/${f.route.id}`)).json();
+    expect(saved.graph.nodes[0].multiplier).toBe(1.25);
     expect(saved.graph.nodes[0].unit_price).toBe(3.25);
     expect(saved.graph.nodes[0].currency).toBe('VND');
     if (mode === 'desktop') await page.getByRole('link', {name:'工资统计',exact:true}).click();

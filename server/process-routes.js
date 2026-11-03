@@ -195,17 +195,23 @@ export function syncProductionOperationPrices(db, req, order) {
       if (!sourceNode) continue;
       const newPrice = sourceNode.unit_price ?? null;
       const newCurrency = sourceNode.currency ?? null;
+      const newMultiplier = sourceNode.multiplier ?? 1;
       const oldPrice = node.unit_price ?? null;
       const oldCurrency = node.currency ?? null;
-      if (newPrice !== oldPrice || newCurrency !== oldCurrency) {
+      const oldMultiplier = node.multiplier ?? 1;
+      if (newPrice !== oldPrice || newCurrency !== oldCurrency || newMultiplier !== oldMultiplier) {
+        validateOperationPrice({ unit_price: newPrice, currency: newCurrency, multiplier: newMultiplier });
         if (newPrice != null) {
-          validateOperationPrice({ unit_price: newPrice, currency: newCurrency });
           node.unit_price = newPrice;
           node.currency = newCurrency;
         } else {
           delete node.unit_price;
           delete node.currency;
         }
+        if (sourceNode.multiplier !== undefined) node.multiplier = newMultiplier;
+        else delete node.multiplier;
+        db.prepare('UPDATE production_operation_reports SET multiplier=? WHERE route_snapshot_id=? AND node_id=?')
+          .run(newMultiplier, pr.id, node.id);
         changed = true;
         updatedCount++;
       }
@@ -238,7 +244,6 @@ function operationInput(db, req, order, path, quantity, output) {
   const product = db.prepare('SELECT active,unit,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(layer.product_id,order.warehouse_id);
   if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
   if (!validQuantity(quantity, true) || layer.unit_round_up && !Number.isInteger(quantity)) fail('工序数量需为正数，最多 4 位小数，并符合物料取整规则。');
-  if (!validQuantity(req.body.multiplier === undefined ? 1 : req.body.multiplier, true)) fail('工序倍率需为正数，最多 4 位小数。');
   if (!validQuantity(addQuantity(node.completed_quantity, quantity), true)) fail('工序累计数量超出范围。');
   if (node.available_quantity !== null && quantity > node.available_quantity) fail('前置工序可用数量不足，请先核对前序报工。', 409);
   if (typeof req.body.note !== 'string' && req.body.note !== undefined || (req.body.note?.length ?? 0) > 500) fail('工序说明最多 500 字。');
@@ -252,7 +257,7 @@ function insertReport(db, req, order, input, quantity, kind = null, batchId = nu
   if (!input) return;
   const acceptanceId=saveOperationAcceptance(db,req,order,input);
   db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(order.id, input.route.id, input.node.id, quantity, input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,req.body.multiplier ?? 1);
+    .run(order.id, input.route.id, input.node.id, quantity, input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,input.node.multiplier ?? 1);
 }
 export function recordOperationOutput(db, req, order, path, quantity, kind, batchId) {
   const input = operationInput(db, req, order, path, quantity, true);
