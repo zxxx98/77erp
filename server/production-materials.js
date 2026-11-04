@@ -5,6 +5,8 @@ import { hasPermission } from '../shared/permissions.js';
 import { notifyStockChanges } from './notifications.js';
 import { stageDirectBatches } from './production-stages.js';
 import { additionalPlannedQuantities } from '../shared/additional-operations.js';
+import { exactQuantity, exactAdd, exactSubtract, exactCompare, exactMax, exactNumber, quantityFields, parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
+import { saveExactQuantity } from './exact-quantity.js';
 
 export const productionMaterialTables = ['production_material_documents', 'production_material_document_items', 'production_material_issues', 'production_material_issue_items'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -78,11 +80,11 @@ export function materialDocumentProgress(doc) {
   const issued = (doc.issues ?? []).length > 0;
   return { ...doc, fulfillment_status: doc.type === 'in' ? doc.status : doc.status === 'pending' ? issued ? 'partial' : 'pending' : doc.status === 'cancelled' ? 'closed' : 'confirmed',
     items: doc.items.map(row => {
-      const quantity = doc.type === 'out' ? (doc.issues ?? []).reduce((sum, issue) => addQuantity(sum, issue.items.find(item => item.product_id === row.product_id)?.quantity ?? 0), 0) : doc.status === 'confirmed' ? row.quantity : 0;
-      const remaining = Math.max(0, addQuantity(row.quantity, -quantity));
-      return { ...row, issued_quantity: quantity, pending_quantity: doc.status === 'pending' ? remaining : 0,
-        closed_quantity: doc.status === 'cancelled' ? remaining : 0,
-        over_issued_quantity: doc.type === 'out' ? Math.max(0, addQuantity(quantity, -row.quantity)) : 0 };
+      const quantity = doc.type === 'out' ? (doc.issues ?? []).reduce((sum, issue) => exactAdd(sum, exactQuantity(issue.items.find(item => item.product_id === row.product_id))), 0) : doc.status === 'confirmed' ? exactQuantity(row) : 0;
+      const remaining = exactMax(0, exactSubtract(exactQuantity(row), quantity));
+      return { ...row, ...quantityFields(quantity, 'issued_quantity'), ...quantityFields(doc.status === 'pending' ? remaining : 0, 'pending_quantity'),
+        ...quantityFields(doc.status === 'cancelled' ? remaining : 0, 'closed_quantity'),
+        ...quantityFields(doc.type === 'out' ? exactMax(0, exactSubtract(quantity, exactQuantity(row))) : 0, 'over_issued_quantity') };
     }) };
 }
 
@@ -113,38 +115,41 @@ export function materialBalances(order) {
       const row = doc.items.find(row => row.product_id === item.product_id);
       if (!row) continue;
       if (doc.type === 'out') {
-        requested = addQuantity(requested, row.quantity);
-        pending = addQuantity(pending, row.pending_quantity);
-        closed = addQuantity(closed, row.closed_quantity);
+        requested = exactAdd(requested, exactQuantity(row));
+        pending = exactAdd(pending, exactQuantity(row, 'pending_quantity'));
+        closed = exactAdd(closed, exactQuantity(row, 'closed_quantity'));
         for (const issue of doc.issues ?? []) {
           const line = issue.items.find(row => row.product_id === item.product_id);
-          if (line) { issued = addQuantity(issued, line.quantity); cost += BigInt(line.cost_cents); }
+          if (line) { issued = exactAdd(issued, exactQuantity(line)); cost += BigInt(line.cost_cents); }
         }
-      } else if (doc.status === 'confirmed') { returned = addQuantity(returned, row.quantity); cost -= BigInt(row.cost_cents); }
+      } else if (doc.status === 'confirmed') { returned = exactAdd(returned, exactQuantity(row)); cost -= BigInt(row.cost_cents); }
     }
     let consumed = 0, consumedCost = 0n;
     for (const batch of order.stage_workflow ? order.stage_direct_batches ?? [] : order.batches) if (batch.status === 'active') {
       for (const row of batch.items.filter(row => row.product_id === item.product_id)) {
-        consumed = addQuantity(consumed, row.actual_quantity); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
+        consumed = exactAdd(consumed, exactQuantity(row, 'actual_quantity')); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
       }
     }
     const productionConsumed = consumed;
     let additionalConsumed = 0, additionalCost = 0;
     for (const report of order.additional_material_reports || []) if (report.status === 'active') for (const row of report.material_items) if (row.product_id === item.product_id) {
-      additionalConsumed = addQuantity(additionalConsumed, row.quantity); additionalCost += row.cost_cents;
-      consumed = addQuantity(consumed, row.quantity); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
+      additionalConsumed = exactAdd(additionalConsumed, exactQuantity(row)); additionalCost += row.cost_cents;
+      consumed = exactAdd(consumed, exactQuantity(row)); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
+    }
+    for (const row of order.quantity_rounding || []) if (row.kind === 'material' && row.product_id === item.product_id) {
+      consumed = exactAdd(consumed, exactQuantity(row)); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
     }
     const additionalPlanned = additionalPlans.get(item.product_id) || 0, totalPlanned = addQuantity(item.planned_quantity, additionalPlanned);
     if (!validStoredQuantity(totalPlanned) || !Number.isSafeInteger(additionalCost) || consumedCost > BigInt(Number.MAX_SAFE_INTEGER)) fail('附加工序材料成本或计划数量超出范围。');
     // Lifetime turnover can exceed Number's exact range even when the remaining pool is small.
     if (cost < 0n || cost > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${item.name}材料余额成本不足或超出范围。`);
-    return { ...item, requested_quantity: requested, pending_issue_quantity: pending, closed_request_quantity: closed, issued_quantity: issued, returned_quantity: returned,
-      over_plan_quantity: Math.max(0, addQuantity(issued, -totalPlanned)),
+    return { ...item, ...quantityFields(requested, 'requested_quantity'), ...quantityFields(pending, 'pending_issue_quantity'), ...quantityFields(closed, 'closed_request_quantity'), ...quantityFields(issued, 'issued_quantity'), ...quantityFields(returned, 'returned_quantity'),
+      ...quantityFields(exactMax(0, exactSubtract(issued, totalPlanned)), 'over_plan_quantity'),
       additional_planned_quantity: additionalPlanned, total_planned_quantity: totalPlanned,
-      additional_consumed_quantity: additionalConsumed, additional_consumed_cost_cents: additionalCost,
-      consumed_quantity: consumed, consumed_cost_cents: Number(consumedCost),
-      ...(order.stage_workflow ? { direct_consumed_quantity:productionConsumed, direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
-      available_quantity: addQuantity(addQuantity(issued, -returned), -consumed), available_cost_cents: Number(cost) };
+      ...quantityFields(additionalConsumed, 'additional_consumed_quantity'), additional_consumed_cost_cents: additionalCost,
+      ...quantityFields(consumed, 'consumed_quantity'), consumed_cost_cents: Number(consumedCost),
+      ...(order.stage_workflow ? { ...quantityFields(productionConsumed, 'direct_consumed_quantity'), direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
+      ...quantityFields(exactSubtract(exactSubtract(issued, returned), consumed), 'available_quantity'), available_cost_cents: Number(cost) };
   });
 }
 
@@ -161,10 +166,11 @@ function normalizeItems(order, items, actual = false) {
     fail('请核对材料明细，材料不能重复。');
   return items.map(row => {
     const item = order.items.find(item => item.product_id === row?.product_id);
-    if (!item || !validQuantity(row.quantity, true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
-    if (actual && item.unit_round_up && !Number.isInteger(row.quantity)) fail('本次实发数量须符合材料整单位规则。');
-    const quantity = materialQuantity(row.quantity, item);
-    if (!validQuantity(quantity, true)) fail('材料数量超出范围。');
+    if (!item || !validExactQuantity(parseExactQuantity(row.quantity, true), true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
+
+    if (actual && item.unit_round_up && typeof row.quantity === 'number' && !Number.isInteger(row.quantity)) fail('本次实发数量须符合材料整单位规则。');
+    const quantity = typeof row.quantity === 'number' ? materialQuantity(row.quantity, item) : parseExactQuantity(row.quantity, true);
+    if (!validExactQuantity(quantity, true)) fail('材料数量超出范围。');
     return { product_id: item.product_id, quantity };
   });
 }
@@ -179,8 +185,9 @@ export function installProductionMaterials(app, db, { route, current, version, u
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, order.product_name, order.unit, type, kind, note, actor(req), at, at).lastInsertRowid);
     for (const row of items) {
       const item = order.items.find(item => item.product_id === row.product_id);
-      db.prepare(`INSERT INTO production_material_document_items(document_id,product_id,name,barcode,specification,unit,unit_round_up,quantity)
-        VALUES (?,?,?,?,?,?,?,?)`).run(id, item.product_id, item.name, item.barcode, item.specification, item.unit, item.unit_round_up, row.quantity);
+      const itemId = Number(db.prepare(`INSERT INTO production_material_document_items(document_id,product_id,name,barcode,specification,unit,unit_round_up,quantity)
+        VALUES (?,?,?,?,?,?,?,?)`).run(id, item.product_id, item.name, item.barcode, item.specification, item.unit, item.unit_round_up, exactNumber(row.quantity)).lastInsertRowid);
+      saveExactQuantity(db, 'production_material_document_items', itemId, 'quantity', row.quantity);
     }
     touch(order, req, kind === 'initial' ? 'awaiting_materials' : order.material_phase);
   };
@@ -205,7 +212,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
     if (typeof note !== 'string' || note.length > 500) fail('申请备注最多 500 字。');
     units(order);
     const normalized = items.map(row => {
-      if (!isId(row?.product_id) || !validQuantity(row.quantity, true)) fail('请选择物料，申请数量需为正数且最多 4 位小数。');
+      if (!isId(row?.product_id) || !validExactQuantity(parseExactQuantity(row.quantity, true), true)) fail('请选择物料，申请数量需为正数且最多 4 位小数。');
       let item = order.items.find(item => item.product_id === row.product_id);
       if (!item && type === 'out') {
         const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, order.warehouse_id);
@@ -219,9 +226,9 @@ export function installProductionMaterials(app, db, { route, current, version, u
         item = db.prepare('SELECT * FROM production_items WHERE production_id=? AND product_id=?').get(order.id,product.id);
         order.items.push(item);
       }
-      if (!item || !validQuantity(row.quantity, true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
-      const quantity = materialQuantity(row.quantity, item);
-      if (type === 'in' && quantity > item.available_quantity) fail(`${item.name}退料超过已领未耗余额。`);
+      if (!item || !validExactQuantity(parseExactQuantity(row.quantity, true), true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
+      const quantity = type === 'out' && typeof row.quantity === 'number' ? materialQuantity(row.quantity, item) : parseExactQuantity(row.quantity, true);
+      if (type === 'in' && exactCompare(quantity, exactQuantity(item, 'available_quantity')) > 0) fail(`${item.name}退料超过已领未耗余额。`);
       return { product_id: item.product_id, quantity };
     });
     create(req, order, type, type === 'out' ? 'supplement' : 'return', normalized, note.trim());
@@ -257,13 +264,13 @@ export function installProductionMaterials(app, db, { route, current, version, u
     } else {
       if (!order.material_workflow || order.status === 'void' || doc.type === 'out' && (doc.kind === 'initial' ? !['awaiting_materials', 'in_progress'].includes(order.status) : order.status !== 'in_progress')) fail('生产单状态不允许确认此材料单。', 409);
       const requested = doc.type === 'out'
-        ? normalizeItems(order, req.body.items === undefined ? doc.items.filter(row => row.pending_quantity > 0).map(row => ({ product_id: row.product_id, quantity: row.pending_quantity })) : req.body.items, true)
+        ? normalizeItems(order, req.body.items === undefined ? doc.items.filter(row => row.pending_quantity > 0).map(row => ({ product_id: row.product_id, quantity: exactQuantity(row, 'pending_quantity') })) : req.body.items, true)
         : doc.items;
       if (doc.type === 'in' && req.body.items !== undefined) fail('退料单需整单确认。');
       const rows = requested.map(row => {
         const source = doc.items.find(item => item.product_id === row.product_id);
         if (!source) fail('本次发料的材料需属于当前申请。');
-        return { ...source, quantity: row.quantity };
+        return { ...source, ...quantityFields(exactQuantity(row)) };
       });
       const before = rows.map(row => db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id));
       const issueNumber = `SCFL${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -274,16 +281,19 @@ export function installProductionMaterials(app, db, { route, current, version, u
         const item = order.items.find(item => item.product_id === row.product_id), product = before.find(p => p.id === row.product_id);
         if (!item || product.warehouse_id !== req.warehouse.id || row.unit !== product.unit || row.unit_round_up !== product.unit_round_up) fail(`${row.name}单位或取整规则已变化，请取消后重新核对。`, 409);
         if (!product.active) fail(`${row.name}已停用，请先核对物料。`);
-        if (doc.type === 'out' && row.quantity > product.stock) fail(`${row.name}库存不足，请核对本次实发数量。`);
-        if (doc.type === 'out' && (!validStoredQuantity(addQuantity(item.issued_quantity, row.quantity)) || !validStoredQuantity(addQuantity(item.available_quantity, row.quantity)))) fail(`${row.name}累计领料或材料余额超出数量上限。`);
-        if (doc.type === 'in' && row.quantity > item.available_quantity) fail(`${row.name}退料超过当前已领未耗余额，请取消后重新申请。`);
-        const cost = doc.type === 'out' ? moveInventory(db, row.product_id, -row.quantity)
-          : allocate(item.available_cost_cents, row.quantity, item.available_quantity);
+        if (doc.type === 'out' && exactCompare(exactQuantity(row), exactQuantity(product, 'stock')) > 0) fail(`${row.name}库存不足，请核对本次实发数量。`);
+        if (doc.type === 'out' && (!validExactQuantity(exactAdd(exactQuantity(item, 'issued_quantity'), exactQuantity(row))) || !validExactQuantity(exactAdd(exactQuantity(item, 'available_quantity'), exactQuantity(row))))) fail(`${row.name}累计领料或材料余额超出数量上限。`);
+        if (doc.type === 'in' && exactCompare(exactQuantity(row), exactQuantity(item, 'available_quantity')) > 0) fail(`${row.name}退料超过当前已领未耗余额，请取消后重新申请。`);
+        const cost = doc.type === 'out' ? moveInventory(db, row.product_id, exactSubtract(0, exactQuantity(row)))
+          : allocate(item.available_cost_cents, exactQuantity(row), exactQuantity(item, 'available_quantity'));
         if (doc.type === 'out' && !Number.isSafeInteger(item.available_cost_cents + cost)) fail(`${row.name}材料余额成本超出范围。`);
         if (doc.type === 'in') {
-          moveInventory(db, row.product_id, row.quantity, cost);
+          moveInventory(db, row.product_id, exactQuantity(row), cost);
           db.prepare('UPDATE production_material_document_items SET cost_cents=? WHERE id=?').run(cost, row.id);
-        } else db.prepare('INSERT INTO production_material_issue_items(issue_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(issueId, row.product_id, row.quantity, cost);
+        } else {
+          const lineId = Number(db.prepare('INSERT INTO production_material_issue_items(issue_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(issueId, row.product_id, row.quantity, cost).lastInsertRowid);
+          saveExactQuantity(db, 'production_material_issue_items', lineId, 'quantity', exactQuantity(row));
+        }
         total += cost; if (!Number.isSafeInteger(total)) fail('材料成本超出范围。');
       }
       if (issueId) db.prepare('UPDATE production_material_issues SET total_cost_cents=? WHERE id=?').run(total, issueId);
@@ -315,6 +325,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
 }
 
 export function validateProductionMaterialBackup(data) {
+  const validQuantity = validExactQuantity, validStoredQuantity = validExactQuantity;
   const orders = new Map(data.production_orders.map(row => [row.id, row])), products = new Map(data.products.map(row => [row.id, row]));
   const docs = new Map(), pending = new Set(), numbers = new Set(), keys = new Set();
   const text = (value, max, required = false) => typeof value === 'string' && value.length <= max && (!required || !!value.trim());
@@ -336,9 +347,9 @@ export function validateProductionMaterialBackup(data) {
   for (const row of data.production_material_document_items) {
     const doc = docs.get(row.document_id), order = doc && orders.get(doc.production_id);
     const item = order && data.production_items.find(item => item.production_id === order.id && item.product_id === row.product_id);
-    if (!doc || !item || products.get(row.product_id)?.warehouse_id !== order.warehouse_id || !validQuantity(row.quantity, true) ||
+    if (!doc || !item || products.get(row.product_id)?.warehouse_id !== order.warehouse_id || !validExactQuantity(exactQuantity(row), true) ||
         ['name','barcode','specification','unit','unit_round_up'].some(key => row[key] !== item[key]) ||
-        ![0,1].includes(row.unit_round_up) || row.unit_round_up && !Number.isInteger(row.quantity) ||
+        ![0,1].includes(row.unit_round_up)  ||
         (doc.status === 'confirmed' ? !money(row.cost_cents) : row.cost_cents !== null) || keys.has(`${doc.id}:${row.product_id}`)) fail('备份生产材料单明细无效。');
     keys.add(`${doc.id}:${row.product_id}`); doc.items.push(row);
   }
@@ -354,7 +365,7 @@ export function validateProductionMaterialBackup(data) {
   for (const row of data.production_material_issue_items) {
     const issue = issues.get(row.issue_id), doc = issue && docs.get(issue.document_id), item = doc?.items.find(item => item.product_id === row.product_id);
     const key = `${row.issue_id}:${row.product_id}`;
-    if (!item || !validQuantity(row.quantity,true) || item.unit_round_up && !Number.isInteger(row.quantity) || !money(row.cost_cents) || issueKeys.has(key)) fail('备份生产发料明细无效。');
+    if (!item || !validQuantity(row.quantity,true)  || !money(row.cost_cents) || issueKeys.has(key)) fail('备份生产发料明细无效。');
     issueKeys.add(key); issue.items.push(row);
   }
   for (const issue of issues.values()) if (!issue.items.length || issue.items.reduce((sum,row) => sum + BigInt(row.cost_cents),0n) !== BigInt(issue.total_cost_cents)) fail('备份生产发料成本合计无效。');
@@ -376,12 +387,12 @@ export function validateProductionMaterialBackup(data) {
         documents.some(doc => doc.status === 'pending' && doc.kind !== 'initial' && order.material_phase !== 'in_progress') ||
         order.material_phase !== 'in_progress' && (order.completed_at || documents.some(doc => doc.status === 'confirmed')) ||
         order.status === 'void' && pending.has(order.id)) fail('备份生产领料阶段与材料单不一致。');
-    const balances = materialBalances({ ...order, items: data.production_items.filter(row => row.production_id === order.id), material_documents: documents,
+    const balances = materialBalances({ ...order, quantity_rounding: (data.production_quantity_rounding || []).filter(row => row.production_id === order.id && row.status === 'active'), items: data.production_items.filter(row => row.production_id === order.id), material_documents: documents,
       operation_routes: data.production_routes.filter(row => row.production_id === order.id),
       additional_material_reports: data.production_operation_reports.filter(row => row.production_id === order.id).map(row => ({ ...row, material_items: JSON.parse(row.material_items) })),
       stage_direct_batches:stageDirectBatches(data,order.id),
       batches: data.production_batches.filter(row => row.production_id === order.id).map(batch => ({ ...batch, items: data.production_batch_items.filter(row => row.batch_id === batch.id) })) });
-    if (balances.some(item => !validStoredQuantity(item.issued_quantity) || !validStoredQuantity(item.returned_quantity) || !validStoredQuantity(item.available_quantity) || !money(item.available_cost_cents) ||
+    if (balances.some(item => !validStoredQuantity(exactQuantity(item,'issued_quantity')) || !validStoredQuantity(exactQuantity(item,'returned_quantity')) || !validStoredQuantity(exactQuantity(item,'available_quantity')) || !money(item.available_cost_cents) ||
         item.available_quantity === 0 && item.available_cost_cents !== 0 || order.status === 'void' && item.available_quantity !== 0)) fail('备份生产材料余额或成本无效。');
   }
 }

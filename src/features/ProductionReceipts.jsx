@@ -12,6 +12,7 @@ import { useBusiness } from '../business-api.js';
 import { queryPath, useQuery } from '../queries.js';
 import { count, dateTime, money, currencySymbol } from '../app/format.js';
 import './production-materials.css';
+import { exactQuantity, formatExactQuantity } from '../../shared/exact-quantity.js';
 
 const statusLabels = () => ({ pending: pt("production.pendingReceipt"), confirmed: pt("production.received"), void: pt("production.voided2") });
 
@@ -22,11 +23,12 @@ export function ProductionReceiptList({ documents, busy, onConfirm, defaultExpan
   return <div className="material-documents">{documents.map(doc => <article className="material-document" id={`production-receipt-${doc.id}`} tabIndex={-1} key={doc.id}>
     <div className="material-document-heading"><div><strong>{doc.number}</strong><p>{doc.production_number} {pt("production.batch3")} {doc.batch_number} {pt("production.batch2")}</p></div>
       <Badge tone={doc.status === 'pending' ? 'orange' : doc.status === 'confirmed' ? 'green' : 'gray'}>{statusLabels()[doc.status]}</Badge></div>
-    <p>{doc.product_name} · {count(doc.quantity)} {doc.unit}</p>
+    <p>{doc.product_name} · {formatExactQuantity(exactQuantity(doc))} {doc.unit}</p>
     <p className="material-muted">{pt("production.registered")}{doc.created_by_name} · {dateTime(doc.created_at)}</p>
     {doc.confirmed_at && <p className="material-muted">{pt("production.received2")}{doc.confirmed_by_name} · {dateTime(doc.confirmed_at)}</p>}
     {doc.voided_at && <p className="material-muted">{pt("production.voided")}{doc.voided_by_name} · {dateTime(doc.voided_at)}{doc.void_reason && ` · ${doc.void_reason}`}</p>}
     {can('finance') && doc.total_cost_cents != null && <p>{pt("production.productCost")} {currencySymbol()}{money(doc.total_cost_cents / 100)}</p>}
+    {!!doc.rounding?.length && <p className="bom-hint">{pt('production.roundingAdjustment')}: {doc.rounding.map(row => `${formatExactQuantity(exactQuantity(row))} ${doc.items.find(item => item.product_id === row.product_id)?.unit || doc.unit}`).join('、')}</p>}
     {doc.note && <p className="material-note">{doc.note}</p>}
     <div className="material-actions">
       <Button disabled={busy} aria-expanded={expanded === doc.id} onClick={() => setExpanded(expanded === doc.id ? null : doc.id)}>{expanded === doc.id ? pt("production.collapseReceiptDetails") : pt("production.viewReceiptDetails")}</Button>
@@ -34,7 +36,7 @@ export function ProductionReceiptList({ documents, busy, onConfirm, defaultExpan
     </div>
     {expanded === doc.id && <ul className="material-document-lines">{doc.items.map(item => <li key={`${item.kind}:${item.product_id}`}>
       <div><strong>{item.name}</strong><small>{item.kind === 'scrap' ? pt("production.scrap") : pt("production.acceptedProducts")} · {item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
-      <span>{count(item.quantity)} {item.unit}</span>
+      <span>{formatExactQuantity(exactQuantity(item))} {item.unit}</span>
       {can('finance') && item.cost_cents != null && <small>{pt("production.receiptCost")} {currencySymbol()}{money(item.cost_cents / 100)}</small>}
     </li>)}</ul>}
   </article>)}</div>;
@@ -61,7 +63,7 @@ export function ProductionReceipts({ data, onChanged, initialQuery = '', onRefre
   if (!allowed) return null;
   const confirm = doc => action.run(async () => {
     setMessage('');
-    if (!window.confirm(pt("production.approveAndReceiveTheFullBatchAndListed", { v0: doc.number, v1: count(doc.quantity), v2: doc.unit, v3: doc.product_name }))) return;
+    if (!window.confirm(pt("production.approveAndReceiveTheFullBatchAndListed", { v0: doc.number, v1: formatExactQuantity(exactQuantity(doc)), v2: doc.unit, v3: doc.product_name }))) return;
     await action.send(`/production-receipts/${doc.id}/confirm`, { version: doc.version }, { warehouseId: data.warehouse_id });
     setMessage(pt("production.received3", { v0: doc.number }));
     setSelection(null);

@@ -1,6 +1,22 @@
 import { calculateBomNodes } from './bom-expansion.js';
 import { validQuantity, quantityUnits, QUANTITY_SCALE, validStoredQuantity } from './quantity.js';
 import { bomRequiredQuantity } from './bom.js';
+import { parseProductionQuantity as parseExactQuantity, exactCompare, exactQuantity, validExactQuantity, exactBomQuantity, exactAdd, exactMultiply, exactSubtract, exactDivide, exactNumber, quantityFields } from './exact-quantity.js';
+
+export function productionActualDefault(item, quantity, order) {
+  if (item.base_quantity === 0) return 0;
+  if (order.snapshot_format !== 2 && !order.multi_level)
+    return exactBomQuantity(item.base_quantity, quantity, order.base_quantity, item.base_quantity_fraction, item.loss_rate, order.loss_method);
+  const amounts = new Map();
+  let total = 0;
+  for (const node of order.nodes) {
+    let amount = exactBomQuantity(node.quantity, node.parent_path ? amounts.get(node.parent_path) : quantity, node.bom_base_quantity, node.quantity_fraction, node.loss_rate, node.loss_method);
+    if (node.supply_fraction) amount = exactMultiply(amount, node.supply_fraction);
+    amounts.set(node.path, amount);
+    if (node.product_id === item.product_id && node.usage_mode === 'stock') total = exactAdd(total, amount);
+  }
+  return total;
+}
 
 export const productionStatusLabels = { draft: '待生产', awaiting_materials: '待领料', in_progress: '生产中', completed: '已完工', void: '已作废' };
 export const productionPlannedQuantity = bomRequiredQuantity;
@@ -22,19 +38,22 @@ export function validateProductionPlan(value, stored = false) {
 }
 
 export function validateProductionCompletion(value, items, stored = false) {
-  if (!value || !validQuantity(value.completed_quantity, true, stored ? 6 : 4)) throw new Error('合格成品数量需为正数，最多 4 位小数。');
+  if (!value) throw new Error('请填写合格成品数量。');
+  if (stored) { if (!validExactQuantity(exactQuantity(value, 'completed_quantity'), true)) throw new Error('合格成品数量无效。'); }
+  else parseExactQuantity(value.completed_quantity, true);
   if (value.finish_order !== undefined && typeof value.finish_order !== 'boolean') throw new Error('请明确本批入库后是否结束生产。');
   if (value.note !== undefined && (typeof value.note !== 'string' || value.note.length > 500)) throw new Error('本批备注最多 500 字。');
   if (!Array.isArray(value.items) || value.items.length !== items.length) throw new Error('请核对全部材料的实际耗料。');
   const expected = new Set(items.map(item => item.product_id)), seen = new Set();
   for (const item of value.items) {
-    if (!item || !expected.has(item.product_id) || seen.has(item.product_id) || !validQuantity(item.quantity, false, stored ? 6 : 4))
+    if (!item || !expected.has(item.product_id) || seen.has(item.product_id) || (stored && !validExactQuantity(exactQuantity(item))))
       throw new Error('实际耗料需为非负数且最多 4 位小数，材料不能重复或增删。');
+    if (!stored) parseExactQuantity(item.quantity);
     if (item.variance_reason !== undefined && (typeof item.variance_reason !== 'string' || item.variance_reason.length > 500))
       throw new Error('每种材料的耗料差异原因最多 500 字。');
     seen.add(item.product_id);
   }
-  if (!value.items.some(item => item.quantity > 0)) throw new Error('至少一种材料的实际耗料需大于零。');
+  if (!value.items.some(item => exactCompare(exactQuantity(item), 0) > 0)) throw new Error('至少一种材料的实际耗料需大于零。');
 }
 
 // Compare against the saved recipe scaled to actual good output, not the plan.
@@ -42,7 +61,14 @@ export function validateProductionCompletion(value, items, stored = false) {
 // orders may have actual output whose theoretical requirement exceeds the cap.
 export function productionMaterialAnalysis(item, completedQuantity, baseQuantity, actualQuantity, lossMethod = 'internal', nodes, decimals = 4) {
   try {
-    if (!validStoredQuantity(actualQuantity)) throw new Error('实际耗料无效。');
+    if (!validExactQuantity(actualQuantity)) throw new Error('实际耗料无效。');
+    if (item.base_quantity_fraction || Array.isArray(nodes) && nodes.some(node => node.quantity_fraction) || typeof actualQuantity === 'string' || typeof completedQuantity === 'string' || !validStoredQuantity(actualQuantity)) {
+      const standard = productionActualDefault(item, completedQuantity, {base_quantity:baseQuantity,loss_method:lossMethod, ...(Array.isArray(nodes) ? {snapshot_format:2,nodes} : {})});
+      if (!validExactQuantity(standard)) throw new Error('标准耗料无效。');
+      const difference = exactSubtract(actualQuantity, standard);
+      return {...quantityFields(standard,'standard_quantity'), ...quantityFields(difference,'variance_quantity'),
+        variance_rate: exactCompare(standard,0) === 0 ? null : exactNumber(exactMultiply(exactDivide(difference,standard),100)), analysis_error:''};
+    }
     const rawStandard = item.base_quantity === 0 ? 0 : nodes instanceof Map ? nodes.get(item.product_id) : nodes ? calculateBomNodes(nodes, completedQuantity, decimals).rows.find(row => row.product_id === item.product_id).required : productionPlannedQuantity(item.base_quantity, completedQuantity, baseQuantity, item.base_quantity_fraction ?? '', item.loss_rate === undefined ? 0 : item.loss_rate, lossMethod, decimals);
     const standard = item.unit_round_up ? Math.ceil(rawStandard) : rawStandard;
     if (!validStoredQuantity(standard, item.base_quantity !== 0)) throw new Error('标准耗料无效。');

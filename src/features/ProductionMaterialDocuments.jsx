@@ -8,7 +8,8 @@ import { ProductionApprovalList } from './ProductionApprovalList.jsx';
 import { ProductionApprovalDialog } from './ProductionApprovalDialog.jsx';
 import { Select } from '../Dropdown.jsx';
 import { usePermissions } from '../permissions.jsx';
-import { addQuantity, parseQuantity, validQuantity } from '../../shared/quantity.js';
+import { addQuantity, validQuantity } from '../../shared/quantity.js';
+import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, exactSubtract, formatExactQuantity } from '../../shared/exact-quantity.js';
 import { useBusiness } from '../business-api.js';
 import { queryPath, useQuery } from '../queries.js';
 import { count, dateTime, money, currencySymbol } from '../app/format.js';
@@ -33,9 +34,9 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
     try {
       setError('');
       const items = doc.type === 'out' ? doc.items.map(item => ({ product_id: item.product_id,
-        quantity: parseQuantity(quantities[`${doc.id}:${item.product_id}`] ?? String(item.pending_quantity)) })).filter(item => item.quantity > 0) : undefined;
+        quantity: parseQuantity(quantities[`${doc.id}:${item.product_id}`] ?? String(exactQuantity(item, 'pending_quantity'))) })).filter(item => exactCompare(item.quantity, 0) > 0) : undefined;
       if (items && !items.length) throw new Error(pt('production.enterIssueQuantity'));
-      if (items?.some(row => doc.items.find(item => item.product_id === row.product_id).unit_round_up && !Number.isInteger(row.quantity))) throw new Error(pt('production.issuedMaterialMustBeWhole'));
+      if (items?.some(row => doc.items.find(item => item.product_id === row.product_id).unit_round_up && typeof row.quantity === 'number' && !Number.isInteger(row.quantity))) throw new Error(pt('production.issuedMaterialMustBeWhole'));
       onConfirm(doc, items);
     } catch (error) { setError(error.message); }
   };
@@ -55,7 +56,7 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
     {error && <p className="form-error" role="alert">{productionMessage(error)}</p>}
     {expanded === doc.id && <ul className="material-document-lines">{doc.items.map(item => <li key={item.product_id}>
       <div><strong>{item.name}</strong><small>{item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
-      <div><small>{pt("production.applicationQuantity")}</small><span>{count(item.quantity)} {item.unit}</span></div>
+      <div><small>{pt("production.applicationQuantity")}</small><span>{formatExactQuantity(exactQuantity(item))} {item.unit}</span></div>
       {doc.type === 'out' && <div className="material-issue-progress">
         <span>{pt('production.issued')} {count(item.issued_quantity)} {item.unit}</span>
         <span>{pt('production.pendingIssue')} {count(item.pending_quantity)} {item.unit}</span>
@@ -63,8 +64,8 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
         {item.closed_quantity > 0 && <span>{pt('production.closedQuantity')} {count(item.closed_quantity)} {item.unit}</span>}
       </div>}
       {doc.status === 'pending' && doc.type === 'out' && onConfirm && <label className="material-issue-input">{pt('production.currentIssue')}
-        <Input aria-label={pt('production.currentIssueFor', { name: item.name })} inputMode="decimal" disabled={busy}
-          value={quantities[`${doc.id}:${item.product_id}`] ?? String(item.pending_quantity)}
+        <Input aria-label={pt('production.currentIssueFor', { name: item.name })} inputMode="text" disabled={busy}
+          value={quantities[`${doc.id}:${item.product_id}`] ?? String(exactQuantity(item, 'pending_quantity'))}
           onChange={event => { setError(''); setQuantities(previous => ({ ...previous, [`${doc.id}:${item.product_id}`]: event.target.value })); }} />
         {issueExcess(doc, item) > 0 && <small role="status">{pt('production.currentOverIssueHint', { quantity: count(issueExcess(doc, item)), unit: item.unit })}</small>}
       </label>}
@@ -74,7 +75,7 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
       <h3>{pt('production.issueHistory')}</h3>{doc.issues.map(issue => <div className="material-issue-record" key={issue.id}>
         <strong>{issue.number}</strong><p className="material-muted">{issue.confirmed_by_name} · {dateTime(issue.confirmed_at)}</p>
         {issue.items.map(row => { const item = doc.items.find(item => item.product_id === row.product_id); return <p key={row.product_id}>
-          {item.name} · {count(row.quantity)} {item.unit}
+          {item.name} · {formatExactQuantity(exactQuantity(row))} {item.unit}
           {can('finance') && row.cost_cents != null && <small> · {pt('production.materialCost')} {currencySymbol()}{money(row.cost_cents / 100)}</small>}
         </p>; })}
       </div>)}
@@ -115,7 +116,7 @@ export function ProductionMaterialDocuments({ data, type, onChanged, initialQuer
     const direction = doc.type === 'out' ? pt("production.issue") : pt("production.receipt2");
     const excess = (items || []).flatMap(row => {
       const item = doc.items.find(item => item.product_id === row.product_id);
-      return row.quantity > item.pending_quantity ? [`${item.name} +${count(addQuantity(row.quantity, -item.pending_quantity))} ${item.unit}`] : [];
+      return exactCompare(row.quantity, exactQuantity(item, 'pending_quantity')) > 0 ? [`${item.name} +${formatExactQuantity(exactSubtract(row.quantity, exactQuantity(item, 'pending_quantity')))} ${item.unit}`] : [];
     });
     const confirmation = doc.type === 'out'
       ? pt('production.confirmCurrentIssue', { number: doc.number }) + (excess.length ? '\n' + pt('production.confirmOverIssue', { items: excess.join('\n') }) : '')

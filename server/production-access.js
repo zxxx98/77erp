@@ -15,7 +15,7 @@ export function assertProductionOrderAccess(user, order) {
 export function productionWorkerProjection(value) {
   if (Array.isArray(value)) return value.map(productionWorkerProjection);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-    .filter(([key]) => !['stock','inventory_value_cents'].includes(key) && !/(?:^|_)(?:cost|price)(?:_|$)/.test(key))
+    .filter(([key]) => !['stock','stock_fraction','inventory_value_cents'].includes(key) && !/(?:^|_)(?:cost|price)(?:_|$)/.test(key))
     .map(([key, child]) => [key,productionWorkerProjection(child)]));
   return value;
 }

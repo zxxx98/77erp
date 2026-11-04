@@ -40,7 +40,7 @@ test('operation names expand through route, BOM and layer without mixing identic
   assert.equal(branched.find(row => row.path === '7.2.2.1').context, '103绞铜工艺图 · 绞铜 BOM · 芯线 白色');
 });
 
-test('layers without routes remain reportable and standard usage respects fractional rounding', () => {
+test('layers without routes retain exact fractional usage until order settlement', () => {
   const item = { path: '1.1', product_id: 3, quantity: 0.3334, quantity_fraction: '1/3', bom_base_quantity: 1, loss_rate: 0, loss_method: 'internal', unit_round_up: 1 };
   const order = { stage_workflow: 1, stages: [{ path: '1', name: '半成品', unit: '件', bom_name: '半成品配方', items: [item] }], scraps: [{ product_id: 9, method: 'output', quantity: 1 }] };
   const [target] = registrationTargets(order);
@@ -49,7 +49,7 @@ test('layers without routes remain reportable and standard usage respects fracti
   assert.equal(target.name, '半成品');
   const defaults = registrationDefaults(order, target, 4);
   assert.equal(defaults.items[0].path, '1.1');
-  assert.equal(defaults.items[0].quantity, '2');
+  assert.equal(defaults.items[0].quantity, '4/3');
   assert.deepEqual(defaults.scraps, []);
 });
 
@@ -92,5 +92,5 @@ test('additional operations remain selectable beside unrouted output and default
   assert.equal(extra.context, '附加工序 · 检查路线');
   assert.deepEqual(registrationDefaults(order, extra, 2), { items: [], scraps: [], material_items: [] });
   extra.route.additional_materials = [{ product_id: 2, quantity: 1, unit_round_up: 0 }, { product_id: 3, quantity: 2, unit_round_up: 1 }];
-  assert.deepEqual(registrationDefaults(order, extra, 1).material_items.map(item => item.quantity), ['0.3334', '1']);
+  assert.deepEqual(registrationDefaults(order, extra, 1).material_items.map(item => item.quantity), ['1/3', '2/3']);
 });

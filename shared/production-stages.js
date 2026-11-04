@@ -1,9 +1,16 @@
 import { bomRequiredQuantity } from './bom.js';
 import { materialQuantity } from './quantity.js';
 import { calculateBomNodes, supplyFraction } from './bom-expansion.js';
+import { exactBomQuantity, exactMultiply, exactQuantity, exactMin, exactMax, exactSubtract, exactAdd, quantityInput, exactNumber } from './exact-quantity.js';
+
+export function stageExactStandardQuantity(item, outputQuantity) {
+  if (item.is_supplemental_input) return 0;
+  return exactMultiply(exactBomQuantity(item.quantity, outputQuantity, item.bom_base_quantity, item.quantity_fraction, item.loss_rate, item.loss_method), item.supply_fraction || 1);
+}
 
 export function stageDisplayStandardQuantity(item, outputQuantity) {
   if (outputQuantity === 0 || item.is_supplemental_input) return 0;
+  if (typeof outputQuantity === 'string' && outputQuantity.includes('/')) return exactNumber(stageExactStandardQuantity(item, outputQuantity));
   let quantity = bomRequiredQuantity(item.quantity, outputQuantity, item.bom_base_quantity,
     item.quantity_fraction, item.loss_rate, item.loss_method, 6);
   if (item.supply_fraction) {
@@ -52,17 +59,17 @@ export function stageInputCanBeZero(item, items) {
 }
 
 export function stageInputDefaults(items, quantity) {
-  const rows = items.map(item => ({ path: item.path, quantity: stageStandardQuantity(item, quantity), variance_reason: '' }));
-  const remaining = new Map(items.filter(item => item.usage_mode === 'stock').map(item => [item.product_id, item.available_quantity || 0]));
+  const rows = items.map(item => ({ path: item.path, quantity: item.is_supplemental_input ? 0 : exactMultiply(exactBomQuantity(item.quantity, quantity, item.bom_base_quantity, item.quantity_fraction, item.loss_rate, item.loss_method), item.supply_fraction || 1), variance_reason: '' }));
+  const remaining = new Map(items.filter(item => item.usage_mode === 'stock').map(item => [item.product_id, exactQuantity(item, 'available_quantity')]));
   for (const item of items.filter(item => item.usage_mode === 'explode')) {
     const stock = items.find(row => row.usage_mode === 'stock' && row.product_id === item.product_id);
     if (!stock) continue;
     const row = rows.find(row => row.path === item.path), replacement = rows.find(row => row.path === stock.path);
-    const available = Math.max(0, (remaining.get(item.product_id) || 0) - replacement.quantity);
-    const replace = Math.min(available, Math.max(0, row.quantity - (item.available_quantity || 0)));
-    row.quantity = Math.round((row.quantity - replace) * 10000) / 10000;
-    replacement.quantity = Math.round((replacement.quantity + replace) * 10000) / 10000;
-    remaining.set(item.product_id, Math.max(0, available - replace));
+    const available = exactMax(0, exactSubtract(remaining.get(item.product_id) || 0, replacement.quantity));
+    const replace = exactMin(available, exactMax(0, exactSubtract(row.quantity, exactQuantity(item, 'available_quantity'))));
+    row.quantity = exactSubtract(row.quantity, replace);
+    replacement.quantity = exactAdd(replacement.quantity, replace);
+    remaining.set(item.product_id, exactMax(0, exactSubtract(available, replace)));
   }
-  return rows.map(row => ({ ...row, quantity: String(row.quantity) }));
+  return rows.map(row => ({ ...row, quantity: quantityInput(row.quantity) }));
 }

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
 import { productionRegistrationUrl } from '../../shared/production-link.js';
 
-async function fixture(page) {
+async function fixture(page, fractional = false) {
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -20,7 +20,7 @@ async function fixture(page) {
   const raw = await product('钢材', false), half = await product('半成品'), output = await product('成品');
   db.prepare('UPDATE products SET stock=1000,inventory_value_cents=100000 WHERE id=?').run(raw.id);
   const bom = (product_id, name, items) => post('/boms', { product_id, name, base_quantity: 1, base_unit: '件', enabled: 1, note: '', items });
-  const child = await bom(half.id, '半成品配方'.repeat(10), [{ product_id: raw.id, quantity: 3, unit: '件', note: '' }]);
+  const child = await bom(half.id, '半成品配方'.repeat(10), [{ product_id: raw.id, ...(fractional ? { quantity: 0.3334, quantity_fraction: '1/3' } : { quantity: 3 }), unit: '件', note: '' }]);
   const root = await bom(output.id, '成品配方', [{ product_id: half.id, quantity: 1, unit: '件', note: '', usage_mode: 'explode', child_bom_id: child.id }]);
   const plan = await post('/production-orders/prepare', { bom_id: root.id, bom_version: root.version, planned_quantity: 10 });
   let order = await post('/production-orders', { bom_id: root.id, bom_version: root.version, planned_quantity: 10, structure_token: plan.structure_token, note: '' });
@@ -31,6 +31,61 @@ async function fixture(page) {
   const get = async () => (await page.request.get(`${base}/api/production-orders/${order.id}`)).json();
   return { base, db, post, order, link, longName, get, close: async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); } };
 }
+
+for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fractional output consumes exact BOM materials`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), fixtureData = await fixture(page, true);
+  try {
+    for (const node of ['n0', 'n1', 'n2']) {
+      const order = await fixtureData.get();
+      await fixtureData.post(`/production-orders/${order.id}/operations/report`, { version: order.version, path: '1', operation_node_id: node, quantity: 1 });
+    }
+    await page.goto(fixtureData.link);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.locator('.registration-picker-trigger').click();
+    await page.getByRole('searchbox', { name: '搜索工序、路线、BOM 或层级', exact: true }).fill('检验');
+    await page.locator('.registration-option-row').filter({ hasText: '半成品配方' }).getByRole('radio').click();
+    const quantity = page.getByLabel('本次数量', { exact: true });
+    await page.locator('.registration-details summary').click();
+    for (let batch = 0; batch < 3; batch++) {
+      await quantity.fill('1/3');
+      await expect(page.getByLabel('钢材实际耗料', { exact: true })).toHaveValue('1/9');
+      await page.getByRole('button', { name: '提交登记', exact: true }).click();
+      await expect(quantity).toHaveValue('');
+    }
+    const order = await fixtureData.get();
+    expect(order.stages.find(stage => stage.path === '1').available_quantity).toBe(1);
+    expect(order.items[0].consumed_quantity_fraction).toBe('1/3');
+  } finally { await fixtureData.close(); await context.close(); }
+});
+
+for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fractional operation reports retain exact thirds`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), fixtureData = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await page.goto(fixtureData.link);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '选择工序', exact: true }).click();
+    await page.getByRole('searchbox', { name: '搜索工序、路线、BOM 或层级', exact: true }).fill('半成品配方');
+    await page.locator('.registration-option-row').filter({ hasText: fixtureData.longName }).getByRole('radio').click();
+    await expect(page.getByText('数量可填小数或分数', { exact: false })).toBeVisible();
+    const quantity = page.getByLabel('本次数量', { exact: true });
+    await expect(quantity).toHaveAttribute('inputmode', 'text');
+    for (let batch = 0; batch < 3; batch++) {
+      await quantity.fill('1/3');
+      await page.getByRole('button', { name: '提交登记', exact: true }).click();
+      await expect(quantity).toHaveValue('');
+      const order = await fixtureData.get();
+      expect(order.operation_routes.find(route => route.path === '1').reports).toHaveLength(batch + 1);
+    }
+    const order = await fixtureData.get(), route = order.operation_routes.find(route => route.path === '1');
+    expect(route.operations[0].completed_quantity).toBe(1);
+    expect(route.operations[1].available_quantity).toBe(1);
+    expect(route.reports.every(report => report.quantity_fraction === '1/3')).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await fixtureData.close(); await context.close(); }
+});
 
 for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} searchable quick picker keeps long duplicate operation identities readable`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });

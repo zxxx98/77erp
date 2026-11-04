@@ -1,6 +1,8 @@
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
 import { validQuantity, quantityUnits, addQuantity, validStoredQuantity, materialQuantity } from "../shared/quantity.js";
 import { contactMatchesDirection, contactRoleLabels } from '../shared/contacts.js';
+import { exactQuantity, exactAdd, exactMultiply, exactCompare, exactNumber, exactRatio, validExactQuantity } from '../shared/exact-quantity.js';
+import { saveExactQuantity } from './exact-quantity.js';
 
 const fail = (message) => {
   throw new Error(message);
@@ -102,36 +104,34 @@ export function allocate(value, quantity, stock) {
   if (
     !Number.isSafeInteger(value) ||
     value < 0 ||
-    !validStoredQuantity(quantity) ||
-    !validStoredQuantity(stock) ||
-    !stock
+    !validExactQuantity(quantity) ||
+    !validExactQuantity(stock, true)
   )
     fail("库存成本数据无效。");
-  return Number(
-    (BigInt(value) * BigInt(quantityUnits(quantity)) * 2n + BigInt(quantityUnits(stock))) /
-      (BigInt(quantityUnits(stock)) * 2n),
-  );
+  const [numerator, denominator] = exactRatio(quantity), [stockNumerator, stockDenominator] = exactRatio(stock);
+  return Number((BigInt(value) * numerator * stockDenominator * 2n + stockNumerator * denominator) / (stockNumerator * denominator * 2n));
 }
 // Value and quantity move together. Explicit value is used for receipts and reversals.
-export function moveInventory(db, id, delta, explicit) {
+export function moveInventory(db, id, delta, explicit, reverse = false) {
   const p = db.prepare("SELECT * FROM products WHERE id=?").get(id);
-  const stock = p ? addQuantity(p.stock, delta) : NaN;
-  if (!p || !validStoredQuantity(stock))
+  const stock = p ? exactAdd(exactQuantity(p, 'stock'), delta) : NaN;
+  if (!p || !validExactQuantity(stock))
     fail("库存不足或超出上限。");
   const amount =
     explicit == null
       ? p.stock
-        ? allocate(p.inventory_value_cents, Math.abs(delta), p.stock)
-        : Math.round(p.cost * Math.abs(delta) * 100)
+        ? allocate(p.inventory_value_cents, exactCompare(delta, 0) < 0 ? exactMultiply(delta, -1) : delta, exactQuantity(p, 'stock'))
+        : Math.round(p.cost * Math.abs(exactNumber(delta)) * 100)
       : explicit;
-  const next = p.inventory_value_cents + (delta < 0 ? -amount : amount);
+  const next = p.inventory_value_cents + (reverse || exactCompare(delta, 0) < 0 ? -amount : amount);
   if (!integer(amount) || !integer(next))
     fail("库存成本不足或超出范围，请使用退货或盘点纠正后续业务。");
-  if (stock === 0 && next !== 0)
+  if (exactCompare(stock, 0) === 0 && next !== 0)
     fail("后续交易已改变库存成本，不能直接作废此单，请使用退货处理。");
   db.prepare(
     "UPDATE products SET stock=?,inventory_value_cents=? WHERE id=?",
-  ).run(stock, next, id);
+  ).run(exactNumber(stock), next, id);
+  saveExactQuantity(db, 'products', id, 'stock', stock);
   return amount;
 }
 export function settlement(db, order) {

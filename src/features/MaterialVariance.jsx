@@ -2,8 +2,9 @@ import { productionMessage } from '../i18n/production-errors.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { Input as AntInput } from '../ui/controls.jsx';
+import { exactQuantity } from '../../shared/exact-quantity.js';
 
-const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const rate = value => value !== 0 && Math.abs(value) < 0.000001
   ? `${value < 0 ? '-' : '+'}<0.000001%`
   : `${value > 0 ? '+' : ''}${Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 6 })}%`;
@@ -15,9 +16,9 @@ export function MaterialVariance({ row, analysis, complete, disabled, onReason }
   const direction = difference > 0 ? pt("production.overuse") : difference < 0 ? pt("production.saving") : pt("production.noVariance");
   return <div className="production-variance" role="group" aria-label={pt("production.usageVarianceAnalysis", { v0: row.name })}>
     <div className="production-variance-numbers">
-      <div><small>{pt("production.standardUsageAcceptedOutput")}</small><span>{available ? `${count(analysis.standard_quantity)} ${row.unit}` : '—'}</span></div>
+      <div><small>{pt("production.standardUsageAcceptedOutput")}</small><span>{available ? `${count(exactQuantity(analysis, 'standard_quantity'))} ${row.unit}` : '—'}</span></div>
       <div className={available && difference > 0 ? 'production-overuse' : available && difference < 0 ? 'production-saving' : ''}>
-        <small>{pt("production.usageVariance")}{available ? ` · ${direction}` : ''}</small><span>{available ? `${difference > 0 ? '+' : ''}${count(difference)} ${row.unit}` : '—'}</span>
+        <small>{pt("production.usageVariance")}{available ? ` · ${direction}` : ''}</small><span>{available ? `${difference > 0 ? '+' : ''}${count(exactQuantity(analysis, 'variance_quantity'))} ${row.unit}` : '—'}</span>
       </div>
       <div><small>{pt("production.varianceRate")}</small><span>{analysis.variance_rate != null ? rate(analysis.variance_rate) : '—'}</span></div>
     </div>

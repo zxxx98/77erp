@@ -1,4 +1,5 @@
 import { addQuantity, quantityUnits, QUANTITY_SCALE } from './quantity.js';
+import { exactQuantity, exactMultiply, exactDivide, quantityInput } from './exact-quantity.js';
 
 export function additionalPlannedQuantities(routes = []) {
   const quantities = new Map();
@@ -9,10 +10,6 @@ export function additionalPlannedQuantities(routes = []) {
 
 export function additionalMaterialDefaults(route, quantity) {
   return (route.additional_materials || []).map(item => {
-    const step = BigInt(item.unit_round_up ? QUANTITY_SCALE : QUANTITY_SCALE / 10000);
-    const numerator = BigInt(quantityUnits(item.quantity)) * BigInt(quantityUnits(quantity));
-    const denominator = BigInt(quantityUnits(route.additional_quantity)) * step;
-    const rounded = (numerator + denominator - 1n) / denominator * step;
-    return { ...item, quantity: String(Number(rounded) / QUANTITY_SCALE), variance_reason: '' };
+    return { ...item, quantity: quantityInput(exactDivide(exactMultiply(exactQuantity(item), quantity), route.additional_quantity)), variance_reason: '' };
   });
 }

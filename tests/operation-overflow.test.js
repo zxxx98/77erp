@@ -37,5 +37,6 @@ test('full selected paths can send all quantity to another path and isolated ope
   assert.equal(operationAllocation(order,'1','cut',20)[0].quantity,20);
   assert.throws(()=>operationAllocation(order,'1','cut',0),/正数/);
   order.stages[0].unit_round_up=1;
-  assert.throws(()=>operationAllocation(order,'1','cut',1.5),/取整/);
+  assert.equal(operationAllocation(order,'1','cut',1.5)[0].quantity,1.5);
+  assert.equal(operationAllocation(order,'1','cut','1/3')[0].quantity,'1/3');
 });

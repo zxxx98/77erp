@@ -54,7 +54,7 @@ export function createOperationAcceptanceService(db, options) {
   return {
     async detail(req) {
       const row=associated(req), r=db.prepare('SELECT * FROM quality_template_revisions WHERE id=?').get(row.revision_id);
-      const reports=db.prepare('SELECT id,node_id,quantity,status,worker_name,registered_by_name,void_reason FROM production_operation_reports WHERE production_id=? AND acceptance_id=?').all(Number(req.params.id),row.id);
+      const reports=db.prepare('SELECT id,node_id,quantity,quantity_fraction,status,worker_name,registered_by_name,void_reason FROM production_operation_reports WHERE production_id=? AND acceptance_id=?').all(Number(req.params.id),row.id);
       return {id:row.id,number:row.number,name:row.name,note:row.note,created_by_name:row.created_by_name,created_at:row.created_at,
         definition:JSON.parse(r.definition),result:JSON.parse(row.result),reports};
     },

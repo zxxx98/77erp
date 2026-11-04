@@ -11,13 +11,14 @@ import { Button, Badge, PageHeading, QueryStatus } from '../components/common.js
 import { useBusiness } from '../business-api.js';
 import { useQuery } from '../queries.js';
 import { api } from '../api.js';
-import { parseQuantity, materialQuantity, addQuantity } from '../../shared/quantity.js';
-import { stageDisplayStandardQuantity, stageStandardQuantity, stageInputCanBeZero, stageInputDefaults } from '../../shared/production-stages.js';
+import { addQuantity } from '../../shared/quantity.js';
+import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, exactNumber, formatExactQuantity } from '../../shared/exact-quantity.js';
+import { stageExactStandardQuantity, stageDisplayStandardQuantity, stageStandardQuantity, stageInputCanBeZero, stageInputDefaults } from '../../shared/production-stages.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import { ScrapOutputs } from './ScrapOutputs.jsx';
 import './production-stages.css';
 
-const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const time = value => new Date(value).toLocaleString(getFormatLocale(), { hour12: false });
 
 export function ProductionStageSummary({ order, onOpen, disabled }) {
@@ -72,7 +73,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const defaults = (target, quantity) => stageInputDefaults(target.items, quantity);
   const begin = (target, operation = null, workerId = undefined) => action.run(async () => {
     if (!operation && order.operation_routes?.some(route => route.path === target.path)) { setOperationPath(target.path); return; }
-    const quantity = materialQuantity(operation?.available_quantity ?? (Math.max(0, target.planned_quantity - target.completed_quantity) || 1), target);
+    const quantity = operation?.available_quantity != null ? exactQuantity(operation, 'available_quantity') : (Math.max(0, target.planned_quantity - target.completed_quantity) || 1);
     const next = { path: target.path, ...(operation ? { operation_node_id: operation.id, worker_id: workerId } : {}), completed_quantity: String(quantity), items: defaults(target, quantity), note: '',
       scraps: target.path ? [] : order.scraps.map(row => ({ product_id: row.product_id, quantity: '0', disposition: 'stock' })) };
     setOperationPath(null); setForm(next); setBaseline(JSON.stringify(next)); setHistory(null);
@@ -84,15 +85,15 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     event.preventDefault();
     const finish = management && stage.path === '' && event.nativeEvent.submitter?.value === 'finish';
     action.run(async () => {
-      const quantity = materialQuantity(parseQuantity(form.completed_quantity, true), stage);
+      const quantity = parseQuantity(form.completed_quantity, true);
       const items = form.items.map(row => {
         const item = stage.items.find(item => item.path === row.path);
-        const actual = materialQuantity(parseQuantity(row.quantity, !stageInputCanBeZero(item, stage.items)), item);
-        if (actual > item.available_quantity) throw new Error(pt("production.insufficientAvailableFirst", { v0: item.name, v1: item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials") }));
+        const actual = parseQuantity(row.quantity, !stageInputCanBeZero(item, stage.items));
+        if (exactCompare(actual, exactQuantity(item, 'available_quantity')) > 0) throw new Error(pt("production.insufficientAvailableFirst", { v0: item.name, v1: item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials") }));
         return { ...row, quantity: actual };
       });
-      if (!items.some(item => item.quantity > 0)) throw new Error(pt("production.actualInputForAtLeastOneMaterialMust"));
-      const scraps = form.scraps.map(row => ({ ...row, quantity: materialQuantity(parseQuantity(row.quantity), order.scraps.find(item => item.product_id === row.product_id)) }));
+      if (!items.some(item => exactCompare(item.quantity, 0) > 0)) throw new Error(pt("production.actualInputForAtLeastOneMaterialMust"));
+      const scraps = form.scraps.map(row => ({ ...row, quantity: parseQuantity(row.quantity) }));
       if (stage.path === '') validateScrapActuals(scraps, order.scraps);
       if (!window.confirm(pt("production.register2", { v0: stage.name, v1: count(quantity), v2: stage.unit, v3: stage.path ? pt("production.thisSemiFinishedBatchStaysWithinTheOrder") : pt("production.thisProductBatchAwaitsWarehouseReceiptApproval"), v4: finish ? pt("production.alsoEndTheProductionOrder") : '' }))) return;
       const result = await send('/stages/complete', { path: stage.path, ...(form.operation_node_id ? { operation_node_id: form.operation_node_id, worker_id: form.worker_id } : {}), completed_quantity: quantity, items, scraps, note: form.note, finish_order: finish });
@@ -103,7 +104,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   let standardError = '';
   const standards = new Map();
   if (stage) {
-    try { for (const item of stage.items) standards.set(item.path, stageDisplayStandardQuantity(item, parseQuantity(form.completed_quantity, true))); }
+    try { for (const item of stage.items) standards.set(item.path, stageExactStandardQuantity(item, parseQuantity(form.completed_quantity, true))); }
     catch (error) { standardError = error.message; }
   }
   const scrapRows = stage?.path === '' ? order.scraps.map(row => {
@@ -132,7 +133,8 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
         {form.operation_node_id && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={form.worker_id} onChange={worker_id => patch({ worker_id })} disabled={locked} />}
         <h2>{stage.name}</h2><p className="stage-path">{pathLabel(stage)}</p>
         <p className="bom-hint">{pt("production.planned")} {count(stage.planned_quantity)} {stage.unit}{pt("production.acceptedToDate")} {count(stage.completed_quantity)} {stage.unit}{pt("production.enterThisBatchSQuantity")}</p>
-        <label className="production-output">{pt("production.acceptedBatchQuantity")}{stage.unit}）<Input aria-label={pt("production.acceptedBatchQuantity2")} inputMode="decimal" value={form.completed_quantity} disabled={locked} onChange={event => patch({ completed_quantity: event.target.value })} /></label>
+        <p className="bom-hint">{pt('production.fractionRegistrationHint')}</p>
+        <label className="production-output">{pt("production.acceptedBatchQuantity")}{stage.unit}）<Input aria-label={pt("production.acceptedBatchQuantity2")} inputMode="text" value={form.completed_quantity} disabled={locked} onChange={event => patch({ completed_quantity: event.target.value })} /></label>
         {Number(form.completed_quantity) + stage.completed_quantity > stage.planned_quantity && <p className="bom-warning">{pt("production.thisRegistrationWillExceedPlannedOutputVerifyActual")}</p>}
         <Button disabled={locked} onClick={() => action.run(async () => patch({ items: defaults(stage, parseQuantity(form.completed_quantity, true)).map(item => ({ ...item, variance_reason: form.items.find(row => row.path === item.path).variance_reason })) }))}>{pt("production.fillUsageFromThisBatchSOutput")}</Button>
       </section>
@@ -142,8 +144,8 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
           const actual = form.items.find(row => row.path === item.path), standard = standards.get(item.path);
           return <article className="stage-input" key={item.path}>
             <div><strong>{item.name}</strong><p className="bom-hint">{item.usage_mode === 'explode' ? pt("production.semiFinishedInThisOrder") : pt("production.issuedRawMaterials")} · {item.is_supplemental_input ? pt('production.supplementalInput') : item.usage_mode === 'explode' ? pathLabel(byPath.get(item.path)) : item.path}</p></div>
-            <div className="stage-input-numbers"><span>{pt("production.standardInput2")} <strong>{standard === undefined ? '—' : count(standard)} {item.unit}</strong></span><span>{pt("production.available")} <strong>{count(item.available_quantity)} {item.unit}</strong></span></div>
-            <label>{pt("production.actualInput")}{item.unit}）<Input aria-label={pt("production.actualInput2", { v0: item.name })} inputMode="decimal" disabled={locked} value={actual.quantity} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, quantity: event.target.value } : row) })} /></label>
+            <div className="stage-input-numbers"><span>{pt("production.standardInput2")} <strong>{standard === undefined ? '—' : count(standard)} {item.unit}</strong></span><span>{pt("production.available")} <strong>{count(exactQuantity(item, 'available_quantity'))} {item.unit}</strong></span></div>
+            <label>{pt("production.actualInput")}{item.unit}）<Input aria-label={pt("production.actualInput2", { v0: item.name })} inputMode="text" disabled={locked} value={actual.quantity} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, quantity: event.target.value } : row) })} /></label>
             {Number(actual.quantity) > item.available_quantity && <p className="bom-warning">{pt("production.insufficientAvailableQuantityFirst")}{item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials")}。</p>}
             <label>{pt("production.usageVarianceReason2")}<Input aria-label={pt("production.usageVarianceReason", { v0: item.name })} maxLength={500} value={actual.variance_reason} disabled={locked} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, variance_reason: event.target.value } : row) })} /></label>
           </article>;
@@ -161,7 +163,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       <h2>{byPath.get(history.path)?.name}</h2><QueryStatus query={historyQuery} />
       {historyQuery.result?.batches.length === 0 && <p className="bom-hint">{pt("production.noRegisteredBatchesAtThisLevel")}</p>}
       {historyQuery.result?.batches.map(batch => <article className="production-batch" key={batch.id}>
-        <div className="bom-section-heading"><strong>{pt("production.batch")} {batch.batch_number} {pt("production.batchSuffix")} {count(batch.completed_quantity)} {byPath.get(history.path)?.unit}</strong><Badge tone={batch.status === 'active' ? 'green' : 'gray'}>{batch.status === 'active' ? pt("production.valid") : pt("production.voided2")}</Badge></div>
+        <div className="bom-section-heading"><strong>{pt("production.batch")} {batch.batch_number} {pt("production.batchSuffix")} {count(exactQuantity(batch, 'completed_quantity'))} {byPath.get(history.path)?.unit}</strong><Badge tone={batch.status === 'active' ? 'green' : 'gray'}>{batch.status === 'active' ? pt("production.valid") : pt("production.voided2")}</Badge></div>
         <p className="bom-hint">{batch.created_by_name} · {time(batch.created_at)}</p>
         {batch.note && <p className="production-note">{batch.note}</p>}
         <details><summary>{pt("production.viewBatchInputs")}</summary>{batch.items?.map(item => {
@@ -169,9 +171,9 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
           let standard = null;
           try { if (source) standard = stageDisplayStandardQuantity(source, batch.completed_quantity); } catch { /* Show actual records if standards exceed limits. */ }
           return <div className="production-batch-material" key={item.path ?? item.id}><strong>{item.name}</strong>
-            <p>{pt("production.actualInput3")} {count(item.quantity ?? item.actual_quantity)} {item.unit}{standard !== null && pt("production.standard", { v0: count(standard), v1: item.unit })}</p>
+            <p>{pt("production.actualInput3")} {count(exactQuantity(item, item.quantity != null ? 'quantity' : 'actual_quantity'))} {item.unit}{standard !== null && pt("production.standard", { v0: count(standard), v1: item.unit })}</p>
             {item.variance_reason && <p>{pt("production.varianceReason")}{item.variance_reason}</p>}
-            {item.allocations?.map(allocation => <p className="bom-hint" key={allocation.id}>{pt("production.sourceLevel")} {allocation.source_path} {pt("production.batch3")} {allocation.source_batch_number} {pt("production.batchSuffix")} {count(allocation.quantity)} {item.unit}</p>)}
+            {item.allocations?.map(allocation => <p className="bom-hint" key={allocation.id}>{pt("production.sourceLevel")} {allocation.source_path} {pt("production.batch3")} {allocation.source_batch_number} {pt("production.batchSuffix")} {count(exactQuantity(allocation))} {item.unit}</p>)}
           </div>;
         })}</details>
         {batch.status === 'void' && <p className="bom-hint">{pt("production.voidReason2")}{batch.void_reason}</p>}
@@ -197,9 +199,9 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       {!visible.length && <p className="bom-hint">{pt("production.noMatchingProductionLevels")}</p>}
       {visible.map(item => <article className="stage-row" key={item.path}>
         <div className="stage-row-heading"><div><strong>{item.name}</strong><p className="stage-path">{item.path ? pt("production.path", { v0: pathLabel(item), v1: item.path }) : pt("production.finalProduct")}</p></div><Badge tone={item.completed_quantity >= item.planned_quantity ? 'green' : item.completed_quantity ? 'blue' : 'gray'}>{item.completed_quantity >= item.planned_quantity ? pt("production.planReached") : item.completed_quantity ? pt("production.registered2") : pt("production.notRegistered")}</Badge></div>
-        <dl className="stage-progress"><div><dt>{pt("production.planned")}</dt><dd>{count(item.planned_quantity)} {item.unit}</dd></div><div><dt>{pt("production.completed")}</dt><dd>{count(item.completed_quantity)} {item.unit}</dd></div>
+        <dl className="stage-progress"><div><dt>{pt("production.planned")}</dt><dd>{count(item.planned_quantity)} {item.unit}</dd></div><div><dt>{pt("production.completed")}</dt><dd>{count(exactQuantity(item, 'completed_quantity'))} {item.unit}</dd></div>
           <div><dt>{pt("production.remainingPlan2")}</dt><dd>{count(Math.max(0, addQuantity(item.planned_quantity, -item.completed_quantity)))} {item.unit}</dd></div>
-          {item.path !== '' && <><div><dt>{pt("production.suppliedToParent")}</dt><dd>{count(item.consumed_quantity)} {item.unit}</dd></div><div><dt>{pt("production.availableInOrder")}</dt><dd>{count(item.available_quantity)} {item.unit}</dd></div></>}
+          {item.path !== '' && <><div><dt>{pt("production.suppliedToParent")}</dt><dd>{count(item.consumed_quantity)} {item.unit}</dd></div><div><dt>{pt("production.availableInOrder")}</dt><dd>{count(exactQuantity(item, 'available_quantity'))} {item.unit}</dd></div></>}
         </dl>
         <details><summary>{pt("production.viewCumulativeInputVariance")}</summary><p className="bom-hint">{pt("production.standardIsCalculatedOnceFromThisLevelS")}</p>
           {item.items.map(input => <div className="stage-cumulative-input" key={input.path}>

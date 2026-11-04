@@ -1,4 +1,5 @@
 import { addQuantity } from './quantity.js';
+import { exactSum, exactQuantity, exactAdd, quantityFields } from './exact-quantity.js';
 import { stageDisplayStandardQuantity } from './production-stages.js';
 
 // Pool only identical saved recipes, including child supply decisions and routes.
@@ -39,20 +40,20 @@ export function productionPoolPathMap(order) {
 
 export function pooledProductionStages(order) {
   return productionPools(order).map(group => {
-    const first = group[0], sum = key => group.reduce((total, row) => addQuantity(total, row[key] || 0), 0);
+    const first = group[0], sum = key => exactSum(group, key);
     if (group.length === 1) return first;
     return { ...first, pool_paths: group.map(row => row.path),
-      planned_quantity: sum('planned_quantity'), completed_quantity: sum('completed_quantity'),
-      available_quantity: sum('available_quantity'), consumed_quantity: sum('consumed_quantity'),
+      ...quantityFields(sum('planned_quantity'), 'planned_quantity'), ...quantityFields(sum('completed_quantity'), 'completed_quantity'),
+      ...quantityFields(sum('available_quantity'), 'available_quantity'), ...quantityFields(sum('consumed_quantity'), 'consumed_quantity'),
       ...(group.some(row => row.available_cost_cents !== undefined) ? { available_cost_cents: group.reduce((n,row) => n + (row.available_cost_cents || 0), 0) } : {}),
       items: first.items.map((item, index) => {
         const peers = group.map(stage => stage.items[index]);
-        return { ...item, actual_quantity: peers.reduce((n, row) => addQuantity(n, row.actual_quantity || 0), 0),
+        return { ...item, ...quantityFields(exactSum(peers, 'actual_quantity'), 'actual_quantity'),
           standard_quantity: (() => { try { return stageDisplayStandardQuantity(item, sum('completed_quantity')); } catch { return null; } })() };
       }),
       pool_usages: group.flatMap(stage => stage.pool_usages || []).reduce((rows, usage) => {
         const prior = rows.find(row => row.path === usage.path);
-        if (prior) prior.quantity = addQuantity(prior.quantity, usage.quantity); else rows.push({ ...usage });
+        if (prior) Object.assign(prior, quantityFields(exactAdd(exactQuantity(prior), exactQuantity(usage)))); else rows.push({ ...usage });
         return rows;
       }, []),
     };

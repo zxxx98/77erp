@@ -1,5 +1,7 @@
 import { installPayroll } from './payroll.js';
 import { migrateProcessRoutes, installProcessRoutes, routeBinding, clearProcessRoutes } from './process-routes.js';
+import { migrateExactQuantities } from './exact-quantity.js';
+import { migrateProductionRounding } from './production-rounding.js';
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { installR2Backup } from './r2-backup.js';
 import { migrateBom, installBom, clearBom } from './bom.js';
@@ -283,6 +285,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateBom(db);
   migrateProduction(db);
   migrateProcessRoutes(db);
+  migrateProductionRounding(db);
+  migrateExactQuantities(db);
   migrateProductVersions(db);
   migrateCurrency(db);
   app.use('/api', installResponseLanguage);

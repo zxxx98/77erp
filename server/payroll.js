@@ -45,7 +45,7 @@ export function payrollStatistics(db, warehouseId, query) {
     const report = { id: row.id, production_id: row.production_id, production_number: row.production_number,
       product_name: row.stage_name ?? row.product_name, path: row.path, additional_operation: row.additional_quantity != null, route_name: row.route_name, operation_name: node.name,
       worker_name: row.worker_name, registered_by_name: row.registered_by_name, created_at: row.created_at,
-      quantity: row.quantity, multiplier, unit, unit_price: node.unit_price ?? null, currency: node.currency ?? null,
+      quantity: row.quantity, quantity_fraction: row.quantity_fraction, multiplier, unit, unit_price: node.unit_price ?? null, currency: node.currency ?? null,
       amount_cents: amount, status: row.status, note: row.note, void_reason: row.void_reason };
     if (row.status === 'void') { summary.void_count++; return report; }
     summary.active_count++; productions.add(row.production_id);

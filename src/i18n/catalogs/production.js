@@ -1,5 +1,8 @@
 // System UI only. Stored template content, values and material identifiers are not translated.
 export default {
+  'production.fractionRegistrationHint': ['数量可填小数或分数（如 1/3）。过程中保留精确分数，整单完结时按物料规则统一向上取整。', 'Enter decimals or fractions (such as 1/3). Quantities remain exact during production and round up once per material when the order finishes.', 'Nhập số thập phân hoặc phân số (ví dụ 1/3). Giữ phân số chính xác trong sản xuất và làm tròn lên theo vật tư khi kết thúc lệnh.'],
+  'production.settledOutput': ['完结结算产量', 'Settled output', 'Sản lượng quyết toán'],
+  'production.roundingAdjustment': ['完结取整差额', 'Final rounding adjustment', 'Chênh lệch làm tròn cuối lệnh'],
   'production.additionalOperations': ['附加工序', 'Additional operations', 'Công đoạn bổ sung'],
   'production.additionalOperationsHint': ['仅属于本生产单，不写入 BOM。按成品单位填写独立数量及计划用料，可分次登记实际耗料；材料统一领料、补料和退料，完成后才能结束生产。', 'These operations belong only to this order and do not change the BOM. Set independent quantities in the finished product unit and planned materials, then report actual consumption in batches. Materials use this order’s issue, supplement and return workflow. Complete the operations before finishing production.', 'Công đoạn chỉ thuộc lệnh này, không thay đổi BOM. Nhập số lượng riêng theo đơn vị thành phẩm và vật tư kế hoạch, sau đó ghi nhận tiêu hao thực tế nhiều lần. Dùng chung quy trình cấp, bổ sung và trả vật tư của lệnh. Hoàn thành trước khi kết thúc sản xuất.'],
   'production.additionalMaterials': ['附加工序用料', 'Additional operation materials', 'Vật tư công đoạn bổ sung'],

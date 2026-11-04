@@ -6,8 +6,9 @@ import { bomShortage } from '../../shared/bom.js';
 import { money, currencySymbol } from '../app/format.js';
 import { MaterialVariance } from './MaterialVariance.jsx';
 import './production-material-ledger.css';
+import { exactQuantity } from '../../shared/exact-quantity.js';
 
-const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const cost = cents => `${currencySymbol()}${money(cents / 100)}`;
 const columns = [
   ['planned_quantity', 'plannedRequirement'], ['pending_issue_quantity', 'pendingIssue'],
@@ -32,7 +33,7 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
       </tr></thead>
       {order.items.map(item => {
         const open = expanded.has(item.product_id), detailsId = `${id}-${item.product_id}`;
-        const values = { ...item, planned_quantity: item.total_planned_quantity ?? item.planned_quantity, used_quantity: item.consumed_quantity ?? (order.stage_workflow ? item.direct_consumed_quantity : item.actual_quantity) };
+        const values = { ...item, planned_quantity: item.total_planned_quantity ?? item.planned_quantity, used_quantity: exactQuantity(item, item.consumed_quantity != null ? 'consumed_quantity' : order.stage_workflow ? 'direct_consumed_quantity' : 'actual_quantity') };
         const shortage = !order.completed_at && item.product && (issued || item.product.stock !== undefined)
           ? bomShortage(values.planned_quantity, issued ? item.available_quantity : item.product.stock) : 0;
         return <tbody key={item.product_id}>
@@ -44,7 +45,7 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
               {item.product && !item.product.active && <p className="bom-warning">{t('production.materialDisabled')}</p>}
             </th>
             {columns.map(([field, label]) => <td key={field} data-field={field} data-label={t(`production.${label}`)} className={field === 'available_quantity' ? 'production-ledger-balance' : undefined}>
-              <span>{count(values[field])} <small>{item.unit}</small></span>
+              <span>{count(exactQuantity(values, field))} <small>{item.unit}</small></span>
             </td>)}
             <td className="production-ledger-toggle"><button type="button" className="bom-tree-action" disabled={busy} aria-expanded={open} aria-controls={detailsId}
               aria-label={t(open ? 'production.collapseLedgerDetails' : 'production.viewDetails2', { v0: item.name })} onClick={() => toggle(item.product_id)}>{t(open ? 'production.collapse' : 'production.viewDetails')}</button></td>

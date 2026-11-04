@@ -1,4 +1,7 @@
 import { orderApprovalDefaults, validateDeliveryFields } from './orders.js';
+import { validateExactQuantityBackup } from './exact-quantity.js';
+import { validExactQuantity } from '../shared/exact-quantity.js';
+import { validateProductionRoundingBackup } from './production-rounding.js';
 import { processRouteTables, productionOperationTables, clearProcessRoutes, validateProcessRouteBackup } from './process-routes.js';
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
@@ -435,7 +438,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 48,
+    version: 49,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -444,7 +447,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
@@ -605,6 +608,11 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const p of data.products || []) if (p && !('active' in p)) p.active = 1;
     if (value.version < 8) for (const p of data.products || []) if (p && !('version' in p)) p.version = 1;
     if (value.version < 40) migrateMaterialIssueBackup(data);
+    if (value.version < 49) {
+      data.production_quantity_rounding ??= [];
+      for (const table of tables) for (const row of data[table] || []) for (const column of columns[table])
+        if (column.endsWith('_fraction') && !(column in row)) row[column] = '';
+    }
     for (const table of tables) {
       if (!Array.isArray(data[table]) || data[table].length > 100000)
         fail(`备份中的 ${table} 格式或数量无效。`);
@@ -665,7 +673,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       if (
         !p.barcode ||
         barcodes.has(JSON.stringify([p.warehouse_id,p.barcode])) ||
-        !validQuantity(p.stock) ||
+        !validExactQuantity(p.stock) ||
         !Number.isSafeInteger(p.inventory_value_cents) || p.inventory_value_cents < 0 || (!p.stock && p.inventory_value_cents !== 0) ||
         !text(p.color, 30) ||
         !text(p.created_at, 100)
@@ -841,11 +849,13 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     validateStockQrBackup(data);
     validateQualityBackup(data);
     validateBomBackup(data);
+    validateExactQuantityBackup(data);
     validateProductionBackup(data);
     validateProductionMaterialBackup(data);
     validateProductionReceiptBackup(data);
     validateProductionStageBackup(data);
     validateProcessRouteBackup(data);
+    validateProductionRoundingBackup(data);
     return data;
   }
   app.get(

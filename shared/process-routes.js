@@ -1,4 +1,5 @@
 import { validateOperationPrice } from './payroll.js';
+import { exactQuantity, exactSum, exactSubtract, exactMin, exactMax, quantityFields } from './exact-quantity.js';
 // A route describes operations on one production layer, in that layer's output unit.
 // Cross-layer material ratios continue to be governed by the BOM.
 export function validateProcessGraph(graph) {
@@ -47,11 +48,11 @@ export function arrangeProcessGraph(graph) {
 
 export function processProgress(graph, reports) {
   const { incoming, output, order } = validateProcessGraph(graph);
-  const quantity = id => reports.filter(r => r.node_id === id && r.status === 'active').reduce((sum, r) => Math.round((sum + r.quantity) * 10000) / 10000, 0);
+  const quantity = id => exactSum(reports.filter(r => r.node_id === id && r.status === 'active'));
   return order.map(id => {
     const completed_quantity = quantity(id), parents = incoming.get(id);
-    const available_quantity = parents.length ? Math.max(0, Math.round((Math.min(...parents.map(quantity)) - completed_quantity) * 10000) / 10000) : null;
-    return { ...graph.nodes.find(n => n.id === id), completed_quantity, available_quantity, is_output: id === output, predecessors: parents };
+    const available_quantity = parents.length ? exactMax(0, exactSubtract(parents.map(quantity).reduce(exactMin), completed_quantity)) : null;
+    return { ...graph.nodes.find(n => n.id === id), ...quantityFields(completed_quantity, 'completed_quantity'), ...(available_quantity === null ? {available_quantity: null, available_quantity_fraction: ''} : quantityFields(available_quantity, 'available_quantity')), is_output: id === output, predecessors: parents };
   });
 }
 
@@ -59,6 +60,6 @@ export function processProgress(graph, reports) {
 export function productionRouteProgress(route, reports) {
   const operations = processProgress(route.graph, reports);
   return route.additional_quantity == null ? operations : operations.map(node => ({ ...node,
-    is_output: false, available_quantity: Math.max(0, Math.round((route.additional_quantity - node.completed_quantity) * 10000) / 10000),
+    is_output: false, ...quantityFields(exactMax(0, exactSubtract(route.additional_quantity, exactQuantity(node, 'completed_quantity'))), 'available_quantity'),
   }));
 }

@@ -9,11 +9,14 @@ import { hasPermission } from '../shared/permissions.js';
 import { assertNoPendingMaterials } from './production-materials.js';
 import { createProductionReceipt, assertReceiptReversalPermission, voidProductionReceipt } from './production-receipts.js';
 import { validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
+import { exactQuantity, exactAdd, exactSubtract, exactMultiply, exactDivide, exactCompare, exactMin, exactNumber, exactSum, exactRatio, quantityFields, parseProductionQuantity as parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
+import { saveExactQuantity } from './exact-quantity.js';
+import { finalizeProductionQuantities, reopenProductionQuantities } from './production-rounding.js';
 export { deriveProductionStages };
 export const productionStageTables = ['production_stages','production_stage_batches','production_stage_inputs','production_stage_allocations','production_stage_components','production_stage_allocation_components'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), {status}); };
 const actor = req => req.user.name || req.user.username;
-const sum = (rows, key) => rows.reduce((n,r)=>addQuantity(n,r[key]),0);
+const sum = exactSum;
 
 export function migrateProductionStages(db) {
   db.exec('SAVEPOINT production_stage_migration');
@@ -64,20 +67,20 @@ export function saveProductionStages(db, order) {
 
 export function stageDirectBatches(data, orderId) {
   return (data.production_stage_batches || []).filter(b=>b.production_id===orderId).map(b=>({...b,
-    items:(data.production_stage_inputs||[]).filter(i=>i.batch_id===b.id&&i.usage_mode==='stock').map(i=>({...i,actual_quantity:i.quantity}))}));
+    items:(data.production_stage_inputs||[]).filter(i=>i.batch_id===b.id&&i.usage_mode==='stock').map(i=>({...i,...quantityFields(exactQuantity(i), 'actual_quantity')}))}));
 }
 export function stageBatchRemaining(batch, allocations, allocationComponents) {
   const taken=allocations.filter(a=>a.source_batch_id===batch.id), components=(batch.components||[]).map(c=>{
     const parts=allocationComponents.filter(p=>p.product_id===c.product_id&&taken.some(a=>a.id===p.allocation_id));
-    return {...c,quantity:addQuantity(c.quantity,-sum(parts,'quantity')),cost_cents:c.cost_cents-parts.reduce((n,p)=>n+p.cost_cents,0)};
+    return {...c,...quantityFields(exactSubtract(exactQuantity(c),sum(parts,'quantity'))),cost_cents:c.cost_cents-parts.reduce((n,p)=>n+p.cost_cents,0)};
   });
-  return {quantity:addQuantity(batch.completed_quantity,-sum(taken,'quantity')),cost_cents:batch.total_cost_cents-taken.reduce((n,a)=>n+a.cost_cents,0),components};
+  return {...quantityFields(exactSubtract(exactQuantity(batch, 'completed_quantity'),sum(taken,'quantity'))),cost_cents:batch.total_cost_cents-taken.reduce((n,a)=>n+a.cost_cents,0),components};
 }
 // Largest-remainder apportionment makes component cents sum to the batch allocation.
 export function allocateStageComponents(components, quantity, remainingQuantity, targetCost) {
-  const q=BigInt(quantityUnits(quantity)), denominator=BigInt(quantityUnits(remainingQuantity));
+  const [q, denominator] = exactRatio(exactDivide(quantity, remainingQuantity));
   const rows=components.map(c=>{const numerator=BigInt(c.cost_cents)*q;return {...c,
-    quantity:quantity===remainingQuantity?c.quantity:Number(BigInt(quantityUnits(c.quantity))*q/denominator)/QUANTITY_SCALE,
+    ...quantityFields(exactMultiply(exactQuantity(c), exactDivide(quantity, remainingQuantity))),
     cost_cents:Number(numerator/denominator),remainder:numerator%denominator};});
   let extra=targetCost-rows.reduce((n,r)=>n+r.cost_cents,0);
   for(const r of [...rows].sort((a,b)=>a.remainder===b.remainder?a.product_id-b.product_id:a.remainder>b.remainder?-1:1)) if(extra>0&&r.cost_cents<components.find(c=>c.product_id===r.product_id).cost_cents){r.cost_cents++;extra--;}
@@ -95,7 +98,7 @@ function stageLedger(db, id) {
 export function readProductionStages(db, order) {
   if(!order.stage_workflow) return;
   const ledger=stageLedger(db,order.id);
-  order.stage_direct_batches=ledger.batches.map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id&&i.usage_mode==='stock').map(i=>({...i,actual_quantity:i.quantity}))}));
+  order.stage_direct_batches=ledger.batches.map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id&&i.usage_mode==='stock').map(i=>({...i,...quantityFields(exactQuantity(i), 'actual_quantity')}))}));
   order.stages=db.prepare('SELECT * FROM production_stages WHERE production_id=? ORDER BY id').all(order.id).map(s=>{
     const batches=ledger.batches.filter(b=>b.path===s.path&&b.status==='active'), remaining=batches.map(b=>stageBatchRemaining(b,ledger.allocations,ledger.allocationComponents));
     const completed=sum(batches,'completed_quantity'), available=sum(remaining,'quantity');
@@ -103,9 +106,9 @@ export function readProductionStages(db, order) {
     const items=productionStageItems(order,s.path).map(n=>{
       let standard_quantity=null;
       try { standard_quantity=stageDisplayStandardQuantity(n,completed); } catch { /* Keep historical actuals readable when cumulative standards exceed limits. */ }
-      return {...n,standard_quantity,actual_quantity:sum(ledger.inputs.filter(i=>i.path===n.path&&activeIds.has(i.batch_id)),'quantity')};
+      return {...n,standard_quantity,...quantityFields(sum(ledger.inputs.filter(i=>i.path===n.path&&activeIds.has(i.batch_id)),'quantity'), 'actual_quantity')};
     });
-    return {...s,completed_quantity:completed,consumed_quantity:addQuantity(completed,-available),available_quantity:available,
+    return {...s,...quantityFields(completed, 'completed_quantity'), ...quantityFields(exactSubtract(completed,available), 'consumed_quantity'), ...quantityFields(available, 'available_quantity'),
       available_cost_cents:remaining.reduce((n,r)=>n+r.cost_cents,0),items};
   });
   order.direct_material_cost_cents=order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.reduce((n,i)=>n+i.cost_cents,0),0);
@@ -115,7 +118,7 @@ export function readProductionStages(db, order) {
   for(const allocation of ledger.allocations){
     const consumer=byBatch.get(byInput.get(allocation.input_id).batch_id),source=byBatch.get(allocation.source_batch_id);
     const destinations=usages.get(source.path)||new Map(),prior=destinations.get(consumer.path);
-    destinations.set(consumer.path,{path:consumer.path,name:byStage.get(consumer.path).name,quantity:addQuantity(prior?.quantity||0,allocation.quantity)});
+    destinations.set(consumer.path,{path:consumer.path,name:byStage.get(consumer.path).name,...quantityFields(exactAdd(exactQuantity(prior),exactQuantity(allocation)))});
     usages.set(source.path,destinations);
   }
   for(const stage of order.stages)stage.pool_usages=[...(usages.get(stage.path)?.values()||[])];
@@ -124,11 +127,11 @@ export function readProductionStages(db, order) {
 export function populateStageBalances(order) {
   if(!order.stage_workflow)return;
   const pools=productionPoolPathMap(order),byStage=new Map(order.stages.map(s=>[s.path,s]));
-  for(const stage of order.stages)stage.items=stage.items.map(n=>({...n,available_quantity:n.usage_mode==='explode'?sum((pools.get(n.path)||[n.path]).map(path=>byStage.get(path)),'available_quantity'):order.items.find(i=>i.product_id===n.product_id).available_quantity}));
+  for(const stage of order.stages)stage.items=stage.items.map(n=>({...n,...quantityFields(n.usage_mode==='explode'?sum((pools.get(n.path)||[n.path]).map(path=>byStage.get(path)),'available_quantity'):exactQuantity(order.items.find(i=>i.product_id===n.product_id),'available_quantity'),'available_quantity')}));
   order.stage_pools=pooledProductionStages(order).filter(stage=>stage.pool_paths);
 }
 export function assertStagesFinished(order) {
-  const remaining=(order.stages||[]).filter(s=>s.path!==''&&s.available_quantity!==0);
+  const remaining=(order.stages||[]).filter(s=>s.path!==''&&exactCompare(exactQuantity(s, 'available_quantity'), 0)!==0);
   if(remaining.length)fail(`仍有本单半成品余额：${remaining.map(s=>`${s.name}［${s.path}］${s.available_quantity} ${s.unit}`).join('、')}。请按实际情况继续登记。`,409);
 }
 export function deleteProductionStages(db,id) {
@@ -154,7 +157,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if(typeof path!=='string'||!o.stages.some(s=>s.path===path))fail('生产层不存在。',404);
     if(!/^\d+$/.test(offset)||!Number.isSafeInteger(Number(offset))||!/^\d+$/.test(limit)||Number(limit)<1||Number(limit)>100)fail('批次分页参数无效。');
     const paths=stagePoolPaths(o,path),ledger=stageLedger(db,o.id),all=ledger.batches.filter(b=>paths.includes(b.path)),total=all.length;
-    const batches=all.slice(Number(offset),Number(offset)+Number(limit)).map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id).map(i=>({...productionStageItems(o,b.path).find(n=>n.path===i.path),...i,actual_quantity:i.quantity,
+    const batches=all.slice(Number(offset),Number(offset)+Number(limit)).map(b=>({...b,items:ledger.inputs.filter(i=>i.batch_id===b.id).map(i=>({...productionStageItems(o,b.path).find(n=>n.path===i.path),...i,...quantityFields(exactQuantity(i), 'actual_quantity'),
       allocations:db.prepare('SELECT a.*,b.path AS source_path,b.batch_number AS source_batch_number FROM production_stage_allocations a JOIN production_stage_batches b ON b.id=a.source_batch_id WHERE a.input_id=? ORDER BY a.id').all(i.id)}))}));
     return {batches,total,has_more:Number(offset)+batches.length<total};
   }));
@@ -162,48 +165,61 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     const o=stageOrder(req); version(req,o);units(o);
     if(o.status!=='in_progress')fail('请先开始生产并由仓库批准领料后登记。',409);
     const s=o.stages.find(s=>s.path===req.body.path);if(!s)fail('生产层不存在。',404);
-    if(!validQuantity(req.body.completed_quantity,true)||req.body.note!==undefined&&(typeof req.body.note!=='string'||req.body.note.length>500)||typeof req.body.finish_order!=='boolean')fail('请核对本批产量、备注及继续生产选项。');
+    if(!validExactQuantity(parseExactQuantity(req.body.completed_quantity,true),true)||req.body.note!==undefined&&(typeof req.body.note!=='string'||req.body.note.length>500)||typeof req.body.finish_order!=='boolean')fail('请核对本批产量、备注及继续生产选项。');
     if(s.path!==''&&(req.body.finish_order||req.body.scraps?.length))fail('半成品层只能登记继续，不登记废料或结束整单。');
     if(!Array.isArray(req.body.items)||req.body.items.length!==s.items.length||new Set(req.body.items.map(i=>i?.path)).size!==s.items.length)fail('请核对全部直属投入，路径不能重复或增删。');
-    const actuals=s.items.map(n=>{const a=req.body.items.find(i=>i?.path===n.path);if(!a||!validQuantity(a.quantity,!stageInputCanBeZero(n,s.items))||a.variance_reason!==undefined&&(typeof a.variance_reason!=='string'||a.variance_reason.length>500))fail('直属投入需为有效数量且最多 4 位小数；有库存投入的半成品允许本单投入为零。');
+    const actuals=s.items.map(n=>{const a=req.body.items.find(i=>i?.path===n.path);if(!a||!validExactQuantity(parseExactQuantity(a.quantity,!stageInputCanBeZero(n,s.items)),!stageInputCanBeZero(n,s.items))||a.variance_reason!==undefined&&(typeof a.variance_reason!=='string'||a.variance_reason.length>500))fail('直属投入需为有效数量且最多 4 位小数；有库存投入的半成品允许本单投入为零。');
       const p=db.prepare('SELECT * FROM products WHERE id=?').get(n.product_id);if(!p||p.warehouse_id!==o.warehouse_id||p.unit!==n.unit||p.unit_round_up!==n.unit_round_up)fail(`${n.name}单位或取整规则已变化。`,409);if(!p.active)fail(`${n.name}已停用。`);
-      return {...n,quantity:materialQuantity(a.quantity,n),variance_reason:(a.variance_reason||'').trim()};});
+      return {...n, ...quantityFields(parseExactQuantity(a.quantity,!stageInputCanBeZero(n,s.items))),variance_reason:(a.variance_reason||'').trim()};});
     if(!actuals.some(a=>a.quantity>0))fail('至少一种直属投入需大于零。');
     const output=db.prepare('SELECT * FROM products WHERE id=?').get(s.product_id);if(output.unit!==s.unit||output.unit_round_up!==s.unit_round_up||!output.active)fail('本层产品已停用或单位、取整规则已变化。',409);
-    const q=materialQuantity(req.body.completed_quantity,s),ledger=stageLedger(db,o.id),count=ledger.batches.filter(b=>b.path===s.path).length,pools=productionPoolPathMap(o);
+    const q=parseExactQuantity(req.body.completed_quantity,true),ledger=stageLedger(db,o.id),count=ledger.batches.filter(b=>b.path===s.path).length,pools=productionPoolPathMap(o);
     if(count>=1000||ledger.batches.length>=10000)fail('层级批次达到上限（每层 1000 批、整单 10000 批，含作废），请拆分生产单。');
-    if(!validStoredQuantity(addQuantity(s.completed_quantity,q),true))fail('累计产量超出范围。');
+    if(!validExactQuantity(exactAdd(exactQuantity(s, 'completed_quantity'),q),true))fail('累计产量超出范围。');
     const registrationGroup=productionRegistrationGroup(req.user,o);
-    const at=new Date().toISOString(),owner=actor(req),components=new Map(),pool=new Map(o.items.map(i=>[i.product_id,{quantity:i.available_quantity,cost_cents:i.available_cost_cents}]));
-    const id=Number(db.prepare(`INSERT INTO production_stage_batches(production_id,stage_id,path,batch_number,completed_quantity,total_cost_cents,note,created_by,created_by_name,production_group_id,production_group_name,created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`).run(o.id,s.id,s.path,count+1,q,(req.body.note||'').trim(),req.user.id,owner,registrationGroup.id,registrationGroup.name,at).lastInsertRowid);
-    const merge=c=>{const prev=components.get(c.product_id)||{product_id:c.product_id,quantity:0,cost_cents:0};prev.quantity=addQuantity(prev.quantity,c.quantity);prev.cost_cents+=c.cost_cents;if(!validStoredQuantity(prev.quantity)||!Number.isSafeInteger(prev.cost_cents))fail('原料组成累计超出范围。');components.set(c.product_id,prev);};
+    const at=new Date().toISOString(),owner=actor(req),components=new Map(),pool=new Map(o.items.map(i=>[i.product_id,{...quantityFields(exactQuantity(i,'available_quantity')),cost_cents:i.available_cost_cents}]));
+    const id=Number(db.prepare(`INSERT INTO production_stage_batches(production_id,stage_id,path,batch_number,completed_quantity,total_cost_cents,note,created_by,created_by_name,production_group_id,production_group_name,created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`).run(o.id,s.id,s.path,count+1,exactNumber(q),(req.body.note||'').trim(),req.user.id,owner,registrationGroup.id,registrationGroup.name,at).lastInsertRowid);
+    saveExactQuantity(db, 'production_stage_batches', id, 'completed_quantity', q);
+    const merge=c=>{const prev=components.get(c.product_id)||{product_id:c.product_id,quantity:0,cost_cents:0};Object.assign(prev, quantityFields(exactAdd(exactQuantity(prev),exactQuantity(c))));prev.cost_cents+=c.cost_cents;if(!validExactQuantity(exactQuantity(prev))||!Number.isSafeInteger(prev.cost_cents))fail('原料组成累计超出范围。');components.set(c.product_id,prev);};
     let total=0;
     for(const a of actuals){
       let cost=0;const splits=[];
-      if(a.usage_mode==='stock'){const p=pool.get(a.product_id);if(a.quantity>p.quantity)fail(`${a.name}已领未耗余额不足（当前 ${p.quantity} ${a.unit}）。请补料或核对实际投入。`);cost=a.quantity?allocate(p.cost_cents,a.quantity,p.quantity):0;p.quantity=addQuantity(p.quantity,-a.quantity);p.cost_cents-=cost;merge({product_id:a.product_id,quantity:a.quantity,cost_cents:cost});}
+      if(a.usage_mode==='stock'){const p=pool.get(a.product_id);if(exactCompare(exactQuantity(a),exactQuantity(p))>0)fail(`${a.name}已领未耗余额不足（当前 ${p.quantity} ${a.unit}）。请补料或核对实际投入。`);cost=a.quantity?allocate(p.cost_cents,exactQuantity(a),exactQuantity(p)):0;Object.assign(p,quantityFields(exactSubtract(exactQuantity(p),exactQuantity(a))));p.cost_cents-=cost;merge({product_id:a.product_id,...quantityFields(exactQuantity(a)),cost_cents:cost});}
       else {
         const sourcePaths=pools.get(a.path)||[a.path];
-        let need=a.quantity;for(const source of ledger.batches.filter(b=>sourcePaths.includes(b.path)&&b.status==='active')){if(!need)break;const left=stageBatchRemaining(source,ledger.allocations,ledger.allocationComponents);if(!left.quantity)continue;
-          const used=Math.min(need,left.quantity),c=allocate(left.cost_cents,used,left.quantity),parts=allocateStageComponents(left.components,used,left.quantity,c);splits.push({source,quantity:used,cost_cents:c,parts});cost+=c;need=addQuantity(need,-used);}
-        if(need)fail(`${a.name}来源层［${a.path}］半成品余额不足（还缺 ${need} ${a.unit}），请先登记下层生产。`);
+        let need=exactQuantity(a);for(const source of ledger.batches.filter(b=>sourcePaths.includes(b.path)&&b.status==='active')){if(exactCompare(need,0)===0)break;const left=stageBatchRemaining(source,ledger.allocations,ledger.allocationComponents);if(exactCompare(exactQuantity(left),0)===0)continue;
+          const used=exactMin(need,exactQuantity(left)),c=allocate(left.cost_cents,used,exactQuantity(left)),parts=allocateStageComponents(left.components,used,exactQuantity(left),c);splits.push({source,...quantityFields(used),cost_cents:c,parts});cost+=c;need=exactSubtract(need,used);}
+        if(exactCompare(need,0)>0)fail(`${a.name}来源层［${a.path}］半成品余额不足（还缺 ${need} ${a.unit}），请先登记下层生产。`);
       }
       const inputId=Number(db.prepare('INSERT INTO production_stage_inputs(batch_id,path,product_id,usage_mode,quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?,?,?)').run(id,a.path,a.product_id,a.usage_mode,a.quantity,cost,a.variance_reason).lastInsertRowid);
+      saveExactQuantity(db, 'production_stage_inputs', inputId, 'quantity', exactQuantity(a));
       for(const split of splits){const aid=Number(db.prepare('INSERT INTO production_stage_allocations(input_id,source_batch_id,quantity,cost_cents) VALUES (?,?,?,?)').run(inputId,split.source.id,split.quantity,split.cost_cents).lastInsertRowid);
-        ledger.allocations.push({id:aid,input_id:inputId,source_batch_id:split.source.id,quantity:split.quantity,cost_cents:split.cost_cents});
-        for(const c of split.parts){db.prepare('INSERT INTO production_stage_allocation_components(allocation_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(aid,c.product_id,c.quantity,c.cost_cents);ledger.allocationComponents.push({...c,allocation_id:aid});merge(c);}}
+        saveExactQuantity(db,'production_stage_allocations',aid,'quantity',exactQuantity(split));
+        ledger.allocations.push({id:aid,input_id:inputId,source_batch_id:split.source.id,...quantityFields(exactQuantity(split)),cost_cents:split.cost_cents});
+        for(const c of split.parts){db.prepare('INSERT INTO production_stage_allocation_components(allocation_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(aid,c.product_id,c.quantity,c.cost_cents);saveExactQuantity(db,'production_stage_allocation_components',db.prepare('SELECT id FROM production_stage_allocation_components WHERE allocation_id=? AND product_id=?').get(aid,c.product_id).id,'quantity',exactQuantity(c));ledger.allocationComponents.push({...c,allocation_id:aid});merge(c);}}
       total+=cost;if(!Number.isSafeInteger(total))fail('本批成本超出范围。');
     }
-    for(const c of components.values())db.prepare('INSERT INTO production_stage_components(batch_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(id,c.product_id,c.quantity,c.cost_cents);
+    for(const c of components.values()) {
+      const componentId=Number(db.prepare('INSERT INTO production_stage_components(batch_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(id,c.product_id,c.quantity,c.cost_cents).lastInsertRowid);
+      saveExactQuantity(db,'production_stage_components',componentId,'quantity',exactQuantity(c));
+    }
     db.prepare('UPDATE production_stage_batches SET total_cost_cents=? WHERE id=?').run(total,id);
     if(s.path===''){
       validateScrapActuals(req.body.scraps??[],o.scraps);const number=(o.batches.at(-1)?.batch_number??0)+1;
-      const rootId=Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required,created_by,production_group_id,production_group_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)`).run(o.id,number,q,total,(req.body.note||'').trim(),owner,at,req.user.id,registrationGroup.id,registrationGroup.name).lastInsertRowid);
-      for(const item of o.items){const c=components.get(item.product_id)||{quantity:0,cost_cents:0};db.prepare('INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?)').run(rootId,item.product_id,c.quantity,c.cost_cents,actuals.filter(a=>a.product_id===item.product_id&&a.usage_mode==='stock').map(a=>a.variance_reason).filter(Boolean).join('；'));}
-      for(const rule of o.scraps){const actual=req.body.scraps.find(a=>a.product_id===rule.product_id),quantity=materialQuantity(actual.quantity,rule);db.prepare('INSERT INTO production_batch_scraps(batch_id,product_id,expected_quantity,actual_quantity,disposition) VALUES (?,?,?,?,?)').run(rootId,rule.product_id,scrapExpectedQuantity(rule,q,o.base_quantity,actuals.filter(a=>a.usage_mode==='stock').map(a=>({product_id:a.product_id,quantity:a.quantity})),o.quantity_decimals),quantity,actual.disposition);}
+      const rootId=Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required,created_by,production_group_id,production_group_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)`).run(o.id,number,exactNumber(q),total,(req.body.note||'').trim(),owner,at,req.user.id,registrationGroup.id,registrationGroup.name).lastInsertRowid);
+      saveExactQuantity(db,'production_batches',rootId,'completed_quantity',q);
+      for(const item of o.items){const c=components.get(item.product_id)||{quantity:0,cost_cents:0};db.prepare('INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?)').run(rootId,item.product_id,c.quantity,c.cost_cents,actuals.filter(a=>a.product_id===item.product_id&&a.usage_mode==='stock').map(a=>a.variance_reason).filter(Boolean).join('；'));saveExactQuantity(db,'production_batch_items',db.prepare('SELECT id FROM production_batch_items WHERE batch_id=? AND product_id=?').get(rootId,item.product_id).id,'actual_quantity',exactQuantity(c));}
+      for(const rule of o.scraps) {
+        const actual=req.body.scraps.find(a=>a.product_id===rule.product_id),quantity=parseExactQuantity(actual.quantity);
+        const expected=scrapExpectedQuantity(rule,q,o.base_quantity,actuals.filter(a=>a.usage_mode==='stock').map(a=>({product_id:a.product_id,quantity:exactQuantity(a)})),o.quantity_decimals);
+        const scrapId=Number(db.prepare('INSERT INTO production_batch_scraps(batch_id,product_id,expected_quantity,actual_quantity,disposition) VALUES (?,?,?,?,?)').run(rootId,rule.product_id,exactNumber(expected),exactNumber(quantity),actual.disposition).lastInsertRowid);
+        saveExactQuantity(db,'production_batch_scraps',scrapId,'actual_quantity',quantity);
+        saveExactQuantity(db,'production_batch_scraps',scrapId,'expected_quantity',expected);
+      }
       db.prepare('UPDATE production_stage_batches SET root_batch_id=? WHERE id=?').run(rootId,id);createProductionReceipt(db,req,o,rootId);updateBatchTotals(db,o,'draft',owner,at);
     }else db.prepare('UPDATE production_orders SET updated_by_name=?,updated_at=? WHERE id=?').run(owner,at,o.id);
     recordOperationOutput(db,req,o,s.path,q,'stage',id);
-    if(req.body.finish_order){const fresh=current(req);assertNoPendingMaterials(db,fresh);assertStagesFinished(fresh);db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?").run(owner,at,o.id);}
+    if(req.body.finish_order){const fresh=current(req);assertNoPendingMaterials(db,fresh);assertStagesFinished(fresh);finalizeProductionQuantities(db,req,fresh);db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?").run(owner,at,o.id);}
     return current(req);
   };
   app.post('/api/production-orders/:id/stages/complete',route(req=>{
@@ -230,6 +246,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if(typeof req.body.reason!=='string'||!req.body.reason.trim()||req.body.reason.length>500)fail('请填写作废原因（最多 500 字）。');
     const dependents=db.prepare(`SELECT DISTINCT b.path,b.batch_number FROM production_stage_allocations a JOIN production_stage_inputs i ON i.id=a.input_id JOIN production_stage_batches b ON b.id=i.batch_id WHERE a.source_batch_id=? AND b.status='active'`).all(b.id);
     if(dependents.length)fail(`此批次已被上层使用，请先作废上层批次：${dependents.map(d=>`［${d.path||'根层'}］第 ${d.batch_number} 批`).join('、')}。`,409);
+    reopenProductionQuantities(db,req,o);
     const at=new Date().toISOString(),owner=actor(req),why=req.body.reason.trim();
     if(b.root_batch_id){const root=o.batches.find(r=>r.id===b.root_batch_id),before=stockBefore(o);units(o,false);reverseBatch(req,o,root);voidProductionReceipt(db,root.id,owner,at,why);db.prepare("UPDATE production_batches SET status='void',voided_by_name=?,voided_at=?,void_reason=? WHERE id=?").run(owner,at,why,root.id);notifyStockChanges(db,req,before,{production_id:o.id,number:o.number,batch_id:root.id});}
     voidOperationOutput(db,'stage',b.id,owner,at,why);
@@ -266,12 +283,12 @@ export function validateProductionStageBackup(data) {
     const order=orders.get(b.production_id),stage=stages.get(b.stage_id),root=data.production_batches.find(r=>r.id===b.root_batch_id);
     const k=`batch:${b.stage_id}:${b.batch_number}`;
     if(!order?.stage_workflow||!stage||stage.production_id!==b.production_id||stage.path!==b.path||unique.has(k)||!Number.isSafeInteger(b.batch_number)||b.batch_number<1||b.batch_number>1000||
-      !validQuantity(b.completed_quantity,true)||stage.unit_round_up&&!Number.isInteger(b.completed_quantity)||!money(b.total_cost_cents)||!['active','void'].includes(b.status)||
+      !validExactQuantity(exactQuantity(b,'completed_quantity'),true)||!money(b.total_cost_cents)||!['active','void'].includes(b.status)||
       !text(b.note,500)||!text(b.created_by_name,60,true)||!date(b.created_at)||!text(b.production_group_name,100)||!text(b.voided_by_name,60)||!text(b.void_reason,500)||
       (b.status==='active'?(b.voided_at!==null||b.voided_by_name!==''||b.void_reason!=='') : !date(b.voided_at)||!b.voided_by_name.trim()||!b.void_reason.trim())||order.status==='void'&&b.status==='active')fail('备份层级批次字段、状态或归属无效。');
     unique.add(k);
     if(b.path===''){
-      if(!root||rootIds.has(root.id)||root.production_id!==b.production_id||['completed_quantity','total_cost_cents','status','note','created_by_name','created_at','voided_by_name','voided_at','void_reason','production_group_id','production_group_name'].some(k=>root[k]!==b[k])||root.receipt_required!==1)fail('备份根层与成品批次不一致。');
+      if(!root||rootIds.has(root.id)||root.production_id!==b.production_id||exactCompare(exactQuantity(root,'completed_quantity'),exactQuantity(b,'completed_quantity'))!==0||['completed_quantity','total_cost_cents','status','note','created_by_name','created_at','voided_by_name','voided_at','void_reason','production_group_id','production_group_name'].some(k=>root[k]!==b[k])||root.receipt_required!==1)fail('备份根层与成品批次不一致。');
       rootIds.add(root.id);
     }else if(b.root_batch_id!==null)fail('半成品批次不能关联仓库成品批次。');
     const nodes=data.production_bom_nodes.filter(n=>n.production_id===order.id&&n.parent_path===b.path),rows=[...inputs.values()].filter(i=>i.batch_id===b.id);
@@ -282,33 +299,33 @@ export function validateProductionStageBackup(data) {
     const b=batches.get(i.batch_id), order=b&&orders.get(b.production_id);
     const choices=b?productionStageItems({...order,nodes:data.production_bom_nodes.filter(n=>n.production_id===order.id),items:data.production_items.filter(item=>item.production_id===order.id)},b.path):[];
     const node=choices.find(n=>n.path===i.path),k=`input:${i.batch_id}:${i.path}`;
-    if(!b||!node||unique.has(k)||i.product_id!==node.product_id||i.usage_mode!==node.usage_mode||!validQuantity(i.quantity,!stageInputCanBeZero(node,choices))||node.unit_round_up&&!Number.isInteger(i.quantity)||!money(i.cost_cents)||i.quantity===0&&i.cost_cents!==0||!text(i.variance_reason,500))fail('备份层级直属投入无效。');
+    if(!b||!node||unique.has(k)||i.product_id!==node.product_id||i.usage_mode!==node.usage_mode||!validExactQuantity(exactQuantity(i),!stageInputCanBeZero(node,choices))||!money(i.cost_cents)||i.quantity===0&&i.cost_cents!==0||!text(i.variance_reason,500))fail('备份层级直属投入无效。');
     unique.add(k);const parts=[...allocations.values()].filter(a=>a.input_id===i.id);
-    if(i.usage_mode==='stock'?parts.length!==0:(i.quantity>0&&!parts.length)||sum(parts,'quantity')!==i.quantity||parts.reduce((n,a)=>n+a.cost_cents,0)!==i.cost_cents)fail('备份半成品分配与投入不一致。');
+    if(i.usage_mode==='stock'?parts.length!==0:(i.quantity>0&&!parts.length)||exactCompare(sum(parts,'quantity'),exactQuantity(i))!==0||parts.reduce((n,a)=>n+a.cost_cents,0)!==i.cost_cents)fail('备份半成品分配与投入不一致。');
   }
   for(const a of allocations.values()){
     const i=inputs.get(a.input_id),consumer=i&&batches.get(i.batch_id),source=batches.get(a.source_batch_id),k=`allocation:${a.input_id}:${a.source_batch_id}`;
     if(!i||i.usage_mode!=='explode'||!source||!consumer||unique.has(k)||source.production_id!==consumer.production_id||!(poolOrders.get(consumer.production_id).get(i.path)||[i.path]).includes(source.path)||source.id>=consumer.id||source.created_at>consumer.created_at||
-      !validStoredQuantity(a.quantity,true)||a.quantity>source.completed_quantity||stages.get(source.stage_id).unit_round_up&&!Number.isInteger(a.quantity)||!money(a.cost_cents)||a.cost_cents>source.total_cost_cents||consumer.status==='active'&&source.status!=='active')fail('备份半成品来源跨单、层级或状态依赖无效。');
+      !validExactQuantity(exactQuantity(a),true)||exactCompare(exactQuantity(a),exactQuantity(source,'completed_quantity'))>0||!money(a.cost_cents)||a.cost_cents>source.total_cost_cents||consumer.status==='active'&&source.status!=='active')fail('备份半成品来源跨单、层级或状态依赖无效。');
     unique.add(k);const parts=tables.production_stage_allocation_components.filter(c=>c.allocation_id===a.id);
     if(!parts.length||parts.reduce((n,c)=>n+c.cost_cents,0)!==a.cost_cents)fail('备份半成品分配组成成本不一致。');
     const sourceParts=tables.production_stage_components.filter(c=>c.batch_id===source.id);
-    if(parts.length!==sourceParts.length||parts.some(c=>{const p=sourceParts.find(p=>p.product_id===c.product_id);return !p||c.quantity>p.quantity||c.cost_cents>p.cost_cents;}))fail('备份半成品分配原料组成不完整或超额。');
+    if(parts.length!==sourceParts.length||parts.some(c=>{const p=sourceParts.find(p=>p.product_id===c.product_id);return !p||exactCompare(exactQuantity(c),exactQuantity(p))>0||c.cost_cents>p.cost_cents;}))fail('备份半成品分配原料组成不完整或超额。');
   }
   for(const [table,parentKey,parentMap] of [['production_stage_components','batch_id',batches],['production_stage_allocation_components','allocation_id',allocations]])for(const c of tables[table]){
     const parent=parentMap.get(c[parentKey]),batch=table==='production_stage_components'?parent:parent&&batches.get(inputs.get(parent.input_id)?.batch_id),k=`${table}:${c[parentKey]}:${c.product_id}`;
-    if(!parent||!batch||unique.has(k)||!data.production_items.some(i=>i.production_id===batch.production_id&&i.product_id===c.product_id)||!validStoredQuantity(c.quantity)||!money(c.cost_cents))fail('备份分层原料组成无效。');
+    if(!parent||!batch||unique.has(k)||!data.production_items.some(i=>i.production_id===batch.production_id&&i.product_id===c.product_id)||!validExactQuantity(exactQuantity(c))||!money(c.cost_cents))fail('备份分层原料组成无效。');
     unique.add(k);
   }
   for(const b of batches.values()){
     const components=tables.production_stage_components.filter(c=>c.batch_id===b.id),expected=new Map();
-    const merge=c=>{const p=expected.get(c.product_id)||{quantity:0,cost_cents:0};p.quantity=addQuantity(p.quantity,c.quantity);p.cost_cents+=c.cost_cents;expected.set(c.product_id,p);};
+    const merge=c=>{const p=expected.get(c.product_id)||{quantity:0,cost_cents:0};Object.assign(p,quantityFields(exactAdd(exactQuantity(p),exactQuantity(c))));p.cost_cents+=c.cost_cents;expected.set(c.product_id,p);};
     for(const i of [...inputs.values()].filter(i=>i.batch_id===b.id))if(i.usage_mode==='stock')merge(i);else for(const a of [...allocations.values()].filter(a=>a.input_id===i.id))for(const c of tables.production_stage_allocation_components.filter(c=>c.allocation_id===a.id))merge(c);
-    if(components.length!==expected.size||components.reduce((n,c)=>n+c.cost_cents,0)!==b.total_cost_cents||components.some(c=>{const e=expected.get(c.product_id);return !e||c.quantity!==e.quantity||c.cost_cents!==e.cost_cents;}))fail('备份层级原料组成不守恒。');
+    if(components.length!==expected.size||components.reduce((n,c)=>n+c.cost_cents,0)!==b.total_cost_cents||components.some(c=>{const e=expected.get(c.product_id);return !e||exactCompare(exactQuantity(c),exactQuantity(e))!==0||c.cost_cents!==e.cost_cents;}))fail('备份层级原料组成不守恒。');
     const live=[...allocations.values()].filter(a=>batches.get(inputs.get(a.input_id).batch_id).status==='active');
     const left=stageBatchRemaining({...b,components},live,tables.production_stage_allocation_components);
-    if(b.status==='active'&&(!validStoredQuantity(left.quantity)||!money(left.cost_cents)||left.quantity===0&&left.cost_cents!==0||left.components.some(c=>!validStoredQuantity(c.quantity)||!money(c.cost_cents)||left.quantity===0&&(c.quantity!==0||c.cost_cents!==0))||left.components.reduce((n,c)=>n+c.cost_cents,0)!==left.cost_cents))fail('备份半成品来源超额分配或数量成本不守恒。');
-    if(b.root_batch_id){const orderItems=data.production_items.filter(i=>i.production_id===b.production_id),rootItems=data.production_batch_items.filter(i=>i.batch_id===b.root_batch_id);if(rootItems.length!==orderItems.length||rootItems.some(i=>{const c=components.find(c=>c.product_id===i.product_id)||{quantity:0,cost_cents:0};return i.actual_quantity!==c.quantity||i.cost_cents!==c.cost_cents;}))fail('备份根层原料追溯投影不一致。');}
+    if(b.status==='active'&&(!validExactQuantity(exactQuantity(left))||!money(left.cost_cents)||left.quantity===0&&left.cost_cents!==0||left.components.some(c=>!validExactQuantity(exactQuantity(c))||!money(c.cost_cents)||left.quantity===0&&(c.quantity!==0||c.cost_cents!==0))||left.components.reduce((n,c)=>n+c.cost_cents,0)!==left.cost_cents))fail('备份半成品来源超额分配或数量成本不守恒。');
+    if(b.root_batch_id){const orderItems=data.production_items.filter(i=>i.production_id===b.production_id),rootItems=data.production_batch_items.filter(i=>i.batch_id===b.root_batch_id);if(rootItems.length!==orderItems.length||rootItems.some(i=>{const c=components.find(c=>c.product_id===i.product_id)||{quantity:0,cost_cents:0};return exactCompare(exactQuantity(i,'actual_quantity'),exactQuantity(c))!==0||i.cost_cents!==c.cost_cents;}))fail('备份根层原料追溯投影不一致。');}
   }
   for(const o of orders.values())if(o.stage_workflow){
     const active=[...batches.values()].filter(b=>b.production_id===o.id&&b.status==='active'),live=[...allocations.values()].filter(a=>batches.get(inputs.get(a.input_id).batch_id).status==='active');
@@ -351,11 +368,11 @@ function validateStageAllocationHistory(tables,batches,inputs,allocations,poolOr
   const live=new Set(),remaining=new Map();
   const transfer=(allocation,direction)=>{
     const left=remaining.get(allocation.source_batch_id);
-    left.quantity=addQuantity(left.quantity,direction*allocation.quantity);
+    Object.assign(left,quantityFields(exactAdd(exactQuantity(left),exactMultiply(direction,exactQuantity(allocation)))));
     left.cost_cents+=direction*allocation.cost_cents;
     for(const part of allocationComponents.get(allocation.id)||[]){
       const component=left.components.get(part.product_id);
-      component.quantity=addQuantity(component.quantity,direction*part.quantity);
+      Object.assign(component,quantityFields(exactAdd(exactQuantity(component),exactMultiply(direction,exactQuantity(part)))));
       component.cost_cents+=direction*part.cost_cents;
     }
   };
@@ -363,33 +380,33 @@ function validateStageAllocationHistory(tables,batches,inputs,allocations,poolOr
     const working=new Map();
     for(const input of batchInputs.get(batch.id)||[]){
       if(input.usage_mode!=='explode')continue;
-      let needed=input.quantity,index=0;
+      let needed=exactQuantity(input),index=0;
       const saved=inputAllocations.get(input.id)||[];
       // Historical path-specific FIFO is retained. Cross-path transfers use pool FIFO.
       const paths=saved.some(a=>batches.get(a.source_batch_id).path!==input.path)?poolOrders.get(batch.production_id).get(input.path):[input.path];
       const sources=paths.flatMap(path=>sourceBatches.get(`${batch.production_id}:${path}`)||[]).sort((a,b)=>a.id-b.id);
       for(const source of sources){
-        if(!needed)break;
+        if(exactCompare(needed,0)===0)break;
         if(!live.has(source.id))continue;
         if(!working.has(source.id)) { const original=remaining.get(source.id); working.set(source.id,{...original,components:new Map([...original.components].map(([id,c])=>[id,{...c}]))}); }
         const left=working.get(source.id);
-        if(!left.quantity)continue;
-        const quantity=Math.min(needed,left.quantity),cost=allocate(left.cost_cents,quantity,left.quantity);
+        if(exactCompare(exactQuantity(left),0)===0)continue;
+        const quantity=exactMin(needed,exactQuantity(left)),cost=allocate(left.cost_cents,quantity,exactQuantity(left));
         const allocation=saved[index++];
-        if(!allocation||allocation.source_batch_id!==source.id||allocation.quantity!==quantity||allocation.cost_cents!==cost)return false;
-        const expected=allocateStageComponents([...left.components.values()],quantity,left.quantity,cost);
+        if(!allocation||allocation.source_batch_id!==source.id||exactCompare(exactQuantity(allocation),quantity)!==0||allocation.cost_cents!==cost)return false;
+        const expected=allocateStageComponents([...left.components.values()],quantity,exactQuantity(left),cost);
         const actual=allocationComponents.get(allocation.id)||[];
-        if(expected.length!==actual.length||expected.some(e=>{const a=actual.find(a=>a.product_id===e.product_id);return !a||a.quantity!==e.quantity||a.cost_cents!==e.cost_cents;}))return false;
-        left.quantity=addQuantity(left.quantity,-quantity);left.cost_cents-=cost;
-        for(const part of actual){const component=left.components.get(part.product_id);component.quantity=addQuantity(component.quantity,-part.quantity);component.cost_cents-=part.cost_cents;}
-        needed=addQuantity(needed,-quantity);
+        if(expected.length!==actual.length||expected.some(e=>{const a=actual.find(a=>a.product_id===e.product_id);return !a||exactCompare(exactQuantity(a),exactQuantity(e))!==0||a.cost_cents!==e.cost_cents;}))return false;
+        Object.assign(left,quantityFields(exactSubtract(exactQuantity(left),quantity)));left.cost_cents-=cost;
+        for(const part of actual){const component=left.components.get(part.product_id);Object.assign(component,quantityFields(exactSubtract(exactQuantity(component),exactQuantity(part))));component.cost_cents-=part.cost_cents;}
+        needed=exactSubtract(needed,quantity);
       }
-      if(needed||index!==saved.length)return false;
+      if(exactCompare(needed,0)!==0||index!==saved.length)return false;
     }
     return true;
   };
   const create=batch=>{
-    remaining.set(batch.id,{quantity:batch.completed_quantity,cost_cents:batch.total_cost_cents,
+    remaining.set(batch.id,{...quantityFields(exactQuantity(batch,'completed_quantity')),cost_cents:batch.total_cost_cents,
       components:new Map((batchComponents.get(batch.id)||[]).map(c=>[c.product_id,{...c}]))});
     live.add(batch.id);
     for(const allocation of batchAllocations.get(batch.id)||[])transfer(allocation,-1);

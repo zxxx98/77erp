@@ -1,10 +1,11 @@
 import { calculateBomNodes } from '../shared/bom-expansion.js';
-import { productionItemQuantity } from '../shared/production.js';
+import { productionItemQuantity, productionActualDefault } from '../shared/production.js';
 import { stageInputDefaults } from '../shared/production-stages.js';
 import { pooledProductionStages } from '../shared/production-pools.js';
 import { t } from './i18n/index.js';
 import { scrapExpectedQuantity } from '../shared/scrap.js';
 import { additionalMaterialDefaults } from '../shared/additional-operations.js';
+import { quantityInput } from '../shared/exact-quantity.js';
 
 // A route snapshot and BOM path identify the operation, never its display name.
 export function registrationTargets(order) {
@@ -63,13 +64,12 @@ export function registrationTargets(order) {
 export function registrationDefaults(order, target, quantity) {
   if (target.additional) return { items: [], scraps: [], material_items: additionalMaterialDefaults(target.route, quantity) };
   if (!target.output) return { items: [], scraps: [] };
-  const standards = !order.stage_workflow && order.snapshot_format === 2
-    ? new Map(calculateBomNodes(order.nodes, quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
+
   const items = order.stage_workflow
     ? stageInputDefaults(target.layer.items, quantity).map(row => ({ ...row, product_id: target.layer.items.find(item=>item.path===row.path).product_id }))
-    : target.layer.items.map(item => ({ product_id: item.product_id, quantity: String(productionItemQuantity(item, quantity, order, standards)), variance_reason: '' }));
+    : target.layer.items.map(item => ({ product_id: item.product_id, quantity: quantityInput(productionActualDefault(item, quantity, order)), variance_reason: '' }));
   const scraps = target.path ? [] : (order.scraps || []).map(row => ({ product_id: row.product_id,
-    quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity,
-      items.map(item => ({ product_id: item.product_id, quantity: Number(item.quantity) })), order.quantity_decimals)), disposition: 'stock' }));
+    quantity: quantityInput(scrapExpectedQuantity(row, quantity, order.base_quantity,
+      items.map(item => ({ product_id: item.product_id, quantity: item.quantity })), order.quantity_decimals)), disposition: 'stock' }));
   return { items, scraps };
 }

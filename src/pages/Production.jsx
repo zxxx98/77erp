@@ -26,8 +26,9 @@ import { usePermissions } from '../permissions.jsx';
 import { PageHeading, Button, Badge, QueryStatus, Modal } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { parseQuantity, quantityUnits, QUANTITY_SCALE, materialQuantity, validQuantity } from '../../shared/quantity.js';
+import { parseExactQuantity, exactQuantity, exactCompare, formatExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 import { bomShortage } from '../../shared/bom.js';
-import { productionItemQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
+import { productionActualDefault, productionItemQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import { MaterialVariance } from '../features/MaterialVariance.jsx';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
@@ -44,7 +45,7 @@ import { ProductionDetailTabs } from '../features/ProductionDetailTabs.jsx';
 import { ProductionMaterialLedger } from '../features/ProductionMaterialLedger.jsx';
 import { money as formatMoney, currencySymbol } from '../app/format.js';
 
-const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const money = value => `${currencySymbol()}${formatMoney(value / 100)}`;
 const time = value => new Date(value).toLocaleString(getFormatLocale(), { hour12: false });
 const statusBadge = status => <Badge tone={status === 'completed' ? 'green' : status === 'draft' ? 'blue' : 'orange'}>{productionStatusLabels[status]}</Badge>;
@@ -83,7 +84,7 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
     const shortage = valid && row.product ? bomShortage(value, issued ? row.available_quantity : row.product.stock) : 0;
     let analysis = row;
     if (complete) {
-      try { analysis = productionMaterialAnalysis(row, parseQuantity(completedQuantity, true), baseQuantity, parseQuantity(row.quantity), lossMethod, standards); }
+      try { analysis = productionMaterialAnalysis(row, parseExactQuantity(completedQuantity, true), baseQuantity, parseExactQuantity(row.quantity), lossMethod, standards); }
       catch { analysis = { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: pt("production.enterValidAcceptedOutputAndActualMaterialUsage") }; }
     }
     return <article className="production-material" key={row.product_id}>
@@ -93,8 +94,8 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
         {row.product && row.unit !== row.product.unit && <p className="bom-warning">{pt("production.currentUnitChangedTo")} {row.product.unit}{pt("production.thisOrderRetains")} {row.unit}。</p>}
         {row.product && !row.product.active && <p className="bom-warning">{pt("production.materialDisabled")}</p>}</div>
       <div><small>{pt("production.plannedUsage")}</small><span>{count(row.planned_quantity)} {row.unit}</span></div>
-      {complete ? <label>{pt("production.actualUsage")}{row.unit}）<FormField value={row.quantity} required label={pt("production.actualUsage2", { v0: row.name })}><AntInput aria-label={pt("production.actualUsage2", { v0: row.name })} inputMode="decimal"  disabled={disabled} value={row.quantity}
-        onBlur={() => { if (row.unit_round_up && validQuantity(Number(row.quantity))) onQuantity(row.product_id, materialQuantity(Number(row.quantity), row)); }}
+      {complete ? <label>{pt("production.actualUsage")}{row.unit}）<FormField value={row.quantity} required label={pt("production.actualUsage2", { v0: row.name })}><AntInput aria-label={pt("production.actualUsage2", { v0: row.name })} inputMode="text"  disabled={disabled} value={row.quantity}
+
         onChange={e => onQuantity(row.product_id, e.target.value)} /></FormField></label> : showActual && <div><small>{pt("production.actualUsage3")}</small><span>{count(row.actual_quantity)} {row.unit}</span></div>}
       {!showActual && row.product && (issued || row.product.stock !== undefined) && <div><small>{issued ? pt("production.issuedBalance") : pt("production.bookStock")}</small><span>{count(issued ? row.available_quantity : row.product.stock)} {row.unit}</span>
         {shortage > 0 && <strong className="bom-shortage">{issued ? pt("production.supplementNeeded") : pt("production.shortage")} {count(shortage)} {row.unit}</strong>}</div>}
@@ -273,11 +274,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     });
   };
   const batchDefaults = (quantity, order = detail) => {
-    const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
+
     const items = order.items.map(item => ({ product_id: item.product_id,
-      quantity: String(productionItemQuantity(item, quantity, order, standards)), variance_reason: '' }));
+      quantity: quantityInput(productionActualDefault(item, quantity, order)), variance_reason: '' }));
     const scraps = (order.scraps || []).map(row => ({ product_id: row.product_id,
-      quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity, items.map(item => ({ ...item, quantity: Number(item.quantity) })))), disposition: 'stock' }));
+      quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity, items.map(item => ({ ...item, quantity: item.quantity })))), disposition: 'stock' }));
     return { items, scraps };
   };
   const beginCompletion = (targetId) => begin({ kind: 'quick_registration', targetId: typeof targetId === 'string' ? targetId : undefined });
@@ -294,7 +295,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const startProduction = () => begin({ kind: 'material_request', initial: true, type: 'out', note: '',
     items: detail.items.map(item => ({ product_id: item.product_id, quantity: String(item.total_planned_quantity ?? item.planned_quantity) })) });
   const requestMaterials = type => begin({ kind: 'material_request', type, note: '',
-    items: detail.items.map(item => ({ ...item, quantity: type === 'in' ? String(item.available_quantity) : '0' })) });
+    items: detail.items.map(item => ({ ...item, quantity: type === 'in' ? String(exactQuantity(item, 'available_quantity')) : '0' })) });
   const cancelMaterialRequest = (doc, reason) => action.run(async () => {
     await send(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason }, { warehouseId: data.warehouse_id });
     await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"), true);
@@ -330,9 +331,9 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         else body.version = detail.version;
         await saved(await send(path, body, options), pt("production.productionDraftSavedStockUnchanged"));
       } else if (editor.kind === 'complete') {
-        const body = { version: detail.version, ...(editor.operation_node_id ? { operation_node_id: editor.operation_node_id, worker_id: editor.worker_id } : {}), completed_quantity: materialQuantity(parseQuantity(editor.completed_quantity, true), detail), finish_order: finishOrder, note: editor.note,
-          items: editor.items.map(row => ({ product_id: row.product_id, quantity: materialQuantity(parseQuantity(row.quantity), row), variance_reason: row.variance_reason })),
-          scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: materialQuantity(parseQuantity(row.quantity), row), disposition: row.disposition })) };
+        const body = { version: detail.version, ...(editor.operation_node_id ? { operation_node_id: editor.operation_node_id, worker_id: editor.worker_id } : {}), completed_quantity: parseExactQuantity(editor.completed_quantity, true), finish_order: finishOrder, note: editor.note,
+          items: editor.items.map(row => ({ product_id: row.product_id, quantity: parseExactQuantity(row.quantity), variance_reason: row.variance_reason })),
+          scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: parseExactQuantity(row.quantity), disposition: row.disposition })) };
         validateProductionCompletion(body, detail.items);
         validateScrapActuals(body.scraps, detail.scraps || []);
         if (!window.confirm(pt("production.registerThisBatchOfAndRecordScrapThen", { v0: count(body.completed_quantity), v1: detail.unit, v2: detail.product_name, v3: detail.material_workflow ? pt("production.recordUsageFromTheIssuedBalance") : pt("production.deductStockByThisBatchSActualUsage"), v4: finishOrder ? pt("production.endTheProductionOrder") : pt("production.continueProduction") }))) return;
@@ -377,7 +378,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       event.preventDefault();
       action.run(async () => {
         const items = editor.items.map(row => ({ product_id: row.product_id,
-          quantity: materialQuantity(parseQuantity(row.quantity), detail.items.find(item => item.product_id === row.product_id) || row) })).filter(row => row.quantity > 0);
+          quantity: parseExactQuantity(row.quantity) })).filter(row => exactCompare(row.quantity, 0) > 0);
         if (!items.length) throw new Error(pt("production.enterAQuantityForAtLeastOneMaterial", { v0: label }));
         await saved(await send(`/production-orders/${detail.id}/${editor.initial ? 'start' : 'material-requests'}`, { version: detail.version, type: editor.type, items, note: editor.note }, { warehouseId: data.warehouse_id }), pt("production.requestSubmittedAwaitingWarehouseConfirmation", { v0: label, v1: returning ? pt("production.receipt2") : pt("production.issue") }), true);
       });
@@ -392,7 +393,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         {(editor.initial ? detail.items : editor.items).map(item => <div className="production-material" key={item.product_id}><div className="production-material-name"><strong>{item.name}</strong><small>{item.barcode}</small></div>
           <div><small>{pt("production.plannedRequirement")}</small><span>{count(item.total_planned_quantity ?? item.planned_quantity)} {item.unit}</span></div>
           <div><small>{pt("production.issuedBalance")}</small><span>{count(item.available_quantity)} {item.unit}</span></div>
-          <label>{label}{pt("production.quantity")}{item.unit}）<AntInput aria-label={pt("production.quantity2", { v0: item.name, v1: label })} inputMode="decimal" value={editor.items.find(row => row.product_id === item.product_id).quantity} disabled={action.busy}
+          <label>{label}{pt("production.quantity")}{item.unit}）<AntInput aria-label={pt("production.quantity2", { v0: item.name, v1: label })} inputMode="text" value={editor.items.find(row => row.product_id === item.product_id).quantity} disabled={action.busy}
             onChange={event => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: event.target.value } : row) })} /></label>
         </div>)}
         <label className="bom-note">{pt("production.requestNote")}<AntInput.TextArea aria-label={pt("production.materialRequestNote")} maxLength={500} rows={2} value={editor.note} disabled={action.busy} onChange={event => update({ note: event.target.value })} /></label>
@@ -418,8 +419,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       try {
         if (planning) planned_quantity = scrapExpectedQuantity(row, parseQuantity(editor.planned_quantity, true), source.base_quantity,
           rows.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity })));
-        if (editor.kind === 'complete') expected_quantity = scrapExpectedQuantity(row, parseQuantity(editor.completed_quantity, true), source.base_quantity,
-          editor.items.map(item => ({ product_id: item.product_id, quantity: parseQuantity(item.quantity) })));
+        if (editor.kind === 'complete') expected_quantity = scrapExpectedQuantity(row, parseExactQuantity(editor.completed_quantity, true), source.base_quantity,
+          editor.items.map(item => ({ product_id: item.product_id, quantity: parseExactQuantity(item.quantity) })));
       } catch { planned_quantity = null; }
       const actual = editor.scraps?.find(item => item.product_id === row.product_id);
       return { ...row, planned_quantity, expected_quantity, actual: actual?.quantity, disposition: actual?.disposition };
@@ -433,17 +434,17 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           <h2>{name}</h2><small>{editor.kind === 'new' ? source.product.barcode : detail.barcode} · {editor.kind === 'new' ? source.name : detail.bom_name} #{source.bom_id}</small>
           <details className="production-disclosure"><summary>{pt("production.calculationDetails")}</summary><p className="bom-hint">{source.snapshot_format === 2 || source.multi_level ? pt("production.rootRecipeLossCalculation") : pt("production.standardLossCalculation")}：{bomLossMethodLabels[source.loss_method]}{pt("production.standardInput")}{bomLossMethodFormulas[source.loss_method]}。</p></details>
           {planning ? <>
-            <div className="bom-form-grid production-fields"><label>{pt("production.plannedOutput")}{unit}）<FormField value={editor.planned_quantity} required label={pt("production.plannedOutput2")}><AntInput aria-label={pt("production.plannedOutput2")} inputMode="decimal"  value={editor.planned_quantity} disabled={action.busy} onChange={e => update({ planned_quantity: e.target.value })} /></FormField></label>
+            <div className="bom-form-grid production-fields"><label>{pt("production.plannedOutput")}{unit}）<FormField value={editor.planned_quantity} required label={pt("production.plannedOutput2")}><AntInput aria-label={pt("production.plannedOutput2")} inputMode="text"  value={editor.planned_quantity} disabled={action.busy} onChange={e => update({ planned_quantity: e.target.value })} /></FormField></label>
               <label>{pt("production.productionNote")}<AntInput.TextArea aria-label={pt("production.productionNote")} rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label></div>
             <p className="bom-hint">{pt("production.netUsageStandardLossRateAndMethodAre")}{editor.kind === 'new' || source.material_workflow ? pt("production.startingProductionRequestsMaterialsStockIsDeductedAfter") : pt("production.thisHistoricalOrderVerifiesActualUsageAndDeducts")}</p>
           </> : editor.kind === 'complete' ? <>
             <p className="bom-hint">{pt("production.plannedOutput2")} {count(detail.planned_quantity)} {unit}{pt("production.acceptedToDate")} {count(detail.completed_quantity ?? 0)} {unit}{pt("production.enterThisBatchOnlyActualUsageDefaultsFrom")}</p>
-            <label className="production-output">{pt("production.acceptedProductQuantity")}{unit}）<FormField value={editor.completed_quantity} required label={pt("production.acceptedProductQuantity2")}><AntInput aria-label={pt("production.acceptedProductQuantity2")} inputMode="decimal"  disabled={action.busy} value={editor.completed_quantity} onBlur={() => { if (validQuantity(Number(editor.completed_quantity), true)) update({ completed_quantity: String(materialQuantity(Number(editor.completed_quantity), detail)) }); }} onChange={e => update({ completed_quantity: e.target.value })} /></FormField></label>
+            <label className="production-output">{pt("production.acceptedProductQuantity")}{unit}）<FormField value={editor.completed_quantity} required label={pt("production.acceptedProductQuantity2")}><AntInput aria-label={pt("production.acceptedProductQuantity2")} inputMode="text"  disabled={action.busy} value={editor.completed_quantity}  onChange={e => update({ completed_quantity: e.target.value })} /></FormField></label>
             {editor.operation_node_id && <OperationWorkerSelect order={detail} warehouseId={data.warehouse_id} value={editor.worker_id} onChange={worker_id => setEditor(previous => ({ ...previous, worker_id }))} disabled={action.busy} />}
             <p className="bom-hint">{pt("production.registerAcceptedOutputToCreateAPendingReceipt")}</p>
             {detail.material_workflow === 1 && <p className="bom-hint">{pt("production.usageIsRecordedAgainstIssuedMaterialsWithoutDeducting")}</p>}
             <Button type="button" disabled={action.busy} onClick={() => action.run(async () => {
-              const defaults = batchDefaults(parseQuantity(editor.completed_quantity, true));
+              const defaults = batchDefaults(parseExactQuantity(editor.completed_quantity, true));
               update({ items: defaults.items.map(item => ({ ...item, variance_reason: editor.items.find(row => row.product_id === item.product_id).variance_reason })) });
             })}>{pt("production.fillUsageFromThisBatchSOutput")}</Button>
             <label className="bom-note">{pt("production.batchNote")}<AntInput.TextArea aria-label={pt("production.batchNote")} rows={2} maxLength={500} disabled={action.busy} value={editor.note} onChange={e => update({ note: e.target.value })} /></label>
@@ -538,7 +539,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     </Modal>}
     <section className="panel production-status-panel" aria-label={pt("production.productionReceiptProgress")}>
       <div className="production-summary">
-        <div className="production-metric-main"><small>{pt("production.cumulativeOutput")}</small><strong>{count(detail.completed_quantity ?? 0)} <small>/ {count(detail.planned_quantity)} {detail.unit}</small></strong></div>
+        <div className="production-metric-main"><small>{pt("production.cumulativeOutput")}</small><strong>{count(exactQuantity(detail, 'completed_quantity'))} <small>/ {count(detail.planned_quantity)} {detail.unit}</small></strong>{detail.status === 'completed' && <p>{pt('production.settledOutput')}: {count(detail.settled_completed_quantity)} {detail.unit}</p>}</div>
         <div><small>{pt("production.pendingReceipt")}</small><strong>{count(detail.pending_receipt_quantity ?? 0)} {detail.unit}</strong></div>
         <div><small>{pt("production.received")}</small><strong>{count(detail.received_quantity ?? 0)} {detail.unit}</strong></div>
       </div>

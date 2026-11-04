@@ -4,6 +4,9 @@ import { productionPools, stagePoolPaths, productionPoolOrder } from '../shared/
 import { isProductionAssignee } from '../shared/production-assignment.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validQuantity, addQuantity } from '../shared/quantity.js';
+import { exactQuantity, exactAdd, exactCompare, exactNumber, parseProductionQuantity as parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
+import { saveExactQuantity } from './exact-quantity.js';
+import { reopenProductionQuantities } from './production-rounding.js';
 import { validateProcessGraph, processProgress, productionRouteProgress } from '../shared/process-routes.js';
 import { validateOperationPrice } from '../shared/payroll.js';
 import { productionTypes } from '../shared/product-production-type.js';
@@ -300,9 +303,9 @@ function operationInput(db, req, order, path, quantity, output) {
   const layer = order.stages?.find(s => s.path === path) || order;
   const product = db.prepare('SELECT active,unit,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(layer.product_id,order.warehouse_id);
   if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
-  if (!validQuantity(quantity, true) || layer.unit_round_up && !Number.isInteger(quantity)) fail('工序数量需为正数，最多 4 位小数，并符合物料取整规则。');
-  if (!validQuantity(addQuantity(node.completed_quantity, quantity), true)) fail('工序累计数量超出范围。');
-  if (node.available_quantity !== null && quantity > node.available_quantity) fail(route.additional_quantity != null ? '本次数量超过附加工序剩余可登记数量。' : '前置工序可用数量不足，请先核对前序报工。', 409);
+  parseExactQuantity(quantity, true);
+  if (!validExactQuantity(exactAdd(exactQuantity(node, 'completed_quantity'), quantity), true)) fail('工序累计数量超出范围。');
+  if (node.available_quantity !== null && exactCompare(quantity, exactQuantity(node, 'available_quantity')) > 0) fail(route.additional_quantity != null ? '本次数量超过附加工序剩余可登记数量。' : '前置工序可用数量不足，请先核对前序报工。', 409);
   if (typeof req.body.note !== 'string' && req.body.note !== undefined || (req.body.note?.length ?? 0) > 500) fail('工序说明最多 500 字。');
   if (db.prepare('SELECT COUNT(*) n FROM production_operation_reports WHERE production_id=?').get(order.id).n >= 10000) fail('每张生产单最多登记 10000 条工序记录。');
   const materialItems = route.additional_quantity != null ? consumeAdditionalMaterials(db, req, order, route) : [];
@@ -315,8 +318,9 @@ function nextOperationSequence(db, productionId) {
 function insertReport(db, req, order, input, quantity, kind = null, batchId = null) {
   if (!input) return;
   const acceptanceId=saveOperationAcceptance(db,req,order,input);
-  db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier,material_items) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(order.id, input.route.id, input.node.id, quantity, input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,input.node.multiplier ?? 1, JSON.stringify(input.materialItems));
+  const reportId = Number(db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier,material_items) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(order.id, input.route.id, input.node.id, exactNumber(quantity), input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,input.node.multiplier ?? 1, JSON.stringify(input.materialItems)).lastInsertRowid);
+  saveExactQuantity(db, 'production_operation_reports', reportId, 'quantity', quantity);
 }
 export function recordOperationOutput(db, req, order, path, quantity, kind, batchId) {
   const input = operationInput(db, req, order, path, quantity, true);
@@ -333,11 +337,11 @@ export function assertOperationsFinished(db, productionId) {
     nodes: db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(productionId) }; readProductionRoutes(db, order);
   for (const route of order.operation_routes) {
     if (route.additional_quantity != null) {
-      if (route.operations[0].completed_quantity !== route.additional_quantity) fail('附加工序尚未完成，请登记完成后再结束生产。', 409);
+      if (exactCompare(exactQuantity(route.operations[0], 'completed_quantity'), route.additional_quantity) !== 0) fail('附加工序尚未完成，请登记完成后再结束生产。', 409);
       continue;
     }
-    const output = route.operations.find(n => n.is_output).completed_quantity;
-    if (route.operations.some(n => n.completed_quantity !== output)) fail('仍有工序在制数量，请完成流转或纠正错误报工后再结束生产。', 409);
+    const output = exactQuantity(route.operations.find(n => n.is_output), 'completed_quantity');
+    if (route.operations.some(n => exactCompare(exactQuantity(n, 'completed_quantity'), output) !== 0)) fail('仍有工序在制数量，请完成流转或纠正错误报工后再结束生产。', 409);
   }
 }
 
@@ -387,7 +391,8 @@ export function installProductionOperations(app, db, { route, current, version }
     const paths = stagePoolPaths(order, snapshot.path), ids = new Set(order.operation_routes.filter(r => paths.includes(r.path)).map(r => r.id));
     const remaining = processProgress(snapshot.graph, db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? AND id!=?').all(order.id, report.id).filter(r => ids.has(r.route_snapshot_id)));
     for (const node of remaining) for (const parent of node.predecessors)
-      if (node.completed_quantity > remaining.find(n => n.id === parent).completed_quantity) fail('后序已有报工，请先作废依赖的后序记录。', 409);
+      if (exactCompare(exactQuantity(node, 'completed_quantity'), exactQuantity(remaining.find(n => n.id === parent), 'completed_quantity')) > 0) fail('后序已有报工，请先作废依赖的后序记录。', 409);
+    reopenProductionQuantities(db, req, order);
     const at = new Date().toISOString();
     db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE id=?").run(req.body.reason.trim(), actor(req), at, nextOperationSequence(db, order.id), report.id);
     db.prepare("UPDATE production_orders SET status='draft',updated_at=?,updated_by_name=? WHERE id=?").run(at, actor(req), order.id);
@@ -401,6 +406,7 @@ export function installProductionOperations(app, db, { route, current, version }
 }
 
 export function validateProcessRouteBackup(data) {
+  const validQuantity = validExactQuantity;
   const routes = new Map(data.process_routes.map(row => [row.id, row])), orders = new Map(data.production_orders.map(row => [row.id, row]));
   const warehouses = new Set(data.warehouses.map(row => row.id)), snapshots = new Map();
   const text = (value, max, required = false) => typeof value === 'string' && value.length <= max && (!required || !!value.trim());
@@ -447,8 +453,8 @@ export function validateProcessRouteBackup(data) {
     const materialItems = JSON.parse(row.material_items), configured = JSON.parse(snapshot.additional_materials);
     if (!Array.isArray(materialItems) || materialItems.length !== configured.length || new Set(materialItems.map(item => item?.product_id)).size !== materialItems.length || materialItems.some(item => {
       const source = data.production_items.find(source => source.production_id === order.id && source.product_id === item?.product_id);
-      return !source || !configured.some(plan => plan.product_id === item.product_id) || Object.keys(item).length !== 4 || !validQuantity(item.quantity) ||
-        source.unit_round_up && !Number.isInteger(item.quantity) || !Number.isSafeInteger(item.cost_cents) || item.cost_cents < 0 || item.quantity === 0 && item.cost_cents !== 0 || !text(item.variance_reason, 500);
+      return !source || !configured.some(plan => plan.product_id === item.product_id) || ![4,5].includes(Object.keys(item).length) || !validQuantity(item.quantity) ||
+        !Number.isSafeInteger(item.cost_cents) || item.cost_cents < 0 || item.quantity === 0 && item.cost_cents !== 0 || !text(item.variance_reason, 500);
     })) fail('备份附加工序材料耗用无效。');
     if(!association(row.acceptance_id)) fail('备份工序验收单编号无效。');
     if(node.acceptance_template_id) {
@@ -459,11 +465,11 @@ export function validateProcessRouteBackup(data) {
       if(!acceptance || acceptance.warehouse_id!==order.warehouse_id || acceptance.template_id!==node.acceptance_template_id || acceptance.revision_id!==node.acceptance_revision_id || acceptance.created_by_name!==row.registered_by_name) fail('备份工序验收单关联无效。');
     } else if(row.acceptance_id!==null) fail('未绑定模板的工序不能关联验收单。');
     const layer = order.stage_workflow && snapshot.additional_quantity == null ? data.production_stages.find(s => s.production_id === order.id && s.path === snapshot.path) : order;
-    if (layer.unit_round_up && !Number.isInteger(row.quantity)) fail('备份工序数量不符合物料取整规则。');
+
     if (row.node_id === output && snapshot.additional_quantity == null) {
       const kind = order.stage_workflow ? 'stage' : 'batch', batch = (kind === 'stage' ? data.production_stage_batches : data.production_batches).find(b => b.id === row.output_batch_id);
       const key = `${kind}:${row.output_batch_id}`;
-      if (row.output_kind !== kind || !batch || batch.production_id !== order.id || (kind === 'stage' && batch.path !== snapshot.path) || batch.completed_quantity !== row.quantity || batch.status !== row.status || outputs.has(key)) fail('备份最终工序与产出批次不一致。');
+      if (row.output_kind !== kind || !batch || batch.production_id !== order.id || (kind === 'stage' && batch.path !== snapshot.path) || exactCompare(exactQuantity(batch,'completed_quantity'),exactQuantity(row)) !== 0 || batch.status !== row.status || outputs.has(key)) fail('备份最终工序与产出批次不一致。');
       outputs.add(key);
     } else if (row.output_kind !== null || row.output_batch_id !== null) fail('中间工序不能关联产出批次。');
     snapshot.reports.push(row);
@@ -494,23 +500,23 @@ export function validateProcessRouteBackup(data) {
       const progress = processProgress(snapshot.graph,[...active.values()]);
       if (snapshot.additional_quantity != null && progress[0].completed_quantity > snapshot.additional_quantity) fail('备份附加工序登记数量超出计划。');
       for (const node of progress) for (const parent of node.predecessors)
-        if (node.completed_quantity > progress.find(n => n.id === parent).completed_quantity) fail('备份工序事件顺序无效。');
+        if (exactCompare(exactQuantity(node,'completed_quantity'),exactQuantity(progress.find(n => n.id === parent),'completed_quantity')) > 0) fail('备份工序事件顺序无效。');
     }
   }
   for (const snapshot of replaySnapshots) {
     const order = orders.get(snapshot.production_id), operations = processProgress(snapshot.graph, snapshot.reports);
-    if (operations.some(n => !validQuantity(n.completed_quantity))) fail('备份工序累计数量无效。');
+    if (operations.some(n => !validQuantity(exactQuantity(n,'completed_quantity')))) fail('备份工序累计数量无效。');
     if (snapshot.additional_quantity != null) {
       if (order.status === 'completed' && operations[0].completed_quantity !== snapshot.additional_quantity || order.status === 'void' && operations[0].completed_quantity !== 0)
         fail('备份已结束生产单附加工序数量无效。');
       continue;
     }
-    for (const node of operations) for (const parent of node.predecessors) if (node.completed_quantity > operations.find(n => n.id === parent).completed_quantity) fail('备份工序前后数量不守恒。');
+    for (const node of operations) for (const parent of node.predecessors) if (exactCompare(exactQuantity(node,'completed_quantity'),exactQuantity(operations.find(n => n.id === parent),'completed_quantity')) > 0) fail('备份工序前后数量不守恒。');
     const kind = order.stage_workflow ? 'stage' : 'batch';
     const paths=stagePoolPaths(productionPoolOrder(data,order),snapshot.path);
     for (const batch of (kind === 'stage' ? data.production_stage_batches : data.production_batches).filter(b => b.production_id === order.id && (kind !== 'stage' || paths.includes(b.path))))
       if (!outputs.has(`${kind}:${batch.id}`)) fail('备份产出批次缺少最终工序记录。');
-    if (order.status === 'completed' && operations.some(n => n.completed_quantity !== operations.find(n => n.is_output).completed_quantity) ||
+    if (order.status === 'completed' && operations.some(n => exactCompare(exactQuantity(n,'completed_quantity'),exactQuantity(operations.find(n => n.is_output),'completed_quantity')) !== 0) ||
         order.status === 'void' && operations.some(n => n.completed_quantity !== 0)) fail('备份已结束生产单仍有工序在制数量。');
   }
 }

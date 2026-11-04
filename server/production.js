@@ -23,14 +23,17 @@ import { productionRegistrationUrl } from '../shared/production-link.js';
 import { renderProductionPdf } from './production-pdf.js';
 import { migrateProductionStages, productionStageTables, saveProductionStages, readProductionStages, populateStageBalances, installProductionStages, assertStagesFinished, deleteProductionStages, deriveProductionStages } from './production-stages.js';
 import { additionalMaterialReports } from './additional-operation-materials.js';
+import { exactQuantity, exactAdd, exactSubtract, exactCompare, exactNumber, quantityFields, parseProductionQuantity as parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
+import { saveExactQuantity, migrateExactQuantities } from './exact-quantity.js';
+import { productionRounding, finalizeProductionQuantities, reopenProductionQuantities } from './production-rounding.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
-export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables, ...productionStageTables, ...productionOperationTables];
+export const productionTables = ['production_quantity_rounding', 'production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables, ...productionStageTables, ...productionOperationTables];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
 const actor = req => req.user.name || req.user.username;
-const publicProduct = p => ({ id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, stock: p.stock, active: p.active });
+const publicProduct = p => ({ id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, stock: p.stock, stock_fraction: p.stock_fraction, active: p.active });
 function snapshot(db, fn) {
   if (db.isTransaction) return fn();
   db.exec('BEGIN');
@@ -130,9 +133,10 @@ export function migrateProduction(db) {
   migrateProductionMaterials(db);
   migrateProductionReceipts(db);
   migrateProductionStages(db);
+  migrateExactQuantities(db);
 }
 
-export function clearProduction(db) { deleteProductionOperations(db); deleteProductionStages(db); db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_issue_items; DELETE FROM production_material_issues; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
+export function clearProduction(db) { db.exec('DELETE FROM production_quantity_rounding'); deleteProductionOperations(db); deleteProductionStages(db); db.exec('DELETE FROM production_receipt_items; DELETE FROM production_receipts; DELETE FROM production_material_issue_items; DELETE FROM production_material_issues; DELETE FROM production_material_document_items; DELETE FROM production_material_documents; DELETE FROM production_batch_scraps; DELETE FROM production_batch_items; DELETE FROM production_batches; DELETE FROM production_bom_nodes; DELETE FROM production_scraps; DELETE FROM production_items; DELETE FROM production_orders;'); }
 
 // Preserve the legacy SQLite status constraint. A posted, open order is exposed
 // as in_progress; draft without any currently posted output remains draft.
@@ -155,6 +159,21 @@ function updateBatchTotals(db, order, status, owner, at) {
     .run(latest ? row.expected_quantity : null, latest ? row.actual_quantity : null, row.disposition, order.id, row.product_id);
   db.prepare('UPDATE production_orders SET batch_tracking=1,status=?,completed_quantity=?,total_cost_cents=?,completed_by_name=?,completed_at=?,updated_by_name=?,updated_at=? WHERE id=?')
     .run(status, latest ? totals.completed_quantity : null, latest ? totals.total_cost_cents : null, latest?.created_by_name ?? '', latest?.created_at ?? null, owner, at, order.id);
+  if (latest) {
+    saveExactQuantity(db, 'production_orders', order.id, 'completed_quantity', exactQuantity(totals, 'completed_quantity'));
+    for (const item of totals.items) {
+      const row = db.prepare('SELECT id FROM production_items WHERE production_id=? AND product_id=?').get(order.id, item.product_id);
+      saveExactQuantity(db, 'production_items', row.id, 'actual_quantity', exactQuantity(item, 'actual_quantity'));
+    }
+    for (const item of totals.scraps) {
+      const row = db.prepare('SELECT id FROM production_scraps WHERE production_id=? AND product_id=?').get(order.id, item.product_id);
+      for (const key of ['actual_quantity', 'expected_quantity']) saveExactQuantity(db, 'production_scraps', row.id, key, exactQuantity(item, key));
+    }
+  } else {
+    db.prepare("UPDATE production_orders SET completed_quantity_fraction='' WHERE id=?").run(order.id);
+    db.prepare("UPDATE production_items SET actual_quantity_fraction='' WHERE production_id=?").run(order.id);
+    db.prepare("UPDATE production_scraps SET actual_quantity_fraction='',expected_quantity_fraction='' WHERE production_id=?").run(order.id);
+  }
 }
 
 export function listProductionOrders(db, warehouseId, query = {}, costs = false, user) {
@@ -199,15 +218,6 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
       ...row, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id)),
     }));
     order.nodes = withCurrentProductionTypes(db, warehouseId, db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(id));
-    const standardCache = new Map();
-    const standardsFor = quantity => {
-      if (order.snapshot_format !== 2) return undefined;
-      if (!standardCache.has(quantity)) {
-        try { standardCache.set(quantity, new Map(calculateBomNodes(order.nodes, quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required]))); }
-        catch { standardCache.set(quantity, new Map()); }
-      }
-      return standardCache.get(quantity);
-    };
     order.batches = readBatches(db, id);
     order.receipt_documents = receiptDocuments(db, id, warehouseId);
     Object.assign(order, receiptQuantities(db, order));
@@ -219,7 +229,10 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     readProductionStages(db, order);
     readProductionRoutes(db, order);
     order.additional_material_reports = additionalMaterialReports(db, id);
+    order.quantity_rounding = productionRounding(db, order.id);
     if (order.material_workflow) order.items = materialBalances(order);
+    Object.assign(order, quantityFields(exactAdd(exactQuantity(order, 'completed_quantity'), order.quantity_rounding.filter(row => row.kind === 'product').reduce((sum, row) => exactAdd(sum, exactQuantity(row)), 0)), 'settled_completed_quantity'));
+    order.settled_total_cost_cents = (order.total_cost_cents || 0) + order.quantity_rounding.filter(row => row.kind === 'material').reduce((sum, row) => sum + row.cost_cents, 0);
     order.additional_material_cost_cents = order.items.reduce((sum, item) => sum + (item.additional_consumed_cost_cents || 0), 0);
     order.total_consumed_cost_cents = order.items.reduce((sum, item) => sum + (item.consumed_cost_cents || 0), 0);
     if (![order.additional_material_cost_cents, order.total_consumed_cost_cents].every(Number.isSafeInteger)) fail('附加工序材料成本超出范围。');
@@ -228,20 +241,20 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     const counted = summaryBatches(order);
     if (order.batches.length) {
       const totals = productionBatchSummary(order.items, order.scraps, counted);
-      order.scraps = order.scraps.map(row => ({ ...row, stock_quantity: totals.scraps.find(item => item.product_id === row.product_id).stock_quantity,
-        discard_quantity: totals.scraps.find(item => item.product_id === row.product_id).discard_quantity }));
+      order.scraps = order.scraps.map(row => ({ ...row, ...quantityFields(exactQuantity(totals.scraps.find(item => item.product_id === row.product_id), 'stock_quantity'), 'stock_quantity'),
+        ...quantityFields(exactQuantity(totals.scraps.find(item => item.product_id === row.product_id), 'discard_quantity'), 'discard_quantity') }));
       order.items = order.items.map(item => ({ ...item, variance_reasons: counted.map(batch => ({ batch_number: batch.batch_number,
         reason: batch.items.find(row => row.product_id === item.product_id).variance_reason })).filter(row => row.reason) }));
     }
     order.batches = order.batches.map(batch => ({ ...batch,
       items: batch.items.map(row => { const item = order.items.find(item => item.product_id === row.product_id); return { ...item, ...row,
-        ...productionMaterialAnalysis(item, batch.completed_quantity, order.base_quantity, row.actual_quantity, order.loss_method, standardsFor(batch.completed_quantity), order.quantity_decimals), variance_reasons: undefined }; }),
+        ...productionMaterialAnalysis(item, exactQuantity(batch,'completed_quantity'), order.base_quantity, exactQuantity(row,'actual_quantity'), order.loss_method, order.snapshot_format === 2 ? order.nodes : undefined, order.quantity_decimals), variance_reasons: undefined }; }),
       scraps: batch.scraps.map(row => ({ ...order.scraps.find(item => item.product_id === row.product_id), ...row, stock_quantity: undefined, discard_quantity: undefined })),
     }));
     order.status = publicStatus(order);
     order.batch_count = order.batches.filter(batch => batch.status === 'active').length;
     order.items = order.items.map(item => ({ ...item, ...(order.completed_at
-      ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method, standardsFor(order.completed_quantity), order.quantity_decimals)
+      ? productionMaterialAnalysis(item, exactQuantity(order,'completed_quantity'), order.base_quantity, exactQuantity(item,'actual_quantity'), order.loss_method, order.snapshot_format === 2 ? order.nodes : undefined, order.quantity_decimals)
       : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
     populateStageBalances(order);
     order.captured_at = new Date().toISOString();
@@ -471,13 +484,13 @@ export function installProduction(app, db, options = {}) {
     const posted = assertReceiptReversalPermission(db, req, batch);
     try {
       for (const row of batch.scraps) if (posted && row.actual_quantity && row.disposition === 'stock') {
-        const product = db.prepare('SELECT stock FROM products WHERE id=?').get(row.product_id);
+        const product = db.prepare('SELECT stock,stock_fraction FROM products WHERE id=?').get(row.product_id);
         const material = order.scraps.find(item => item.product_id === row.product_id);
-        if (row.actual_quantity > product.stock) fail(`废料 ${material.name}库存不足（当前 ${product.stock} ${material.unit}，需扣回 ${row.actual_quantity} ${material.unit}）。`);
-        moveInventory(db, row.product_id, -row.actual_quantity, 0);
+        if (exactCompare(exactQuantity(row, 'actual_quantity'), exactQuantity(product, 'stock')) > 0) fail(`废料 ${material.name}库存不足（当前 ${product.stock} ${material.unit}，需扣回 ${row.actual_quantity} ${material.unit}）。`);
+        moveInventory(db, row.product_id, exactSubtract(0, exactQuantity(row, 'actual_quantity')), 0);
       }
-      if (posted) moveInventory(db, order.product_id, -batch.completed_quantity, batch.total_cost_cents);
-      if (!order.material_workflow) for (const item of batch.items) if (item.actual_quantity) moveInventory(db, item.product_id, item.actual_quantity, item.cost_cents);
+      if (posted) moveInventory(db, order.product_id, exactSubtract(0, exactQuantity(batch, 'completed_quantity')), batch.total_cost_cents);
+      if (!order.material_workflow) for (const item of batch.items) if (item.actual_quantity) moveInventory(db, item.product_id, exactQuantity(item, 'actual_quantity'), item.cost_cents);
     } catch (error) { fail(`无法回退库存和原成本：${error.message} 请先核对后续业务。`); }
   };
   app.post('/api/production-orders/:id/complete', route(req => {
@@ -485,43 +498,49 @@ export function installProduction(app, db, options = {}) {
     if (order.stage_workflow) fail('分层生产请按指定层登记，不能通过旧登记入口完成。',409);
     if (req.body.finish_order !== false) assertNoPendingMaterials(db, order);
     validateProductionCompletion(req.body, order.items);
-    req.body.completed_quantity = materialQuantity(req.body.completed_quantity, order);
-    for (const item of req.body.items) item.quantity = materialQuantity(item.quantity, order.items.find(row => row.product_id === item.product_id));
+    req.body.completed_quantity = parseExactQuantity(req.body.completed_quantity, true);
+    for (const item of req.body.items) item.quantity = parseExactQuantity(item.quantity);
     validateScrapActuals(req.body.scraps ?? [], order.scraps);
-    for (const row of req.body.scraps ?? []) row.quantity = materialQuantity(row.quantity, order.scraps.find(item => item.product_id === row.product_id));
+    for (const row of req.body.scraps ?? []) row.quantity = parseExactQuantity(row.quantity);
     if ((order.batches.at(-1)?.batch_number ?? 0) >= 1000) fail('每张生产单最多登记 1000 个批次，请拆分生产单。');
     const before = stockBefore(order), at = new Date().toISOString(), owner = actor(req);
     const batchNumber = (order.batches.at(-1)?.batch_number ?? 0) + 1;
     const batchId = Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required)
-      VALUES (?,?,?,0,?,?,?,1)`).run(order.id, batchNumber, req.body.completed_quantity, (req.body.note ?? '').trim(), owner, at).lastInsertRowid);
+      VALUES (?,?,?,0,?,?,?,1)`).run(order.id, batchNumber, exactNumber(req.body.completed_quantity), (req.body.note ?? '').trim(), owner, at).lastInsertRowid);
+    saveExactQuantity(db, 'production_batches', batchId, 'completed_quantity', req.body.completed_quantity);
     const registrationGroup = productionRegistrationGroup(req.user, order);
     db.prepare('UPDATE production_batches SET created_by=?,production_group_id=?,production_group_name=? WHERE id=?').run(req.user.id, registrationGroup.id, registrationGroup.name, batchId);
     const actuals = new Map(req.body.items.map(item => [item.product_id, item]));
     let total = 0;
     for (const item of order.items) {
       const actual = actuals.get(item.product_id), quantity = actual.quantity;
-      const available = order.material_workflow ? item.available_quantity : item.product.stock;
-      if (quantity > available) {
+      const available = order.material_workflow ? exactQuantity(item, 'available_quantity') : exactQuantity(item.product, 'stock');
+      if (exactCompare(quantity, available) > 0) {
         if (!order.material_workflow && isGroupProductionWorker(req.user)) fail(`${item.name}库存不足，请联系仓库核对实际耗料。`);
         fail(`${item.name}${order.material_workflow ? '已领未耗余额' : '库存'}不足（当前 ${available} ${item.unit}）。请补料或核对实际耗料。`);
       }
-      const cost = quantity ? order.material_workflow ? allocate(item.available_cost_cents, quantity, available) : moveInventory(db, item.product_id, -quantity) : 0;
+      const cost = exactCompare(quantity, 0) > 0 ? order.material_workflow ? allocate(item.available_cost_cents, quantity, available) : moveInventory(db, item.product_id, exactSubtract(0, quantity)) : 0;
       total += cost;
       if (!Number.isSafeInteger(total)) fail('本次材料成本超出范围，请拆分生产单。');
       db.prepare('INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?)')
-        .run(batchId, item.product_id, quantity, cost, (actual.variance_reason ?? '').trim());
+        .run(batchId, item.product_id, exactNumber(quantity), cost, (actual.variance_reason ?? '').trim());
+      saveExactQuantity(db, 'production_batch_items', db.prepare('SELECT id FROM production_batch_items WHERE batch_id=? AND product_id=?').get(batchId, item.product_id).id, 'actual_quantity', quantity);
     }
     const actualScraps = new Map((req.body.scraps || []).map(row => [row.product_id, row]));
     for (const row of order.scraps) {
       const actual = actualScraps.get(row.product_id);
       const expected = scrapExpectedQuantity(row, req.body.completed_quantity, order.base_quantity, req.body.items, order.quantity_decimals);
       db.prepare('INSERT INTO production_batch_scraps(batch_id,product_id,expected_quantity,actual_quantity,disposition) VALUES (?,?,?,?,?)')
-        .run(batchId, row.product_id, expected, actual.quantity, actual.disposition);
+        .run(batchId, row.product_id, exactNumber(expected), exactNumber(actual.quantity), actual.disposition);
+      const scrapId = db.prepare('SELECT id FROM production_batch_scraps WHERE batch_id=? AND product_id=?').get(batchId, row.product_id).id;
+      saveExactQuantity(db, 'production_batch_scraps', scrapId, 'actual_quantity', actual.quantity);
+      saveExactQuantity(db, 'production_batch_scraps', scrapId, 'expected_quantity', expected);
     }
     db.prepare('UPDATE production_batches SET total_cost_cents=? WHERE id=?').run(total, batchId);
     recordOperationOutput(db, req, order, '', req.body.completed_quantity, 'batch', batchId);
     createProductionReceipt(db, req, order, batchId);
     updateBatchTotals(db, order, req.body.finish_order === false ? 'draft' : 'completed', owner, at);
+    if (req.body.finish_order !== false) finalizeProductionQuantities(db, req, current(req));
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number, batch_id: batchId });
     return current(req);
   }, true));
@@ -531,6 +550,7 @@ export function installProduction(app, db, options = {}) {
     assertOperationsFinished(db, order.id);
     if (order.stage_workflow) assertStagesFinished(order);
     if (!order.batch_count) fail('请先登记至少一个有效完工批次。');
+    finalizeProductionQuantities(db, req, order);
     db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?")
       .run(actor(req), new Date().toISOString(), order.id);
     return current(req);
@@ -544,6 +564,7 @@ export function installProduction(app, db, options = {}) {
     if (!isId(batchId) || !batch) fail('完工批次不存在或不属于此生产单。', 404);
     if (batch.status !== 'active') fail('此完工批次已经作废。', 409);
     const why = reason(req); units(order, false);
+    reopenProductionQuantities(db, req, order);
     const before = stockBefore(order), at = new Date().toISOString(), owner = actor(req);
     reverseBatch(req, order, batch);
     voidProductionReceipt(db, batch.id, owner, at, why);
@@ -596,6 +617,7 @@ export function installProduction(app, db, options = {}) {
     if(db.prepare('SELECT 1 FROM production_operation_reports WHERE production_id=? AND acceptance_id IS NOT NULL LIMIT 1').get(order.id)) fail('此生产单已关联工序验收单，不能删除，请保留作废记录。',409);
     deleteProductionOperations(db, order.id);
     deleteProductionStages(db, order.id);
+    db.prepare('DELETE FROM production_quantity_rounding WHERE production_id=?').run(order.id);
     db.prepare('DELETE FROM production_receipt_items WHERE document_id IN (SELECT id FROM production_receipts WHERE production_id=?)').run(order.id);
     db.prepare('DELETE FROM production_receipts WHERE production_id=?').run(order.id);
     db.prepare('DELETE FROM production_material_issue_items WHERE issue_id IN (SELECT i.id FROM production_material_issues i JOIN production_material_documents d ON d.id=i.document_id WHERE d.production_id=?)').run(order.id);
@@ -604,7 +626,7 @@ export function installProduction(app, db, options = {}) {
     db.prepare('DELETE FROM production_material_documents WHERE production_id=?').run(order.id);
     for (const table of ['production_batch_scraps', 'production_batch_items'])
       db.prepare(`DELETE FROM ${table} WHERE batch_id IN (SELECT id FROM production_batches WHERE production_id=?)`).run(order.id);
-    for (const table of ['production_batches', 'production_bom_nodes', 'production_scraps', 'production_items'])
+    for (const table of ['production_quantity_rounding', 'production_batches', 'production_bom_nodes', 'production_scraps', 'production_items'])
       db.prepare(`DELETE FROM ${table} WHERE production_id=?`).run(order.id);
     db.prepare('DELETE FROM production_orders WHERE id=?').run(order.id);
     return { ok: true };
@@ -613,7 +635,7 @@ export function installProduction(app, db, options = {}) {
 }
 
 export function validateProductionBackup(data) {
-  const validQuantity = validStoredQuantity;
+  const validQuantity = validExactQuantity;
   const products = new Map(data.products.map(p => [p.id, p])), boms = new Map(data.boms.map(b => [b.id, b]));
   const orders = new Map(data.production_orders.map(o => [o.id, o])), grouped = new Map(), numbers = new Set();
   const text = (v, max, required = false) => typeof v === 'string' && v.length <= max && (!required || !!v.trim());
@@ -709,16 +731,17 @@ export function validateProductionBackup(data) {
       const counted = summaryBatches({ ...order, batches }), latest = counted.at(-1);
       const totals = productionBatchSummary(rows, scraps, counted);
       if ((order.status === 'void' && batches.some(batch => batch.status === 'active')) ||
-          order.completed_quantity !== (latest ? totals.completed_quantity : null) || order.total_cost_cents !== (latest ? totals.total_cost_cents : null) ||
+          (latest ? exactCompare(exactQuantity(order,'completed_quantity'), exactQuantity(totals,'completed_quantity')) !== 0 : order.completed_quantity !== null) || order.total_cost_cents !== (latest ? totals.total_cost_cents : null) ||
           order.completed_at !== (latest?.created_at ?? null) || order.completed_by_name !== (latest?.created_by_name ?? '') ||
-          totals.items.some(item => { const row = rows.find(row => row.product_id === item.product_id); return row.actual_quantity !== (latest ? item.actual_quantity : null) || row.cost_cents !== (latest ? item.cost_cents : null) || row.variance_reason !== item.variance_reason; }) ||
-          totals.scraps.some(item => { const row = scraps.find(row => row.product_id === item.product_id); return row.actual_quantity !== (latest ? item.actual_quantity : null) || row.expected_quantity !== (latest ? item.expected_quantity : null) || row.disposition !== item.disposition; }))
+          totals.items.some(item => { const row = rows.find(row => row.product_id === item.product_id); return (latest ? exactCompare(exactQuantity(row,'actual_quantity'), exactQuantity(item,'actual_quantity')) !== 0 : row.actual_quantity !== null) || row.cost_cents !== (latest ? item.cost_cents : null) || row.variance_reason !== item.variance_reason; }) ||
+          totals.scraps.some(item => { const row = scraps.find(row => row.product_id === item.product_id); return (latest ? exactCompare(exactQuantity(row,'actual_quantity'), exactQuantity(item,'actual_quantity')) !== 0 : row.actual_quantity !== null) || (latest ? exactCompare(exactQuantity(row,'expected_quantity'), exactQuantity(item,'expected_quantity')) !== 0 : row.expected_quantity !== null) || row.disposition !== item.disposition; }))
         fail('备份生产单累计记录与有效批次不一致。');
     }
   }
 }
 
 function validateBatchBackup(data, orders, itemGroups, scrapGroups) {
+  const validQuantity = validExactQuantity, validStoredQuantity = validExactQuantity;
   const batches = new Map(data.production_batches.map(batch => [batch.id, batch])), grouped = new Map();
   const children = table => {
     const groups = new Map();
@@ -743,11 +766,11 @@ function validateBatchBackup(data, orders, itemGroups, scrapGroups) {
       fail('备份完工批次字段或状态无效。');
     if(order.stage_workflow) {
       if(rows.length!==materials.length||new Set(rows.map(r=>r.product_id)).size!==rows.length||rows.some(r=>!materials.some(m=>m.product_id===r.product_id)||!validStoredQuantity(r.actual_quantity)))fail('备份分层根批次原料投影无效。');
-    } else validateProductionCompletion({ completed_quantity: batch.completed_quantity, items: rows.map(row => ({ ...row, quantity: row.actual_quantity })) }, materials, true);
+    } else validateProductionCompletion({ ...batch, items: rows.map(row => ({ ...row, ...quantityFields(exactQuantity(row,'actual_quantity')) })) }, materials, true);
     if (rows.some(row => !money(row.cost_cents) || !order.stage_workflow && row.actual_quantity === 0 && row.cost_cents !== 0 || !text(row.variance_reason, 500)) ||
         rows.reduce((sum, row) => sum + row.cost_cents, 0) !== batch.total_cost_cents)
       fail('备份完工批次材料成本或差异原因无效。');
-    validateScrapActuals(outputs.map(row => ({ ...row, quantity: row.actual_quantity })), rules, true);
+    validateScrapActuals(outputs.map(row => ({ ...row, ...quantityFields(exactQuantity(row,'actual_quantity')) })), rules, true);
     for (const row of outputs) {
       const rule = rules.find(rule => rule.product_id === row.product_id);
       const stageBatch = order.stage_workflow && (data.production_stage_batches || []).find(b=>b.root_batch_id===batch.id);

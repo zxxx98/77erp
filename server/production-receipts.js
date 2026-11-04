@@ -3,6 +3,9 @@ import { moveInventory } from './commerce.js';
 import { addQuantity, validStoredQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { notifyStockChanges } from './notifications.js';
+import { exactQuantity, exactAdd, quantityFields, validExactQuantity, exactCompare } from '../shared/exact-quantity.js';
+import { saveExactQuantity } from './exact-quantity.js';
+import { receiptWithRounding } from './production-rounding.js';
 
 export const productionReceiptTables = ['production_receipts', 'production_receipt_items'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -39,7 +42,7 @@ export function receiptDocument(db, id, warehouseId) {
   const doc = db.prepare('SELECT * FROM production_receipts WHERE id=? AND warehouse_id=?').get(id, warehouseId);
   if (!doc) fail('生产入库单不存在或不属于当前仓库。', 404);
   const group = db.prepare('SELECT production_group_id,production_group_name FROM production_orders WHERE id=?').get(doc.production_id);
-  return {...doc, ...group, items: db.prepare('SELECT * FROM production_receipt_items WHERE document_id=? ORDER BY id').all(id)};
+  return receiptWithRounding(db, {...doc, ...group, items: db.prepare('SELECT * FROM production_receipt_items WHERE document_id=? ORDER BY id').all(id)});
 }
 export function receiptDocuments(db, productionId, warehouseId) {
   return db.prepare('SELECT id FROM production_receipts WHERE production_id=? ORDER BY id').all(productionId).map(row => receiptDocument(db, row.id, warehouseId));
@@ -49,23 +52,27 @@ export function receiptQuantities(db, order) {
   if (!batches.length) return {received_quantity: order.status !== 'void' ? order.completed_quantity || 0 : 0, pending_receipt_quantity: 0};
   let received = 0, pending = 0;
   for (const batch of batches) if (batch.status === 'active') {
-    const doc = batch.receipt_required && db.prepare('SELECT status FROM production_receipts WHERE batch_id=?').get(batch.id);
-    if (!batch.receipt_required || doc?.status === 'confirmed') received = addQuantity(received, batch.completed_quantity);
-    else if (doc?.status === 'pending') pending = addQuantity(pending, batch.completed_quantity);
+    const doc = batch.receipt_required && db.prepare('SELECT * FROM production_receipts WHERE batch_id=?').get(batch.id);
+    if (!batch.receipt_required || doc?.status === 'confirmed') received = exactAdd(received, doc ? exactQuantity(receiptDocument(db, doc.id, order.warehouse_id)) : exactQuantity(batch, 'completed_quantity'));
+    else if (doc?.status === 'pending') pending = exactAdd(pending, exactQuantity(receiptDocument(db, doc.id, order.warehouse_id)));
   }
-  return {received_quantity: received, pending_receipt_quantity: pending};
+  return {...quantityFields(received, 'received_quantity'), ...quantityFields(pending, 'pending_receipt_quantity')};
 }
 export function createProductionReceipt(db, req, order, batchId) {
   const batch = db.prepare('SELECT * FROM production_batches WHERE id=?').get(batchId), at = batch.created_at;
   const number = `SCRK${at.slice(0,10).replaceAll('-','')}-${randomUUID().replaceAll('-','').slice(0,12)}`;
   const id = Number(db.prepare(`INSERT INTO production_receipts(number,warehouse_id,production_id,production_number,batch_id,batch_number,product_name,unit,quantity,total_cost_cents,created_by_name,created_at,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, batchId, batch.batch_number, order.product_name, order.unit, batch.completed_quantity, batch.total_cost_cents, actor(req), at, at).lastInsertRowid);
-  const rows = [{product_id: order.product_id, name: order.product_name, barcode: order.barcode, unit: order.unit, unit_round_up: order.unit_round_up, quantity: batch.completed_quantity, cost_cents: batch.total_cost_cents, kind:'product'}];
+  saveExactQuantity(db, 'production_receipts', id, 'quantity', exactQuantity(batch, 'completed_quantity'));
+  const rows = [{product_id: order.product_id, name: order.product_name, barcode: order.barcode, unit: order.unit, unit_round_up: order.unit_round_up, ...quantityFields(exactQuantity(batch, 'completed_quantity')), cost_cents: batch.total_cost_cents, kind:'product'}];
   for (const row of db.prepare("SELECT * FROM production_batch_scraps WHERE batch_id=? AND actual_quantity>0 AND disposition='stock'").all(batchId)) {
-    rows.push({...order.scraps.find(item => item.product_id === row.product_id), quantity: row.actual_quantity, cost_cents: 0, kind:'scrap'});
+    rows.push({...order.scraps.find(item => item.product_id === row.product_id), ...quantityFields(exactQuantity(row, 'actual_quantity')), cost_cents: 0, kind:'scrap'});
   }
-  for (const row of rows) db.prepare(`INSERT INTO production_receipt_items(document_id,product_id,name,barcode,unit,unit_round_up,quantity,cost_cents,kind) VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(id, row.product_id, row.name, row.barcode, row.unit, row.unit_round_up, row.quantity, row.cost_cents, row.kind);
+  for (const row of rows) {
+    const itemId = Number(db.prepare(`INSERT INTO production_receipt_items(document_id,product_id,name,barcode,unit,unit_round_up,quantity,cost_cents,kind) VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(id, row.product_id, row.name, row.barcode, row.unit, row.unit_round_up, row.quantity, row.cost_cents, row.kind).lastInsertRowid);
+    saveExactQuantity(db, 'production_receipt_items', itemId, 'quantity', exactQuantity(row));
+  }
 }
 export function assertReceiptReversalPermission(db, req, batch) {
   const posted = !batch.receipt_required || !!db.prepare('SELECT confirmed_at FROM production_receipts WHERE batch_id=?').get(batch.id)?.confirmed_at;
@@ -103,7 +110,7 @@ export function installProductionReceipts(app, db, {route}) {
       if (!product || product.warehouse_id !== req.warehouse.id) fail(`${row.name}物料不存在或仓库已变化。`,409);
       if (product.unit !== row.unit || product.unit_round_up !== row.unit_round_up) fail(`${row.name}单位或取整规则已变化，请先核对。`,409);
       if (!product.active) fail(`${row.name}已停用，请先核对物料。`);
-      moveInventory(db,row.product_id,row.quantity,row.cost_cents);
+      moveInventory(db,row.product_id,exactQuantity(row),row.cost_cents);
     }
     const at = new Date().toISOString();
     db.prepare("UPDATE production_receipts SET status='confirmed',confirmed_by_name=?,confirmed_at=?,updated_at=? WHERE id=?").run(actor(req),at,at,id);
@@ -113,6 +120,7 @@ export function installProductionReceipts(app, db, {route}) {
   },true,authorize));
 }
 export function validateProductionReceiptBackup(data) {
+  const validStoredQuantity = validExactQuantity;
   const orders = new Map(data.production_orders.map(row=>[row.id,row]));
   const batches = new Map(data.production_batches.map(row=>[row.id,row]));
   const products = new Map(data.products.map(row=>[row.id,row]));
@@ -124,7 +132,7 @@ export function validateProductionReceiptBackup(data) {
     const order=orders.get(doc.production_id), batch=batches.get(doc.batch_id);
     if (!order || !batch || batch.production_id!==order.id || batch.receipt_required!==1 || usedBatches.has(batch.id) ||
       doc.warehouse_id!==order.warehouse_id || doc.production_number!==order.number || doc.batch_number!==batch.batch_number ||
-      doc.product_name!==order.product_name || doc.unit!==order.unit || doc.quantity!==batch.completed_quantity || doc.total_cost_cents!==batch.total_cost_cents ||
+      doc.product_name!==order.product_name || doc.unit!==order.unit || exactCompare(exactQuantity(doc),exactQuantity(batch,'completed_quantity'))!==0 || doc.total_cost_cents!==batch.total_cost_cents ||
       !validStoredQuantity(doc.quantity,true) || !money(doc.total_cost_cents) || !isId(doc.version) ||
       !text(doc.number,100,true) || !/^SCRK\d{8}-[a-f0-9]{12}$/.test(doc.number) || numbers.has(doc.number) ||
       !['pending','confirmed','void'].includes(doc.status) || !text(doc.created_by_name,60,true) || !date(doc.created_at) || !date(doc.updated_at) ||
@@ -144,7 +152,7 @@ export function validateProductionReceiptBackup(data) {
     const scrap=batch && data.production_batch_scraps.find(item=>item.batch_id===batch.id && item.product_id===row.product_id && item.disposition==='stock' && item.actual_quantity>0);
     if (!doc || !source || !['product','scrap'].includes(row.kind) || products.get(row.product_id)?.warehouse_id!==order.warehouse_id ||
       ['product_id','name','barcode','unit','unit_round_up'].some(key=>row[key]!==source[key]) ||
-      row.quantity!==(row.kind==='product' ? batch.completed_quantity : scrap?.actual_quantity) ||
+      exactCompare(exactQuantity(row),row.kind==='product' ? exactQuantity(batch,'completed_quantity') : exactQuantity(scrap,'actual_quantity'))!==0 ||
       row.cost_cents!==(row.kind==='product' ? batch.total_cost_cents : 0) || !validStoredQuantity(row.quantity,true) || !money(row.cost_cents) ||
       keys.has(`${doc.id}:${row.product_id}`)) fail('备份生产入库单明细快照无效。');
     keys.add(`${doc.id}:${row.product_id}`); doc.items.push(row);

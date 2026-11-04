@@ -5,9 +5,9 @@ import { Input as AntInput } from '../ui/controls.jsx';
 
 import { Button } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
-import { quantityUnits, QUANTITY_SCALE, validQuantity } from '../../shared/quantity.js';
+import { exactQuantity, exactSubtract, exactCompare, validExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 
-const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 
 export function ScrapOutputs({ rows, materials = [], complete = false, completed = false, showPlan = true, disabled = false, receiptStatus, onChange }) {
   useLocale();
@@ -20,10 +20,11 @@ export function ScrapOutputs({ rows, materials = [], complete = false, completed
       const name = row.name || row.product?.name;
       const source = materials.find(item => item.product_id === row.source_product_id);
       const sourceName = source?.name || source?.product?.name || pt("production.specifiedMaterial");
-      const expected = completed || complete ? row.expected_quantity : row.planned_quantity;
-      const actual = complete ? row.actual : row.actual_quantity;
-      const validActual = actual !== '' && actual != null && validQuantity(Number(actual));
-      const difference = expected != null && validActual ? (quantityUnits(Number(actual)) - quantityUnits(expected)) / QUANTITY_SCALE : null;
+      const expectedKey = completed || complete ? 'expected_quantity' : 'planned_quantity';
+      const expected = row[expectedKey] == null ? null : exactQuantity(row, expectedKey);
+      const actual = complete ? row.actual : exactQuantity(row, 'actual_quantity');
+      const validActual = actual !== '' && actual != null && validExactQuantity(actual);
+      const difference = expected != null && validActual ? exactSubtract(actual, expected) : null;
       return <article className="scrap-output" key={row.product_id}>
         <div><strong>{name}</strong><small>{row.barcode || row.product?.barcode} · {row.method === 'input_ratio' ? pt("production.of", { v0: sourceName, v1: complete || completed ? pt("production.actualUsage3") : pt("production.inputIncludingStandardLoss"), v2: count(row.quantity) }) : pt("production.forBaseOutput", { v0: row.quantity_fraction || count(row.quantity), v1: row.unit })}</small>
           {showPlan && (complete || completed) && <small>{pt("production.plannedEstimate")} {count(row.planned_quantity)} {row.unit}</small>}
@@ -32,15 +33,15 @@ export function ScrapOutputs({ rows, materials = [], complete = false, completed
           {row.product && !row.product.active && <p className="bom-warning">{pt("production.scrapMaterialDisabled")}</p>}</div>
         <div><small>{complete || completed ? pt("production.completionEstimate") : pt("production.plannedEstimate")}</small><span>{expected == null ? pt("production.verifyOutputAndUsageFirst") : `${count(expected)} ${row.unit}`}</span></div>
         {complete ? <>
-          <label>{pt("production.actualOutput")}{row.unit}）<FormField value={row.actual} required label={pt("production.actualScrap", { v0: name })}><AntInput aria-label={pt("production.actualScrap", { v0: name })} inputMode="decimal"  disabled={disabled} value={row.actual}
+          <label>{pt("production.actualOutput")}{row.unit}）<FormField value={row.actual} required label={pt("production.actualScrap", { v0: name })}><AntInput aria-label={pt("production.actualScrap", { v0: name })} inputMode="text"  disabled={disabled} value={row.actual}
             onChange={e => onChange(row.product_id, { quantity: e.target.value })} /></FormField></label>
           <label>{pt("production.handlingMethod")}<Select aria-label={pt("production.handlingMethod2", { v0: name })} disabled={disabled} value={row.disposition} onChange={e => onChange(row.product_id, { disposition: e })}>
             <option value="stock">{pt("production.receivePendingWarehouseApproval")}</option><option value="discard">{pt("production.directDisposal")}</option>
           </Select></label>
-          <Button type="button" disabled={disabled || expected == null} onClick={() => onChange(row.product_id, { quantity: String(expected) })} aria-label={pt("production.useEstimate", { v0: name })}>{pt("production.useEstimate2")}</Button>
+          <Button type="button" disabled={disabled || expected == null} onClick={() => onChange(row.product_id, { quantity: quantityInput(expected) })} aria-label={pt("production.useEstimate", { v0: name })}>{pt("production.useEstimate2")}</Button>
         </> : completed && <div><small>{pt("production.actualOutput2")} {row.disposition === 'mixed' ? pt("production.disposal", { v0: stockLabel }) : row.disposition === 'stock' ? stockLabel : pt("production.directDisposal")}</small><span>{count(actual)} {row.unit}</span>
           {row.stock_quantity != null && <small>{stockLabel} {count(row.stock_quantity)} {pt("production.directDisposal2")} {count(row.discard_quantity)} {row.unit}</small>}</div>}
-        {(complete || completed) && difference != null && <small className={difference ? 'bom-warning' : ''}>{pt("production.vsCompletionEstimate")} {difference > 0 ? '+' : ''}{count(difference)} {row.unit}</small>}
+        {(complete || completed) && difference != null && <small className={exactCompare(difference, 0) ? 'bom-warning' : ''}>{pt("production.vsCompletionEstimate")} {exactCompare(difference, 0) > 0 ? '+' : ''}{count(difference)} {row.unit}</small>}
       </article>;
     })}
   </section>;

@@ -1100,6 +1100,9 @@ test('AI reads awaiting warehouse approval and issued material balances without 
   assert.equal(result.material_documents[0].items[0].pending_quantity, 0);
   assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /超领不是超耗，也不等于待退量/);
   assert.match(call.tools.find(tool => tool.function.name === 'get_production_order').function.description, /over_issued_quantity/);
+  assert.match(call.tools.find(tool => tool.function.name === 'get_production_order').function.description, /\*_fraction/);
+  assert.match(call.tools.find(tool => tool.function.name === 'get_production_order').function.description, /settled_completed_quantity/);
+  assert.match(call.tools.find(tool => tool.function.name === 'get_production_order').function.description, /quantity_rounding/);
   assert.equal(/cost_cents|inventory_value|price/.test(JSON.stringify(result)), false);
   assert.ok(!call.tools.some(tool => /(?:confirm|start|complete|request).*production|production.*(?:confirm|start|complete|request)/.test(tool.function.name)));
   order = await post(`/production-orders/${order.id}/complete`, {version:result.version,completed_quantity:1,finish_order:false,items:[{product_id:material.id,quantity:1}]});

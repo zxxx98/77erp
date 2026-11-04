@@ -101,7 +101,7 @@ test('untouched historic drafts explicitly enable from saved snapshot; plans ref
 test('backup roundtrip retains WIP and rejects cross-source, quantity and cost corruption',async t=>{
   const f=await fixture(t); let o=await f.active();
   o=f.ok(await f.complete(o,'1',12,[['1.1',36]]));
-  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 48);
+  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 49);
   let preview=f.ok(await f.request('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
   o=await f.get(o.id);assert.equal(o.stages[1].available_quantity,12);
@@ -145,10 +145,10 @@ test('half batch corrections reject changed snapshot units or rounding without c
   f.ok(await f.voidBatch(o,b.id));
 });
 
-test('six decimal provenance may round to zero without invalidating genuine positive stage inputs',async t=>{
+test('tiny provenance remains exact without rounding positive stage inputs to zero',async t=>{
   const f=await fixture(t);let o=await f.active();
   o=f.ok(await f.complete(o,'1',99999999,[['1.1',0.0001]]));o=f.ok(await f.complete(o,'',1,[['1',0.0001]]));
-  assert.equal(o.items[0].actual_quantity,0);assert.equal(o.items[0].direct_consumed_quantity,0.0001);
+  assert.equal(o.items[0].actual_quantity_fraction,'1/9999999900000000');assert.equal(o.items[0].direct_consumed_quantity,0.0001);
   const backup=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup}));
 });
 
@@ -290,10 +290,10 @@ test('stage migration rolls back partial DDL without disturbing an outer transac
   migrateProductionStages(f.db);assert.equal(f.db.prepare('PRAGMA table_info(production_orders)').all().some(c=>c.name==='stage_workflow'),true);
 });
 
-test('backup replay preserves zero-quantity provenance cents and source correction after consumers',async t=>{
+test('backup replay preserves tiny exact provenance and cents through source corrections',async t=>{
   const f=await fixture(t);f.db.prepare('UPDATE products SET inventory_value_cents=? WHERE id=?').run(1_000_000_000_000_000,f.c);let o=await f.active();
   o=f.ok(await f.complete(o,'1',99999999,[['1.1',0.0001]]));o=f.ok(await f.complete(o,'',1,[['1',1]]));
-  assert.equal(o.items[0].actual_quantity,0);assert.equal(o.items[0].cost_cents,10);
+  assert.equal(o.items[0].actual_quantity_fraction,'1/999999990000');assert.equal(o.items[0].cost_cents,10);
   f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
   o=f.ok(await f.voidBatch(o,(await f.batches(o,'')).batches[0].id));o=f.ok(await f.voidBatch(o,(await f.batches(o,'1')).batches[0].id));
   assert.equal(o.items[0].available_quantity,60);f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
