@@ -7,7 +7,7 @@ import { t, getFormatLocale } from '../i18n/index.js';
 import { addQuantity } from '../../shared/quantity.js';
 import { pooledProductionStages } from '../../shared/production-pools.js';
 
-const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 6 });
+const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 
 // Keep every product reachable in one list; operations expand in place.
 export function ProductionProgress({ order, busy, onRegister, onHistory, onOperations }) {

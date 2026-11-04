@@ -17,7 +17,7 @@ import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.
 import { ScrapOutputs } from './ScrapOutputs.jsx';
 import './production-stages.css';
 
-const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 6 });
+const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const time = value => new Date(value).toLocaleString(getFormatLocale(), { hour12: false });
 
 export function ProductionStageSummary({ order, onOpen, disabled }) {
