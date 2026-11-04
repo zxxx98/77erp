@@ -1336,7 +1336,14 @@ test('AI reads process routes and operation snapshots without granting route wri
   f.db.prepare("UPDATE products SET default_route_id=?,production_type='成品' WHERE id=1").run(route.id);
   const parent=f.db.prepare('SELECT * FROM products WHERE id=1').get(), raw=f.db.prepare('SELECT * FROM products WHERE id=2').get();
   const bom=(await f.request(f.admin,'/boms',{request_id:randomUUID(),name:'工序配方',product_id:parent.id,base_quantity:1,base_unit:parent.unit,note:'',enabled:1,items:[{product_id:raw.id,quantity:1,unit:raw.unit,note:''}]})).data;
-  const order=(await f.request(f.admin,'/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:2,note:''})).data;
+  const order=(await f.request(f.admin,'/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:2,note:'',additional_operations:[{route_id:route.id,route_version:route.version,node_id:'out',quantity:3,materials:[{product_id:raw.id,quantity:3}]}]})).data;
+  const started=await f.request(f.admin,`/production-orders/${order.id}/start`,{request_id:randomUUID(),version:order.version});
+  assert.equal(started.status,200);
+  const document=started.data.material_documents[0];
+  assert.equal((await f.request(f.admin,`/production-material-documents/${document.id}/confirm`,{request_id:randomUUID(),version:document.version})).status,200);
+  const current=(await f.request(f.admin,`/production-orders/${order.id}`)).data;
+  const reported=await f.request(f.admin,`/production-orders/${order.id}/operations/report`,{request_id:randomUUID(),operation_schema_version:1,version:current.version,path:'@extra:1',operation_node_id:'out',quantity:1,material_items:[{product_id:raw.id,quantity:1,variance_reason:'实际附加用料'}]});
+  assert.equal(reported.status,200,JSON.stringify(reported.data));
   await f.permissions(['ai','bom','production']);
   f.use('search_process_routes',{query:'AI工艺'});assert.equal((await f.chat(f.staff)).status,200);
   let result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.routes[0].id,route.id);
@@ -1347,6 +1354,9 @@ test('AI reads process routes and operation snapshots without granting route wri
   result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.routes.length,0);
   f.use('get_process_route',{route_id:route.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.deepEqual(result.graph,graph);
   f.use('get_production_order',{production_id:order.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.operation_routes[0].operations[0].name,'切割');assert.ok(!JSON.stringify(result).includes('cost_cents'));
+  const extra=result.operation_routes.find(route=>route.additional_quantity!=null);assert.equal(extra.additional_quantity,3);assert.equal(extra.additional_materials[0].quantity,3);assert.equal(result.items[0].total_planned_quantity,5);assert.equal(extra.operations[0].is_output,false);assert.equal(extra.operations[0].available_quantity,2);assert.ok(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description.includes('不计入BOM'));
+  assert.equal(extra.reports[0].material_items[0].variance_reason,'实际附加用料');
+  assert.equal(result.items[0].additional_consumed_quantity,1);
   assert.match(f.calls.at(-1).body.messages[0].content,/中间工序不扣料/);
   assert.match(f.calls.at(-1).body.messages[0].content,/quantity × multiplier × 快照unit_price/);
   assert.match(f.calls.at(-1).body.messages[0].content,/每日工资图表.*明细单号可跳转到生产单详情/);

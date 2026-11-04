@@ -2,6 +2,7 @@ import { useOperationAcceptance } from '../features/OperationAcceptance.jsx';
 import { ProductPicker } from '../features/ProductPicker.jsx';
 import { ProductionSupply } from '../features/ProductionSupply.jsx';
 import { ProductionAssignments } from '../features/ProductionAssignments.jsx';
+import { AdditionalOperations } from '../features/AdditionalOperations.jsx';
 import { productionAssignments, productionAssignmentNames } from '../../shared/production-assignment.js';
 import { ProductionOperations, OperationWorkerSelect } from '../features/ProductionOperations.jsx';
 import { ProductionProcessOverview } from '../features/ProcessOverview.jsx';
@@ -176,7 +177,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
       body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity, supply_choices: [] } });
-    setEditor(previous => ({ kind: 'new', note: previous?.note || '', planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
+    setEditor(previous => ({ kind: 'new', note: previous?.note || '', additional_operations: previous?.additional_operations || [], planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
   };
   const supplyStale = editor?.kind === 'new' && editor.plan && (Number(editor.planned_quantity) !== editor.plan.production_quantity || JSON.stringify(editor.supply_choices) !== JSON.stringify(editor.plan.prepared_choices || []));
   const supplyRequest = (draft, signal) => {
@@ -291,7 +292,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     }
   } });
   const startProduction = () => begin({ kind: 'material_request', initial: true, type: 'out', note: '',
-    items: detail.items.map(item => ({ product_id: item.product_id, quantity: String(item.planned_quantity) })) });
+    items: detail.items.map(item => ({ product_id: item.product_id, quantity: String(item.total_planned_quantity ?? item.planned_quantity) })) });
   const requestMaterials = type => begin({ kind: 'material_request', type, note: '',
     items: detail.items.map(item => ({ ...item, quantity: type === 'in' ? String(item.available_quantity) : '0' })) });
   const cancelMaterialRequest = (doc, reason) => action.run(async () => {
@@ -323,6 +324,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
             if (prepared.plan.structure_token !== editor.plan.structure_token) { update(prepared); throw new Error(pt('production.supplyReviewBeforeSave')); }
           }
           body.supply_choices = prepared.supply_choices || []; body.bom_id = prepared.plan.bom_id; body.bom_version = prepared.plan.version; body.structure_token = prepared.plan.structure_token;
+          body.additional_operations = (editor.additional_operations || []).map(row => ({ route_id: row.route_id, route_version: row.route_version, node_id: row.node_id, quantity: parseQuantity(row.quantity, true),
+            materials: (row.materials || []).map(item => ({ product_id: item.product_id, quantity: parseQuantity(item.quantity, true) })) }));
         }
         else body.version = detail.version;
         await saved(await send(path, body, options), pt("production.productionDraftSavedStockUnchanged"));
@@ -387,7 +390,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           update({ items: [...editor.items, { ...product, product_id: product.id, planned_quantity: 0, available_quantity: 0, quantity: '0' }] });
         }} />}
         {(editor.initial ? detail.items : editor.items).map(item => <div className="production-material" key={item.product_id}><div className="production-material-name"><strong>{item.name}</strong><small>{item.barcode}</small></div>
-          <div><small>{pt("production.plannedRequirement")}</small><span>{count(item.planned_quantity)} {item.unit}</span></div>
+          <div><small>{pt("production.plannedRequirement")}</small><span>{count(item.total_planned_quantity ?? item.planned_quantity)} {item.unit}</span></div>
           <div><small>{pt("production.issuedBalance")}</small><span>{count(item.available_quantity)} {item.unit}</span></div>
           <label>{label}{pt("production.quantity")}{item.unit}）<AntInput aria-label={pt("production.quantity2", { v0: item.name, v1: label })} inputMode="decimal" value={editor.items.find(row => row.product_id === item.product_id).quantity} disabled={action.busy}
             onChange={event => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: event.target.value } : row) })} /></label>
@@ -451,6 +454,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           </>}
         </section>}
         {editor.kind === 'new' && source && <ProductionSupply supplies={source.supplies || []} choices={editor.supply_choices || []} onChange={supply_choices => update({ supply_choices })} onCalculate={recalculateSupply} stale={supplyStale} disabled={action.busy} />}
+        {editor.kind === 'new' && source && <AdditionalOperations rows={editor.additional_operations || []} onChange={additional_operations => update({ additional_operations })} data={listData} unit={unit} disabled={action.busy} />}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}
@@ -565,6 +569,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       <details className="production-disclosure"><summary>{pt('production.orderInformation')}</summary>
       <p className="bom-hint">{detail.barcode}</p>
       {management && can('finance') && detail.completed_at && <p>{pt('production.totalMaterialCost')} {money(detail.total_cost_cents)}</p>}
+      {management && can('finance') && detail.additional_material_cost_cents > 0 && <p>{pt('production.additionalMaterialCost')} {money(detail.additional_material_cost_cents)} · {pt('production.totalConsumedCost')} {money(detail.total_consumed_cost_cents)}</p>}
       <p className="bom-hint">{pt("production.recipe")}{detail.bom_name} #{detail.bom_id} {pt("production.baseOutput2")} {count(detail.base_quantity)} {detail.unit} {pt("production.recipeRetainedFromOrderCreation")}</p>
       <p className="bom-hint">{detail.snapshot_format === 2 ? pt("production.rootRecipeLossCalculation") : pt("production.standardLossCalculation")}：{bomLossMethodLabels[detail.loss_method]}{pt("production.standardInput")}{bomLossMethodFormulas[detail.loss_method]}。</p>
       <div className="production-audit"><p>{pt("production.created")}{detail.created_by_name} · {time(detail.created_at)}</p><p>{pt("production.updated")}{detail.updated_by_name} · {time(detail.updated_at)}</p>
@@ -581,7 +586,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       onHistory={path => detail.stage_workflow ? begin({ kind: 'stages', historyPath: path }) : setDetailTab('records')}
       onOperations={path => begin({ kind: 'operations', path })} />
     {!!detail.stage_workflow && <details className="production-disclosure panel bom-section" open={processDiagramOpen} onToggle={event => setProcessDiagramOpen(event.currentTarget.open)}><summary>{pt('production.processDiagram')}</summary>{processDiagramOpen && <ProductionProcessOverview key={`overview:${detail.id}`} order={detail} disabled={action.busy} onOpen={path => begin({ kind: 'operations', path })} />}</details>}
-    {!detail.stage_workflow && !!detail.operation_routes?.length && <details className="production-disclosure panel bom-section"><summary>{pt('production.processDiagram')}</summary><ProcessFlowStrip graph={detail.operation_routes[0].graph} operations={detail.operation_routes[0].operations} /></details>}
+    {!detail.stage_workflow && detail.operation_routes?.some(route => route.path === '') && <details className="production-disclosure panel bom-section"><summary>{pt('production.processDiagram')}</summary><ProcessFlowStrip graph={detail.operation_routes.find(route => route.path === '').graph} operations={detail.operation_routes.find(route => route.path === '').operations} /></details>}
     {!detail.stage_workflow && detail.snapshot_format === 2 && <section className="panel bom-section">
       <p className="bom-hint">{pt("production.thisOrderUsesWholeOrderRegistrationWithNo")}</p>
       {management && detail.material_workflow && detail.status === 'draft' && !detail.batches.length && !detail.material_documents.length && !detail.receipt_documents.length && <Button disabled={action.busy} onClick={() => action.run(async () => {

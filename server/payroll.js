@@ -27,7 +27,7 @@ export function payrollStatistics(db, warehouseId, query) {
   };
   const worker = db.prepare('SELECT id,name,username,employee_no,active FROM users WHERE id=?').get(workerId);
   const rows = db.prepare(`SELECT r.*, p.number production_number, p.product_name, p.unit,
-    s.path, s.route_id, s.route_name, s.graph, st.name stage_name, st.unit stage_unit
+    s.path, s.route_id, s.route_name, s.graph, s.additional_quantity, st.name stage_name, st.unit stage_unit
     FROM production_operation_reports r JOIN production_orders p ON p.id=r.production_id
     JOIN production_routes s ON s.id=r.route_snapshot_id
     LEFT JOIN production_stages st ON st.production_id=p.id AND st.path=s.path
@@ -43,7 +43,7 @@ export function payrollStatistics(db, warehouseId, query) {
     const multiplier = node.multiplier ?? row.multiplier ?? 1;
     const amount = operationWageCents(node, { ...row, multiplier }), unit = row.stage_unit ?? row.unit;
     const report = { id: row.id, production_id: row.production_id, production_number: row.production_number,
-      product_name: row.stage_name ?? row.product_name, path: row.path, route_name: row.route_name, operation_name: node.name,
+      product_name: row.stage_name ?? row.product_name, path: row.path, additional_operation: row.additional_quantity != null, route_name: row.route_name, operation_name: node.name,
       worker_name: row.worker_name, registered_by_name: row.registered_by_name, created_at: row.created_at,
       quantity: row.quantity, multiplier, unit, unit_price: node.unit_price ?? null, currency: node.currency ?? null,
       amount_cents: amount, status: row.status, note: row.note, void_reason: row.void_reason };

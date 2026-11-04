@@ -149,7 +149,7 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
   } finally { await f.close(); await context?.close(); }
 });
 
-for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} multiple batches wait for inbound-only warehouse approval`, async ({ page }) => {
+for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} multiple batches wait for warehouse approval without production or finance access`, async ({ page }) => {
   test.setTimeout(90000);
   if (mobile) {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -160,7 +160,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} multi
     const started = await f.post(`/production-orders/${f.order.id}/start`, { version: f.order.version });
     await f.post(`/production-material-documents/${started.material_documents[0].id}/confirm`, { version: started.material_documents[0].version });
     const producer = await f.post('/users', { position_id: await browserPosition(page.request, ['production'], f.base), username: 'receiptproducer', employee_no: 'receiptproducer', password: 'Test-producer-123' });
-    const warehouse = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'purchase'], f.base), username: 'receiptwarehouse', employee_no: 'receiptwarehouse', password: 'Test-warehouse-123' });
+    const warehouse = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'purchase', 'stock_approve'], f.base), username: 'receiptwarehouse', employee_no: 'receiptwarehouse', password: 'Test-warehouse-123' });
     await f.post('/auth/login', { username: 'receiptproducer', password: 'Test-producer-123' });
     await page.goto(`${f.base}/#production`);
     await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
@@ -205,7 +205,7 @@ test('warehouse staff can approve issues without production or finance permissio
   const f = await fixture(page);
   try {
     await f.post(`/production-orders/${f.order.id}/start`, { version: f.order.version });
-    const user = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'sale'], f.base), username: 'warehouseonly', employee_no: 'warehouseonly', password: 'Warehouse-test-123' });
+    const user = await f.post('/users', { position_id: await browserPosition(page.request, ['basic_view', 'sale', 'stock_approve'], f.base), username: 'warehouseonly', employee_no: 'warehouseonly', password: 'Warehouse-test-123' });
     await f.post('/auth/logout', {});
     await f.post('/auth/login', { username: 'warehouseonly', password: 'Warehouse-test-123' });
     await page.goto(`${f.base}/#sales`);
@@ -218,7 +218,9 @@ test('warehouse staff can approve issues without production or finance permissio
     await expect(queue.getByRole('status').filter({ hasText: '已出库' })).toBeVisible();
     expect(f.stock()).toBe(90);
     expect((await page.request.get(`${f.base}/api/production-orders/${f.order.id}`)).status()).toBe(403);
-    expect((await page.request.get(`${f.base}/api/production-material-documents?type=in`)).status()).toBe(403);
+    const returns = await page.request.get(`${f.base}/api/production-material-documents?type=in`);
+    expect(returns.status()).toBe(200);
+    expect(JSON.stringify(await returns.json())).not.toContain('cost_cents');
   } finally { await f.close(); }
 });
 

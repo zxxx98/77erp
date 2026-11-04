@@ -54,3 +54,11 @@ export function processProgress(graph, reports) {
     return { ...graph.nodes.find(n => n.id === id), completed_quantity, available_quantity, is_output: id === output, predecessors: parents };
   });
 }
+
+// Order-only operations have their own quantity and never register product output.
+export function productionRouteProgress(route, reports) {
+  const operations = processProgress(route.graph, reports);
+  return route.additional_quantity == null ? operations : operations.map(node => ({ ...node,
+    is_output: false, available_quantity: Math.max(0, Math.round((route.additional_quantity - node.completed_quantity) * 10000) / 10000),
+  }));
+}

@@ -4,6 +4,7 @@ import { stageInputDefaults } from '../shared/production-stages.js';
 import { pooledProductionStages } from '../shared/production-pools.js';
 import { t } from './i18n/index.js';
 import { scrapExpectedQuantity } from '../shared/scrap.js';
+import { additionalMaterialDefaults } from '../shared/additional-operations.js';
 
 // A route snapshot and BOM path identify the operation, never its display name.
 export function registrationTargets(order) {
@@ -36,7 +37,7 @@ export function registrationTargets(order) {
   const routes = count(row => JSON.stringify([row.name, row.routeName]));
   const boms = count(bomKey);
   const paths = count(row => JSON.stringify([row.name, row.routeName, row.bomName, row.path]));
-  return targets.map(row => {
+  const regularTargets = targets.map(row => {
     let branch = '';
     if (boms(row) > 1) {
       const chains = targets.filter(peer => bomKey(peer) === bomKey(row)).map(peer => peer.ancestors);
@@ -49,10 +50,18 @@ export function registrationTargets(order) {
       showPath: boms(row) > 1, showStep: paths(row) > 1,
     };
   });
+  return [...regularTargets, ...(order.operation_routes || []).filter(route => route.additional_quantity != null).map(route => ({
+    id: JSON.stringify([route.path, route.operations[0].id]), path: route.path,
+    layer: { ...order, path: route.path, name: route.operations[0].name, planned_quantity: route.additional_quantity, completed_quantity: route.operations[0].completed_quantity },
+    node: route.operations[0], route, ancestors: [], name: route.operations[0].name,
+    routeName: route.route_name, bomName: '', step: 1, unit: order.unit, output: false, additional: true,
+    context: `${t('production.additionalOperations')} · ${route.route_name}`, showPath: false, showStep: false,
+  }))];
 }
 
 // Defaults follow the existing full registration forms, including rounding and scrap rules.
 export function registrationDefaults(order, target, quantity) {
+  if (target.additional) return { items: [], scraps: [], material_items: additionalMaterialDefaults(target.route, quantity) };
   if (!target.output) return { items: [], scraps: [] };
   const standards = !order.stage_workflow && order.snapshot_format === 2
     ? new Map(calculateBomNodes(order.nodes, quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;

@@ -75,3 +75,22 @@ test('semi defaults use produced balance first, stock for its deficit and zero f
   stock.available_quantity=2;
   assert.deepEqual(registrationDefaults(order,target,5).items.map(i=>i.quantity),['8','2','0']);
 });
+
+test('additional operations remain selectable beside unrouted output and default their own proportional material consumption', () => {
+  const order = { id: 1, product_name: '成品', unit: '件', planned_quantity: 10, bom_name: '原配方', items: [{ product_id: 2, base_quantity: 2 }],
+    operation_routes: [{ path: '@extra:1', additional_quantity: 3, route_name: '检查路线', operations: [{ id: 'out', name: '检验', completed_quantity: 1, available_quantity: 2, is_output: false }] }] };
+  const targets = registrationTargets(order);
+  assert.equal(targets.length, 2);
+  assert.equal(targets[0].output, true);
+  assert.equal(targets[0].node, null);
+  const extra = targets[1];
+  assert.equal(extra.output, false);
+  assert.equal(extra.additional, true);
+  assert.equal(extra.bomName, '');
+  assert.equal(extra.layer.planned_quantity, 3);
+  assert.equal(extra.layer.completed_quantity, 1);
+  assert.equal(extra.context, '附加工序 · 检查路线');
+  assert.deepEqual(registrationDefaults(order, extra, 2), { items: [], scraps: [], material_items: [] });
+  extra.route.additional_materials = [{ product_id: 2, quantity: 1, unit_round_up: 0 }, { product_id: 3, quantity: 2, unit_round_up: 1 }];
+  assert.deepEqual(registrationDefaults(order, extra, 1).material_items.map(item => item.quantity), ['0.3334', '1']);
+});

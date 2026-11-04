@@ -8,7 +8,7 @@ const fontPath=fileURLToPath(new URL('./assets/NotoSansCJKsc-Regular.otf',import
 const display=value=>value===null||value===undefined||value===''?'—':String(value);
 // Explicit columns are intentional: financial, inventory and registration progress fields never enter the task sheet.
 export function productionTaskRows(order) {
- return (order.items||[]).map(row=>[row.name,row.barcode,row.specification,row.unit,row.planned_quantity,row.note].map(display));
+ return (order.items||[]).map(row=>[row.name,row.barcode,row.specification,row.unit,row.total_planned_quantity??row.planned_quantity,row.note].map(display));
 }
 export async function renderProductionPdf({order,warehouseName,registrationUrl,exportedAt=new Date(),language='zh-CN'}) {
  language=isSupportedLanguage(language)?language:'zh-CN';

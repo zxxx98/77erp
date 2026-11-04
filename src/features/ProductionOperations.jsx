@@ -39,7 +39,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
   const [syncPriceConfirm, setSyncPriceConfirm] = useState(false);
   const historyData = useMemo(() => ({ warehouse_id: data.warehouse_id, version: order.version }), [data.warehouse_id, order.version]);
   const historyQuery = useQuery(`/production-orders/${order.id}/operations/reports?${new URLSearchParams({ snapshot_id: String(route.id), offset: String(offset) })}`, historyData);
-  const [view, setView] = useState(mobileDevice ? 'list' : 'graph');
+  const [view, setView] = useState(mobileDevice || route.additional_quantity != null ? 'list' : 'graph');
   const dirty = !!form && (!!form.quantity || !!form.note) || !!voiding?.reason;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
   useEffect(() => { onActivity?.({ form, voiding, busy: action.busy }); }, [form, voiding, action.busy, onActivity]);
@@ -83,18 +83,18 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             <span className="process-meta-pill">{t('route.version', { version: route.route_version })}</span>
             <span className="process-meta-pill">{t('route.operations')} {route.operations.length}</span>
           </div>
-          <p className="bom-hint">{t('route.reportHint')}</p>
+          <p className="bom-hint">{t(route.additional_quantity != null ? 'production.additionalOperationsHint' : 'route.reportHint')}</p>
         </div>
         {!onRegister && canRegister && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
       </div>
       {!form && !voiding && <>
-        <div className="process-editor-toolbar process-progress-toolbar">
+        {route.additional_quantity == null && <div className="process-editor-toolbar process-progress-toolbar">
           <div className="process-view-segmented" role="group" aria-label={t('route.operations')}>
             <Button aria-pressed={view === 'graph'} onClick={() => setView('graph')}>{t('route.graph')}</Button>
             <Button aria-pressed={view === 'list'} onClick={() => setView('list')}>{t('route.list')}</Button>
           </div>
           {view === 'graph' && selected && <Button onClick={() => setSelected('')}>{t('route.allNodes')}</Button>}
-        </div>
+        </div>}
         {view === 'graph' && <ProcessGraph graph={route.graph} operations={route.operations} selected={selected} onSelect={setSelected} />}
         <div className="process-operations-grid">
           {route.operations.filter(node => view === 'list' || !selected || selected === node.id).map((node) => {
@@ -106,14 +106,14 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                   <span className="process-step-badge">#{stepIndex}</span>
                   <h3>{node.name}</h3>
                 </div>
-                {node.is_output ? <Badge tone="blue">{t('route.output')}</Badge> : isStart ? <Badge tone="green">{t('route.start')}</Badge> : null}
+                {route.additional_quantity != null ? <Badge tone="orange">{t('production.additionalOperations')}</Badge> : node.is_output ? <Badge tone="blue">{t('route.output')}</Badge> : isStart ? <Badge tone="green">{t('route.start')}</Badge> : null}
               </div>
               {node.acceptance_template_id && <Badge tone="orange">{t('route.acceptanceRequired')}</Badge>}
               {node.note && <p className="process-operation-note">{node.note}</p>}
-              <p className="bom-hint">{t('route.predecessors')}: {node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}</p>
+              <p className="bom-hint">{route.additional_quantity != null ? `${t('production.additionalQuantity')}: ${count(route.additional_quantity)} ${unit}` : `${t('route.predecessors')}: ${node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}`}</p>
               <dl className="process-operation-stats">
                 <div className="process-stat-box"><dt>{t('route.completed')}</dt><dd>{count(node.completed_quantity)} {unit}</dd></div>
-                {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t('route.available')}</dt><dd>{count(node.available_quantity)} {unit}</dd></div>}
+                {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t(route.additional_quantity != null ? 'production.additionalRemaining' : 'route.available')}</dt><dd>{count(node.available_quantity)} {unit}</dd></div>}
               </dl>
               {canRegister && <div className="process-operation-card-action">
                 <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { if(!operationAcceptanceAllowed(node,can)) return; return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
@@ -132,7 +132,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
           <h2>{activeNode?.name}</h2>
           {activeNode && <dl className="process-operation-stats">
             <div className="process-stat-box"><dt>{t('route.completed')}</dt><dd>{count(activeNode.completed_quantity)} {unit}</dd></div>
-            {activeNode.available_quantity !== null && <div className="process-stat-box is-available"><dt>{t('route.available')}</dt><dd>{count(activeNode.available_quantity)} {unit}</dd></div>}
+            {activeNode.available_quantity !== null && <div className="process-stat-box is-available"><dt>{t(route.additional_quantity != null ? 'production.additionalRemaining' : 'route.available')}</dt><dd>{count(activeNode.available_quantity)} {unit}</dd></div>}
           </dl>}
         </div>
         <div className="process-report-quantity-row">
@@ -170,6 +170,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             <p className="bom-hint">{new Date(report.created_at).toLocaleString(getFormatLocale())}</p>
             {report.acceptance_id && <Button disabled={action.busy} onClick={()=>action.run(async()=>setAcceptanceDetail(await api(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`,{warehouseId:data.warehouse_id})))}>{t('route.acceptanceRecord')} #{report.acceptance_id}</Button>}
             {report.note && <p className="process-history-note">{report.note}</p>}
+            {report.material_items?.length > 0 && <div className="process-history-materials"><strong>{t('production.additionalUsedMaterial')}</strong>{report.material_items.map(item => <p key={item.product_id}>{item.name} · {count(item.quantity)} {item.unit}{item.variance_reason && ` · ${item.variance_reason}`}</p>)}</div>}
             {report.status === 'void' && <p className="process-history-void-reason">{t('route.reason')}: {report.void_reason}</p>}
             {report.output_kind && <p className="bom-hint">{t('route.outputVoidHint')}</p>}
           </div>

@@ -4,6 +4,7 @@ import { addQuantity, validQuantity, validStoredQuantity, materialQuantity } fro
 import { hasPermission } from '../shared/permissions.js';
 import { notifyStockChanges } from './notifications.js';
 import { stageDirectBatches } from './production-stages.js';
+import { additionalPlannedQuantities } from '../shared/additional-operations.js';
 
 export const productionMaterialTables = ['production_material_documents', 'production_material_document_items', 'production_material_issues', 'production_material_issue_items'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -104,6 +105,7 @@ export function materialDocuments(db, productionId, warehouseId) {
 
 export function materialBalances(order) {
   const documents = order.material_documents.map(materialDocumentProgress);
+  const additionalPlans = additionalPlannedQuantities(order.operation_routes);
   return order.items.map(item => {
     let issued = 0, returned = 0, cost = 0n;
     let requested = 0, pending = 0, closed = 0;
@@ -120,17 +122,28 @@ export function materialBalances(order) {
         }
       } else if (doc.status === 'confirmed') { returned = addQuantity(returned, row.quantity); cost -= BigInt(row.cost_cents); }
     }
-    let consumed = 0;
+    let consumed = 0, consumedCost = 0n;
     for (const batch of order.stage_workflow ? order.stage_direct_batches ?? [] : order.batches) if (batch.status === 'active') {
       for (const row of batch.items.filter(row => row.product_id === item.product_id)) {
-        consumed = addQuantity(consumed, row.actual_quantity); cost -= BigInt(row.cost_cents);
+        consumed = addQuantity(consumed, row.actual_quantity); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
       }
     }
+    const productionConsumed = consumed;
+    let additionalConsumed = 0, additionalCost = 0;
+    for (const report of order.additional_material_reports || []) if (report.status === 'active') for (const row of report.material_items) if (row.product_id === item.product_id) {
+      additionalConsumed = addQuantity(additionalConsumed, row.quantity); additionalCost += row.cost_cents;
+      consumed = addQuantity(consumed, row.quantity); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
+    }
+    const additionalPlanned = additionalPlans.get(item.product_id) || 0, totalPlanned = addQuantity(item.planned_quantity, additionalPlanned);
+    if (!validStoredQuantity(totalPlanned) || !Number.isSafeInteger(additionalCost) || consumedCost > BigInt(Number.MAX_SAFE_INTEGER)) fail('附加工序材料成本或计划数量超出范围。');
     // Lifetime turnover can exceed Number's exact range even when the remaining pool is small.
     if (cost < 0n || cost > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${item.name}材料余额成本不足或超出范围。`);
     return { ...item, requested_quantity: requested, pending_issue_quantity: pending, closed_request_quantity: closed, issued_quantity: issued, returned_quantity: returned,
-      over_plan_quantity: Math.max(0, addQuantity(issued, -item.planned_quantity)),
-      ...(order.stage_workflow ? { direct_consumed_quantity:consumed, direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
+      over_plan_quantity: Math.max(0, addQuantity(issued, -totalPlanned)),
+      additional_planned_quantity: additionalPlanned, total_planned_quantity: totalPlanned,
+      additional_consumed_quantity: additionalConsumed, additional_consumed_cost_cents: additionalCost,
+      consumed_quantity: consumed, consumed_cost_cents: Number(consumedCost),
+      ...(order.stage_workflow ? { direct_consumed_quantity:productionConsumed, direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
       available_quantity: addQuantity(addQuantity(issued, -returned), -consumed), available_cost_cents: Number(cost) };
   });
 }
@@ -175,7 +188,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
     const order = current(req); version(req, order);
     if (!order.material_workflow || order.status !== 'draft' || order.batches.length) fail('仅新流程待生产单可以开始生产。', 409);
     units(order);
-    const { items = order.items.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity })), note = '' } = req.body;
+    const { items = order.items.map(item => ({ product_id: item.product_id, quantity: item.total_planned_quantity ?? item.planned_quantity })).filter(item => item.quantity > 0), note = '' } = req.body;
     const normalized = normalizeItems(order, items);
     if (typeof note !== 'string' || note.length > 500) fail('申请备注最多 500 字。');
     create(req, order, 'out', 'initial', normalized, note.trim());
@@ -364,6 +377,8 @@ export function validateProductionMaterialBackup(data) {
         order.material_phase !== 'in_progress' && (order.completed_at || documents.some(doc => doc.status === 'confirmed')) ||
         order.status === 'void' && pending.has(order.id)) fail('备份生产领料阶段与材料单不一致。');
     const balances = materialBalances({ ...order, items: data.production_items.filter(row => row.production_id === order.id), material_documents: documents,
+      operation_routes: data.production_routes.filter(row => row.production_id === order.id),
+      additional_material_reports: data.production_operation_reports.filter(row => row.production_id === order.id).map(row => ({ ...row, material_items: JSON.parse(row.material_items) })),
       stage_direct_batches:stageDirectBatches(data,order.id),
       batches: data.production_batches.filter(row => row.production_id === order.id).map(batch => ({ ...batch, items: data.production_batch_items.filter(row => row.batch_id === batch.id) })) });
     if (balances.some(item => !validStoredQuantity(item.issued_quantity) || !validStoredQuantity(item.returned_quantity) || !validStoredQuantity(item.available_quantity) || !money(item.available_cost_cents) ||

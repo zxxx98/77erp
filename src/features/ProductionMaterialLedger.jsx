@@ -32,9 +32,9 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
       </tr></thead>
       {order.items.map(item => {
         const open = expanded.has(item.product_id), detailsId = `${id}-${item.product_id}`;
-        const values = { ...item, used_quantity: order.stage_workflow ? item.direct_consumed_quantity : item.actual_quantity };
+        const values = { ...item, planned_quantity: item.total_planned_quantity ?? item.planned_quantity, used_quantity: item.consumed_quantity ?? (order.stage_workflow ? item.direct_consumed_quantity : item.actual_quantity) };
         const shortage = !order.completed_at && item.product && (issued || item.product.stock !== undefined)
-          ? bomShortage(item.planned_quantity, issued ? item.available_quantity : item.product.stock) : 0;
+          ? bomShortage(values.planned_quantity, issued ? item.available_quantity : item.product.stock) : 0;
         return <tbody key={item.product_id}>
           <tr className="production-ledger-row">
             <th scope="row" className="production-ledger-material"><strong>{item.name}</strong><small>{item.barcode}{item.specification && ` · ${item.specification}`}</small>
@@ -53,6 +53,9 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
             {open && <>
               <dl className="production-ledger-metadata">
                 <div><dt>{t('production.requestedQuantity')}</dt><dd>{count(item.requested_quantity)} {item.unit}</dd></div>
+                {item.additional_planned_quantity > 0 && <div><dt>{t('production.additionalPlannedMaterial')}</dt><dd>{count(item.additional_planned_quantity)} {item.unit}</dd></div>}
+                {item.additional_consumed_quantity > 0 && <div><dt>{t('production.additionalUsedMaterial')}</dt><dd>{count(item.additional_consumed_quantity)} {item.unit}</dd></div>}
+                {costs && item.additional_consumed_cost_cents > 0 && <div><dt>{t('production.additionalMaterialCost')}</dt><dd>{cost(item.additional_consumed_cost_cents)}</dd></div>}
                 {item.closed_request_quantity > 0 && <div><dt>{t('production.closedQuantity')}</dt><dd>{count(item.closed_request_quantity)} {item.unit}</dd></div>}
                 {item.base_quantity !== null && <>
                   <div><dt>{t('production.baseNetUsage')}</dt><dd>{item.base_quantity_fraction || count(item.base_quantity)} {item.unit}</dd></div>

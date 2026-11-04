@@ -1,7 +1,7 @@
 import { createOperationAcceptanceService, assertOperationAcceptancePermission } from './operation-acceptance.js';
 import { positionAuthorization } from './positions.js';
 import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
-import { productionOperationTables, captureProductionRoutes, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
+import { productionOperationTables, captureProductionRoutes, captureAdditionalOperations, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
 import { requestLanguage } from './i18n.js';
 import { productionRegistrationGroup, isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
 import { rebuildTable } from './table-migration.js';
@@ -22,6 +22,7 @@ import { productionBatchSummary } from '../shared/production-batches.js';
 import { productionRegistrationUrl } from '../shared/production-link.js';
 import { renderProductionPdf } from './production-pdf.js';
 import { migrateProductionStages, productionStageTables, saveProductionStages, readProductionStages, populateStageBalances, installProductionStages, assertStagesFinished, deleteProductionStages, deriveProductionStages } from './production-stages.js';
+import { additionalMaterialReports } from './additional-operation-materials.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
 export const productionTables = ['production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables, ...productionStageTables, ...productionOperationTables];
@@ -216,7 +217,13 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     });
     order.material_documents = materialDocuments(db, id, warehouseId);
     readProductionStages(db, order);
+    readProductionRoutes(db, order);
+    order.additional_material_reports = additionalMaterialReports(db, id);
     if (order.material_workflow) order.items = materialBalances(order);
+    order.additional_material_cost_cents = order.items.reduce((sum, item) => sum + (item.additional_consumed_cost_cents || 0), 0);
+    order.total_consumed_cost_cents = order.items.reduce((sum, item) => sum + (item.consumed_cost_cents || 0), 0);
+    if (![order.additional_material_cost_cents, order.total_consumed_cost_cents].every(Number.isSafeInteger)) fail('附加工序材料成本超出范围。');
+    delete order.additional_material_reports;
     delete order.stage_direct_batches;
     const counted = summaryBatches(order);
     if (order.batches.length) {
@@ -236,7 +243,6 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     order.items = order.items.map(item => ({ ...item, ...(order.completed_at
       ? productionMaterialAnalysis(item, order.completed_quantity, order.base_quantity, item.actual_quantity, order.loss_method, standardsFor(order.completed_quantity), order.quantity_decimals)
       : { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: '' }) }));
-    readProductionRoutes(db, order);
     populateStageBalances(order);
     order.captured_at = new Date().toISOString();
     return isGroupProductionWorker(user) ? productionWorkerProjection(order) : costs ? order : productionWithoutCosts(order);
@@ -416,6 +422,7 @@ export function installProduction(app, db, options = {}) {
       saveProductionStages(db, { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), nodes: plan.nodes });
     }
     captureProductionRoutes(db, db.prepare('SELECT * FROM production_orders WHERE id=?').get(id));
+    captureAdditionalOperations(db, db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), req.body.additional_operations);
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id/assign', route(req => {
@@ -678,8 +685,10 @@ export function validateProductionBackup(data) {
     }
     for (const row of rows) {
       const supplemental = row.base_quantity === 0;
+      const additionalSources = data.production_routes.filter(route => route.production_id === order.id && route.additional_quantity != null)
+        .some(route => JSON.parse(route.additional_materials).some(item => item.product_id === row.product_id));
       if (supplemental && (!order.material_workflow || row.base_quantity_fraction !== '' || row.loss_rate !== 0 || row.planned_quantity !== 0 ||
-          !data.production_material_documents.some(doc => doc.production_id === order.id && doc.kind === 'supplement' && data.production_material_document_items.some(item=>item.document_id===doc.id && item.product_id===row.product_id)))) fail('备份补料材料来源无效。');
+          !additionalSources && !data.production_material_documents.some(doc => doc.production_id === order.id && doc.kind === 'supplement' && data.production_material_document_items.some(item=>item.document_id===doc.id && item.product_id===row.product_id)))) fail('备份补料材料来源无效。');
       if (![0,1].includes(row.unit_round_up)) fail('备份材料取整属性无效。');
       if (!expanded || supplemental) validateBomLossRate(row.loss_rate);
       else {
