@@ -11,7 +11,7 @@ async function fixture(page,{worker=false,multi=false,repeated=false}={}) {
   const post=async(path,body)=>{const response=await page.request.post(`${base}/api${path}`,{data:{request_id:randomUUID(),schema_version:2,stage_schema_version:1,operation_schema_version:1,...body}});const result=await response.json();expect(response.ok(),JSON.stringify(result)).toBe(true);return result;};
   await post('/auth/setup',{username:'routeadmin',password:'Route-test-123'});await post('/settings/reset',{confirmation:'RESET_BUSINESS_DATA'});
   const route=await post('/process-routes',{name:'凳架路线',note:'测试路线',enabled:1,graph});
-  const product=(name,routed=false)=>post('/products',{name,barcode:randomUUID(),category:'生产',unit:'件',cost:1,price:2,threshold:0,default_route_id:routed?route.id:null});
+  const product=(name,routed=false)=>post('/products',{name,barcode:randomUUID(),category:'生产',unit:'件',cost:1,price:2,threshold:0,production_type:routed?'成品':'原料',default_route_id:routed?route.id:null});
   const raw=await product('钢管'),half=await product('凳架',true),output=multi?await product('凳子',true):half;
   db.prepare('UPDATE products SET stock=1000,inventory_value_cents=100000 WHERE id=?').run(raw.id);
   const bom=(product_id,name,items)=>post('/boms',{name,product_id,base_quantity:1,base_unit:'件',note:'',enabled:1,items});
@@ -277,9 +277,34 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} con
   page.on('pageerror', error => errors.push(error.message));
   try {
     const unused = await f.post('/process-routes', { name: '待删除路线', note: '', enabled: 1, graph });
+    f.db.prepare("UPDATE products SET production_type='半成品', default_route_id=? WHERE id=?").run(unused.id, f.raw.id);
     await page.goto(`${f.base}/#process-routes`);
     if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
     const card = name => page.locator('.process-route-card').filter({ has: page.getByRole('heading', { name, exact: true }) });
+    const halfProduct = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.half.id);
+    const typeFilter = page.getByRole('combobox', { name: '生产类型', exact: true });
+    const searchInput = page.getByPlaceholder('搜索工艺路线、产物名称或编号', { exact: true });
+    await expect(card(f.route.name)).toBeVisible();
+    await expect(card(f.route.name)).toContainText(`关联产物：#${halfProduct.id} ${halfProduct.name}`);
+    await expect(card(unused.name)).toHaveCount(0);
+    await searchInput.fill(halfProduct.barcode);
+    await expect(card(f.route.name)).toBeVisible();
+    await searchInput.fill('钢管');
+    await expect(card(f.route.name)).toHaveCount(0);
+    await searchInput.fill('');
+    await typeFilter.click();
+    await page.getByRole('option', { name: '半成品', exact: true }).click();
+    await expect(card(unused.name)).toBeVisible();
+    await expect(card(f.route.name)).toHaveCount(0);
+    await searchInput.fill('钢管');
+    await expect(card(unused.name)).toBeVisible();
+    await searchInput.fill('');
+    f.db.prepare('UPDATE products SET default_route_id=NULL WHERE id=?').run(f.raw.id);
+    const showAllTypes = async () => {
+      await typeFilter.click();
+      await page.getByRole('option', { name: '全部生产类型', exact: true }).click();
+    };
+    await showAllTypes();
     await expect(card(unused.name)).toBeVisible();
     page.once('dialog', async dialog => { expect(dialog.message()).toContain(`「${unused.name}」(#${unused.id})`); await dialog.dismiss(); });
     await card(unused.name).getByRole('button', { name: '删除路线', exact: true }).click();
@@ -293,6 +318,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} con
     await card(unused.name).getByRole('button', { name: '删除路线', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('工艺路线已变化');
     await page.reload();
+    await showAllTypes();
     page.once('dialog', dialog => dialog.accept());
     await card(unused.name).getByRole('button', { name: '删除路线', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '工艺路线已删除' })).toBeVisible();
@@ -303,6 +329,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} con
     const finalRoute = f.db.prepare("SELECT * FROM process_routes WHERE name='分页路线 0'").get();
     f.db.prepare("UPDATE process_routes SET updated_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(finalRoute.id);
     await page.reload();
+    await showAllTypes();
     await page.getByRole('button', { name: '下一页', exact: true }).click();
     await expect(page.locator('.process-route-card')).toHaveCount(1);
     await expect(card(finalRoute.name)).toBeVisible();

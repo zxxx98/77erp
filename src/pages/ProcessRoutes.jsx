@@ -1,4 +1,5 @@
 import { PAYROLL_CURRENCIES } from '../../shared/payroll.js';
+import { productionTypes } from '../../shared/product-production-type.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, ArrowLeft, GitBranch, Sparkles, Link2, Trash2 } from 'lucide-react';
 import { Button, PageHeading, QueryStatus, Badge } from '../components/common.jsx';
@@ -7,7 +8,7 @@ import { Select } from '../Dropdown.jsx';
 import { useQuery, queryPath } from '../queries.js';
 import { api } from '../api.js';
 import { useBusiness } from '../business-api.js';
-import { t } from '../i18n/index.js';
+import { t, translateText } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { mobileDevice } from '../device.js';
 import { validateProcessGraph, arrangeProcessGraph } from '../../shared/process-routes.js';
@@ -18,12 +19,12 @@ import './bom.css';
 export function ProcessRoutes({ data }) {
   useLocale();
   const action = useBusiness();
-  const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
+  const [q, setQ] = useState(''), [productionType, setProductionType] = useState('成品'), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [selected, setSelected] = useState('');
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph'), [connecting, setConnecting] = useState(null), [message, setMessage] = useState('');
   const queryData = useMemo(() => ({ ...data, routeRevision: revision }), [data, revision]);
   const templates = useQuery(editor ? '/process-routes/acceptance-templates' : null, data);
-  const list = useQuery(queryPath('/process-routes', { q, status, offset }), queryData, 150);
+  const list = useQuery(queryPath('/process-routes', { q, production_type: productionType, status, offset }), queryData, 150);
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
   useEffect(() => {
@@ -53,8 +54,13 @@ export function ProcessRoutes({ data }) {
     {notices}
     <section className="panel bom-section">
       <div className="bom-list-filters process-list-filters">
-        <Input type="search" aria-label={t('route.search')} placeholder={t('route.search')} value={q} onChange={event => { setQ(event.target.value); setOffset(0); }} />
+        <Input type="search" aria-label={t('route.search')} placeholder={t('route.searchPlaceholder')} value={q} onChange={event => { setQ(event.target.value); setOffset(0); }} />
         <div className="process-filter-right">
+          <Select aria-label={t('route.productionType')} value={productionType} onChange={next => { setProductionType(next); setOffset(0); }}>
+            <option value="all">{t('route.allProductionTypes')}</option>
+            {productionTypes.map(type => <option key={type} value={type}>{translateText(type)}</option>)}
+            <option value="unset">{t('route.unsetProductionType')}</option>
+          </Select>
           <Select aria-label={t('route.all')} value={status} onChange={next => { setStatus(next); setOffset(0); }}>
             <option value="all">{t('route.all')}</option>
             <option value="enabled">{t('route.enabled')}</option>
@@ -90,6 +96,7 @@ export function ProcessRoutes({ data }) {
           {route.note && <p className="process-route-note">{route.note}</p>}
           <div className="process-route-meta-row">
             <p className="bom-hint">{t('route.version', { version: route.version })} · {t('route.operations')} {route.graph.nodes.length} · {t('route.uses')} {route.product_count} / {route.bom_count}</p>
+            {route.products?.length > 0 && <p className="bom-hint process-route-products">{t('route.outputProducts')}：{route.products.map(p => `#${p.id} ${p.name} (${p.barcode}${p.production_type ? ` · ${translateText(p.production_type)}` : ''})`).join('、')}</p>}
           </div>
         </article>)}
       </div>

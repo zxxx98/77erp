@@ -453,3 +453,42 @@ test('revoking production management during acceptance upload cannot end an orde
   assert.equal(result.status,403);assert.match(result.data.error,/不能结束生产/);
   assert.equal(f.objects.size,objectsBefore);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n,0);
 });
+
+test('process routes filter by output product production_type and search by route name or output product name, barcode and id',async t=>{
+  const f=await fixture(t,{routed:false});
+  const finishedRoute=f.route;
+  const semiRoute=f.ok(await f.command('/process-routes',{name:'半成品喷涂路线',note:'',enabled:1,graph:serial}));
+  const bomRoute=f.ok(await f.command('/process-routes',{name:'BOM专属覆写路线',note:'',enabled:1,graph:serial}));
+  const unsetRoute=f.ok(await f.command('/process-routes',{name:'未设类型路线',note:'',enabled:1,graph:serial}));
+  const unusedRoute=f.ok(await f.command('/process-routes',{name:'未绑定空闲路线',note:'',enabled:1,graph:serial}));
+  const createProduct=async(name,barcode,production_type,default_route_id=null)=>{
+    const res=await f.request('/products',{name,barcode,category:'生产',unit:'件',cost:1,price:2,threshold:0,production_type,default_route_id});
+    assert.equal(res.status,201,JSON.stringify(res.data));return res.data;
+  };
+  const finishedProd=await createProduct('豪华餐椅','FIN-CHAIR-001','成品',finishedRoute.id);
+  const semiProd=await createProduct('喷涂椅架','SEMI-FRAME-002','半成品',semiRoute.id);
+  const bomProd=await createProduct('定制圆桌','FIN-TABLE-003','成品',null);
+  const unsetProd=await createProduct('打样配件','UNSET-PART-004','',unsetRoute.id);
+  f.ok(await f.command('/boms',{name:'定制圆桌BOM',product_id:bomProd.id,base_quantity:1,base_unit:'件',note:'',enabled:1,route_override_id:bomRoute.id,items:[{product_id:f.raw,quantity:1,unit:'件',note:''}]}));
+  const list=async(params={})=>{
+    const qs=new URLSearchParams(params).toString();
+    const res=await f.request(`/process-routes${qs?`?${qs}`:''}`);
+    assert.equal(res.status,200,JSON.stringify(res.data));
+    return res.data.routes;
+  };
+  const allIds=(await list()).map(r=>r.id);
+  assert.deepEqual(new Set(allIds),new Set([finishedRoute.id,semiRoute.id,bomRoute.id,unsetRoute.id,unusedRoute.id]));
+  const finishedRoutes=await list({production_type:'成品'});
+  assert.deepEqual(new Set(finishedRoutes.map(r=>r.id)),new Set([finishedRoute.id,bomRoute.id]));
+  assert.deepEqual(finishedRoutes.find(r=>r.id===finishedRoute.id).products,[{id:finishedProd.id,name:'豪华餐椅',barcode:'FIN-CHAIR-001',production_type:'成品'}]);
+  assert.deepEqual(finishedRoutes.find(r=>r.id===bomRoute.id).products,[{id:bomProd.id,name:'定制圆桌',barcode:'FIN-TABLE-003',production_type:'成品'}]);
+  assert.deepEqual((await list({production_type:'半成品'})).map(r=>r.id),[semiRoute.id]);
+  assert.deepEqual((await list({production_type:'原料'})).map(r=>r.id),[]);
+  assert.deepEqual(new Set((await list({production_type:'unset'})).map(r=>r.id)),new Set([unsetRoute.id,unusedRoute.id]));
+  assert.deepEqual((await list({q:'喷涂椅架'})).map(r=>r.id),[semiRoute.id]);
+  assert.deepEqual((await list({q:'FIN-TABLE-003'})).map(r=>r.id),[bomRoute.id]);
+  assert.deepEqual((await list({q:`#${finishedProd.id}`})).map(r=>r.id),[finishedRoute.id]);
+  assert.deepEqual((await list({production_type:'成品',q:'定制圆桌'})).map(r=>r.id),[bomRoute.id]);
+  assert.deepEqual((await list({production_type:'成品',q:'喷涂椅架'})).map(r=>r.id),[]);
+  assert.equal((await f.request('/process-routes?production_type=invalid')).status,400);
+});

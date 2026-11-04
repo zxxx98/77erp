@@ -1,6 +1,7 @@
 import { requestLanguage, serverTranslator, localizeServerText } from './i18n.js';
 import { aiChartTemplates, aiChartData, aiChartPreview, aiChartState, aiCreateChart } from './ai-quality-charts.js';
 import { listBoms, getBom, calculateBom } from './bom.js';
+import { listProcessRoutes } from './process-routes.js';
 import { listProductionOrders, getProductionOrder } from './production.js';
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { addQuantity, validQuantity, materialQuantity } from '../shared/quantity.js';
@@ -59,7 +60,7 @@ const productFields = {
 const tools = [
   tool('search_production_orders', '查询当前仓库真实生产单，可按单号、成品名称、编码或配方搜索，并按待生产/待领料/生产中/待入库/已完成/已作废筛选。只读，不返回财务成本。', { query: string, status: { type: 'string', enum: ['all', 'draft', 'awaiting_materials', 'in_progress', 'pending_receipt', 'completed', 'void'] } }, []),
   tool('get_production_order', '查看生产单配方快照、计划产量、实际耗料、标准耗料与差异原因、合格成品、废料、batches批次及累计进度。material_documents为独立领料/补料/退料申请，支持同一申请分次发料；fulfillment_status表示待发、部分已发、全部已发或已关闭，issues为逐次实际发料记录；申请行quantity为申请量，pending_quantity为剩余待发，closed_quantity为关闭余量；材料pending_issue_quantity为待发量，不能当作可用余额；领料申请可超过计划，仓库也可按整袋数量超量发料，申请行over_issued_quantity是超出该申请的累计实发量，材料over_plan_quantity是超出计划的累计已领量，二者不能当作实际耗料或待退量；材料issued_quantity已领、returned_quantity已退、available_quantity已领未耗余额，actual_quantity实际耗料。新流程仓库确认领料扣库存，登记仅消耗已领余额；所有新成品批次生成receipt_documents待批准成品入库单，仓库批准才增加成品与入库废料库存。received_quantity为已入库、pending_receipt_quantity为待入库；批次receipt_required=0为历史已记账，receipt_status为入库状态。stage_workflow=1为分层生产单，stages保留各原始path账目，stage_pools合并相同物料、配方及工艺快照的共用半成品，pool_paths为来源路径，pool_usages为实际领用去向；共用产量、余额按stage_pools读取，不与stages重复相加。direct_consumed_quantity为原料已投入各层的总量，actual_quantity为归属根层成品的用量。本单生产的半成品不入仓库，上层不重复扣原料。补料可选择当前仓库任意已启用物料，包括选择本单生产的半成品，数量不受BOM或计划上限限制；仓库确认出库后才可耗用，未耗用余额可退料。items.is_supplemental表示配方外新增材料，base_quantity和标准用量为0，差异率为null。stages.items中is_supplemental_input为额外库存投入，使用@stock路径；同物料的本单生产投入与库存投入分别登记，有库存替代投入时本单生产投入可为0，不重复扣下级原料。创建生产单时可逐层选择本单生产、使用库存或部分使用库存；部分领库在nodes中拆成相邻stock和explode节点，supply_fraction为各自比例，不能将库存半成品再次展开扣原料。工序绑定验收模板后，登记人须同时有生产单登记资格与operation_accept工序验收权限，否则提示“该工序需要验收，请通知验收员”，此提示不自动发送通知。登记时在线填写固定发布版本的验收单，校验通过并明确确认合格后，与工序和产出批次一起保存；不合格取消登记处理，系统不猜测模板文字代表合格。关联验收单及其生产单不能直接删除，工序作废保留验收记录。AI不可代填或确认验收。operation_routes为本单各层工艺快照，operations为工序累计与前序可用量，reports区分作业员工和登记人；中间工序不是成品产量。nodes的current_production_type为物料档案当前生产类型，空值表示未设置，不是保存时类型；节点层级为path按点分段数，根配方产物为第0级，结构与用量仍按保存时快照。只读，不返回成本，不执行生产写操作或仓库批准。', { production_id: integer }),
-  tool('search_process_routes', '只读查询当前仓库工艺路线名称、版本、启用状态与工序图。物料 default_route_id 是默认路线，BOM route_override_id 非空时覆盖默认。路线不是物料配方，不执行路线编排或报工。', { query: string }, []),
+  tool('search_process_routes', '只读查询当前仓库工艺路线名称、版本、启用状态、关联产物与工序图，可按路线名称、产物物料名称或编码搜索，并可按产物生产类型筛选。物料 default_route_id 是默认路线，BOM route_override_id 非空时覆盖默认。路线不是物料配方，不执行路线编排或报工。', { query: string, production_type: { type: 'string', enum: ['all', '成品', '半成品', '原料', 'unset', ''] } }, []),
   tool('get_process_route', '只读查看指定工艺路线的工序名称、作业说明、前置关系及unit_price计件单价和currency工资币种；单价为空表示未定价，不计算历史工资；工序可配置 acceptance_template_id，生产单快照固定 acceptance_revision_id；绑定后登记需 operation_accept 工序验收权限和原有生产登记资格，并填写验收单。无权限时提示“该工序需要验收，请通知验收员”。不执行工序或路线写操作。', { route_id: integer }),
   tool('search_boms', '查询当前仓库的BOM，同一成品或半成品可以有多份独立配方，需按ID明确选择，按清单名称、成品名称或编码搜索，返回总数及最多30张清单。不得编造配方。', { query: string }, []),
   tool('get_bom', '按明确BOM ID查看当前仓库配方的成品、基准产量、历史默认用料方式usage_mode、可选下级配方关联child_bom_id（本次用料来源在建单时选择）、材料净用量、loss_rate 标准损耗率、loss_method 计算方式（internal 内扣法、external 外包法）和 scraps 废料规则（计算方式、来源材料、比例或基准数量）。quantity_fraction 非空时为原始精确分数，quantity 为向上保留4位小数的兼容值。不返回财务成本。', { bom_id: integer }),
@@ -328,8 +329,8 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
         return {...row, graph:JSON.parse(row.graph)};
       }
       if (args.query !== undefined && (typeof args.query !== 'string' || args.query.length > 100)) fail('工艺路线查询无效。');
-      const routes = db.prepare('SELECT id,name,note,enabled,version,graph FROM process_routes WHERE warehouse_id=? AND instr(name,?)>0 ORDER BY id DESC LIMIT 30').all(req.warehouse.id,args.query?.trim() || '');
-      return {routes:routes.map(row=>({...row,graph:JSON.parse(row.graph)}))};
+      if (args.production_type !== undefined && !['all', '成品', '半成品', '原料', 'unset', ''].includes(args.production_type)) fail('工艺路线查询无效。');
+      return listProcessRoutes(db, req.warehouse.id, { q: args.query ?? '', production_type: args.production_type ?? 'all' });
     }
     if (['search_boms', 'get_bom', 'calculate_bom'].includes(name)) {
       requirePermission(req, 'bom');

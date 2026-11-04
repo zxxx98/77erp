@@ -22,7 +22,7 @@ async function fixture(page) {
   const graph={nodes:['cut','out'].map((id,i)=>({id,name:i?'最终检验':'下料',note:'',x:24+220*i,y:24,acceptance_template_id:template.id})),edges:[{from:'cut',to:'out'}]};
   const route=await post('/process-routes',{name:'验收工艺',note:'',enabled:1,graph});
   const raw=await post('/products',{name:'验收原料',barcode:randomUUID(),category:'生产',unit:'件',cost:1,price:2,threshold:0});
-  const product=await post('/products',{name:'验收产物',barcode:randomUUID(),category:'生产',unit:'件',cost:1,price:2,threshold:0,default_route_id:route.id});
+  const product=await post('/products',{name:'验收产物',barcode:randomUUID(),category:'生产',unit:'件',cost:1,price:2,threshold:0,production_type:'成品',default_route_id:route.id});
   db.prepare('UPDATE products SET stock=100,inventory_value_cents=10000 WHERE id=?').run(raw.id);
   const bom=await post('/boms',{name:'验收配方',product_id:product.id,base_quantity:1,base_unit:'件',note:'',enabled:1,items:[{product_id:raw.id,quantity:2,unit:'件',note:''}]});
   const group=await post('/production-groups',{name:'检验生产组',description:''});

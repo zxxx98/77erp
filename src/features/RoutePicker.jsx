@@ -23,7 +23,7 @@ export function RoutePicker({ value, onChange, warehouseId, inherit = false, inh
         {value && !options.some(route => route.id === value) && <option value={value}>{chosen?.name || t('route.selected', { id: value })}</option>}
         {options.map(route => <option key={route.id} value={route.id}>{route.name}{!route.enabled ? ` · ${t('route.disabled')}` : ''}</option>)}
       </Select>
-      <Input type="search" aria-label={t('route.search')} placeholder={t('route.search')} value={q} disabled={disabled} onChange={event => setQ(event.target.value)} />
+      <Input type="search" aria-label={t('route.search')} placeholder={t('route.searchPlaceholder')} value={q} disabled={disabled} onChange={event => setQ(event.target.value)} />
       {effectiveId && <Button disabled={disabled || !chosen} onClick={() => setPreview(!preview)}>{t(preview ? 'route.close' : 'route.view')}</Button>}
     </div>
     <QueryStatus query={list} />

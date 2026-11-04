@@ -6,6 +6,7 @@ import { hasPermission } from '../shared/permissions.js';
 import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { validateProcessGraph, processProgress } from '../shared/process-routes.js';
 import { validateOperationPrice } from '../shared/payroll.js';
+import { productionTypes } from '../shared/product-production-type.js';
 
 export const processRouteTables = ['process_routes'];
 export const productionOperationTables = ['production_routes', 'production_operation_reports'];
@@ -75,11 +76,40 @@ export function deleteProductionOperations(db, productionId) {
   }
 }
 
+export function listProcessRoutes(db, warehouseId, query = {}) {
+  const { q = '', status = 'all', production_type = 'all', offset = '0', limit = '30' } = query;
+  if (typeof q !== 'string' || q.length > 100 || !['all', 'enabled', 'disabled'].includes(status) ||
+      !['all', 'unset', '', ...productionTypes].includes(production_type) ||
+      typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
+      typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100)
+    fail('工艺路线筛选或分页参数无效。');
+  const linkedProductSql = '(p.default_route_id=process_routes.id OR EXISTS (SELECT 1 FROM boms b WHERE b.warehouse_id=process_routes.warehouse_id AND b.product_id=p.id AND b.route_override_id=process_routes.id))';
+  const clauses = ['warehouse_id=?'], params = [warehouseId];
+  if (status !== 'all') { clauses.push('enabled=?'); params.push(status === 'enabled' ? 1 : 0); }
+  if (productionTypes.includes(production_type)) {
+    clauses.push(`EXISTS (SELECT 1 FROM products p WHERE p.warehouse_id=process_routes.warehouse_id AND ${linkedProductSql} AND p.production_type=?)`);
+    params.push(production_type);
+  } else if (production_type === 'unset' || production_type === '') {
+    clauses.push(`(EXISTS (SELECT 1 FROM products p WHERE p.warehouse_id=process_routes.warehouse_id AND ${linkedProductSql} AND p.production_type='') OR NOT EXISTS (SELECT 1 FROM products p WHERE p.warehouse_id=process_routes.warehouse_id AND ${linkedProductSql}))`);
+  }
+  if (q.trim()) {
+    const trimmed = q.trim(), like = `%${trimmed.replace(/[\\%_]/g, c => `\\${c}`)}%`, exactId = trimmed.replace(/^#/, '');
+    const typeSql = productionTypes.includes(production_type) ? ' AND p.production_type=?' : (production_type === 'unset' || production_type === '') ? " AND p.production_type=''" : '';
+    clauses.push(`(name LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM products p WHERE p.warehouse_id=process_routes.warehouse_id AND ${linkedProductSql}${typeSql} AND (p.name LIKE ? ESCAPE '\\' OR p.barcode LIKE ? ESCAPE '\\' OR CAST(p.id AS TEXT)=?)))`);
+    params.push(like, ...(productionTypes.includes(production_type) ? [production_type] : []), like, like, exactId);
+  }
+  const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) n FROM process_routes WHERE ${where}`).get(...params).n;
+  const productStmt = db.prepare(`SELECT DISTINCT p.id,p.name,p.barcode,p.production_type FROM products p WHERE p.warehouse_id=? AND (p.default_route_id=? OR EXISTS (SELECT 1 FROM boms b WHERE b.warehouse_id=p.warehouse_id AND b.product_id=p.id AND b.route_override_id=?)) ORDER BY p.id`);
+  const routes = db.prepare(`SELECT * FROM process_routes WHERE ${where} ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset))
+    .map(row => ({ ...row, graph: parseGraph(row.graph), products: productStmt.all(warehouseId, row.id, row.id), product_count: db.prepare('SELECT COUNT(*) n FROM products WHERE default_route_id=?').get(row.id).n, bom_count: db.prepare('SELECT COUNT(*) n FROM boms WHERE route_override_id=?').get(row.id).n }));
+  return { routes, total, has_more: Number(offset) + routes.length < total };
+}
+
 export function installProcessRoutes(app, db, { operationRequest, saveOperationRequest }) {
   const get = (warehouseId, routeId) => {
     const row = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(Number(routeId), warehouseId);
     if (!row) fail('工艺路线不存在或不属于当前仓库。', 404);
-    return { ...row, graph: parseGraph(row.graph), products: db.prepare('SELECT id,name FROM products WHERE default_route_id=? ORDER BY id').all(row.id),
+    return { ...row, graph: parseGraph(row.graph), products: db.prepare('SELECT id,name,barcode,production_type FROM products WHERE default_route_id=? ORDER BY id').all(row.id),
       boms: db.prepare('SELECT id,name FROM boms WHERE route_override_id=? ORDER BY id').all(row.id) };
   };
   const route = (fn, write = false) => (req, res) => {
@@ -112,17 +142,7 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
       .run(req.warehouse.id, body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), actor(req), at, at).lastInsertRowid);
     return get(req.warehouse.id, routeId);
   };
-  app.get('/api/process-routes', route(req => {
-    const { q = '', status = 'all', offset = '0', limit = '30' } = req.query;
-    if (typeof q !== 'string' || q.length > 100 || !['all','enabled','disabled'].includes(status) || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100) fail('工艺路线筛选或分页参数无效。');
-    const clauses = ['warehouse_id=?'], params = [req.warehouse.id];
-    if (status !== 'all') { clauses.push('enabled=?'); params.push(status === 'enabled' ? 1 : 0); }
-    if (q.trim()) { clauses.push("name LIKE ? ESCAPE '\\'"); params.push(`%${q.trim().replace(/[\\%_]/g, c => `\\${c}`)}%`); }
-    const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) n FROM process_routes WHERE ${where}`).get(...params).n;
-    const routes = db.prepare(`SELECT * FROM process_routes WHERE ${where} ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset))
-      .map(row => ({ ...row, graph: parseGraph(row.graph), product_count: db.prepare('SELECT COUNT(*) n FROM products WHERE default_route_id=?').get(row.id).n, bom_count: db.prepare('SELECT COUNT(*) n FROM boms WHERE route_override_id=?').get(row.id).n }));
-    return { routes, total, has_more: Number(offset) + routes.length < total };
-  }));
+  app.get('/api/process-routes', route(req => listProcessRoutes(db, req.warehouse.id, req.query)));
   app.get('/api/process-routes/acceptance-templates', route(req => ({templates:db.prepare(`SELECT t.id,r.name,r.revision FROM quality_templates t JOIN quality_template_revisions r ON r.id=t.published_revision WHERE t.warehouse_id=? AND t.enabled=1 ORDER BY r.name,t.id`).all(req.warehouse.id)})));
   app.get('/api/process-routes/:id', route(req => get(req.warehouse.id, req.params.id)));
   app.post('/api/process-routes', route(save, true));
