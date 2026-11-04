@@ -4816,3 +4816,5 @@ html:not(.mobile-device) .modal-drawer .stock-qr-line > div:last-child { flex-sh
 .batch-blocked-section { border: 1px solid #f1d4d4; border-radius: 8px; padding: 12px; background: #fff9f9; font-size: 13px; color: #7f1d1d; max-height: 240px; overflow-y: auto; }
 .batch-blocked-list { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .batch-blocked-list li { line-height: 1.5; overflow-wrap: anywhere; }
+
+.order-icon.red { background: #fff1f0; color: #d43838; }

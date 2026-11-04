@@ -1,4 +1,4 @@
-import { orderApprovalDefaults } from './orders.js';
+import { orderApprovalDefaults, validateDeliveryFields } from './orders.js';
 import { processRouteTables, productionOperationTables, clearProcessRoutes, validateProcessRouteBackup } from './process-routes.js';
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
@@ -168,33 +168,32 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           if (
             !integer(item.product_id) ||
             !validQuantity(item.quantity, true) ||
-            !item.quantity ||
-            seen.has(item.product_id)
+            !item.quantity
           )
             fail("退货数量需为正数且最多 4 位小数，物料不能重复。");
-          seen.add(item.product_id);
-          const original = originals.find(
-            (i) => i.product_id === item.product_id,
-          );
+          const candidates = originals.filter(i => i.product_id === item.product_id);
+          const original = item.source_item_id == null ? (candidates.length === 1 ? candidates[0] : null) : candidates.find(i => i.id === item.source_item_id);
           if (!original) fail("退货物料不在原单中。");
+          if (seen.has(original.id)) fail("同一原单明细不能重复退货。内容相同的物料请按原单行分别选择。");
+          seen.add(original.id);
           item.quantity = materialQuantity(item.quantity, product(item.product_id));
           const returned = db
             .prepare(
               `SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id
-        WHERE o.source_order_id=? AND o.status='active' AND i.product_id=?`,
+        WHERE o.source_order_id=? AND o.status='active' AND i.product_id=? AND (i.source_item_id=? OR i.source_item_id IS NULL)`,
             )
-            .get(source.id, item.product_id).quantity;
+            .get(source.id, item.product_id, original.id).quantity;
           if (item.quantity > addQuantity(original.quantity, -returned))
             fail(
               `${original.name} 退货数量超过可退数量 ${addQuantity(original.quantity, -returned)}。`,
             );
           let cost = null;
           if (source.type === "out" && original.cost_cents != null) {
-            const prior = db.prepare("SELECT COALESCE(SUM(i.cost_cents),0) AS n FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.source_order_id=? AND o.status='active' AND i.product_id=?").get(source.id,item.product_id).n;
+            const prior = db.prepare("SELECT COALESCE(SUM(i.cost_cents),0) AS n FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.source_order_id=? AND o.status='active' AND i.product_id=? AND (i.source_item_id=? OR i.source_item_id IS NULL)").get(source.id,item.product_id,original.id).n;
             cost = allocate(original.cost_cents - prior, item.quantity, addQuantity(original.quantity, -returned));
           }
           const priorAmount = db.prepare(`SELECT i.* FROM order_items i JOIN orders o ON o.id=i.order_id
-            WHERE o.source_order_id=? AND o.status='active' AND i.product_id=?`).all(source.id, item.product_id)
+            WHERE o.source_order_id=? AND o.status='active' AND i.product_id=? AND (i.source_item_id=? OR i.source_item_id IS NULL)`).all(source.id, item.product_id, original.id)
             .reduce((sum, line) => sum + orderLineAmount(line), 0);
           const remainingAmount = orderLineAmount(original) - priorAmount;
           if (remainingAmount < 0) fail('历史退货金额已超过原单，请先核对并作废错误退货单。');
@@ -228,7 +227,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         for (const i of items) {
           const movedCost = changeStock(i.product_id, (type === "in" ? 1 : -1) * i.quantity, i.return_cost);
           db.prepare(
-            "INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,source_item_id) VALUES (?,?,?,?,?,?,?,?,?)",
           ).run(
             result.lastInsertRowid,
             i.product_id,
@@ -237,7 +236,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             i.quantity,
             i.price,
             source.type === "out" ? i.return_cost : movedCost,
-            i.amount_cents,
+            i.amount_cents, i.id,
           );
         }
         return { id: Number(result.lastInsertRowid), number };
@@ -436,7 +435,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 46,
+    version: 47,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -445,11 +444,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 47) {
+      for (const order of data.orders || []) for (const key of ['delivery_number','delivery_time','order_number']) order[key] ??= '';
+      for (const item of data.order_items || []) item.source_item_id ??= null;
+    }
     if (value.version < 46) {
       for (const order of data.orders || []) for (const [key,value] of Object.entries(orderApprovalDefaults)) if (!(key in order)) order[key] = value;
       for (const item of data.order_items || []) { item.unit ??= ''; item.unit_round_up ??= 0; item.active_snapshot ??= 1; }
@@ -707,6 +710,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         const source = orders.get(o.resubmitted_from_id);
         if (!source || source.id >= o.id || source.warehouse_id !== o.warehouse_id || source.type !== o.type || !['rejected','cancelled'].includes(source.status)) fail('备份重提来源无效。');
       }
+      validateDeliveryFields(o);
       numbers.add(o.number);
       if (o.kind === "transfer") {
         if (o.source_order_id !== null || o.settlement_tracked !== 0 || Math.round(o.total * 100) !== 0 ||
@@ -747,14 +751,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       totals = new Map(),
       originalItems = new Map();
     for (const i of data.order_items) {
-      const key = `${i.order_id}:${i.product_id}`;
+      const key = orders.get(i.order_id)?.kind === 'return' && i.source_item_id !== null ? `${i.order_id}:line:${i.source_item_id}` : `${i.order_id}:${i.product_id}`;
       if (
         (i.amount_cents !== null && (!Number.isSafeInteger(i.amount_cents) || i.amount_cents < 0)) ||
         (i.cost_cents !== null && (!Number.isSafeInteger(i.cost_cents) || i.cost_cents < 0)) ||
         !orders.has(i.order_id) ||
         !products.has(i.product_id) ||
         products.get(i.product_id)?.warehouse_id !== orders.get(i.order_id)?.warehouse_id ||
-        keys.has(key) ||
+        (keys.has(key) && !(orders.get(i.order_id)?.type === 'in' && ['normal','internal'].includes(orders.get(i.order_id)?.kind))) ||
         !text(i.name, 100) ||
         !text(i.barcode, 64) ||
         !validQuantity(i.quantity, true) ||
@@ -767,6 +771,8 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           (['pending','rejected','cancelled'].includes(orders.get(i.order_id).status) && i.cost_cents !== null)) fail('备份单据快照无效。');
       keys.add(key);
       originalItems.set(key, i);
+      originalItems.set(`line:${i.id}`, i);
+      if (i.source_item_id !== null && (!Number.isSafeInteger(i.source_item_id) || orders.get(i.order_id).kind !== 'return')) fail('备份退货明细关联无效。');
       totals.set(
         i.order_id,
         (totals.get(i.order_id) || 0) + orderLineAmount(i),
@@ -779,9 +785,11 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const i of data.order_items) {
       const order = orders.get(i.order_id);
       if (order.kind !== "return") continue;
-      const key = `${order.source_order_id}:${i.product_id}`,
-        original = originalItems.get(key);
-      if (!original || original.price !== i.price)
+      const lookupKey = i.source_item_id === null ? `${order.source_order_id}:${i.product_id}` : `line:${i.source_item_id}`,
+        original = originalItems.get(lookupKey);
+      const key = `line:${original?.id}`;
+      if (i.source_item_id === null && data.order_items.filter(row => row.order_id === order.source_order_id && row.product_id === i.product_id).length !== 1) fail('备份退货明细缺少原单行关联。');
+      if (!original || original.order_id !== order.source_order_id || original.product_id !== i.product_id || original.price !== i.price)
         fail("备份退货明细与原单不一致。");
       if (order.status === "active") {
         const amount = returnedAmounts.get(key) || { cents: 0, allocated: false };
@@ -824,7 +832,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const d of data.templates) {
       if (!['in','out'].includes(d.type) || !text(d.name,100) || !Number.isSafeInteger(d.version) || d.version < 1 || typeof d.partner !== 'string' || d.partner.length > 100 || typeof d.note !== 'string' || d.note.length > 500 || (d.partner_id !== null && !contacts.has(d.partner_id)) || !text(d.updated_at,100)) fail('备份模板无效。');
       const items = JSON.parse(d.items);
-      if (!Array.isArray(items) || !items.length || items.length > 100 || new Set(items.map(i => i.product_id)).size !== items.length || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !validQuantity(i.quantity, true) || !validUnitPrice(i.price))) fail('备份模板明细无效。');
+      if (!Array.isArray(items) || !items.length || items.length > 100 || (d.type !== 'in' && new Set(items.map(i => i.product_id)).size !== items.length) || items.some(i => !products.has(i.product_id) || products.get(i.product_id)?.warehouse_id !== d.warehouse_id || !validQuantity(i.quantity, true) || !validUnitPrice(i.price))) fail('备份模板明细无效。');
     }
     validateStockQrBackup(data);
     validateQualityBackup(data);

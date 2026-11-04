@@ -25,7 +25,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Badge, QueryStatus, PageHeading, Button, Panel, Empty, ProductArt } from '../components/common.jsx';
-import { orderLabel } from '../order-utils.js';
+import { orderLabel, orderIconTone } from '../order-utils.js';
 
 function TrendLegend() {
   useLocale();
@@ -451,7 +451,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                     <td>
                       <div className="order-info">
                         <span
-                          className={`order-icon ${o.type === "in" ? "green" : "blue"}`}
+                          className={`order-icon ${orderIconTone(o)}`}
                         >
                           {o.type === "in" ? (
                             <ArrowDownLeft size={17} />

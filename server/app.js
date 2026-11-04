@@ -707,7 +707,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     }
   });
   app.get('/api/orders/export', (req, res) => {
-    res.json(db.prepare('SELECT id,number,type,kind,status,partner,total,created_at,note,submitted_at,created_by_name,approved_at,approved_by_name,rejected_by_name,rejected_at,reject_reason,cancelled_at,cancelled_by_name,cancel_reason,approval_origin FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC')
+    res.json(db.prepare('SELECT id,number,type,kind,status,partner,total,created_at,note,delivery_number,delivery_time,order_number,submitted_at,created_by_name,approved_at,approved_by_name,rejected_by_name,rejected_at,reject_reason,cancelled_at,cancelled_by_name,cancel_reason,approval_origin FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC')
       .all(req.warehouse.id).map(o => ({ ...o, items: db.prepare('SELECT name,quantity,price,amount_cents FROM order_items WHERE order_id=? ORDER BY id').all(o.id) })));
   });
   app.post("/api/orders", (req, res) => {

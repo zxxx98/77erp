@@ -184,7 +184,7 @@ export function validateTemplate(db, body) {
   for (const i of body.items) {
     if (
       !i || !Number.isSafeInteger(i.product_id) ||
-      seen.has(i.product_id) ||
+      (body.type !== "in" && seen.has(i.product_id)) ||
       !db.prepare("SELECT 1 FROM products WHERE id=?").get(i.product_id) ||
       !["string", "number"].includes(typeof i.quantity) ||
       !["string", "number"].includes(typeof i.price) ||

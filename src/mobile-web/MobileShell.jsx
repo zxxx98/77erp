@@ -18,7 +18,7 @@ import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, ChevronDown, FilePenL
 import { usePermissions } from '../permissions.jsx';
 import { flattenCategories } from '../catalog.js';
 import { api } from '../api.js';
-import { orderLabel } from '../order-utils.js';
+import { orderLabel, orderIconTone } from '../order-utils.js';
 import { OfflineNotice, PwaActions, usePwa } from '../pwa/Pwa.jsx';
 import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
 import { download } from '../data-files.js';
@@ -272,7 +272,7 @@ function Products({ data, inventory, showProduct, openModal, onSaved }) {
 function OrderSummary({ order, onOpen }) {
   useLocale();
   return <AntButton type="text" htmlType="button" className="mw-order-summary" onClick={() => onOpen(order)}>
-    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{orderStatusLabel(order)}</span><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? translate("warehouse.no.financial.amount") : `${order.kind === 'internal' ? translate("warehouse.reference.2") : ''}${money(order.total)}`}</strong>
+    <strong className="order-info"><span className={`order-icon ${orderIconTone(order)}`} aria-hidden="true">{order.type === "in" ? <ArrowDownToLine size={17} /> : <ArrowUpFromLine size={17} />}</span>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{orderStatusLabel(order)}</span><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? translate("warehouse.no.financial.amount") : `${order.kind === 'internal' ? translate("warehouse.reference.2") : ''}${money(order.total)}`}</strong>
   </AntButton>;
 }
 
@@ -311,7 +311,7 @@ function OrderRecords({ data, initial, showOrder }) {
     try {
       const rows = await api('/orders/export');
       const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-      const csv = '\uFEFF' + [[exportText("warehouse.document.no"), exportText("warehouse.type"), exportText("warehouse.business.partner"), exportText("warehouse.time"), exportText("warehouse.amount"),exportText('warehouse.status'),exportText('stockApproval.submitter'),exportText('stockApproval.approver'),exportText('stockApproval.approvedAt'),exportText('stockApproval.reason')], ...rows.map(o => [o.number, orderLabel(o, language), o.partner, o.created_at, Number(o.total).toFixed(2),orderStatusLabel(o,language),o.created_by_name || '',o.approved_by_name || '',o.approved_at || '',o.reject_reason || o.cancel_reason || ''])].map(row => row.map(cell).join(',')).join('\r\n');
+      const csv = '\uFEFF' + [[exportText("warehouse.document.no"), exportText("warehouse.type"), exportText("warehouse.business.partner"), exportText("warehouse.time"), exportText("warehouse.amount"),...["delivery_number","delivery_time","order_number"].map(key=>exportText(`warehouse.${key.replaceAll('_', '.')}`)),exportText('warehouse.status'),exportText('stockApproval.submitter'),exportText('stockApproval.approver'),exportText('stockApproval.approvedAt'),exportText('stockApproval.reason')], ...rows.map(o => [o.number, orderLabel(o, language), o.partner, o.created_at, Number(o.total).toFixed(2),o.delivery_number||"",o.delivery_time||"",o.order_number||"",orderStatusLabel(o,language),o.created_by_name || '',o.approved_by_name || '',o.approved_at || '',o.reject_reason || o.cancel_reason || ''])].map(row => row.map(cell).join(',')).join('\r\n');
       await download(csv, '77erp-orders.csv', 'text/csv;charset=utf-8');
     } catch (e) { setExportError(e.message); }
     finally { setExporting(false); }

@@ -48,6 +48,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
     [busy, setBusy] = useState(false),
     [camera, setCamera] = useState(false),
     [scanMessage, setScanMessage] = useState("");
+  const [delivery, setDelivery] = useState({ delivery_number: initialTemplate?.delivery_number || '', delivery_time: initialTemplate?.delivery_time || '', order_number: initialTemplate?.order_number || '' });
   const [includeInactive, setIncludeInactive] = useState(false);
   const selection = useProductSelection(data, items, query, includeInactive, initialProduct);
   const contacts = useQuery('/contacts', data);
@@ -55,7 +56,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   const add = (p) => {
     selection.remember(p);
     setItems((prev) => {
-      const found = prev.find((i) => i.product_id === p.id);
+      const found = type !== "in" && prev.find((i) => i.product_id === p.id);
       return found
         ? prev.map((i) =>
             i.product_id === p.id
@@ -91,7 +92,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   };
   const update = (id, key, value) =>
     setItems((prev) =>
-      prev.map((i) => (i.product_id === id ? { ...i, [key]: value } : i)),
+      prev.map((i, index) => (index === id ? { ...i, [key]: value } : i)),
     );
   const quantityOf = i => { const value = Number(i.quantity); return data.products.find(p => p.id === i.product_id)?.unit_round_up ? Math.ceil(value) : value; };
   const total =
@@ -117,7 +118,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
       const r = await templateAction.send('/orders', {
         type,
         ...(partnerId ? { partner_id: partnerId } : {}),
-        partner, note,
+        partner, note, ...(type === "in" ? delivery : {}),
         ...(template?.resubmitted_from_id ? {resubmitted_from_id:template.resubmitted_from_id} : {}),
         items: items.map(i => ({ ...i, quantity: materialQuantity(parseQuantity(i.quantity, true), data.products.find(p => p.id === i.product_id)), price: Number(i.price) })),
       });
@@ -179,6 +180,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             <label>{translate("warehouse.inbound.and.outbound.warehouse")}<AntInput value={data.settings.warehouse_name} disabled />
             </label>
           </div>
+          {type === "in" && <div className="form-grid">{["delivery_number", "delivery_time", "order_number"].map(key => <label key={key}>{translate(`warehouse.${key.replaceAll('_', '.')}`)}<AntInput type={key === "delivery_time" ? "datetime-local" : "text"} maxLength={key === "delivery_time" ? undefined : 100} value={delivery[key]} onChange={e => setDelivery(current => ({ ...current, [key]: e.target.value }))} /></label>)}</div>}
           {internal && <p className="info-box">{translate("warehouse.internal.transfers.only.adjust.inventory.and.do.not.include.purchases.sales")}</p>}
           <div className="order-scan-row">
             <Button
@@ -252,7 +254,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
           <div className="order-items-title">
             <strong>{translate("warehouse.material.details")}<span>{items.length}</span>
             </strong>
-            <small>{translate("warehouse.scan.the.same.material.again.and.the.quantity.will.be.automatically")}</small>
+            <small>{translate(type === "in" ? "warehouse.separate.inbound.lines" : "warehouse.scan.the.same.material.again.and.the.quantity.will.be.automatically")}</small>
           </div>
           <div className="table-scroll form-table-wrap">
             <table className="data-table form-table">
@@ -266,11 +268,11 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                 </tr>
               </thead>
               <tbody>
-                {items.map((i) => {
+                {items.map((i, index) => {
                   const p = data.products.find((p) => p.id === i.product_id);
-                  if (!p) return <tr key={i.product_id}><td colSpan={4}>{translate("warehouse.checking.material")}{i.product_id}{translate("warehouse.if.the.material.has.been.deleted.please.remove.it.and.select")}</td><td><AntButton type="text" htmlType="button" aria-label={translate("warehouse.remove.item", { v0: i.product_id })} onClick={() => setItems(current => current.filter(line => line.product_id !== i.product_id))}><Trash2 size={16} /></AntButton></td></tr>;
+                  if (!p) return <tr key={index}><td colSpan={4}>{translate("warehouse.checking.material")}{i.product_id}{translate("warehouse.if.the.material.has.been.deleted.please.remove.it.and.select")}</td><td><AntButton type="text" htmlType="button" aria-label={translate("warehouse.remove.item", { v0: i.product_id })} onClick={() => setItems(current => current.filter((line, row) => row !== index))}><Trash2 size={16} /></AntButton></td></tr>;
                   return (
-                    <tr key={i.product_id}>
+                    <tr key={index}>
                       <td>
                         <div className="product-info">
                           <ProductArt product={p} size="small" />
@@ -289,9 +291,9 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                           max="99999999"
                           step="0.0001"
                           value={i.quantity}
-                          onBlur={() => { if (p.unit_round_up && validQuantity(Number(i.quantity), true)) update(i.product_id, "quantity", Math.ceil(Number(i.quantity))); }}
+                          onBlur={() => { if (p.unit_round_up && validQuantity(Number(i.quantity), true)) update(index, "quantity", Math.ceil(Number(i.quantity))); }}
                           onChange={(e) =>
-                            update(i.product_id, "quantity", e.target.value)
+                            update(index, "quantity", e.target.value)
                           }
                         /></FormField>
                       </td>
@@ -304,7 +306,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                           step="0.0001"
                           value={i.price}
                           onChange={(e) =>
-                            update(i.product_id, "price", e.target.value)
+                            update(index, "price", e.target.value)
                           }
                         /></FormField>
                       </td>
@@ -319,7 +321,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
                           onClick={() =>
                             setItems(
                               items.filter(
-                                (x) => x.product_id !== i.product_id,
+                                (x, row) => row !== index,
                               ),
                             )
                           }

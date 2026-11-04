@@ -1,3 +1,5 @@
+import { addQuantity } from '../../shared/quantity.js';
+import { OrderDeliveryDetails } from '../OrderDeliveryDetails.jsx';
 import { useEffect, useState } from 'react';
 import { t } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
@@ -23,6 +25,7 @@ export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {
   const [reasonAction, setReasonAction] = useState(null), [reason, setReason] = useState('');
   useEffect(() => { onBusy?.(action.busy); }, [action.busy,onBusy]);
   const pending = order.status === 'pending';
+  const quantities = order.items.reduce((totals, item) => totals.set(item.product_id, addQuantity(totals.get(item.product_id) || 0, item.quantity)), new Map());
   const process = kind => action.run(async () => {
     if (kind === 'approve' && !window.confirm(t('stockApproval.approveConfirm',{number:order.number}))) return;
     await action.send(`/orders/${order.id}/${kind}`,{version:order.version,...(kind !== 'approve' ? {reason} : {})},{warehouseId:order.warehouse_id});
@@ -30,6 +33,7 @@ export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {
   });
   return <article className="material-document stock-approval-document">
     <div className="material-document-heading"><div><strong>{order.number}</strong><p>{orderLabel(order)}</p></div><Badge tone={tone(order.status)}>{orderStatusLabel(order)}</Badge></div>
+    <OrderDeliveryDetails order={order} />
     <p>{t('warehouse.business.partner')}：{order.partner}</p>
     <p className="material-muted">{t('stockApproval.submitter')}：{order.created_by_name || '—'} · {dateTime(order.submitted_at || order.created_at)}</p>
     {order.approved_at && <p className="material-muted">{t('stockApproval.approver')}：{order.approved_by_name} · {dateTime(order.approved_at)}</p>}
@@ -37,12 +41,12 @@ export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {
     {order.reject_reason && <p className="material-note">{t('stockApproval.rejected')}：{order.rejected_by_name} · {dateTime(order.rejected_at)} · {order.reject_reason}</p>}
     {order.cancel_reason && <p className="material-note">{t('stockApproval.cancelled')}：{order.cancelled_by_name} · {dateTime(order.cancelled_at)} · {order.cancel_reason}</p>}
     {pending && <p className="info-box">{t('stockApproval.noStockChange')}</p>}
-    <ul className="material-document-lines">{order.items.map(item => <li key={item.product_id}>
+    <ul className="material-document-lines">{order.items.map(item => <li key={item.id}>
       <div><strong>{item.name}</strong><small>{item.barcode}</small></div>
       <div><small>{t('warehouse.quantity')}</small><span>{count(item.quantity)} {item.unit}</span></div>
       <div><small>{t('warehouse.unit.price')}</small><span>{currencySymbol()}{price(item.price)}</span></div>
       <div><small>{t('warehouse.amount')}</small><span>{currencySymbol()}{money(item.amount_cents / 100)}</span></div>
-      {pending && <div className="stock-approval-balance"><small>{t('stockApproval.currentStock')}</small><span>{item.current_stock == null ? '—' : count(item.current_stock)} {item.current_unit}</span><small>{t('stockApproval.afterStock')}</small><span>{item.current_stock == null || item.current_unit !== item.unit || item.current_unit_round_up !== item.unit_round_up ? '—' : count(item.current_stock + (order.type === 'in' ? item.quantity : -item.quantity))} {item.unit}</span>{order.type === 'out' && item.current_stock < item.quantity && <small className="form-error">{t('stockApproval.insufficient')}</small>}</div>}
+      {pending && <div className="stock-approval-balance"><small>{t('stockApproval.currentStock')}</small><span>{item.current_stock == null ? '—' : count(item.current_stock)} {item.current_unit}</span><small>{t('stockApproval.afterStock')}</small><span>{item.current_stock == null || item.current_unit !== item.unit || item.current_unit_round_up !== item.unit_round_up ? '—' : count(addQuantity(item.current_stock, (order.type === 'in' ? 1 : -1) * quantities.get(item.product_id)))} {item.unit}</span>{order.type === 'out' && item.current_stock < item.quantity && <small className="form-error">{t('stockApproval.insufficient')}</small>}</div>}
     </li>)}</ul>
     <p><strong>{t('warehouse.total')} {currencySymbol()}{money(order.total)}</strong></p>
     {action.error && <p className="form-error" role="alert">{localizeError(action.error)}</p>}

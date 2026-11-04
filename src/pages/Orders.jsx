@@ -6,7 +6,7 @@ import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import { downloadFile } from '../app/download.js';
 import { api } from '../api.js';
-import { orderLabel } from '../order-utils.js';
+import { orderLabel, orderIconTone } from '../order-utils.js';
 import { orderLineAmount } from '../../shared/money.js';
 import { todayKey, money, count, dateTime, currencySymbol } from '../app/format.js';
 import { useState, useEffect } from 'react';
@@ -42,6 +42,7 @@ async function exportOrders(orders, notify, language = getLocale()) {
       exportText("warehouse.unit.price"),
       exportText("warehouse.detailed.amount"),
       exportText("warehouse.remarks"),
+      ...["delivery_number", "delivery_time", "order_number"].map(key => exportText(`warehouse.${key.replaceAll('_', '.')}`)),
       exportText('warehouse.status'), exportText('stockApproval.submitter'),
       exportText('stockApproval.approver'), exportText('stockApproval.approvedAt'),
       exportText('stockApproval.reason'),
@@ -58,6 +59,7 @@ async function exportOrders(orders, notify, language = getLocale()) {
         i.price,
         (orderLineAmount(i) / 100).toFixed(2),
         o.note,
+        o.delivery_number || "", o.delivery_time || "", o.order_number || "",
         orderStatusLabel(o,language), o.created_by_name || '', o.approved_by_name || '', o.approved_at || '',
         o.reject_reason || o.cancel_reason || '',
       ]),
@@ -221,7 +223,7 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
                   <td>
                     <div className="order-info">
                       <span
-                        className={`order-icon ${o.type === "in" ? "green" : "blue"}`}
+                        className={`order-icon ${orderIconTone(o)}`}
                       >
                         {o.type === "in" ? (
                           <ArrowDownLeft size={17} />

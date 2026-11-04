@@ -89,8 +89,8 @@ const tools = [
     warehouse_id: integer, inspected_on: string, next_date: string,
     items: { type: 'array', items: { ...object({ product_id: integer }), required: ['product_id'] } },
   }, ['warehouse_id', 'items']),
-  tool('preview_orders', '生成批量入库/出库待审核单预览；用户确认后仅提交，库存及账务在独立审核通过后变动。必须由用户提供或明确确认往来单位、数量、单价、方向、仓库；不猜测。最多20张单据、合计100行。', {
-    orders: { type: 'array', items: { ...object({ warehouse_id: integer, type: { type: 'string', enum: ['in', 'out'] }, partner: string, partner_id: integer, note: string,
+  tool('preview_orders', '生成批量入库/出库待审核单预览；用户确认后仅提交，库存及账务在独立审核通过后变动。必须由用户提供或明确确认往来单位、数量、单价、方向、仓库；不猜测。最多20张单据、合计100行。入库可选delivery_number送货单号、delivery_time送货时间（YYYY-MM-DDTHH:mm）、order_number订单号码，仅按用户提供填写；同物料多行保持独立，不合并。', {
+    orders: { type: 'array', items: { ...object({ warehouse_id: integer, type: { type: 'string', enum: ['in', 'out'] }, partner: string, partner_id: integer, note: string, delivery_number: string, delivery_time: string, order_number: string,
       items: { type: 'array', items: { ...object({ product_id: integer, quantity: number, price: number }), required: ['product_id', 'quantity', 'price'] } } }), required: ['warehouse_id', 'type', 'partner', 'items'] } },
   }),
   tool('preview_transfer', '生成仓库调拨预览，不直接执行。必须明确调出仓库、调入仓库、物料、数量及原因。目标仓库未建档时会新建，预览需明确告知用户。每次1–100种物料。', {
@@ -433,7 +433,7 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     }
     if (name === 'search_orders') {
       warehouse(args.warehouse_id);
-      return db.prepare('SELECT id,number,type,partner,status,created_at,created_by_name,approval_origin,submitted_at,approved_at,approved_by_name FROM orders WHERE warehouse_id=? ORDER BY id DESC LIMIT 20').all(args.warehouse_id);
+      return db.prepare('SELECT id,number,type,partner,status,delivery_number,delivery_time,order_number,created_at,created_by_name,approval_origin,submitted_at,approved_at,approved_by_name FROM orders WHERE warehouse_id=? ORDER BY id DESC LIMIT 20').all(args.warehouse_id);
     }
     if (name === 'search_inspections') {
       warehouse(args.warehouse_id);
@@ -448,8 +448,9 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
     if (name === 'preview_orders') {
       if (!Array.isArray(args.orders) || !args.orders.length || args.orders.length > 20 || args.orders.some(o => !o || !Array.isArray(o.items)) || args.orders.reduce((n,o) => n + o.items.length, 0) > 100) fail('每批最多20张单据，合计100行物料。');
       // Drop all model-supplied identity/administrative fields.
-      const payload = { orders: args.orders.map(o => ({ warehouse_id: o.warehouse_id, type: o.type, partner: o.partner, ...(o.partner_id != null ? { partner_id: o.partner_id } : {}), note: o.note ?? '', items: o.items.map(i => ({ product_id: i.product_id, quantity: i.quantity, price: i.price })) })) };
-      const display = payload.orders.map(o => ({ ...o, kind: (o.partner_id != null
+      const payload = { orders: args.orders.map(o => ({ warehouse_id: o.warehouse_id, type: o.type, partner: o.partner, ...(o.partner_id != null ? { partner_id: o.partner_id } : {}), note: o.note ?? '', delivery_number: o.delivery_number ?? '', delivery_time: o.delivery_time ?? '', order_number: o.order_number ?? '', items: o.items.map(i => ({ product_id: i.product_id, quantity: i.quantity, price: i.price })) })) };
+      const previewStocks = new Map();
+      const display = payload.orders.map((o, orderIndex) => ({ ...o, kind: (o.partner_id != null
         ? db.prepare('SELECT role FROM contacts WHERE id=?').get(o.partner_id)?.role
         : db.prepare("SELECT role FROM contacts WHERE name=? AND role='internal'").get(o.partner)?.role) === 'internal' ? 'internal' : 'normal',
         warehouse_name: warehouse(o.warehouse_id).name, items: o.items.map(i => {
@@ -457,8 +458,10 @@ export function installAi(app, db, { imports, sessionUser, aiFetch = fetch, aiEn
         if (!p) fail('物料不存在。');
         if (!validQuantity(i.quantity, true)) fail('数量需为正数且最多4位小数。');
         i.quantity = materialQuantity(i.quantity, p);
-        const stock = p.stock;
+        const stockKey = `${orderIndex}:${o.warehouse_id}:${i.product_id}`;
+        const stock = previewStocks.get(stockKey) ?? p.stock;
         const after_stock = Number((stock + (o.type === 'in' ? i.quantity : -i.quantity)).toFixed(6));
+        previewStocks.set(stockKey, after_stock);
         return { ...i, ...p, stock, after_stock };
       }) }));
       return preview(req, cid, 'orders', payload, { orders: display });

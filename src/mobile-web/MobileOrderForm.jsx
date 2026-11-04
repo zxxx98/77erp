@@ -33,6 +33,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const [partner, setPartner] = useState(initialDraft?.partner ?? initialTemplate?.partner ?? (type === 'out' ? '零售客户' : ''));
   const [partnerId, setPartnerId] = useState(initialDraft?.partnerId ?? initialTemplate?.partner_id ?? null);
   const [note, setNote] = useState(initialDraft?.note ?? initialTemplate?.note ?? '');
+  const [delivery, setDelivery] = useState(Object.fromEntries(['delivery_number', 'delivery_time', 'order_number'].map(key => [key, initialDraft?.delivery?.[key] ?? initialTemplate?.[key] ?? ''])));
   const snapshot = (p, line = {}) => ({ product_id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, version: p.version, quantity: line.quantity ?? 1, price: line.price ?? (type === 'in' ? p.cost : p.price) });
   const [items, setItems] = useState(() => initialDraft?.items || (initialTemplate ? initialTemplate.items.map(line => {
     const p = data.products.find(p => p.id === line.product_id);
@@ -58,9 +59,9 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const reportError = message => setError(value => ({ message, revision: value.revision + 1 }));
   const total = items.reduce((sum, line) => sum + Math.round((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) * Number(line.price) * 100), 0) / 100;
   const totalQuantity = items.reduce((sum, line) => sum + ((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) || 0), 0);
-  const dirty = !!(items.length || note || (partner && partner !== (type === 'out' ? '零售客户' : '')) || pending);
+  const dirty = !!(items.length || note || Object.values(delivery).some(Boolean) || (partner && partner !== (type === 'out' ? '零售客户' : '')) || pending);
   const disabled = busy || templateAction.busy || !!pending;
-  const draft = { id, type, partner, partnerId, note, items, template: template ? { id: template.id, version: template.version, name: template.name, resubmitted_from_id: template.resubmitted_from_id } : null, templateName, pending };
+  const draft = { id, type, partner, partnerId, note, delivery, items, template: template ? { id: template.id, version: template.version, name: template.name, resubmitted_from_id: template.resubmitted_from_id } : null, templateName, pending };
   latest.current = draft;
   latestDirty.current = dirty;
 
@@ -75,7 +76,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     if (!dirty && !hasSaved.current) return;
     const timer = setTimeout(() => { persist(latest.current).catch(e => { if (!finished.current) setStorageError(e.message); }); }, 350);
     return () => clearTimeout(timer);
-  }, [partner, partnerId, note, items, template, templateName, pending]);
+  }, [partner, partnerId, note, delivery, items, template, templateName, pending]);
   useEffect(() => {
     const flush = () => { if (!finished.current && (latestDirty.current || hasSaved.current)) saveDraft(scope, latest.current).catch(() => {}); };
     const visibility = () => { if (document.visibilityState === 'hidden') flush(); };
@@ -91,7 +92,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const add = product => {
     if (disabled) return;
     selection.remember(product);
-    const found = items.find(line => line.product_id === product.id);
+    const found = type !== 'in' && items.find(line => line.product_id === product.id);
     if (!found && items.length >= 100) { reportError(translate("warehouse.a.maximum.of.100.materials.can.be.added.to.one.document")); return; }
     try {
       setItems(found ? items.map(line => line === found ? { ...line, quantity: addQuantity(parseQuantity(line.quantity), 1) } : line) : [...items, snapshot(product)]);
@@ -106,7 +107,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
       add(product);
     } catch (e) { reportError(e.message); }
   };
-  const update = (productId, key, value) => setItems(current => current.map(line => line.product_id === productId ? { ...line, [key]: value } : line));
+  const update = (index, key, value) => setItems(current => current.map((line, row) => row === index ? { ...line, [key]: value } : line));
   useEffect(() => {
     setItems(current => current.map(line => {
       const product = selection.products.find(p => p.id === line.product_id);
@@ -120,10 +121,10 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     if (!items.length || items.length > 100) throw new Error(translate("warehouse.please.add.1.100.items"));
     if (stale.length) throw new Error(translate("warehouse.the.material.information.has.changed.please.check.the.latest.file.before"));
     const seen = new Set();
-    return { type, ...(template?.resubmitted_from_id ? {resubmitted_from_id:template.resubmitted_from_id} : {}), partner: partner.trim(), ...(partnerId ? { partner_id: partnerId } : {}), note, items: items.map(line => {
+    return { type, ...(template?.resubmitted_from_id ? {resubmitted_from_id:template.resubmitted_from_id} : {}), partner: partner.trim(), ...(partnerId ? { partner_id: partnerId } : {}), note, ...(type === 'in' ? delivery : {}), items: items.map(line => {
       const p = data.products.find(p => p.id === line.product_id);
       if (!p) throw new Error(translate("warehouse.no.longer.exists.please.remove.it.and.select.again", { v0: line.name || translate("warehouse.material") }));
-      if (seen.has(p.id)) throw new Error(translate("warehouse.the.same.material.cannot.be.added.repeatedly"));
+      if (type !== 'in' && seen.has(p.id)) throw new Error(translate("warehouse.the.same.material.cannot.be.added.repeatedly"));
       seen.add(p.id);
       const quantity = materialQuantity(parseQuantity(line.quantity, true), p), price = Number(line.price);
       if (!/^\d+(\.\d{1,4})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(translate("warehouse.the.unit.price.must.be.a.non.negative.amount.with.up", { v0: p.name }));
@@ -223,11 +224,12 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             {!!query.trim() && <section className="mw-card">{online ? matches.length ? matches.map(p => <ProductRow key={p.id} product={p} onOpen={add} />) : <p className="mw-muted">{translate("warehouse.material.not.found.please.create.a.material.file.first")}</p> : <p className="mw-muted">{translate("warehouse.after.connecting.to.the.internet.you.can.query.and.add.materials")}</p>}</section>}
             <Button onClick={() => setIncludeInactive(value => !value)}>{includeInactive ? translate("warehouse.hide.deactivated.materials") : translate("warehouse.contains.discontinued.materials.clearance.of.inventory.etc")}</Button>
             {!items.length && <section className="mw-card"><p className="mw-muted">{translate("warehouse.scan.the.qr.code.or.search.to.add.the.first.item")}</p></section>}
-            {items.map(line => {
+            {items.map((line, index) => {
               const p = data.products.find(p => p.id === line.product_id);
               const name = p?.name || line.name || translate("warehouse.the.material.no.longer.exists");
-              return <section key={line.product_id} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? translate("warehouse.deactivated.2") : ''}</strong><p className="mw-muted">{p ? translate("warehouse.available.inventory", { v0: count(p.stock), v1: p.unit }) : translate("warehouse.the.material.no.longer.exists.please.remove.it")}</p></div><MobileIcon icon={Trash2} label={translate("warehouse.remove", { v0: name })} onClick={() => setItems(current => current.filter(item => item.product_id !== line.product_id))} /></div><div className="mw-columns"><label className="mw-field">{translate("warehouse.quantity")}<FormField value={line.quantity} required type="number" min="0.0001" max="99999999" label={translate("warehouse.quantity.2", { v0: name })}><AntInput type="number" inputMode="decimal" min="0.0001" max="99999999" step="0.0001"  aria-label={translate("warehouse.quantity.2", { v0: name })} value={line.quantity} onBlur={() => { if (p?.unit_round_up && validQuantity(Number(line.quantity), true)) update(line.product_id, "quantity", Math.ceil(Number(line.quantity))); }} onChange={e => update(line.product_id, 'quantity', e.target.value)} /></FormField></label><label className="mw-field">{translate("warehouse.unit.price")}<FormField value={line.price} required type="number" min="0" max="99999999" label={translate("warehouse.unit.price.2", { v0: name })}><AntInput type="number" inputMode="decimal" min="0" max="99999999" step="0.0001"  aria-label={translate("warehouse.unit.price.2", { v0: name })} value={line.price} onChange={e => update(line.product_id, 'price', e.target.value)} /></FormField></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={translate("warehouse.reduce.the.number.of", { v0: name })} onClick={() => update(line.product_id, 'quantity', Math.max(0.0001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={translate("warehouse.increase.quantity", { v0: name })} onClick={() => update(line.product_id, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) * Number(line.price) * 100) / 100)}</strong></div></section>;
+              return <section key={index} className="mw-card mw-stack"><div className="mw-between"><div><strong>{name}{p?.active === 0 ? translate("warehouse.deactivated.2") : ''}</strong><p className="mw-muted">{p ? translate("warehouse.available.inventory", { v0: count(p.stock), v1: p.unit }) : translate("warehouse.the.material.no.longer.exists.please.remove.it")}</p></div><MobileIcon icon={Trash2} label={translate("warehouse.remove", { v0: name })} onClick={() => setItems(current => current.filter((item, row) => row !== index))} /></div><div className="mw-columns"><label className="mw-field">{translate("warehouse.quantity")}<FormField value={line.quantity} required type="number" min="0.0001" max="99999999" label={translate("warehouse.quantity.2", { v0: name })}><AntInput type="number" inputMode="decimal" min="0.0001" max="99999999" step="0.0001"  aria-label={translate("warehouse.quantity.2", { v0: name })} value={line.quantity} onBlur={() => { if (p?.unit_round_up && validQuantity(Number(line.quantity), true)) update(index, "quantity", Math.ceil(Number(line.quantity))); }} onChange={e => update(index, 'quantity', e.target.value)} /></FormField></label><label className="mw-field">{translate("warehouse.unit.price")}<FormField value={line.price} required type="number" min="0" max="99999999" label={translate("warehouse.unit.price.2", { v0: name })}><AntInput type="number" inputMode="decimal" min="0" max="99999999" step="0.0001"  aria-label={translate("warehouse.unit.price.2", { v0: name })} value={line.price} onChange={e => update(index, 'price', e.target.value)} /></FormField></label></div><div className="mw-between"><div className="mw-inline"><MobileIcon icon={Minus} label={translate("warehouse.reduce.the.number.of", { v0: name })} onClick={() => update(index, 'quantity', Math.max(0.0001, addQuantity(Number(line.quantity) || 0, -1)))} /><MobileIcon icon={Plus} label={translate("warehouse.increase.quantity", { v0: name })} onClick={() => update(index, 'quantity', addQuantity(Number(line.quantity) || 0, 1))} /></div><strong>{moneyBase(Math.round((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) * Number(line.price) * 100) / 100)}</strong></div></section>;
             })}
+            {type === 'in' && ['delivery_number', 'delivery_time', 'order_number'].map(key => <label className="mw-field" key={key}>{translate(`warehouse.${key.replaceAll('_', '.')}`)}<AntInput type={key === 'delivery_time' ? 'datetime-local' : 'text'} maxLength={key === 'delivery_time' ? undefined : 100} value={delivery[key]} onChange={e => setDelivery(current => ({ ...current, [key]: e.target.value }))} /></label>)}
             <label className="mw-field">{translate("warehouse.remarks.optional")}<AntInput.TextArea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
           </fieldset></AntConfigProvider>
         </div>

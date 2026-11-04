@@ -1578,3 +1578,17 @@ test('an AI position combined with legacy grants cannot unlock standard data imp
   assert.ok(!f.calls.at(-1).body.tools.some(tool=>['preview_import','read_import_table','replace_import_table'].includes(tool.function.name)));
   assert.equal((await f.chat(f.staff,{table:[['名称','单位'],['旧权限不得导入','个']]})).status,403);
 });
+
+test('AI previews optional delivery fields and preserves repeated inbound rows through confirmation',async t=>{
+  const f=await fixture(t);const metadata={delivery_number:'DN-AI-01',delivery_time:'2026-11-04T12:30',order_number:'PO-AI-01'};
+  const order={...f.order(),...metadata,items:[{product_id:1,quantity:2,price:3},{product_id:1,quantity:4,price:5}]};
+  f.use('preview_orders',{orders:[order]});const response=await f.chat(f.admin);assert.equal(response.status,200);
+  const action=response.data.actions[0];assert.ok(action,JSON.stringify(response.data));
+  for(const [key,value] of Object.entries(metadata))assert.equal(action.preview.orders[0][key],value);
+  assert.equal(action.preview.orders[0].items.length,2);
+  assert.equal(action.preview.orders[0].items[1].stock,action.preview.orders[0].items[0].after_stock);
+  const confirmed=await f.request(f.admin,'/ai/confirm',{action_id:action.id});assert.equal(confirmed.status,200,JSON.stringify(confirmed.data));
+  const saved=f.db.prepare('SELECT * FROM orders WHERE id=?').get(confirmed.data.orders[0].id);
+  for(const [key,value] of Object.entries(metadata))assert.equal(saved[key],value);
+  assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM order_items WHERE order_id=?').get(saved.id).n,2);
+});

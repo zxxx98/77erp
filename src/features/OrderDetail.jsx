@@ -1,3 +1,4 @@
+import { OrderDeliveryDetails } from '../OrderDeliveryDetails.jsx';
 import { OrderApprovalDetail, orderStatusLabel } from './OrderApprovals.jsx';
 import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
@@ -52,6 +53,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin, onCopy }) {
             </strong>
           </div>
         </div>
+        <OrderDeliveryDetails order={order} />
         <div className="table-scroll">
           <table className="data-table detail-table">
             <thead>

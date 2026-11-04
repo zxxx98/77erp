@@ -1,3 +1,4 @@
+import { OrderDeliveryDetails } from '../OrderDeliveryDetails.jsx';
 import { OrderApprovalDetail, orderStatusLabel } from '../features/OrderApprovals.jsx';
 import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
@@ -21,7 +22,7 @@ export function MobileOrderDetail({ order, Modal, onClose, onSaved, onCopy }) {
   const totalQuantity = order.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const totalLabel = transfer ? translate("warehouse.transfer.cost") : order.kind === 'internal' ? translate("warehouse.reference.amount") : translate("warehouse.total.amount");
   return <Modal title={translate("warehouse.document.details")} onClose={onClose}>
-    <div className="form-body mw-stack"><section className="mw-card mw-stack"><h2>{orderLabel(order)}</h2><DetailRow label={translate("warehouse.document.no")}>{order.number}</DetailRow><DetailRow label={transfer ? (order.type === 'in' ? translate("warehouse.from.warehouse") : translate("warehouse.send.to.warehouse")) : translate("warehouse.business.partner")}>{counterpart}</DetailRow><DetailRow label={translate("warehouse.creation.time")}>{dateTime(order.created_at)}</DetailRow></section>
+    <div className="form-body mw-stack"><section className="mw-card mw-stack"><h2>{orderLabel(order)}</h2><OrderDeliveryDetails order={order} /><DetailRow label={translate("warehouse.document.no")}>{order.number}</DetailRow><DetailRow label={transfer ? (order.type === 'in' ? translate("warehouse.from.warehouse") : translate("warehouse.send.to.warehouse")) : translate("warehouse.business.partner")}>{counterpart}</DetailRow><DetailRow label={translate("warehouse.creation.time")}>{dateTime(order.created_at)}</DetailRow></section>
       {order.items.map((item, index) => <section className="mw-card mw-stack" key={item.id || `${item.product_id}:${index}`}><strong>{item.name}</strong><p className="mw-muted">{item.barcode}</p>{transfer
         ? <div className="mw-between"><span>{translate("warehouse.quantity")}{" "}{count(item.quantity)}</span><strong>{costs && item.cost_cents != null ? translate("warehouse.cost", { v0: money(item.cost_cents / 100) }) : '—'}</strong></div>
         : <div className="mw-between"><span>{count(item.quantity)} × {price(item.price)}</span><strong>{money(orderLineAmount(item) / 100)}</strong></div>}</section>)}

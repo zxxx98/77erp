@@ -1,3 +1,4 @@
+import { OrderDeliveryDetails } from './OrderDeliveryDetails.jsx';
 import { localizeError } from './i18n/errors.js';
 import { t as translate, getFormatLocale, translateText } from './i18n/index.js';
 import { useLocale } from './i18n/react.jsx';
@@ -134,7 +135,7 @@ function ActionPreview({ action, busy, confirm }) {
     </>}
     {p.orders && <p className="info-box">{translate('stockApproval.noStockChange')}</p>}
     {p.orders?.map((o, index) => <div key={index}>
-      <p><strong>{o.warehouse_name} · {orderLabel(o)}</strong> · {o.partner}</p>
+      <p><strong>{o.warehouse_name} · {orderLabel(o)}</strong> · {o.partner}</p><OrderDeliveryDetails order={o} />
       {o.kind === "internal" && <p>{translate("system.internal.transfers.are.not.included.in.purchases.sales.profits.and.receivables")}</p>}
       {o.note && <p>{translate("system.remarks.2")}{o.note}</p>}
       <div className="ai-table"><table><thead><tr>{[translate("system.material.barcode"), translate("system.specifications"), translate("system.quantity"), translate("system.unit.price"), translate("system.amount"), translate('stockApproval.reference')].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{o.items.map((i, n) => <tr key={n}><td>{i.name}<small>{i.barcode}</small></td><td>{i.specification || '—'}</td><td>{i.quantity} {i.unit}</td><td>{baseCurrencySymbol()}{priceBase(i.price)}</td><td>{baseCurrencySymbol()}{moneyBase(i.quantity * i.price)}</td><td>{i.stock} → {i.after_stock}</td></tr>)}</tbody></table></div>

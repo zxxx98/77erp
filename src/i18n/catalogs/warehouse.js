@@ -1,5 +1,9 @@
 // Warehouse UI text. Business values, identifiers, and import headers stay unchanged.
 export default {
+  "warehouse.delivery.number": ["送货单号", "Delivery note number", "Số phiếu giao hàng"],
+  "warehouse.delivery.time": ["送货时间", "Delivery time", "Thời gian giao hàng"],
+  "warehouse.order.number": ["订单号码", "Order number", "Số đơn hàng"],
+  "warehouse.separate.inbound.lines": ["相同物料分别保留，可独立修改或删除", "Repeated materials stay on separate lines; edit or remove each line independently", "Vật tư trùng được giữ riêng; có thể sửa hoặc xóa từng dòng"],
   "warehouse.sales.amount": [
     "销售金额",
     "Sales amount",

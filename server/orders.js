@@ -9,6 +9,7 @@ import { operationRequest, saveOperationRequest } from './operations.js';
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const actor = req => req.user.name || req.user.username;
 export const orderApprovalDefaults = {
+  delivery_number: '', delivery_time: '', order_number: '',
   version: 1, submitted_at: null, approved_at: null, approved_by: null, approved_by_name: '',
   rejected_at: null, rejected_by: null, rejected_by_name: '', reject_reason: '',
   cancelled_at: null, cancelled_by: null, cancelled_by_name: '', cancel_reason: '',
@@ -22,6 +23,7 @@ export function migrateOrderApproval(db) {
     db.exec(`ALTER TABLE orders ADD COLUMN ${name} ${definition}`);
   }
   const lines = new Set(db.prepare('PRAGMA table_info(order_items)').all().map(c => c.name));
+  if (!lines.has('source_item_id')) db.exec('ALTER TABLE order_items ADD COLUMN source_item_id INTEGER');
   if (!lines.has('unit')) db.exec("ALTER TABLE order_items ADD COLUMN unit TEXT NOT NULL DEFAULT ''");
   if (!lines.has('active_snapshot')) db.exec('ALTER TABLE order_items ADD COLUMN active_snapshot INTEGER NOT NULL DEFAULT 1');
   if (!lines.has('unit_round_up')) db.exec('ALTER TABLE order_items ADD COLUMN unit_round_up INTEGER NOT NULL DEFAULT 0');
@@ -34,6 +36,21 @@ export function migrateOrderApproval(db) {
   }
 }
 
+export function validateDeliveryFields(body) {
+  const result = {};
+  for (const key of ['delivery_number', 'delivery_time', 'order_number']) {
+    const value = body[key] ?? '';
+    if (typeof value !== 'string' || value.length > (key === 'delivery_time' ? 19 : 100)) fail('送货信息格式无效，单号最多100字。');
+    result[key] = value.trim();
+  }
+  if (result.delivery_time) {
+    const value = result.delivery_time;
+    const date = new Date(value.length === 16 ? value + ':00Z' : value + 'Z');
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, value.length) !== value) fail('送货时间格式无效。');
+  }
+  return result;
+}
+
 // The caller owns the transaction, including QR quotas and request receipts.
 // This function only submits a snapshot. Inventory is posted exclusively by approval.
 export function createOrder(db, req, body) {
@@ -42,11 +59,13 @@ export function createOrder(db, req, body) {
   if (!['in','out'].includes(type) || typeof partner !== 'string' || !partner.trim() || partner.length > 100 ||
       typeof note !== 'string' || note.length > 500 || !Array.isArray(items) || !items.length || items.length > 100)
     fail('请填写往来单位并至少添加一件物料。');
+  const delivery = validateDeliveryFields(body);
+  if (type !== 'in' && Object.values(delivery).some(Boolean)) fail('仅入库单支持送货信息。');
   const seen = new Set(); let total = 0;
   const normalized = items.map(item => {
     if (!Number.isSafeInteger(item?.product_id) || item.product_id < 1 || !validQuantity(item.quantity,true) || !validUnitPrice(item.price))
       fail('物料数量必须为正数且最多 4 位小数，单价最多四位小数且不能为负数。');
-    if (seen.has(item.product_id)) fail('同一物料不能重复添加，请合并数量。');
+    if (type !== 'in' && seen.has(item.product_id)) fail('同一物料不能重复添加，请合并数量。');
     seen.add(item.product_id);
     const product = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id,req.warehouse.id);
     if (!product) fail('物料不存在或不属于当前仓库。');
@@ -67,6 +86,7 @@ export function createOrder(db, req, body) {
   const id = Number(db.prepare(`INSERT INTO orders(number,type,partner,note,total,created_at,partner_id,kind,settlement_tracked,warehouse_id,created_by,created_by_name,status,stock_applied,submitted_at,source_channel,approval_origin,resubmitted_from_id)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'pending',0,?,?,'workflow',?)`).run(number,type,contact.name,note,total/100,at,contact.id,
     contact.role === 'internal' ? 'internal' : 'normal',contact.role === 'internal' ? 0 : 1,req.warehouse.id,req.user.id,actor(req),at,req.orderSource || 'manual',sourceId).lastInsertRowid);
+  db.prepare('UPDATE orders SET delivery_number=?,delivery_time=?,order_number=? WHERE id=?').run(delivery.delivery_number,delivery.delivery_time,delivery.order_number,id);
   for (const i of normalized) db.prepare(`INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,unit,unit_round_up,active_snapshot)
     VALUES (?,?,?,?,?,?,NULL,?,?,?,?)`).run(id,i.product.id,i.product.name,i.product.barcode,i.quantity,i.price,i.amount,i.product.unit,i.product.unit_round_up,i.product.active);
   return {id,number,status:'pending',version:1};

@@ -83,12 +83,12 @@ export function OrderActions({ order, onSaved }) {
       const items = order.items
         .filter(
           (i) =>
-            quantities[i.product_id]?.trim() &&
-            Number(quantities[i.product_id]) !== 0,
+            quantities[i.id]?.trim() &&
+            Number(quantities[i.id]) !== 0,
         )
         .map((i) => ({
-          product_id: i.product_id,
-          quantity: Number(quantities[i.product_id]),
+          product_id: i.product_id, source_item_id: i.id,
+          quantity: Number(quantities[i.id]),
         }));
       if (action === "returns" && !items.length)
         throw new Error(translate("warehouse.please.fill.in.the.return.quantity.for.at.least.one.item"));
@@ -126,20 +126,20 @@ export function OrderActions({ order, onSaved }) {
         <>
           <p>{translate("warehouse.the.original.order.price.will.be.used.for.returns.leaving.the")}</p>
           {order.items.map((i) => (
-            <label key={i.product_id}>
+            <label key={i.id}>
               {i.name}{translate("warehouse.refundable")}{" "}{addQuantity(i.quantity, -(i.returned_quantity || 0))}）
-              <FormField value={quantities[i.product_id] ?? ""} type="number" min="0" max={addQuantity(i.quantity, -(i.returned_quantity || 0))} label={translate("warehouse.return.quantity", { v0: i.name })}><AntInput
+              <FormField value={quantities[i.id] ?? ""} type="number" min="0" max={addQuantity(i.quantity, -(i.returned_quantity || 0))} label={translate("warehouse.return.quantity", { v0: i.name })}><AntInput
                 aria-label={translate("warehouse.return.quantity", { v0: i.name })}
                 type="number"
                 min="0"
                 step="0.0001"
                 max={addQuantity(i.quantity, -(i.returned_quantity || 0))}
-                value={quantities[i.product_id] ?? ""}
+                value={quantities[i.id] ?? ""}
                 disabled={busy}
                 onChange={(e) =>
                   setQuantities({
                     ...quantities,
-                    [i.product_id]: e.target.value,
+                    [i.id]: e.target.value,
                   })
                 }
               /></FormField>

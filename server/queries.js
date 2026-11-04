@@ -1,3 +1,4 @@
+import { addQuantity } from '../shared/quantity.js';
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount } from '../shared/money.js';
 import { hasPermission } from '../shared/permissions.js';
@@ -192,10 +193,10 @@ export function installQueries(app, db) {
       if (!order) return res.status(404).json({ error: '单据不存在。' });
       const returned = new Map(
         db
-          .prepare(`SELECT i.product_id,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id
-            WHERE o.source_order_id=? AND o.status='active' GROUP BY i.product_id`)
+          .prepare(`SELECT i.product_id,i.source_item_id,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id
+            WHERE o.source_order_id=? AND o.status='active' GROUP BY i.product_id,i.source_item_id`)
           .all(order.id)
-          .map((row) => [row.product_id, row.quantity]),
+          .map((row) => [row.source_item_id == null ? `product:${row.product_id}` : `line:${row.source_item_id}`, row.quantity]),
       );
       const hidden = hidesCosts(req);
       const items = db
@@ -203,7 +204,7 @@ export function installQueries(app, db) {
         .all(order.id)
         .map((item) => {
           const product = db.prepare('SELECT stock,unit,active,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, req.warehouse.id);
-          const line = { ...item, current_stock: product?.stock ?? null, current_active: product?.active ?? 0, current_unit: product?.unit, current_unit_round_up: product?.unit_round_up, amount_cents: orderLineAmount(item), returned_quantity: returned.get(item.product_id) || 0 };
+          const line = { ...item, current_stock: product?.stock ?? null, current_active: product?.active ?? 0, current_unit: product?.unit, current_unit_round_up: product?.unit_round_up, amount_cents: orderLineAmount(item), returned_quantity: addQuantity(returned.get(`line:${item.id}`) || 0, returned.get(`product:${item.product_id}`) || 0) };
           if (hidden) delete line.cost_cents;
           return line;
         });

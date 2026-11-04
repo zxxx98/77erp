@@ -225,7 +225,7 @@ test("insufficient stock rolls back entire order, including first valid item", a
     previousCount + 1,
   );
 });
-test("invalid quantity, negative amounts, missing products, and duplicate items are rejected", async () => {
+test("invalid quantity, negative amounts, missing products, and duplicate outbound items are rejected", async () => {
   for (const items of [
     [{ product_id: 1, quantity: 0, price: 1 }],
     [{ product_id: 1, quantity: 1.0000001, price: 1 }],
@@ -237,7 +237,7 @@ test("invalid quantity, negative amounts, missing products, and duplicate items 
       { product_id: 1, quantity: 1, price: 1 },
     ],
   ])
-    assert.equal((await order("in", items)).status, 400);
+    assert.equal((await order("out", items)).status, 400);
 });
 test("stock cannot be overwritten by product edit and settings persist", async () => {
   const p = db.prepare("SELECT * FROM products WHERE id=2").get();

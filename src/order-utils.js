@@ -13,3 +13,5 @@ export const reportOrders = (orders) =>
         ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total }
         : o,
     );
+
+export const orderIconTone = order => ['void', 'rejected', 'cancelled'].includes(order.status) ? 'red' : order.status === 'active' ? 'green' : 'blue';
