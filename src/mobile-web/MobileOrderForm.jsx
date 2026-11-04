@@ -60,7 +60,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const totalQuantity = items.reduce((sum, line) => sum + ((data.products.find(p => p.id === line.product_id)?.unit_round_up ? Math.ceil(Number(line.quantity)) : Number(line.quantity)) || 0), 0);
   const dirty = !!(items.length || note || (partner && partner !== (type === 'out' ? '零售客户' : '')) || pending);
   const disabled = busy || templateAction.busy || !!pending;
-  const draft = { id, type, partner, partnerId, note, items, template: template ? { id: template.id, version: template.version, name: template.name } : null, templateName, pending };
+  const draft = { id, type, partner, partnerId, note, items, template: template ? { id: template.id, version: template.version, name: template.name, resubmitted_from_id: template.resubmitted_from_id } : null, templateName, pending };
   latest.current = draft;
   latestDirty.current = dirty;
 
@@ -120,14 +120,13 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     if (!items.length || items.length > 100) throw new Error(translate("warehouse.please.add.1.100.items"));
     if (stale.length) throw new Error(translate("warehouse.the.material.information.has.changed.please.check.the.latest.file.before"));
     const seen = new Set();
-    return { type, partner: partner.trim(), ...(partnerId ? { partner_id: partnerId } : {}), note, items: items.map(line => {
+    return { type, ...(template?.resubmitted_from_id ? {resubmitted_from_id:template.resubmitted_from_id} : {}), partner: partner.trim(), ...(partnerId ? { partner_id: partnerId } : {}), note, items: items.map(line => {
       const p = data.products.find(p => p.id === line.product_id);
       if (!p) throw new Error(translate("warehouse.no.longer.exists.please.remove.it.and.select.again", { v0: line.name || translate("warehouse.material") }));
       if (seen.has(p.id)) throw new Error(translate("warehouse.the.same.material.cannot.be.added.repeatedly"));
       seen.add(p.id);
       const quantity = materialQuantity(parseQuantity(line.quantity, true), p), price = Number(line.price);
       if (!/^\d+(\.\d{1,4})?$/.test(String(line.price).trim()) || !Number.isFinite(price) || price > 99999999) throw new Error(translate("warehouse.the.unit.price.must.be.a.non.negative.amount.with.up", { v0: p.name }));
-      if (type === 'out' && quantity > p.stock) throw new Error(translate("warehouse.is.out.of.stock.currently", { v0: p.name, v1: count(p.stock), v2: p.unit }));
       return { product_id: p.id, quantity, price };
     }) };
   };
@@ -166,7 +165,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
     } finally { clearTimeout(timeout); lock.current = false; setBusy(false); }
     if (receipt) {
       finished.current = true;
-      let message = translate("warehouse.document.saved", { v0: receipt.number });
+      let message = translate('stockApproval.submitted', {number:receipt.number});
       try { await removeDraft(scope, id); }
       catch { message += translate("warehouse.local.draft.cleanup.failed.please.check.it.in.the.draft.and"); }
       await onSaved(message);
@@ -175,7 +174,7 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
   const saveTemplate = overwrite => templateAction.run(async () => {
     if (pending) return;
     const body = payload();
-    const result = await templateAction.send('/templates', { ...(overwrite && template ? { id: template.id, version: template.version } : {}), name: templateName, type, partner: body.partner, partner_id: partnerId, note, items: body.items });
+    const result = await templateAction.send('/templates', { ...(overwrite && template?.id ? { id: template.id, version: template.version } : {}), name: templateName, type, partner: body.partner, partner_id: partnerId, note, items: body.items });
     setTemplate(result); setTemplateName(result.name); setTemplateRevision(value => value + 1); setTemplateMessage(translate("warehouse.template.has.been.saved.and.can.be.applied.repeatedly", { v0: result.name }));
   });
   const close = () => {
@@ -212,8 +211,8 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
               setTemplate(selected); setTemplateName(selected.name); setTemplateMessage(''); setPartner(selected.partner); setPartnerId(selected.partner_id); setNote(selected.note);
               setItems(selected.items.map(line => { const p = data.products.find(p => p.id === line.product_id); return p ? snapshot(p, line) : { ...line, name: line.name || translate("warehouse.reading.material") }; }));
             }} />}
-            {template && <p className="mw-muted">{translate("warehouse.applied")}{template.name}{translate("warehouse.this.modification.will.not.automatically.update.the.template")}</p>}
-            {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">{translate("warehouse.template.name")}<AntInput maxLength={100} placeholder={translate("warehouse.for.example.weekly.daily.necessities.replenishment")} value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template ? translate("warehouse.save.as.template") : translate("warehouse.save.as.template.2")}</Button>{template && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>{translate("warehouse.update.template")}</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
+            {template?.id && <p className="mw-muted">{translate("warehouse.applied")}{template.name}{translate("warehouse.this.modification.will.not.automatically.update.the.template")}</p>}
+            {manageTemplates && <section className="mw-card mw-stack"><label className="mw-field">{translate("warehouse.template.name")}<AntInput maxLength={100} placeholder={translate("warehouse.for.example.weekly.daily.necessities.replenishment")} value={templateName} onChange={e => setTemplateName(e.target.value)} /></label><Button icon={FilePenLine} busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(false)}>{template?.id ? translate("warehouse.save.as.template") : translate("warehouse.save.as.template.2")}</Button>{template?.id && <Button busy={templateAction.busy} disabled={!online || !items.length} onClick={() => saveTemplate(true)}>{translate("warehouse.update.template")}</Button>}{templateMessage && <p className="mw-muted" role="status">{templateMessage}</p>}<Notice>{templateAction.error}</Notice></section>}
             <ContactPicker contacts={partners} value={partner} selectedId={partnerId} searchable label={type === 'in' ? translate("warehouse.supplier") : translate("warehouse.customers.correspondence.units")} required disabled={disabled} onSelect={contact => { setPartner(contact.name); setPartnerId(contact.id); }} />
             {internal && <p className="mw-muted">{translate("warehouse.internal.transfers.only.adjust.inventory.and.do.not.include.purchases.sales")}</p>}
             <Button primary icon={Camera} disabled={!online} onClick={() => setCamera(value => !value)}>{camera ? translate("warehouse.turn.off.camera") : translate("warehouse.scan.code.to.add.materials")}</Button>
@@ -232,10 +231,10 @@ export function MobileOrderForm({ type, initialProduct, initialTemplate, initial
             <label className="mw-field">{translate("warehouse.remarks.optional")}<AntInput.TextArea rows={3} maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label>
           </fieldset></AntConfigProvider>
         </div>
-        <div className="modal-footer mw-stack"><div className="mw-between"><span className="mw-muted">{items.length}{" "}{translate("warehouse.kind.of.material.total.quantity")}{" "}{count(totalQuantity)}</span><h2>{moneyBase(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>{translate("warehouse.confirm")}{type === 'in' ? translate("warehouse.stock.in") : translate("warehouse.stock.out")}</Button></div>
+        <div className="modal-footer mw-stack"><p className="mw-muted">{translate("stockApproval.noStockChange")}</p><div className="mw-between"><span className="mw-muted">{items.length}{" "}{translate("warehouse.kind.of.material.total.quantity")}{" "}{count(totalQuantity)}</span><h2>{moneyBase(total)}</h2></div><Button type="submit" primary icon={Check} busy={busy} disabled={!items.length || !!pending || templateAction.busy || !online}>{translate('stockApproval.submit')}</Button></div>
       </AntForm>
     </Modal>
-    {confirming && <Modal title={internal ? (type === 'in' ? translate("warehouse.confirm.internal.storage") : translate("warehouse.confirm.internal.shipment")) : type === 'in' ? translate("warehouse.confirm.storage") : translate("warehouse.confirm.delivery")} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length}{" "}{translate("warehouse.materials.total")}{" "}{moneyBase(total)}{translate("warehouse.inventory.will.be.updated.immediately.upon.confirmation")}</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>{translate("warehouse.continue.editing")}</Button><Button primary disabled={!online || busy} onClick={submit}>{translate("warehouse.confirm.submission")}</Button></div></Modal>}
+    {confirming && <Modal title={translate('stockApproval.submit')} className="mw-confirm" onClose={() => setConfirming(false)}><div className="form-body mw-stack"><p>{items.length}{" "}{translate("warehouse.materials.total")}{" "}{moneyBase(total)}{translate('stockApproval.noStockChange')}</p><p className="mw-muted">{data.settings.warehouse_name} · {partner}</p></div><div className="modal-footer mw-stack"><Button onClick={() => setConfirming(false)}>{translate("warehouse.continue.editing")}</Button><Button primary disabled={!online || busy} onClick={submit}>{translate("warehouse.confirm.submission")}</Button></div></Modal>}
     {closing && <Modal title={pending ? translate("warehouse.save.documents.pending.verification") : translate("warehouse.save.local.draft")} className="mw-confirm" onClose={() => !savingClose && setClosing(false)}><div className="form-body"><p>{pending ? translate("warehouse.the.submission.result.has.not.been.confirmed.yet.please.keep.the") : translate("warehouse.after.saving.you.can.continue.editing.from.more.local.draft")}</p></div><div className="modal-footer mw-stack"><Button primary busy={savingClose} onClick={() => leave(false)}>{translate("warehouse.save.draft.and.close")}</Button>{!pending && <Button danger disabled={savingClose} onClick={() => leave(true)}>{translate("warehouse.abandon.draft")}</Button>}<Button disabled={savingClose} onClick={() => setClosing(false)}>{translate("warehouse.continue.editing")}</Button></div></Modal>}
   </>;
 }

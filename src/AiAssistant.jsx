@@ -87,7 +87,8 @@ function ProductEditValue({ field, value }) {
 function ActionResult({ action }) {
   useLocale();
   const p = action.preview, result = action.result;
-  return <p role="status">{translate("system.completed")}{result.orders ? `：${result.orders.map(o => o.number).join('、')}` : action.kind === 'update_products' ? translate('system.ai.products.updated', { count: result.count }) : action.kind === 'quality_chart' ? translate("system.the.chart.has.been.saved.and.can.be.viewed.in.the", { v0: result.name }) : action.kind === 'transfer' ? `：${result.number} / ${result.in_number}` : action.kind === 'stocktake' ? translate("system.materials.have.been.counted", { v0: p.stocktake.items.length }) : action.kind === 'inspection' ? translate("system.the.verification.reminders.for.materials.have.been.updated", { v0: result.count }) : action.kind === 'mark_inspected' ? translate("system.materials.have.been.marked.as.verified", { v0: result.count }) : translate("system.add.items", { v0: result.count })}。</p>;
+  if (result.orders) return <p role="status">{translate('stockApproval.submitted',{number:result.orders.map(o=>o.number).join('、')})}</p>;
+  return <p role="status">{translate('system.completed')}{result.orders ? `：${result.orders.map(o => o.number).join('、')}` : action.kind === 'update_products' ? translate('system.ai.products.updated', { count: result.count }) : action.kind === 'quality_chart' ? translate("system.the.chart.has.been.saved.and.can.be.viewed.in.the", { v0: result.name }) : action.kind === 'transfer' ? `：${result.number} / ${result.in_number}` : action.kind === 'stocktake' ? translate("system.materials.have.been.counted", { v0: p.stocktake.items.length }) : action.kind === 'inspection' ? translate("system.the.verification.reminders.for.materials.have.been.updated", { v0: result.count }) : action.kind === 'mark_inspected' ? translate("system.materials.have.been.marked.as.verified", { v0: result.count }) : translate("system.add.items", { v0: result.count })}。</p>;
 }
 
 function ActionCard({ action, busy, confirm }) {
@@ -131,11 +132,12 @@ function ActionPreview({ action, busy, confirm }) {
       {p.stats&&<p>{translate("system.saved.data")}{p.stats.sheets}{" "}{translate("system.worksheets")}{" "}{p.stats.records}{" "}{translate("system.records.preview.display")}{" "}{p.rows.length} / {p.total_groups}{" "}{translate("system.item.statistics")}{p.stats.incompatibleSheets?translate("system.more.worksheet.fields.are.incompatible", { v0: p.stats.incompatibleSheets }):''}{p.stats.excluded?translate("system.records.are.not.included.in.the.statistics", { v0: p.stats.excluded }):''}</p>}
       <details><summary>{translate("system.view.chart.configuration")}</summary><pre className="ai-chart-json">{JSON.stringify(p.config,null,2)}</pre></details>
     </>}
+    {p.orders && <p className="info-box">{translate('stockApproval.noStockChange')}</p>}
     {p.orders?.map((o, index) => <div key={index}>
       <p><strong>{o.warehouse_name} · {orderLabel(o)}</strong> · {o.partner}</p>
       {o.kind === "internal" && <p>{translate("system.internal.transfers.are.not.included.in.purchases.sales.profits.and.receivables")}</p>}
       {o.note && <p>{translate("system.remarks.2")}{o.note}</p>}
-      <div className="ai-table"><table><thead><tr>{[translate("system.material.barcode"), translate("system.specifications"), translate("system.quantity"), translate("system.unit.price"), translate("system.amount"), translate("system.inventory.changes")].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{o.items.map((i, n) => <tr key={n}><td>{i.name}<small>{i.barcode}</small></td><td>{i.specification || '—'}</td><td>{i.quantity} {i.unit}</td><td>{baseCurrencySymbol()}{priceBase(i.price)}</td><td>{baseCurrencySymbol()}{moneyBase(i.quantity * i.price)}</td><td>{i.stock} → {i.after_stock}</td></tr>)}</tbody></table></div>
+      <div className="ai-table"><table><thead><tr>{[translate("system.material.barcode"), translate("system.specifications"), translate("system.quantity"), translate("system.unit.price"), translate("system.amount"), translate('stockApproval.reference')].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{o.items.map((i, n) => <tr key={n}><td>{i.name}<small>{i.barcode}</small></td><td>{i.specification || '—'}</td><td>{i.quantity} {i.unit}</td><td>{baseCurrencySymbol()}{priceBase(i.price)}</td><td>{baseCurrencySymbol()}{moneyBase(i.quantity * i.price)}</td><td>{i.stock} → {i.after_stock}</td></tr>)}</tbody></table></div>
       <p>{translate("system.total")}{baseCurrencySymbol()}{moneyBase(o.items.reduce((n, i) => n + Math.round(i.quantity * i.price * 100), 0) / 100)}</p>
     </div>)}
     {p.transfer && <>

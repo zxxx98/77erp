@@ -118,9 +118,10 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
         type,
         ...(partnerId ? { partner_id: partnerId } : {}),
         partner, note,
+        ...(template?.resubmitted_from_id ? {resubmitted_from_id:template.resubmitted_from_id} : {}),
         items: items.map(i => ({ ...i, quantity: materialQuantity(parseQuantity(i.quantity, true), data.products.find(p => p.id === i.product_id)), price: Number(i.price) })),
       });
-      await onSaved(translate("warehouse.success", { v0: type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out"), v1: r.number }));
+      await onSaved(translate('stockApproval.submitted', {number:r.number}));
     } catch (e) {
       setError(localizeError(e.message));
     } finally {
@@ -131,7 +132,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   const saveTemplate = (overwrite) => templateAction.run(async () => {
     setTemplateMessage("");
     const result = await templateAction.send("/templates", {
-      ...(overwrite && template ? { id: template.id, version: template.version } : {}),
+      ...(overwrite && template?.id ? { id: template.id, version: template.version } : {}),
       name: templateName, type, partner, partner_id: partnerId, note, items,
     });
     setTemplate(result);
@@ -145,7 +146,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
   return (
     <Modal
       title={internal ? (type === "in" ? translate("warehouse.create.a.new.internal.warehouse") : translate("warehouse.create.a.new.internal.warehouse.2")) : type === "in" ? translate("warehouse.new.stock.in") : translate("warehouse.new.stock.out")}
-      subtitle={translate("warehouse.after.confirmation.will.be.put.into.inventory.and.traceable.documents.will", { v0: type === "in" ? translate("warehouse.increase") : translate("warehouse.deduction"), v1: type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out") })}
+      subtitle={translate('stockApproval.noStockChange')}
       onClose={busy || templateAction.busy ? () => {} : onClose}
       wide
     >
@@ -158,12 +159,12 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             if ((items.length || note) && !window.confirm(translate("warehouse.applying.the.template.will.replace.the.current.editing.content.do.you"))) return false;
             setTemplate(d); setTemplateName(d.name); setTemplateMessage(""); setPartner(d.partner); setPartnerId(d.partner_id); setNote(d.note); setItems(d.items);
           }} />
-          {template && <span className="order-template-status"><FilePenLine size={15} aria-hidden="true" />{translate("warehouse.applied")}{template.name}」<small>{translate("warehouse.this.modification.will.not.automatically.update.the.template.2")}</small></span>}
+          {template?.id && <span className="order-template-status"><FilePenLine size={15} aria-hidden="true" />{translate("warehouse.applied")}{template.name}」<small>{translate("warehouse.this.modification.will.not.automatically.update.the.template.2")}</small></span>}
           {templates && <div className="template-save-panel">
             <label>{translate("warehouse.template.name")}<AntInput value={templateName} maxLength={100} placeholder={translate("warehouse.for.example.weekly.daily.necessities.replenishment")} disabled={busy || templateAction.busy} onChange={e => setTemplateName(e.target.value)} /></label>
             <div className="order-template-actions">
-              <Button type="button" icon={FilePenLine} busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(false)}>{template ? translate("warehouse.save.as.template") : translate("warehouse.save.as.template.2")}</Button>
-              {template && <Button type="button" busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(true)}>{translate("warehouse.update.template")}</Button>}
+              <Button type="button" icon={FilePenLine} busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(false)}>{template?.id ? translate("warehouse.save.as.template") : translate("warehouse.save.as.template.2")}</Button>
+              {template?.id && <Button type="button" busy={templateAction.busy} disabled={busy || !items.length} onClick={() => saveTemplate(true)}>{translate("warehouse.update.template")}</Button>}
             </div>
             {templateMessage && <p className="template-success" role="status">{templateMessage}</p>}
           </div>
@@ -380,7 +381,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
               icon={Check} busy={busy}
               disabled={busy || templateAction.busy || !items.length}
             >
-              {busy ? translate("warehouse.submitting") : translate("warehouse.confirm.2", { v0: type === "in" ? translate("warehouse.stock.in") : translate("warehouse.stock.out") })}
+              {busy ? translate("warehouse.submitting") : translate('stockApproval.submit')}
             </Button>
           </div>
         </div>

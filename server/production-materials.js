@@ -219,7 +219,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
     if (!['in','out'].includes(type) || !['all','pending','partial','confirmed','cancelled','closed'].includes(status) || typeof q !== 'string' || q.length > 100 ||
         typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
         typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100) fail('生产材料单筛选或分页参数无效。');
-    if (!hasPermission(req.user, direction(type))) fail('无此方向的仓库权限。', 403);
+    if (!hasPermission(req.user, direction(type)) && !hasPermission(req.user,'stock_approve')) fail('无此方向的仓库权限。', 403);
     const clauses = ['warehouse_id=?','type=?'], params = [req.warehouse.id, type];
     if (status === 'partial') clauses.push("status='pending' AND EXISTS (SELECT 1 FROM production_material_issues i WHERE i.document_id=production_material_documents.id)");
     else if (status !== 'all') { clauses.push('status=?'); params.push(status === 'closed' ? 'cancelled' : status); }
@@ -232,7 +232,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
     const id = Number(req.params.id);
     if (!isId(id)) fail('生产材料单编号无效。');
     const doc = materialDocument(db, id, req.warehouse.id);
-    if (!hasPermission(req.user, direction(doc.type)) && !(action === 'cancel' && hasPermission(req.user, 'production'))) fail('无此方向的仓库权限。', 403);
+    if (!hasPermission(req.user, 'stock_approve') && !(action === 'cancel' && hasPermission(req.user, 'production'))) fail('无此方向的仓库权限。', 403);
     if (!isId(req.body.version) || req.body.version !== doc.version || doc.status !== 'pending') fail('材料单已变化，请刷新后核对。', 409);
     const order = current({ ...req, params: { id: String(doc.production_id) } });
     const at = new Date().toISOString();
@@ -297,7 +297,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
   }, true, req => {
     // Cached idempotent responses still require the document's current direction permission.
     const doc = materialDocument(db, Number(req.params.id), req.warehouse.id);
-    if (!hasPermission(req.user, direction(doc.type)) && !(action === 'cancel' && hasPermission(req.user, 'production'))) fail('无此方向的仓库权限。', 403);
+    if (!hasPermission(req.user, 'stock_approve') && !(action === 'cancel' && hasPermission(req.user, 'production'))) fail('无此方向的仓库权限。', 403);
   }));
 }
 

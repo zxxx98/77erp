@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { assertRestoredBusiness } from './backup-assertions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +18,8 @@ async function fixture(t) {
   let cookie;
   const request = async (path, method = 'GET', body, warehouse = 1, auth = true) => {
     const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(auth && cookie ? { Cookie: cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
-    return { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    return (path === "/orders" || /\/stock-qrs\/[^/]+\/execute$/.test(path)) && method === 'POST' ? approveFixtureOrder(result, (nextPath,nextBody)=>request(nextPath, 'POST', nextBody, warehouse, auth)) : result;
   };
   cookie = (await request('/auth/setup', 'POST', { username: 'admin', password: 'Test-admin-123' })).cookie;
   await request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
@@ -244,7 +246,7 @@ test('v11 backups round trip multiple warehouses and sync groups, reject crossed
   await f.order(remote.id, 'in', 3, w);
   await f.command('/templates', { name: '常用模板', type: 'out', partner: '', note: '', items: [{ product_id: remote.id, quantity: 1, price: 10 }] }, w);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   for (const corrupt of ['warehouse', 'item', 'template', 'sync', 'barcode', 'category-owner', 'category-parent', 'category-warehouse']) {
     const value = structuredClone(backup);
     if (corrupt === 'warehouse') value.data.products[0].warehouse_id = 999;
@@ -306,7 +308,7 @@ test('legacy backups v3 through v9 migrate shared trees into independent warehou
     const restore = await f.command('/backup/restore', { backup: legacy, ...preview.data, confirmation: 'RESTORE_BUSINESS_DATA' });
     assert.equal(restore.status, 200, `v${version}: ${JSON.stringify(restore.data)}`);
     const restored = (await f.request('/backup')).data;
-    assert.equal(restored.version, 45);
+    assert.equal(restored.version, 46);
     for (const warehouseId of [1, w, empty]) {
       const rows = (await f.request('/categories', 'GET', undefined, warehouseId)).data;
       assert.equal(rows.length, 3);

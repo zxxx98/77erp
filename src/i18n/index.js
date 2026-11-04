@@ -6,10 +6,11 @@ import warehouse from './catalogs/warehouse.js';
 import sharedUi from './catalogs/shared-ui.js';
 import extra from './catalogs/extra.js';
 import production from './catalogs/production.js';
+import stockApproval from './catalogs/stock-approval.js';
 import processRoutes from './catalogs/process-routes.js';
 
 // Bundled language resources are included in the normal PWA asset precache.
-const catalogs = { processRoutes, common, system, warehouse, production, sharedUi, extra };
+const catalogs = { stockApproval, processRoutes, common, system, warehouse, production, sharedUi, extra };
 const entries = {};
 for (const catalog of Object.values(catalogs)) {
   for (const [key, values] of Object.entries(catalog)) {

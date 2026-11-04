@@ -136,7 +136,7 @@ test('production requests and warehouse approval have independent permissions, d
     const cookie = (await f.request('/auth/login', { username, password: 'Test-staff-123' }, { cookie: null })).cookie;
     return { cookie, id: created.data.id };
   };
-  const producer = await user('producer', ['production']), warehouse = await user('warehouse', ['sale']), receiver = await user('receiver', ['purchase']);
+  const producer = await user('producer', ['production']), warehouse = await user('warehouse', ['stock_approve']), receiver = await user('receiver', ['purchase']);
   let order = await f.create();
   order = f.ok(await f.command(`/production-orders/${order.id}/start`, { version: order.version }, producer));
   const doc = order.material_documents[0];
@@ -145,7 +145,7 @@ test('production requests and warehouse approval have independent permissions, d
   assert.equal((await f.request('/production-material-documents?type=out', undefined, producer)).status, 403);
   assert.equal((await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version }, producer)).status, 403);
   assert.equal((await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version }, receiver)).status, 403);
-  assert.equal((await f.request('/production-material-documents?type=in', undefined, warehouse)).status, 403);
+  assert.equal((await f.request('/production-material-documents?type=in', undefined, warehouse)).status, 200);
   const listed = f.ok(await f.request('/production-material-documents?type=out&status=pending&q=RAW&offset=0&limit=1', undefined, warehouse));
   assert.equal(visibleCosts(listed), false);
   const all = f.ok(await f.request('/production-material-documents?type=out&status=pending&limit=1', undefined, warehouse));
@@ -158,6 +158,7 @@ test('production requests and warehouse approval have independent permissions, d
   assert.equal((await f.request(`/production-material-documents/${doc.id}/confirm`, body, warehouse)).status, 403, 'a retry must recheck the stored direction after permissions change');
   order = await f.get(order.id);
   order = f.ok(await f.command(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'in', items: [{ product_id: f.material, quantity: 1 }], note: '' }, producer));
+  f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), receiver.id, ['stock_approve']));
   const pendingReturn = order.material_documents.at(-1);
   assert.equal((await f.command(`/production-material-documents/${pendingReturn.id}/cancel`, { version: pendingReturn.version, reason: '取消' }, producer)).status, 200);
 });

@@ -93,7 +93,7 @@ export function ProductionMaterialDocuments({ data, type, onChanged, initialQuer
   const [message, setMessage] = useState('');
   const [selection, setSelection] = useState(null);
   const action = useBusiness();
-  const allowed = can(type === 'out' ? 'sale' : 'purchase');
+  const allowed = can('stock_approve') || can(type === 'out' ? 'sale' : 'purchase');
   const list = useQuery(allowed ? queryPath('/production-material-documents', { type, status, q, offset, limit: 10 }) : null, data, q ? 200 : 0);
   const scope = JSON.stringify([data.warehouse_id, type, status, q, offset]);
   const documents = list.result?.documents || [];
@@ -143,7 +143,7 @@ export function ProductionMaterialDocuments({ data, type, onChanged, initialQuer
     {selected && <ProductionApprovalDialog title={titleFor(selected)} subtitle={selected.number} busy={action.busy} onClose={() => setSelection(null)}>
       <div className="form-body">
         {productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)} {pt("production.closeDetailsAndRefreshToCheckTheCurrent")}</p>}
-        <MaterialDocumentList key={selected.id} documents={[selected]} busy={action.busy} defaultExpanded onConfirm={confirm} onCancel={cancel} />
+        <MaterialDocumentList key={selected.id} documents={[selected]} busy={action.busy} defaultExpanded onConfirm={can('stock_approve') ? confirm : null} onCancel={can('stock_approve') || can('production') ? cancel : null} />
       </div>
     </ProductionApprovalDialog>}
   </section>;

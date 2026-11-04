@@ -373,14 +373,14 @@ test('batch orders preview without writes, confirm atomically, attribute to curr
   f.use('preview_orders', { orders: [{ ...f.order('in', 5), created_by: 1 }, f.order('out', 3)] });
   const r = await f.chat(f.staff); assert.equal(r.status, 200);
   const action = r.data.actions[0]; assert.ok(action);
-  assert.equal(action.preview.orders[1].items[0].stock, before + 5);
+  assert.equal(action.preview.orders[1].items[0].stock, before);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, count);
   assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: action.id })).status, 404);
   const confirmed = await f.request(f.staff, '/ai/confirm', { action_id: action.id }); assert.equal(confirmed.status, 200);
   assert.equal(confirmed.data.orders.length, 2);
   for (const o of confirmed.data.orders) assert.equal(f.db.prepare('SELECT created_by FROM orders WHERE id=?').get(o.id).created_by, f.id);
-  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before + 2);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before);
   const retry = await f.request(f.staff, '/ai/confirm', { action_id: action.id }); assert.deepEqual(retry.data, confirmed.data);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, count + 2);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM ai_audit WHERE tool='confirm_orders' AND status='success'").get().n, 1);
@@ -418,7 +418,7 @@ test('continuing a conversation supersedes unconfirmed previews while preserving
   assert.equal(continued.data.actions[0].turn_index, 1);
   assert.equal((await f.request(f.staff, `/ai/conversations/${cid}`)).data.actions[0].turn_index, 1);
   assert.deepEqual((await f.request(f.staff, '/ai/confirm', { action_id: replacement.id })).data, confirmed.data);
-  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before + 3);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before);
 });
 
 test('provider failures do not restore superseded previews or discard previews from the current turn', async t => {
@@ -459,7 +459,7 @@ test('previews reject changed stock, revoked permissions, expired actions and wr
 
 test('bad batch is rolled back entirely and AI cannot invoke confirmation as a tool', async t => {
   const f = await fixture(t), before = f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock;
-  f.use('preview_orders', { orders: [f.order('in', 1), f.order('out', 999999)] });
+  f.use('preview_orders', { orders: [f.order('in', 1), f.order('out', -1)] });
   const r = await f.chat(f.admin); assert.equal(r.data.actions.length, 0);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=1').get().stock, before);
   assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE name='AI测试单位'").get().n, 0);
@@ -1258,7 +1258,7 @@ test('AI unit rounding import and order previews show the exact quantities that 
   assert.equal(orderAction.preview.orders[0].items[0].quantity, 2);
   assert.equal(orderAction.preview.orders[0].items[0].after_stock, 3);
   assert.equal((await f.request(f.admin, '/ai/confirm', { action_id: orderAction.id })).status, 200);
-  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(product.id).stock, 3);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(product.id).stock, 5);
 });
 
 for (const change of ['same-permission position switch', 'position permission edit']) test(`AI invalidates conversation and pending action after ${change}`, async t => {

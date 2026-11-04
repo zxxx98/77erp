@@ -7,7 +7,7 @@ export const businessType = (o) =>
 // Warehouse transfers move stock without money, so they stay out of the totals.
 export const reportOrders = (orders) =>
   orders
-    .filter((o) => o.status !== "void" && !["transfer", "internal"].includes(o.kind))
+    .filter((o) => o.status === "active" && !["transfer", "internal"].includes(o.kind))
     .map((o) =>
       o.kind === "return"
         ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total }

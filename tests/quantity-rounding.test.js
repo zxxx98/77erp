@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -16,7 +17,8 @@ async function fixture(t) {
       method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
       body: body === undefined ? undefined : JSON.stringify({ request_id: randomUUID(), ...body }),
     });
-    return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+    return path === '/orders' && method === 'POST' ? approveFixtureOrder(result,(nextPath,nextBody)=>request(nextPath,nextBody,'POST')) : result;
   };
   cookie = (await request('/auth/setup', { username: 'rounding', password: 'Strong-password-123' })).cookie;
   const ok = result => { assert.ok(result.status < 300, JSON.stringify(result.data)); return result.data; };

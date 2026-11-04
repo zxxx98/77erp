@@ -1,3 +1,4 @@
+import { orderApprovalDefaults } from './orders.js';
 import { processRouteTables, productionOperationTables, clearProcessRoutes, validateProcessRouteBackup } from './process-routes.js';
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
@@ -435,7 +436,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 45,
+    version: 46,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -444,11 +445,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 46) {
+      for (const order of data.orders || []) for (const [key,value] of Object.entries(orderApprovalDefaults)) if (!(key in order)) order[key] = value;
+      for (const item of data.order_items || []) { item.unit ??= ''; item.unit_round_up ??= 0; item.active_snapshot ??= 1; }
+    }
     if (value.version < 45) for (const report of data.production_operation_reports || []) report.multiplier = 1;
     if (value.version < 44) for (const report of data.production_operation_reports || []) report.acceptance_id = null;
     if (value.version < 42) for (const node of data.production_bom_nodes || []) node.supply_fraction = '';
@@ -668,7 +673,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         numbers.has(o.number) ||
         !["in", "out"].includes(o.type) ||
         !["normal", "return", "transfer", "internal"].includes(o.kind) ||
-        !["active", "void"].includes(o.status) ||
+        !["active", "void", "pending", "rejected", "cancelled"].includes(o.status) ||
         !text(o.partner, 100) ||
         typeof o.note !== "string" ||
         o.note.length > 500 ||
@@ -685,6 +690,23 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         fail("备份单据内容无效。");
       if ((o.kind === 'internal') !== (contacts.get(o.partner_id)?.role === 'internal') ||
           (o.kind === 'internal' && o.settlement_tracked !== 0)) fail('备份内部流转类型或收付款设置无效。');
+      if (!['legacy','workflow'].includes(o.approval_origin) || !Number.isSafeInteger(o.version) || o.version < 1 ||
+          !['manual','qr','ai','legacy'].includes(o.source_channel)) fail('备份审核信息无效。');
+      for (const prefix of ['approved','rejected','cancelled']) {
+        if (!(o[`${prefix}_at`] === null || text(o[`${prefix}_at`],100)) || typeof o[`${prefix}_by_name`] !== 'string' || o[`${prefix}_by_name`].length > 60 ||
+            !(o[`${prefix}_by`] === null || Number.isSafeInteger(o[`${prefix}_by`]) && o[`${prefix}_by`] > 0)) fail('备份审核人员或时间无效。');
+      }
+      if (typeof o.reject_reason !== 'string' || o.reject_reason.length > 500 || typeof o.cancel_reason !== 'string' || o.cancel_reason.length > 500) fail('备份审核原因无效。');
+      const unposted = ['pending','rejected','cancelled'].includes(o.status);
+      if (unposted && (o.approval_origin !== 'workflow' || !['normal','internal'].includes(o.kind) || o.stock_applied !== 0 || o.approved_at !== null)) fail('备份待审核单据状态无效。');
+      if (o.approval_origin === 'workflow' && (!text(o.submitted_at,100) || !['normal','internal'].includes(o.kind) ||
+          (!unposted && (!text(o.approved_at,100) || !text(o.approved_by_name,60) || o.stock_applied !== 1)) ||
+          (o.status === 'rejected' && (!text(o.rejected_at,100) || !text(o.reject_reason,500) || !text(o.rejected_by_name,60))) ||
+          (o.status === 'cancelled' && (!text(o.cancelled_at,100) || !text(o.cancel_reason,500) || !text(o.cancelled_by_name,60))))) fail('备份审核状态或记录不一致。');
+      if (o.resubmitted_from_id !== null) {
+        const source = orders.get(o.resubmitted_from_id);
+        if (!source || source.id >= o.id || source.warehouse_id !== o.warehouse_id || source.type !== o.type || !['rejected','cancelled'].includes(source.status)) fail('备份重提来源无效。');
+      }
       numbers.add(o.number);
       if (o.kind === "transfer") {
         if (o.source_order_id !== null || o.settlement_tracked !== 0 || Math.round(o.total * 100) !== 0 ||
@@ -741,6 +763,8 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         fail("备份单据明细无效。");
       if (['normal', 'internal'].includes(orders.get(i.order_id).kind) && orderLineAmount(i) !== Math.round(i.quantity * i.price * 100))
         fail('备份原单明细金额无效。');
+      if (![0,1].includes(i.active_snapshot) || typeof i.unit !== 'string' || i.unit.length > 30 || ![0,1].includes(i.unit_round_up) ||
+          (['pending','rejected','cancelled'].includes(orders.get(i.order_id).status) && i.cost_cents !== null)) fail('备份单据快照无效。');
       keys.add(key);
       originalItems.set(key, i);
       totals.set(
@@ -871,6 +895,9 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             if (['production_orders', 'production_batches', 'production_stage_batches'].includes(table) && row.production_group_id !== null &&
                 (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value ||
                  !db.prepare('SELECT 1 FROM production_groups WHERE id=?').get(row.production_group_id))) row.production_group_id = null;
+            if (table === 'orders') for (const key of ['approved_by','rejected_by','cancelled_by']) {
+              if (row[key] !== null && (req.body.backup.source_instance_id !== db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value || !db.prepare('SELECT 1 FROM users WHERE id=?').get(row[key]))) row[key] = null;
+            }
             if (table === 'production_orders') for (const [key, target] of [['assigned_groups', 'production_groups'], ['assigned_users', 'users']]) {
               const sameInstance = req.body.backup.source_instance_id === db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value;
               row[key] = JSON.stringify(JSON.parse(row[key]).filter(entry => sameInstance && db.prepare(`SELECT 1 FROM ${target} WHERE id=?`).get(entry.id)));

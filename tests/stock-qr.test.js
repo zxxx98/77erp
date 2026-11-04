@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -111,19 +112,12 @@ async function fixture(t) {
       1,
       session,
     );
-  const execute = (q, p, extra = {}, session) =>
-    request(
-      `/stock-qrs/${q.qr_id}/execute`,
-      "POST",
-      {
-        preview_token: p.preview_token,
-        confirmed: true,
-        request_id: randomUUID(),
-        ...extra,
-      },
-      1,
-      session,
-    );
+  // These composition/cost regressions need posted documents; approve separately as the reviewer.
+  const execute = async (q,p,extra={},session) => {
+    const result = await request(`/stock-qrs/${q.qr_id}/execute`, 'POST', {preview_token:p.preview_token,confirmed:true,request_id:randomUUID(),...extra},1,session);
+    if (session !== undefined) return result;
+    return approveFixtureOrder(result,(path,body)=>request(path,'POST',body));
+  };
   const stocks = () =>
     db
       .prepare("SELECT stock,inventory_value_cents FROM products ORDER BY id")
@@ -302,16 +296,16 @@ test("insufficient stock in any line, including changes after preview, rejects e
   const before = f.stocks(),
     r = await f.execute(q, p);
   assert.equal(r.status, 409);
-  assert.equal(r.data.details[0].product_id, f.products[1].id);
+  assert.match(r.data.error,/库存不足/);
   assert.deepEqual(f.stocks(), before);
   assert.equal(
     f.db.prepare("SELECT used_scans FROM stock_qr_codes WHERE id=?").get(q.id)
       .used_scans,
-    0,
+    1,
   );
 });
 
-test("a failure after the first inventory write rolls back all stock, cost, orders and quota", async (t) => {
+test("a failure after the first inventory write rolls back all stock and cost while retaining the submitted document and consumed quota", async (t) => {
   const f = await fixture(t),
     q = await f.create(),
     p = (await f.preview(q)).data,
@@ -330,11 +324,11 @@ test("a failure after the first inventory write rolls back all stock, cost, orde
   ])
     assert.equal(
       f.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n,
-      table === "operation_requests" ? 1 : 0,
+      table === "operation_requests" ? 2 : table === "order_items" ? 2 : 1,
     );
   assert.equal(
     f.db.prepare("SELECT used_scans FROM stock_qr_codes").get().used_scans,
-    0,
+    1,
   );
 });
 
@@ -501,7 +495,7 @@ test("backup v7 preserves multi-item history, restore rotates labels and disable
     q = await f.create();
   await f.execute(q, (await f.preview(q)).data);
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   const restore = async (value) => {
     const p = await f.request("/backup/preview", "POST", { backup: value });
     assert.equal(p.status, 200, JSON.stringify(p.data));
@@ -609,4 +603,18 @@ test("multi-item sale uses weighted costs and voiding does not refund quota", as
   const usage = (await f.request(`/stock-qrs/${sale.qr_id}/usages`)).data
     .rows[0];
   assert.equal(usage.order.status, "void");
+});
+
+test('QR submission consumes quota exactly once while stock waits for independent approval',async t=>{
+  const f=await fixture(t),before=f.stocks(),qr=await f.create({max_scans:1});
+  const preview=(await f.preview(qr)).data;
+  const body={preview_token:preview.preview_token,confirmed:true,request_id:randomUUID()};
+  const submitted=await f.request(`/stock-qrs/${qr.qr_id}/execute`,'POST',body);
+  assert.equal(submitted.status,201);assert.equal(submitted.data.status,'pending');assert.equal(submitted.data.remaining_scans,0);
+  assert.deepEqual(f.stocks(),before);
+  const replay=await f.request(`/stock-qrs/${qr.qr_id}/execute`,'POST',body);assert.equal(replay.status,200);assert.equal(replay.data.id,submitted.data.id);
+  assert.deepEqual(f.stocks(),before);
+  const rejected=await f.request(`/orders/${submitted.data.id}/reject`,'POST',{version:1,reason:'扫码数量错误',request_id:randomUUID()});assert.equal(rejected.status,200);
+  assert.deepEqual(f.stocks(),before);
+  const exhausted=await f.preview(qr);assert.equal(exhausted.data.code,'SCAN_LIMIT_REACHED');
 });

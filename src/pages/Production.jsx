@@ -599,8 +599,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       <div className="bom-actions">
         {management && detail.status === 'in_progress' && <Button disabled={action.busy || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={() => requestMaterials('out')}>{pt("production.requestSupplement")}</Button>}
         {management && ['in_progress', 'completed'].includes(detail.status) && <Button disabled={action.busy || detail.material_documents?.some(doc => doc.status === 'pending') || !detail.items.some(item => item.available_quantity > 0)} onClick={() => requestMaterials('in')}>{pt("production.requestReturn")}</Button>}
-        {onNavigate && can('sale') && <Button disabled={action.busy} onClick={() => onNavigate('sales', { approval: 'issues', q: detail.number })}>{pt("production.goToIssues")}</Button>}
-        {onNavigate && can('purchase') && <Button disabled={action.busy} onClick={() => onNavigate('purchases', { approval: 'returns', q: detail.number })}>{pt("production.goToReceipts")}</Button>}
+        {onNavigate && can('stock_approve') && <Button disabled={action.busy} onClick={() => onNavigate('sales', { approval: 'issues', q: detail.number })}>{pt("production.goToIssues")}</Button>}
+        {onNavigate && can('stock_approve') && <Button disabled={action.busy} onClick={() => onNavigate('purchases', { approval: 'returns', q: detail.number })}>{pt("production.goToReceipts")}</Button>}
       </div>
       {detail.material_documents?.some(doc => doc.status === 'pending') && <p className="bom-hint">{pt("production.aMaterialRequestIsPendingHaveTheWarehouse")}</p>}
       <ProductionMaterialLedger key={detail.id} order={detail} costs={management && can('finance')} busy={action.busy} />
@@ -627,7 +627,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       onVoid={batch => begin({ kind: 'void_batch', batchId: batch.id, reason: '' })} />
     {!!detail.receipt_documents?.length && <section className="panel bom-section" aria-label={pt("production.productionProductReceipts")}><h2>{pt("production.productionProductReceipts")}</h2>
       <p className="bom-hint">{pt("production.approveEachBatchSeparatelyPendingReceiptsDoNot")}</p>
-      {onNavigate && can('purchase') && <Button className="production-receipt-action" disabled={action.busy} onClick={() => onNavigate('purchases', { approval: 'receipts', q: detail.number })}>{pt("production.goToReceiptApproval")}</Button>}
+      {onNavigate && can('stock_approve') && <Button className="production-receipt-action" disabled={action.busy} onClick={() => onNavigate('purchases', { approval: 'receipts', q: detail.number })}>{pt("production.goToReceiptApproval")}</Button>}
       <ProductionReceiptList documents={detail.receipt_documents} busy={action.busy} />
     </section>}
     {(detail.scraps || []).length > 0 && <section className="panel bom-section"><ScrapOutputs rows={detail.scraps} materials={detail.items} completed={!!detail.completed_at} receiptStatus={detail.status === 'void' ? 'void' : undefined} />

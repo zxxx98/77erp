@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { readonlyPositionId, grantPosition, legacyPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +13,8 @@ async function fixture(t) {
   let cookie;
   const request = async (path, method = 'GET', body, warehouse = 1, auth = true, selectedCookie = cookie) => {
     const res = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(auth && selectedCookie ? { Cookie: selectedCookie } : {}) }, body: body === undefined ? (method === 'DELETE' ? '{}' : undefined) : JSON.stringify(body) });
-    return { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    return path === "/orders" && method === 'POST' ? approveFixtureOrder(result, (nextPath,nextBody)=>request(nextPath, 'POST', nextBody, warehouse, auth, selectedCookie)) : result;
   };
   cookie = (await request('/auth/setup', 'POST', { username: 'admin', password: 'Test-admin-123' })).cookie;
   await request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });

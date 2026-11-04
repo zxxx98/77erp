@@ -39,7 +39,7 @@ for(const mobile of [false,true]) test(`${mobile?'mobile':'desktop'} approval ta
     await expect(page.getByRole('tabpanel',{name:'出库记录',exact:true})).toBeVisible();
     await tabs.getByRole('tab',{name:'出库记录',exact:true}).focus();
     await page.keyboard.press('ArrowRight');
-    await expect(tabs.getByRole('tab',{name:/领料.*补料待出库/})).toBeFocused();
+    await expect(tabs.getByRole('tab',{name:/普通出库待审核/})).toBeFocused();
     await page.keyboard.press('Home');
     await expect(tabs.getByRole('tab',{name:/领料.*补料待出库.*11/})).toBeVisible();
     await expect(page.getByRole('region',{name:'生产领料出库单',exact:true})).toHaveCount(0);
@@ -121,7 +121,7 @@ test('approval counts retry, failed approval keeps detail, cancellation updates 
     await detail.getByRole('button',{name:'确认取消申请',exact:true}).click();
     await expect(detail).toHaveCount(0);
     await expect(page.getByRole('tab',{name:/领料.*补料待出库/})).toContainText('10');
-    const readonly=await f.post('/users',{position_id:await browserPosition(page.request, [], f.base),username:'tabreader',employee_no:'tabreader',password:'Test-reader-123'});
+    const readonly=await f.post('/users',{position_id:await browserPosition(page.request, ['basic_view'], f.base),username:'tabreader',employee_no:'tabreader',password:'Test-reader-123'});
     await f.post('/auth/login',{username:'tabreader',password:'Test-reader-123'});
     await page.reload();
     await expect(page.getByRole('tablist',{name:'单据分类'}).getByRole('tab')).toHaveCount(1);

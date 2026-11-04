@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { assertRestoredBusiness } from './backup-assertions.js';
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -32,11 +33,12 @@ async function fixture(t) {
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return {
+    const result = {
       status: r.status,
       data: await r.json(),
       cookie: r.headers.get("set-cookie")?.split(";")[0],
     };
+    return path === "/orders" && method === "POST" ? approveFixtureOrder(result, (nextPath,nextBody)=>request(nextPath, nextBody, "POST", auth)) : result;
   };
   cookie = (
     await request("/auth/setup", {
@@ -115,7 +117,7 @@ test('internal units receive and issue stock without entering trading totals, fi
     assert.equal(template.status, 200, JSON.stringify(template.data));
   }
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   const corrupt = structuredClone(backup);
   corrupt.data.orders.find(row => row.id === out.data.id).kind = 'normal';
   assert.equal((await f.request('/backup/preview', { backup: corrupt })).status, 400);
@@ -454,7 +456,7 @@ test("unknown historical costs and settlement are explicit, and v11 backup round
     items: [{ product_id: id, quantity: "2", price: "20" }],
   });
   const backup = (await f.request("/backup")).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   assert.equal(backup.data.payments.length, 1);
   assert.equal(backup.data.templates.length, 1);
   await f.request("/settings/reset", { confirmation: "RESET_BUSINESS_DATA" });
@@ -544,7 +546,7 @@ test('purchase return tails and legacy v10 refunds retain their financial histor
   assert.equal(f.db.prepare("SELECT SUM(total) n FROM orders WHERE kind='return'").get().n, 0.02);
   // A new backup of historical data must remain restorable.
   const upgraded = (await f.request('/backup')).data;
-  assert.equal(upgraded.version, 45);
+  assert.equal(upgraded.version, 46);
   assert.equal((await f.request('/backup/preview', { backup: upgraded })).status, 200);
 });
 

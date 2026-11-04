@@ -14,7 +14,7 @@ import { validQuantity } from '../shared/quantity.js';
 import { validUnitPrice } from '../shared/money.js';
 import { inspectionToday, inspectionCompletion } from '../shared/inspection.js';
 import { hasPermission } from '../shared/permissions.js';
-import { createOrder } from './orders.js';
+import { createOrder, migrateOrderApproval, installOrderApproval } from './orders.js';
 import { migrateProductVersions } from './product-version.js';
 import { migrateStockQr, installStockQr, clearStockQr } from './stock-qr.js';
 import express from "express";
@@ -310,6 +310,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   installBom(app, db);
   installProduction(app, db, { ...options, sessionUser });
   installImagebed(app, db, options);
+  migrateOrderApproval(db);
+  installOrderApproval(app, db);
   const { catalogValues } = installCatalog(app, db);
   const dataRevision = installDataUpdates(app, db);
   // Lightweight bootstrap: business lists and details are queried on demand.
@@ -705,7 +707,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
     }
   });
   app.get('/api/orders/export', (req, res) => {
-    res.json(db.prepare('SELECT id,number,type,kind,status,partner,total,created_at,note FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC')
+    res.json(db.prepare('SELECT id,number,type,kind,status,partner,total,created_at,note,submitted_at,created_by_name,approved_at,approved_by_name,rejected_by_name,rejected_at,reject_reason,cancelled_at,cancelled_by_name,cancel_reason,approval_origin FROM orders WHERE warehouse_id=? ORDER BY created_at DESC,id DESC')
       .all(req.warehouse.id).map(o => ({ ...o, items: db.prepare('SELECT name,quantity,price,amount_cents FROM order_items WHERE order_id=? ORDER BY id').all(o.id) })));
   });
   app.post("/api/orders", (req, res) => {
@@ -738,7 +740,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       res.status(201).json(response);
     } catch (e) {
       if (inTransaction) db.exec("ROLLBACK");
-      res.status(400).json({ error: e.message });
+      res.status(e.status || 400).json({ error: e.message });
     }
   });
   app.post("/api/settings/reset", (req, res) => {

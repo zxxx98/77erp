@@ -276,13 +276,18 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     if (/^\/production-orders(?:\/|$)/.test(path) && hasPermission(req.user, 'production') &&
         (!/\/(?:void|delete)$/.test(path) || hasPermission(req.user, 'corrections'))) return next();
     if (/^\/production-material-documents(?:\/|$)/.test(path) &&
-        (hasPermission(req.user, 'purchase') || hasPermission(req.user, 'sale') || post && /\/cancel$/.test(path) && hasPermission(req.user, 'production'))) return next();
-    if (/^\/production-receipts(?:\/|$)/.test(path) && hasPermission(req.user, 'purchase')) return next();
+        (hasPermission(req.user, 'stock_approve') || read && (hasPermission(req.user, 'purchase') || hasPermission(req.user, 'sale')) || post && /\/cancel$/.test(path) && hasPermission(req.user, 'production'))) return next();
+    if (/^\/production-receipts(?:\/|$)/.test(path) && (hasPermission(req.user, 'stock_approve') || read && hasPermission(req.user, 'purchase'))) return next();
     if (read && ['/workspace', '/style', '/updates'].includes(path)) return next();
     if (hasPermission(req.user, 'basic_view') && ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
         (post && /^\/announcements\/\d+\/read$/.test(path)))) return next();
     if ((read && (path === '/ai/conversations' || /^\/ai\/conversations\/[0-9a-f-]+$/.test(path)) ||
          post && ['/ai/chat', '/ai/confirm'].includes(path)) && hasPermission(req.user, 'ai')) return next();
+    if (post && /^\/orders\/\d+\/(approve|reject|cancel)$/.test(path)) {
+      const allowed = /\/cancel$/.test(path) ? ['purchase','sale'].some(key => hasPermission(req.user,key)) : hasPermission(req.user,'stock_approve');
+      return allowed ? next() : res.status(403).json({error:'需要相应开单或出入库审核权限。'});
+    }
+    if (read && (path === '/orders' || /^\/orders\/\d+$/.test(path)) && ['stock_approve','purchase','sale'].some(key => hasPermission(req.user,key))) return next();
     const legacyAllowed = (read && (
       ['/workspace','/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export','/products','/orders','/dashboard'].includes(path) ||
       /^\/products\/barcode\/[^/]+$/.test(path) || /^\/products\/\d+$/.test(path) ||

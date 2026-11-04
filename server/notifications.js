@@ -178,7 +178,7 @@ export function queueDailySummary(db, now = new Date()) {
       out_of_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND active!=0 AND threshold>0 AND stock=0').get(w.id).n,
     }));
     const byWarehouse = new Map(rows.map(w => [w.id, w]));
-    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,created_at FROM orders WHERE status='active' AND kind NOT IN ('transfer','internal') AND created_at>=? AND created_at<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
+    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,COALESCE(approved_at,created_at) AS created_at FROM orders WHERE status='active' AND kind NOT IN ('transfer','internal') AND COALESCE(approved_at,created_at)>=? AND COALESCE(approved_at,created_at)<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
       const row = byWarehouse.get(o.warehouse_id);
       if (!row || localParts(new Date(o.created_at), config.timezone).day !== day) continue;
       const returns = o.kind === 'return';

@@ -1,4 +1,4 @@
-import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from "../shared/quantity.js";
+import { validQuantity, materialQuantity, validStoredQuantity } from "../shared/quantity.js";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { contactMatchesDirection } from '../shared/contacts.js';
 import { resolveContact } from "./commerce.js";
@@ -276,18 +276,6 @@ export function installStockQr(app, db) {
           product_id: i.product_id,
           name: i.name,
           error: "物料条码或单位已变化，请管理员核对并保存配置。",
-        });
-      else if (q.type === "out" && i.stock < i.quantity)
-        errors.push({
-          product_id: i.product_id,
-          name: i.name,
-          error: `库存不足（当前 ${i.stock} ${i.unit}，需要 ${i.quantity} ${i.unit}）。`,
-        });
-      else if (q.type === "in" && !validStoredQuantity(addQuantity(i.stock, i.quantity)))
-        errors.push({
-          product_id: i.product_id,
-          name: i.name,
-          error: "入库后库存超出上限。",
         });
       const p = db
         .prepare("SELECT warehouse_id FROM products WHERE id=?")
@@ -599,7 +587,7 @@ export function installStockQr(app, db) {
             old = JSON.parse(preview.snapshot);
           if (old.partner_name !== view.partner_name)
             fail("PARTNER_CHANGED", "往来单位名称已变化，请重新扫码。");
-          const order = createOrder(db, req, {
+          const order = createOrder(db, { ...req, orderSource: 'qr' }, {
             type: q.type,
             partner: view.partner_name,
             partner_id: q.partner_id,

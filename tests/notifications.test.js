@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,7 +30,8 @@ async function fixture(t, options = {}, path = ':memory:') {
       method, headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(session ? { Cookie: session } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: r.status, data: await r.json(), cookie: r.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: r.status, data: await r.json(), cookie: r.headers.get('set-cookie')?.split(';')[0] };
+    return (path === "/orders" || /\/stock-qrs\/[^/]+\/execute$/.test(path)) && method === 'POST' ? approveFixtureOrder(result, (nextPath,nextBody)=>request(nextPath, 'POST', nextBody, warehouse, session)) : result;
   };
   let auth = await request('/auth/setup', 'POST', { username: 'admin', password: 'Test-admin-123' });
   if (auth.status === 409) auth = await request('/auth/login', 'POST', { username: 'admin', password: 'Test-admin-123' });
@@ -111,7 +113,7 @@ test('stock transitions and orders are transactional, aggregate items, hide amou
   await f.order(id, 'out', 1);
   assert.equal(f.events().filter(e => e.event === 'out_of_stock').length, 1);
   const length = f.events().length;
-  assert.equal((await f.order(id, 'out', 1)).status, 400); assert.equal(f.events().length, length);
+  assert.equal((await f.order(id, 'out', 1)).status, 409); assert.equal(f.events().length, length);
   for (const event of f.events()) {
     assert.ok(!JSON.stringify(event.payload).includes('total_cents')); assert.ok(!JSON.stringify(event.payload).includes('price'));
     assert.ok(!event.payload.message.includes('¥')); assert.equal(event.payload.actor.username, 'admin');
@@ -251,7 +253,7 @@ test('daily summaries use the chosen timezone, net returns, exclude voids, filte
   const other = (await f.request('/warehouses', 'POST', { name: '汇总排除仓库' })).data.id;
   const otherId = await f.product(other);
   const otherOrder = (await f.order(otherId, 'in', 50, {}, other)).data;
-  for (const order of [purchase, sale, ret, voided, otherOrder]) f.db.prepare('UPDATE orders SET created_at=? WHERE id=?').run('2026-10-14T16:30:00.000Z', order.id);
+  for (const order of [purchase, sale, ret, voided, otherOrder]) f.db.prepare("UPDATE orders SET approved_at=CASE WHEN approval_origin='workflow' THEN ? ELSE NULL END,created_at=? WHERE id=?").run('2026-10-14T16:30:00.000Z','2026-10-14T16:30:00.000Z', order.id);
   await f.configure({ events: ['daily_summary'], daily_time: '18:00', timezone: 'Asia/Shanghai', warehouse_ids: [1], include_amounts: true });
   queueDailySummary(f.db, new Date('2026-10-15T09:59:00Z')); assert.equal(f.events().length, 0);
   queueDailySummary(f.db, new Date('2026-10-15T10:00:00Z'));

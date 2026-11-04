@@ -148,10 +148,10 @@ export function settlementFromPaid(order, paid) {
   return {
     paid_cents: paid,
     due_cents:
-      order.status === "void" || !order.settlement_tracked ? 0 : total - paid,
+      order.status !== "active" || !order.settlement_tracked ? 0 : total - paid,
     payment_status:
-      order.status === "void"
-        ? "void"
+      order.status !== "active"
+        ? order.status
         : !order.settlement_tracked
           ? "unverified"
           : paid === total
@@ -488,7 +488,7 @@ export function installCommerce(app, db, { route, mutation }) {
       if (!date(from) || !date(to) || from > to) fail("请选择有效的起止日期。");
       const lines = db
         .prepare(
-          `SELECT i.*,o.kind,o.created_at FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.warehouse_id=? AND o.status='active' AND ((o.kind='normal' AND o.type='out') OR (o.kind='return' AND o.type='in')) AND substr(o.created_at,1,10) BETWEEN ? AND ? ORDER BY o.created_at,i.id`,
+          `SELECT i.*,o.kind,COALESCE(o.approved_at,o.created_at) AS created_at FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.warehouse_id=? AND o.status='active' AND ((o.kind='normal' AND o.type='out') OR (o.kind='return' AND o.type='in')) AND substr(COALESCE(o.approved_at,o.created_at),1,10) BETWEEN ? AND ? ORDER BY o.created_at,i.id`,
         )
         .all(req.warehouse.id, from, to);
       const groups = new Map();

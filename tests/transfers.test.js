@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { assertRestoredBusiness } from './backup-assertions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +21,8 @@ async function fixture(t) {
       headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(auth && cookie ? { Cookie: cookie } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    return path === '/orders' && method === 'POST' ? approveFixtureOrder(result,(nextPath,nextBody)=>request(nextPath,'POST',nextBody,warehouse,auth)) : result;
   };
   cookie = (await request('/auth/setup', 'POST', { username: 'admin', password: 'Test-admin-123' })).cookie;
   await request('/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });
@@ -219,7 +221,7 @@ test('transfers survive backup and restore, and reject tampered pairs', async (t
   await f.receive(source, 6, 10);
   const created = await f.command('/transfers', { to_warehouse_id: target, note: '备份用例', items: [{ product_id: source, quantity: 2 }] });
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   assert.equal(backup.data.orders.filter((o) => o.kind === 'transfer').length, 2);
   const before = structuredClone(backup.data);
   const preview = (await f.request('/backup/preview', 'POST', { backup })).data;

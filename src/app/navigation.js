@@ -4,8 +4,8 @@ import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, Scan
 export const navItems = [
   { id: 'overview', permission: 'basic_view', get name() { return translate("system.dashboard"); }, icon: LayoutDashboard, mode: 'warehouse', group: 'main', get mobile() { return translate("system.dashboard"); } },
   { id: 'products', permission: 'basic_view', get name() { return translate("system.materials"); }, icon: Box, mode: 'warehouse', group: 'main', get mobile() { return translate("system.material"); } },
-  { id: 'purchases', permission: 'basic_view', get name() { return translate("system.stock.in"); }, icon: ArrowDownToLine, mode: 'warehouse', group: 'main' },
-  { id: 'sales', permission: 'basic_view', get name() { return translate("system.stock.out"); }, icon: ArrowUpFromLine, mode: 'warehouse', group: 'main' },
+  { id: 'purchases', permission: 'stock_in_view', get name() { return translate("system.stock.in"); }, icon: ArrowDownToLine, mode: 'warehouse', group: 'main' },
+  { id: 'sales', permission: 'stock_out_view', get name() { return translate("system.stock.out"); }, icon: ArrowUpFromLine, mode: 'warehouse', group: 'main' },
   { id: 'inventory', permission: 'basic_view', get name() { return translate("system.inventory"); }, icon: Warehouse, mode: 'warehouse', group: 'main', get mobile() { return translate("system.stock"); } },
   { id: 'scanner', permission: 'basic_view', get name() { return translate("system.scanner"); }, icon: ScanLine, mode: 'warehouse', group: 'tools' },
   { id: 'history', permission: 'basic_view', get name() { return translate("system.activity.history"); }, icon: History, mode: 'warehouse', group: 'tools', get mobile() { return translate("system.document"); } },

@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { assertRestoredBusiness } from './backup-assertions.js';
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
@@ -30,11 +31,12 @@ async function fixture(t) {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = await response.json();
-    return {
+    const result = {
       status: response.status,
       data,
       cookie: response.headers.get("set-cookie")?.split(";")[0],
     };
+    return path === "/orders" && body !== undefined ? approveFixtureOrder(result, (nextPath,nextBody)=>request(nextPath, nextBody, auth)) : result;
   };
   cookie = (
     await request("/auth/setup", {
@@ -473,7 +475,7 @@ test("existing order schema upgrades without changing stock and marks only seede
   first.db.close();
   const legacy = new DatabaseSync(path);
   for (const { name } of legacy.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'data_revision_*'").all()) legacy.exec(`DROP TRIGGER ${name}`);
-  legacy.exec("DROP INDEX orders_source_status");
+  legacy.exec("DROP INDEX orders_source_status; DROP INDEX orders_approval_queue");
   for (const column of ["source_order_id", "kind", "status", "stock_applied", "void_reason", "voided_at"]) legacy.exec(`ALTER TABLE orders DROP COLUMN ${column}`);
   legacy.close();
   const migrated = createApp(path);
@@ -517,7 +519,7 @@ test('material returns increase inventory once, preserve average cost, reject st
 test('business backup uses production group aware format', async t => {
   const f = await fixture(t);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   const legacy = structuredClone(backup); legacy.version = 36;
   assert.equal((await f.request('/backup/preview', { backup: legacy })).status, 200);
 });

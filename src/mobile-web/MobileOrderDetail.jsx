@@ -1,3 +1,4 @@
+import { OrderApprovalDetail, orderStatusLabel } from '../features/OrderApprovals.jsx';
 import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import React from 'react';
@@ -8,9 +9,10 @@ import { usePermissions } from '../permissions.jsx';
 import { orderLineAmount } from '../../shared/money.js';
 import { MobileButton, DetailRow, Notice, money, price, count, dateTime } from './ui.jsx';
 
-export function MobileOrderDetail({ order, Modal, onClose, onSaved }) {
+export function MobileOrderDetail({ order, Modal, onClose, onSaved, onCopy }) {
   useLocale();
   const { can, costs } = usePermissions();
+  if (['pending','rejected','cancelled'].includes(order.status)) return <OrderApprovalDetail order={order} onClose={onClose} onChanged={onSaved} onCopy={onCopy}/>;
   // Transfer legs move stock without money: they show the counterpart warehouse
   // and the moved cost, and they are corrected from the transfer list instead.
   const transfer = order.kind === 'transfer';
@@ -27,6 +29,7 @@ export function MobileOrderDetail({ order, Modal, onClose, onSaved }) {
       {order.kind === "internal" && <Notice>{translate("warehouse.internal.transfers.are.not.included.in.purchases.sales.profits.receivables.and")}</Notice>}
       {transfer && <Notice>{translate("warehouse.there.is.no.amount.involved.in.inter.warehouse.transfers.if.you")}</Notice>}
       <p className="mw-muted">{translate("warehouse.biller")}{order.created_by_name || translate("warehouse.historical.record.operator.unknown")}</p>
+      {order.approved_at && <p className="material-muted">{translate('stockApproval.approver')}：{order.approved_by_name} · {new Date(order.approved_at).toLocaleString(getFormatLocale())}</p>}
       {order.note && <section className="mw-card mw-stack"><span className="mw-muted">{translate("warehouse.remarks")}</span><p>{order.note}</p></section>}
       {!transfer && order.kind !== 'internal' && can('finance') && <Payments order={order} />}
       {!transfer && can('corrections') && <OrderActions order={order} onSaved={onSaved} />}

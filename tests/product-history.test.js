@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +18,8 @@ async function fixture(t) {
       method, headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(auth ? { Cookie: auth } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+    return path === "/orders" && method === 'POST' ? approveFixtureOrder(result, (nextPath,nextBody)=>request(nextPath, nextBody, 'POST', warehouse, auth)) : result;
   };
   cookie = (await request('/auth/setup', { username: 'admin', password: 'Test-admin-123' })).cookie;
   await request('/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' });
@@ -88,7 +90,7 @@ test('price audit survives backup restore, validates records, supports legacy ba
   const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.product);
   await f.request(`/products/${f.product}`, { ...product, price: 21 }, 'PUT');
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   assert.equal(backup.data.product_changes.length, 1);
   for (const patch of [{ after_cost: -1 }, { product_id: 999999 }, { created_by: -1 }, { created_by_name: '' }]) {
     const invalid = structuredClone(backup);

@@ -47,7 +47,7 @@ export function ProductionReceipts({ data, onChanged, initialQuery = '', onRefre
   const [message, setMessage] = useState('');
   const [selection, setSelection] = useState(null);
   const action = useBusiness();
-  const allowed = can('purchase');
+  const allowed = can('stock_approve') || can('purchase');
   const list = useQuery(allowed ? queryPath('/production-receipts', { status, q, offset, limit: 10 }) : null, data, q ? 200 : 0);
   const scope = JSON.stringify([data.warehouse_id, status, q, offset]);
   const documents = list.result?.documents || [];
@@ -83,7 +83,7 @@ export function ProductionReceipts({ data, onChanged, initialQuery = '', onRefre
     {selected && <ProductionApprovalDialog title={pt("production.productionProductReceipt")} subtitle={selected.number} busy={action.busy} onClose={() => setSelection(null)}>
       <div className="form-body">
         {productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)} {pt("production.closeDetailsAndRefreshToCheckTheCurrent")}</p>}
-        <ProductionReceiptList key={selected.id} documents={[selected]} busy={action.busy} defaultExpanded onConfirm={confirm} />
+        <ProductionReceiptList key={selected.id} documents={[selected]} busy={action.busy} defaultExpanded onConfirm={can('stock_approve') ? confirm : null} />
       </div>
     </ProductionApprovalDialog>}
   </section>;

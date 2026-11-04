@@ -77,7 +77,7 @@ export function voidProductionReceipt(db, batchId, owner, at, reason) {
     .run(owner, at, reason, at, batchId);
 }
 export function installProductionReceipts(app, db, {route}) {
-  const authorize = req => { if (!hasPermission(req.user, 'purchase')) fail('需要仓库入库权限。', 403); };
+  const authorize = req => { if (!hasPermission(req.user, 'stock_approve') && !(req.method === 'GET' && hasPermission(req.user,'purchase'))) fail('需要出入库审核权限。', 403); };
   app.get('/api/production-receipts', route(req => {
     const {status='all', q='', offset='0', limit='20'} = req.query;
     if (!['all','pending','confirmed','void'].includes(status) || typeof q !== 'string' || q.length>100 ||

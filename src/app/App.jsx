@@ -37,7 +37,7 @@ import './mode-switch.css';
 import { mobileDevice } from '../device.js';
 import { useState, useEffect, useRef } from 'react';
 import { api, setWarehouseId, getWarehouseId } from '../api.js';
-import { hasPermission, canManage, usesProductionWorkspace, canViewProduction } from '../../shared/permissions.js';
+import { hasPermission, canManage, usesProductionWorkspace, canViewProduction, canViewStock } from '../../shared/permissions.js';
 import { useQuery } from '../queries.js';
 import { DataUpdateNotice, useDataUpdates } from '../DataUpdates.jsx';
 import { announcementsChanged, useAnnouncementQuery } from '../announcement-query.js';
@@ -106,7 +106,7 @@ function StandardApp({ admin, onLogout }) {
   const modeRef = useRef(mode);
   const lastPages = useRef(initialNavigation.pages);
   const [requestedPage, setPage] = useState(initialNavigation.page);
-  const allowedPages = modeItems(mode, key => key === 'production_view' ? canViewProduction(admin) : hasPermission(admin, key));
+  const allowedPages = modeItems(mode, key => key === 'stock_in_view' ? canViewStock(admin,'in') : key === 'stock_out_view' ? canViewStock(admin,'out') : key === 'production_view' ? canViewProduction(admin) : hasPermission(admin, key));
   const page = allowedPages.some(item => item.id === requestedPage) ? requestedPage : (allowedPages.find(item => item.id !== 'more')?.id || 'more');
   const acceptedHash = useRef(location.hash || navigationHash(page, mode));
   useEffect(() => {
@@ -296,7 +296,7 @@ function StandardApp({ admin, onLogout }) {
     finally { setSwitching(false); setRefreshing(false); }
   };
   const user = data.user || admin;
-  const can = key => key === 'production_view' ? canViewProduction(user) : hasPermission(user, key);
+  const can = key => key === 'stock_in_view' ? canViewStock(user,'in') : key === 'stock_out_view' ? canViewStock(user,'out') : key === 'production_view' ? canViewProduction(user) : hasPermission(user, key);
   const manage = key => canManage(user, key);
   const summaryQuery = useQuery(mobileDevice || !can('basic_view') ? null : '/dashboard', data);
   const announcementQuery = useAnnouncementQuery(!can('basic_view') ? null : '/announcements/unread-count', data);
@@ -658,7 +658,7 @@ function StandardApp({ admin, onLogout }) {
       {modal?.kind === 'announcementDetail' && <AnnouncementDetail id={modal.id} data={data} onClose={() => setModal(null)} onEdit={item => setModal({ kind: 'announcementEditor', item })} onSaved={announcementSaved} onRead={reload} />}
       {modal?.kind === 'announcementEditor' && user.role === 'admin' && <AnnouncementEditor key={modal.item?.id || 'new'} item={modal.item} onClose={() => setModal(null)} onSaved={announcementSaved} />}
       {modal?.kind === "detail" && (
-        mobileDevice ? <MobileOrderDetail order={modal.order} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
+        mobileDevice ? <MobileOrderDetail order={modal.order} onCopy={order => openOrder(order.type,null,{...order,id:undefined,name:''})} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail onCopy={order => openOrder(order.type,null,{...order,id:undefined,name:''})} isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
       {["reduce", "increase"].includes(modal?.kind) && can('stocktake') && (
         <ReduceStockModal

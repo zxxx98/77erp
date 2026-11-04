@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../server/app.js";
@@ -29,7 +30,8 @@ async function request(path, method = "GET", body) {
     headers: { "Content-Type": "application/json", Cookie: cookie },
     body: body ? JSON.stringify(body) : undefined,
   });
-  return { status: res.status, data: await res.json() };
+  const result = { status: res.status, data: await res.json() };
+    return path === "/orders" && method === 'POST' ? approveFixtureOrder(result, (nextPath,nextBody)=>request(nextPath, 'POST', nextBody)) : result;
 }
 const order = (type, items) =>
   request("/orders", "POST", { type, partner: "测试往来单位", items });
@@ -212,7 +214,7 @@ test("insufficient stock rolls back entire order, including first valid item", a
     { product_id: 1, quantity: 1, price: 49 },
     { product_id: 7, quantity: 1, price: 29 },
   ]);
-  assert.equal(result.status, 400);
+  assert.equal(result.status, 409);
   assert.match(result.data.error, /库存不足/);
   assert.equal(
     db.prepare("SELECT stock FROM products WHERE id=1").get().stock,
@@ -220,7 +222,7 @@ test("insufficient stock rolls back entire order, including first valid item", a
   );
   assert.equal(
     db.prepare("SELECT COUNT(*) AS count FROM orders").get().count,
-    previousCount,
+    previousCount + 1,
   );
 });
 test("invalid quantity, negative amounts, missing products, and duplicate items are rejected", async () => {

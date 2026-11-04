@@ -140,7 +140,7 @@ export function installQueries(app, db) {
       const { limit, offset } = paging(req.query);
       const type = choice(req.query.type, ['in', 'out'], null);
       const kind = choice(req.query.kind, ['normal', 'return', 'transfer', 'internal'], null);
-      const status = choice(req.query.status, ['active', 'void'], null);
+      const status = choice(req.query.status, ['active', 'void', 'pending', 'rejected', 'cancelled'], null);
       const business = choice(req.query.business, ['in', 'out'], null);
       const from = dateKey(req.query.from, null), to = dateKey(req.query.to, null);
       if (from && to && from > to) fail('请选择有效的起止日期。');
@@ -148,6 +148,7 @@ export function installQueries(app, db) {
       const clauses = ['o.warehouse_id=?'], params = [req.warehouse.id];
       if (type) { clauses.push('o.type=?'); params.push(type); }
       if (kind) { clauses.push('o.kind=?'); params.push(kind); }
+      if (req.query.approval === '1') clauses.push("o.approval_origin='workflow' AND o.kind IN ('normal','internal')");
       // Business direction folds returns into the side they correct, like the UI.
       if (business === 'in') clauses.push("((o.kind IN ('normal','internal') AND o.type='in') OR (o.kind='return' AND o.type='out'))");
       if (business === 'out') clauses.push("((o.kind IN ('normal','internal') AND o.type='out') OR (o.kind='return' AND o.type='in'))");
@@ -201,7 +202,8 @@ export function installQueries(app, db) {
         .prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id')
         .all(order.id)
         .map((item) => {
-          const line = { ...item, amount_cents: orderLineAmount(item), returned_quantity: returned.get(item.product_id) || 0 };
+          const product = db.prepare('SELECT stock,unit,active,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, req.warehouse.id);
+          const line = { ...item, current_stock: product?.stock ?? null, current_active: product?.active ?? 0, current_unit: product?.unit, current_unit_round_up: product?.unit_round_up, amount_cents: orderLineAmount(item), returned_quantity: returned.get(item.product_id) || 0 };
           if (hidden) delete line.cost_cents;
           return line;
         });
@@ -223,7 +225,7 @@ export function installQueries(app, db) {
       const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
       // Transfers never carry money, so they stay out of the trading trend.
       const trading = db
-        .prepare("SELECT type,kind,total,created_at,status FROM orders WHERE warehouse_id=? AND substr(created_at,1,10)>=?")
+        .prepare("SELECT type,kind,total,COALESCE(approved_at,created_at) AS created_at,status FROM orders WHERE warehouse_id=? AND substr(COALESCE(approved_at,created_at),1,10)>=?")
         .all(req.warehouse.id, since)
         .filter((order) => order.status === 'active' && !['transfer', 'internal'].includes(order.kind))
         .map((order) => ({

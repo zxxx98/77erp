@@ -1,3 +1,4 @@
+import { orderStatusLabel } from './features/OrderApprovals.jsx';
 import { localizeError } from './i18n/errors.js';
 import { t as translate, getFormatLocale } from './i18n/index.js';
 import { useLocale } from './i18n/react.jsx';
@@ -634,7 +635,7 @@ export function StockQrManager({
               <section className="stock-qr-record" key={r.id}>
                 <strong>
                   {r.order
-                    ? `${r.order.number} · ${r.order.status === "void" ? translate("warehouse.voided") : translate("warehouse.valid")}`
+                    ? `${r.order.number} · ${orderStatusLabel(r.order)}`
                     : translate("warehouse.configuration.version", { v0: r.version })}
                 </strong>
                 <p>
@@ -841,7 +842,7 @@ export function StockQrExecution({
       localStorage.removeItem(storageKey);
       onLabelDone();
       try {
-        await onSaved(translate("warehouse.document.saved", { v0: r.number }));
+        await onSaved(translate('stockApproval.submitted', {number:r.number}));
       } catch {
         setError(translate("warehouse.the.document.has.been.saved.data.refresh.failed.please.refresh.the"));
       }
@@ -937,14 +938,14 @@ export function StockQrExecution({
       )}
       {result && (
         <section className="stock-qr-record" role="status">
-          <strong>{translate("warehouse.document")}{" "}{result.number}{" "}{translate("warehouse.saved")}</strong>
+          <strong>{translate('stockApproval.submitted', {number:result.number})}</strong>
           <Lines items={result.items} />
           <p>{translate("warehouse.remaining.times")}{result.remaining_scans ?? translate("warehouse.no.limit")}</p>
         </section>
       )}
       {preview?.require_confirmation && !pending && (
         <Modal
-          title={preview.type === "in" ? translate("warehouse.confirm.storage.2") : translate("warehouse.confirm.delivery.2")}
+          title={translate('stockApproval.submit')}
           onClose={cancel}
           wide
         >
@@ -952,6 +953,7 @@ export function StockQrExecution({
             <p>
               {preview.warehouse_name} · {preview.name}
             </p>
+            <p className="info-box">{translate('stockApproval.noStockChange')}</p>
             <Lines items={preview.items} />
             <p>{translate("warehouse.total.amount.2")}{money(preview.total_cents)}{translate("warehouse.corresponding.units")}{preview.partner_name}
             </p>
@@ -972,7 +974,7 @@ export function StockQrExecution({
               aria-busy={busy}
             >
               {busy && <LoadingIndicator size={20} />}
-              {preview.type === "in" ? translate("warehouse.confirm.storage.2") : translate("warehouse.confirm.delivery.2")}
+              {translate('stockApproval.submit')}
             </AntButton>
           </div>
         </Modal>

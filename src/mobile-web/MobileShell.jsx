@@ -8,7 +8,7 @@ import { Button as AntButton, Checkbox as AntCheckbox } from '../ui/controls.jsx
 import { TabBar } from 'antd-mobile';
 
 import { Select } from './../Dropdown.jsx';
-import { canViewProduction } from '../../shared/permissions.js';
+import { canViewProduction, canViewStock } from '../../shared/permissions.js';
 import { modeItems } from '../app/navigation.js';
 import { ModeSwitch } from '../app/ModeSwitch.jsx';
 import { useQuery, usePagedQuery, queryPath } from '../queries.js';
@@ -30,12 +30,13 @@ import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, Product
 import { InspectionPanel } from '../InspectionPanel.jsx';
 
 import { ProductBatchDialog } from '../pages/Products.jsx';
+import { orderStatusLabel } from '../features/OrderApprovals.jsx';
 import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
 export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderPayroll, renderProcessRoutes, renderProduction, announcementCount, updateNotice }) {
   useLocale();
   const { can } = usePermissions();
-  const tabs = modeItems(mode, key => key === 'production_view' ? canViewProduction(user) : can(key)).filter(item => item.mobile);
+  const tabs = modeItems(mode, key => key === 'stock_in_view' ? canViewStock(user,'in') : key === 'stock_out_view' ? canViewStock(user,'out') : key === 'production_view' ? canViewProduction(user) : can(key)).filter(item => item.mobile);
   const { online } = usePwa();
   const [updated, setUpdated] = useState(null);
   const dataRef = useRef(data);
@@ -271,7 +272,7 @@ function Products({ data, inventory, showProduct, openModal, onSaved }) {
 function OrderSummary({ order, onOpen }) {
   useLocale();
   return <AntButton type="text" htmlType="button" className="mw-order-summary" onClick={() => onOpen(order)}>
-    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? translate("warehouse.no.financial.amount") : `${order.kind === 'internal' ? translate("warehouse.reference.2") : ''}${money(order.total)}`}</strong>
+    <strong>{orderLabel(order)} · {order.partner}</strong><span className="mw-muted">{orderStatusLabel(order)}</span><span className="mw-muted">{order.number}</span><span className="mw-muted">{dateTime(order.created_at)}</span><strong className={order.type === 'in' ? 'mw-blue' : 'mw-green'}>{order.kind === 'transfer' ? translate("warehouse.no.financial.amount") : `${order.kind === 'internal' ? translate("warehouse.reference.2") : ''}${money(order.total)}`}</strong>
   </AntButton>;
 }
 
@@ -280,7 +281,7 @@ function Orders({ data, initial, openOrder, showOrder, onChanged }) {
   return <div className="mw-stack">
     <h1>{initial === 'in' ? translate("warehouse.stock.in") : initial === 'out' ? translate("warehouse.stock.out") : translate("warehouse.activity.history")}</h1>
     <div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>{translate("warehouse.new.stock.in")}</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>{translate("warehouse.new.stock.out")}</Button></div>
-    <OrderApprovalWorkspace data={data} type={initial} onChanged={onChanged}>
+    <OrderApprovalWorkspace data={data} type={initial} onChanged={onChanged} onCopy={order=>openOrder(order.type,null,{...order,resubmitted_from_id:order.id,id:undefined,name:''})}>
       <OrderRecords data={data} initial={initial} showOrder={showOrder} />
     </OrderApprovalWorkspace>
   </div>;
@@ -293,11 +294,12 @@ function OrderRecords({ data, initial, showOrder }) {
   const [query, setQuery] = useState('');
   const [type, setType] = useState(initial);
   const [period, setPeriod] = useState('all');
+  const [status, setStatus] = useState('all');
   const [exporting, setExporting] = useState(false);
   const [exportLanguage, setExportLanguage] = useState('');
   const [exportError, setExportError] = useState('');
   const { result, error, loading, loadMore, retry } = usePagedQuery(queryPath('/orders', {
-    q: query, kind: ['transfer', 'internal'].includes(type) ? type : null, business: ['in', 'out'].includes(type) ? type : null,
+    q: query, status: status === 'all' ? null : status, kind: ['transfer', 'internal'].includes(type) ? type : null, business: ['in', 'out'].includes(type) ? type : null,
     from: period === 'all' ? null : new Date(Date.now() - Number(period) * 86400000).toISOString().slice(0, 10),
   }), data, 'orders', query ? 250 : 0);
   const orders = result?.orders || [];
@@ -309,7 +311,7 @@ function OrderRecords({ data, initial, showOrder }) {
     try {
       const rows = await api('/orders/export');
       const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-      const csv = '\uFEFF' + [[exportText("warehouse.document.no"), exportText("warehouse.type"), exportText("warehouse.business.partner"), exportText("warehouse.time"), exportText("warehouse.amount")], ...rows.map(o => [o.number, orderLabel(o, language), o.partner, o.created_at, Number(o.total).toFixed(2)])].map(row => row.map(cell).join(',')).join('\r\n');
+      const csv = '\uFEFF' + [[exportText("warehouse.document.no"), exportText("warehouse.type"), exportText("warehouse.business.partner"), exportText("warehouse.time"), exportText("warehouse.amount"),exportText('warehouse.status'),exportText('stockApproval.submitter'),exportText('stockApproval.approver'),exportText('stockApproval.approvedAt'),exportText('stockApproval.reason')], ...rows.map(o => [o.number, orderLabel(o, language), o.partner, o.created_at, Number(o.total).toFixed(2),orderStatusLabel(o,language),o.created_by_name || '',o.approved_by_name || '',o.approved_at || '',o.reject_reason || o.cancel_reason || ''])].map(row => row.map(cell).join(',')).join('\r\n');
       await download(csv, '77erp-orders.csv', 'text/csv;charset=utf-8');
     } catch (e) { setExportError(e.message); }
     finally { setExporting(false); }
@@ -318,6 +320,7 @@ function OrderRecords({ data, initial, showOrder }) {
     <SearchField value={query} onChange={setQuery} label={translate("warehouse.search.document.number.dealing.unit.or.material")} />
     <Chips label={translate("warehouse.document.type")} value={type} onChange={setType} options={ [['all', translate("warehouse.all.documents")], ['in', translate("warehouse.stock.in")], ['out', translate("warehouse.stock.out")], ['transfer', translate("warehouse.warehouse.transfer")], ['internal', translate("warehouse.internal.movement")]] } />
     <Chips label={translate("warehouse.document.time")} value={period} onChange={setPeriod} options={ [['all', translate("warehouse.all.time")], ['7', translate("warehouse.last.7.days")], ['30', translate("warehouse.last.30.days")]] } />
+    <Chips label={translate('warehouse.status')} value={status} onChange={setStatus} options={['all','pending','active','rejected','cancelled','void'].map(key=>[key,translate(`stockApproval.${key}`)])} />
     <p className="mw-muted">{translate("warehouse.total.2")}{" "}{result ? result.total : '—'}{" "}{translate("warehouse.documents.loaded")}{" "}{orders.length}{" "}{translate("warehouse.documents")}</p>
     <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>{translate("warehouse.reload")}</Button>}{loading && <LoadingStatus>{translate("warehouse.reading.document")}</LoadingStatus>}
     {orders.map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}

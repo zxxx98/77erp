@@ -50,3 +50,9 @@
 .material-issue-history { margin-top: 20px; }
 .material-issue-history h3 { font-size: 14px; }
 .material-issue-record { border-top: 1px solid #e9ecf1; padding: 12px 0; }
+
+.stock-approval-balance { flex-basis: 100% !important; }
+.stock-approval-document .material-document-lines li { align-items: flex-start; }
+@media (max-width: 600px) {
+  .stock-approval-actions { position: sticky; bottom: 0; padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); background: #f7f8fa; z-index: 1; }
+}

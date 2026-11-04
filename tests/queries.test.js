@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +20,8 @@ async function fixture(t) {
       headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(cookie ? { Cookie: cookie } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: res.status, data: await res.json(), cookie: res.headers.get('set-cookie')?.split(';')[0] };
+    return path === '/orders' && method === 'POST' ? approveFixtureOrder(result,(nextPath,nextBody)=>request(cookie,nextPath,'POST',nextBody,warehouse)) : result;
   };
   const admin = (await request(null, '/auth/setup', 'POST', { username: 'owner', password: 'Test-password-123' })).cookie;
   await request(admin, '/settings/reset', 'POST', { confirmation: 'RESET_BUSINESS_DATA' });

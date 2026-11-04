@@ -85,7 +85,7 @@ test('confirmed receipt reversal preserves exact stock and cost and rejects insu
 test('receipt backups validate immutable batch snapshots, statuses and actor metadata; restore keeps pending receipts', async t => {
   const f = await fixture(t); let order = await f.start(await f.create()); await f.confirm(order.material_documents[0]);
   order = f.ok(await f.complete(await f.get(order.id))); const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   for (const mutate of [
     d=>d.production_receipts[0].quantity++, d=>d.production_receipts[0].batch_id=999,
     d=>d.production_receipts[0].status='confirmed', d=>d.production_receipts[0].confirmed_at=new Date().toISOString(),
@@ -110,14 +110,14 @@ test('receipt history only starts at confirmation and survives reversal', async 
   order=await f.get(order.id); f.ok(await f.command(`/production-orders/${order.id}/batches/${order.batches[0].id}/void`,{version:order.version,reason:'重做'}));
   history=f.ok(await f.request(`/products/${f.parent}/history`)).records; assert.equal(history.reduce((sum,row)=>sum+row.delta,0),0);
 });
-test('purchase-only approval redacts costs; production-only users cannot approve; permission revocation blocks replay', async t=>{
+test('approval-only access redacts costs; production-only users cannot approve; permission revocation blocks replay', async t=>{
   const f=await fixture(t);
   const user=async(username,permissions)=>{
     const created=await f.request('/users',{ position_id: readonlyPositionId(f.db),username,employee_no:username,password:'Test-staff-123'}); assert.equal(created.status,201);
     f.ok(await grantPosition(f.db, (path, body, method) => f.request(path, body, { method }), created.data.id, permissions));
     return {id:created.data.id,cookie:(await f.request('/auth/login',{username,password:'Test-staff-123'},{cookie:null})).cookie};
   };
-  const producer=await user('producer',['production','corrections']), receiver=await user('receiver',['purchase']);
+  const producer=await user('producer',['production','corrections']), receiver=await user('receiver',['stock_approve']);
   let order=await f.start(await f.create()); await f.confirm(order.material_documents[0]); order=f.ok(await f.complete(await f.get(order.id)));
   const doc=order.receipt_documents[0], body={version:doc.version,request_id:randomUUID()}, path=`/production-receipts/${doc.id}/confirm`;
   assert.equal((await f.request('/production-receipts',undefined,producer)).status,403);

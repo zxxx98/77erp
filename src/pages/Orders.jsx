@@ -14,6 +14,7 @@ import { useQuery, queryPath } from '../queries.js';
 import { QueryStatus, PageHeading, Button, Badge, Empty, Pagination } from '../components/common.jsx';
 import { Download, Plus, PackageCheck, Search, ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { Select } from '../Dropdown.jsx';
+import { orderStatusLabel } from '../features/OrderApprovals.jsx';
 import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
 async function exportOrders(orders, notify, language = getLocale()) {
@@ -41,6 +42,9 @@ async function exportOrders(orders, notify, language = getLocale()) {
       exportText("warehouse.unit.price"),
       exportText("warehouse.detailed.amount"),
       exportText("warehouse.remarks"),
+      exportText('warehouse.status'), exportText('stockApproval.submitter'),
+      exportText('stockApproval.approver'), exportText('stockApproval.approvedAt'),
+      exportText('stockApproval.reason'),
     ],
     ...orders.flatMap((o) =>
       o.items.map((i) => [
@@ -54,6 +58,8 @@ async function exportOrders(orders, notify, language = getLocale()) {
         i.price,
         (orderLineAmount(i) / 100).toFixed(2),
         o.note,
+        orderStatusLabel(o,language), o.created_by_name || '', o.approved_by_name || '', o.approved_at || '',
+        o.reject_reason || o.cancel_reason || '',
       ]),
     ),
   ];
@@ -73,10 +79,10 @@ function Orders(props) {
   const type = page === 'purchases' ? 'in' : page === 'sales' ? 'out' : null;
   const title = type === 'in' ? translate("warehouse.stock.in") : type === 'out' ? translate("warehouse.stock.out") : translate("warehouse.activity.history");
   return <>
-    <PageHeading title={title} description={type === 'in' ? translate("warehouse.check.the.warehousing.records.and.check.the.documents.to.be.stored") : type === 'out' ? translate("warehouse.check.outbound.records.and.verify.production.picking.and.replenishment.applications") : translate("warehouse.view.all.inbound.and.outbound.documents.and.trace.materials.quantities.and")}>
+    <PageHeading title={title} description={type === 'in' ? translate('stockApproval.inDescription') : type === 'out' ? translate('stockApproval.outDescription') : translate("warehouse.view.all.inbound.and.outbound.documents.and.trace.materials.quantities.and")}>
       {type && <Button permission={type === 'in' ? 'purchase' : 'sale'} kind="primary" icon={Plus} onClick={() => openOrder(type)}>{translate("warehouse.new")}{title}</Button>}
     </PageHeading>
-    <OrderApprovalWorkspace key={`${data.warehouse_id}:${page}`} data={data} type={type} onChanged={onChanged}>
+    <OrderApprovalWorkspace key={`${data.warehouse_id}:${page}`} data={data} type={type} onChanged={onChanged} onCopy={order => openOrder(order.type, null, { ...order, resubmitted_from_id: order.id, id: undefined, name: '' })}>
       <OrderRecords {...props} />
     </OrderApprovalWorkspace>
   </>;
@@ -89,16 +95,16 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
   const [query, setQuery] = useState(""),
     [days, setDays] = useState("all"),
     [pageNum, setPageNum] = useState(1),
-    [tab, setTab] = useState("all");
+    [tab, setTab] = useState("all"), [status,setStatus] = useState("all");
   useEffect(() => {
     setPageNum(1);
     setQuery("");
     setTab("all");
   }, [page]);
-  useEffect(() => setPageNum(1), [query, days, tab]);
+  useEffect(() => setPageNum(1), [query, days, tab, status]);
   const direction = type || tab;
   const list = useQuery(queryPath('/orders', { limit: 8, offset: (pageNum - 1) * 8, q: query,
-    business: ['in', 'out'].includes(direction) ? direction : null, kind: ['transfer', 'internal'].includes(direction) ? direction : null,
+    status: status === 'all' ? null : status, business: ['in', 'out'].includes(direction) ? direction : null, kind: ['transfer', 'internal'].includes(direction) ? direction : null,
     from: days === 'all' ? null : new Date(Date.now() - Number(days) * 86400000).toISOString().slice(0, 10),
   }), data, query ? 250 : 0);
   const filtered = list.result?.orders || [];
@@ -170,7 +176,7 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
               </AntButton>
             ))}
           </div>
-          <div className="toolbar-right">
+          <div className="toolbar-right"><Select aria-label={translate("warehouse.status")} value={status} onChange={setStatus}><option value="all">{translate("stockApproval.all")}</option>{["pending","active","rejected","cancelled","void"].map(key=><option key={key} value={key}>{translate(`stockApproval.${key}`)}</option>)}</Select>
             <ExportLanguageSelect value={exportLanguage} onChange={setExportLanguage} /><Button icon={Download} permission="data_io" onClick={() => exportOrders(filtered, notify, exportLanguage || getLocale())} disabled={!filtered.length}>{translate("warehouse.export.documents")}</Button>
             <div className="table-search">
               <AntInput prefix={<Search size={16} />} allowClear
@@ -249,7 +255,7 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
                   </td>
                   <td className="muted">{dateTime(o.created_at)}</td>
                   <td>
-                    <Badge>{translate("warehouse.completed")}</Badge>
+                    <Badge tone={o.status === "pending" ? "orange" : o.status === "active" ? "green" : "gray"}>{orderStatusLabel(o)}</Badge>
                   </td>
                   <td>
                     <AntButton type="text" htmlType="button"

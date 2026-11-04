@@ -1,3 +1,4 @@
+import { approveFixtureOrder } from './helpers/approved-order.js';
 import { readonlyPositionId, grantPosition, legacyPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +20,8 @@ async function fixture(t, path = ':memory:') {
       method, headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(warehouse), ...(cookie ? { Cookie: cookie } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: r.status, data: await r.json(), cookie: r.headers.get('set-cookie')?.split(';')[0] };
+    const result = { status: r.status, data: await r.json(), cookie: r.headers.get('set-cookie')?.split(';')[0] };
+    return path === '/orders' && method === 'POST' ? approveFixtureOrder(result,(nextPath,nextBody)=>request(admin,nextPath,nextBody,'POST',warehouse)) : result;
   };
   let admin = (await request(null, '/auth/setup', { username: 'owner', password })).cookie;
   // Existing database fixtures have already initialized the owner.
@@ -163,7 +165,7 @@ test('regular orders deduplicate retries by user, reject changed payloads, and k
   await f.command(a.cookie, '/orders', { ...templateBody, items: [{ product_id: id, quantity: 1, price: 10 }] });
   const sale = { type: 'out', partner: '客户', items: [{ product_id: id, quantity: 1, price: 20 }] };
   const sales = await Promise.all([f.command(a.cookie, '/orders', sale), f.command(b.cookie, '/orders', sale)]);
-  assert.deepEqual(sales.map(r => r.status).sort(), [201, 400]);
+  assert.deepEqual(sales.map(r => r.status).sort(), [201, 409]);
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(id).stock, 0);
 });
 
@@ -201,7 +203,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 45);
+  assert.equal(backup.version, 46);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -303,9 +305,10 @@ const routeRoles = new Map(Object.entries({
   'get /api/production-orders/:id/stages/batches': 'production',
   'post /api/production-orders/:id/stages/complete': 'production',
   'post /api/production-orders/:id/stages/batches/:batchId/void': 'production',
-  'get /api/production-material-documents': 'purchase', 'post /api/production-material-documents/:id/confirm': 'sale',
-  'post /api/production-material-documents/:id/cancel': 'sale',
-  'get /api/production-receipts': 'purchase', 'post /api/production-receipts/:id/confirm': 'purchase',
+  'get /api/production-material-documents': 'purchase', 'post /api/production-material-documents/:id/confirm': 'stock_approve',
+  'post /api/production-material-documents/:id/cancel': 'stock_approve',
+  'post /api/orders/:id/approve': 'stock_approve', 'post /api/orders/:id/reject': 'stock_approve', 'post /api/orders/:id/cancel': 'submitter',
+  'get /api/production-receipts': 'purchase', 'post /api/production-receipts/:id/confirm': 'stock_approve',
 }));
 
 test('every API route declares its role, and employee access matches that declaration', async t => {
@@ -326,7 +329,7 @@ test('every API route declares its role, and employee access matches that declar
     const [method, path] = key.split(' ');
     const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':announcementId', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
     const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
-    assert.equal(response.status === 403, ['admin', 'ai', 'bom', 'production'].includes(role), `${key} 返回 ${response.status}`);
+    assert.equal(response.status === 403, ['admin', 'ai', 'bom', 'production', 'stock_approve', 'submitter'].includes(role), `${key} 返回 ${response.status}`);
   }
   assert.deepEqual(counts(), before, '权限探测不应改动业务数据');
   assert.equal((await f.request(employee.cookie, '/auth/logout', {}, 'POST')).status, 200);

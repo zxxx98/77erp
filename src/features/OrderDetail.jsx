@@ -1,3 +1,4 @@
+import { OrderApprovalDetail, orderStatusLabel } from './OrderApprovals.jsx';
 import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { usePermissions } from '../permissions.jsx';
@@ -8,9 +9,10 @@ import { CheckCheck } from 'lucide-react';
 import { money, price, count, currencySymbol } from '../app/format.js';
 import { orderLineAmount } from '../../shared/money.js';
 
-function OrderDetail({ order, onClose, onSaved, isAdmin }) {
+function OrderDetail({ order, onClose, onSaved, isAdmin, onCopy }) {
   useLocale();
   const { can, costs } = usePermissions();
+  if (['pending','rejected','cancelled'].includes(order.status)) return <OrderApprovalDetail order={order} onClose={onClose} onChanged={onSaved} onCopy={onCopy}/>;
   // Transfers carry no money: they are corrected from the transfer list, and
   // the line value shown is the moved moving-average cost.
   const transfer = order.kind === "transfer";
@@ -32,7 +34,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin }) {
     >
       <div className="form-body">
         <div className="detail-status">
-          <Badge>{order.status === "void" ? translate("warehouse.voided") : translate("warehouse.completed")}</Badge>
+          <Badge>{orderStatusLabel(order)}</Badge>
           <span>
             <CheckCheck size={15} />{translate("warehouse.inventory.has.been.updated.simultaneously")}</span>
         </div>

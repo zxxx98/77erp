@@ -82,7 +82,7 @@ async function organization(f) {
     const cookie=(await f.request('/auth/login',{username,password:'Test-staff-123'},{cookie:null})).cookie;
     return {id:row.id,cookie};
   };
-  const employee=await user('groupworker',['production_register','finance'],a), warehouse=await user('warehouseworker',['sale','purchase'],b);
+  const employee=await user('groupworker',['production_register','finance'],a), warehouse=await user('warehouseworker',['stock_approve'],b);
   const assign=async (order, groupId, body={}) => f.command(`/production-orders/${order.id}/assign`,{version:order.version,schema_version:2,production_group_id:groupId,...body});
   return {a,b,employee,warehouse,assign,user};
 }
@@ -252,7 +252,7 @@ test('assignment backups migrate old single-group orders and never grant cross-i
   const f=await fixture(t), g=await organization(f), person=await g.user('backup-assignee',['production_register'],null);
   const order=await f.create({production_group_ids:[g.a,g.b],user_ids:[person.id]});
   const backup=f.ok(await f.request('/backup'));
-  assert.equal(backup.version,45);
+  assert.equal(backup.version,46);
   const restore=async backup=>{ const preview=await f.command('/backup/preview',{backup}); if(preview.status!==200)return preview; return f.command('/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA'}); };
   const invalid=structuredClone(backup);invalid.data.production_orders[0].assigned_users='[{"id":1,"name":"x"},{"id":1,"name":"x"}]';
   assert.equal((await restore(invalid)).status,400);

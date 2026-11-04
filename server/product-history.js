@@ -15,12 +15,12 @@ export function installProductHistory(app, db) {
     // Price changes require finance permission; stock adjustments retain /stocktakes permissions.
     const rows = db.prepare(`SELECT * FROM (
       SELECT 'order' AS event,i.id AS event_id,o.id AS order_id,o.number,o.type,o.kind,o.status,
-        o.created_at,o.partner,o.note,o.created_by_name AS operator,
+        COALESCE(o.approved_at,o.created_at) AS created_at,o.partner,o.note,CASE WHEN o.approved_at IS NOT NULL THEN o.approved_by_name ELSE o.created_by_name END AS operator,
         i.quantity,CASE WHEN o.stock_applied=0 THEN NULL WHEN o.type='in' THEN i.quantity ELSE -i.quantity END AS delta,
         NULL AS before_stock,NULL AS after_stock,
         NULL AS before_cost,NULL AS after_cost,NULL AS before_price,NULL AS after_price,NULL AS unit
       FROM order_items i JOIN orders o ON o.id=i.order_id
-      WHERE i.product_id=? AND o.warehouse_id=?
+      WHERE i.product_id=? AND o.warehouse_id=? AND o.status IN ('active','void')
       UNION ALL
       SELECT 'void',i.id,o.id,o.number,o.type,o.kind,o.status,
         o.voided_at,o.partner,o.void_reason,'',i.quantity,
