@@ -73,13 +73,12 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       outputQuantity = parseQuantity(quantity, true);
       if (target.postProcessing && !Number.isInteger(outputQuantity)) throw new Error(t('production.postProcessingInteger'));
       if (target.layer.unit_round_up && !Number.isInteger(outputQuantity)) throw new Error(t('registration.wholeQuantity'));
-      allocations = target.node && !target.additional && !target.postProcessing ? operationAllocation(order, target.path, target.node.id, outputQuantity) : [];
+      allocations = target.node && !target.postProcessing ? operationAllocation(order, target.path, target.node.id, outputQuantity) : [];
       defaults = registrationDefaults(order, target, outputQuantity);
       if (target.output && allocations.length) defaults.items = allocations.flatMap(part => registrationDefaults(order, { ...target, path: part.path, layer: part.layer }, part.quantity).items);
     } catch (error) { defaultsError = error.message; }
   }
   const items = defaults.items.map(row => ({ ...row, ...overrides.items[itemKey(order, row)] }));
-  const materialItems = (defaults.material_items || []).map(row => ({ ...row, ...overrides.items[row.product_id] }));
   const scraps = defaults.scraps.map(row => ({ ...row, ...overrides.scraps[row.product_id] }));
   const patchItem = (key, patch) => { setOverrides(previous => ({ ...previous, items: { ...previous.items, [key]: { ...previous.items[key], ...patch } } })); action.setError(''); };
   const patchScrap = (id, patch) => { setOverrides(previous => ({ ...previous, scraps: { ...previous.scraps, [id]: { ...previous.scraps[id], ...patch } } })); action.setError(''); };
@@ -99,12 +98,11 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       if (outputLocked) throw new Error(t('production.outputRegistrationLocked'));
       if (defaultsError) { if (target.output) setExpanded(true); throw new Error(defaultsError); }
       const value = parseQuantity(quantity, true);
-      if (!allocations.length && target.node?.available_quantity != null && exactCompare(value, exactQuantity(target.node, 'available_quantity')) > 0) throw new Error(t(target.additional ? 'production.additionalExceedsAvailable' : 'registration.exceedsAvailable'));
+      if (!allocations.length && target.node?.available_quantity != null && exactCompare(value, exactQuantity(target.node, 'available_quantity')) > 0) throw new Error(t('registration.exceedsAvailable'));
       let suffix, body;
       const operation = target.node ? { operation_node_id: target.node.id, worker_id: workerId } : {};
       if (!target.output) {
-        suffix = '/operations/report'; body = { path: target.path, ...operation, quantity: value, note, auto_overflow: !target.additional && !target.postProcessing };
-        if (target.additional) body.material_items = materialItems.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity), variance_reason: row.variance_reason }));
+        suffix = '/operations/report'; body = { path: target.path, ...operation, quantity: value, note, auto_overflow: !target.postProcessing };
       } else {
         const actuals = items.map(row => {
           const source = sourceFor(row);
@@ -181,35 +179,12 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           {(allocations.length > 1 || allocations.length === 1 && allocations[0].path !== target.path) && <div className="registration-allocation" role="status"><p className="bom-hint">{t('registration.overflowHint')}</p><ul>{allocations.map(part => <li key={part.path}>{part.layer.name} · {t('registration.layer', { path: part.path || t('production.finalProduct') })}: {count(part.quantity)} {target.unit}</li>)}</ul></div>}
         </section>
       </div>
-      {target?.additional && <section className="panel bom-section registration-additional-materials">
-        <div className="bom-section-heading registration-section-head">
-          <h3>{t('production.additionalMaterials')}</h3>
-        </div>
-        <p className="bom-hint">{t('production.additionalConsumptionHint')}</p>
-        {!quantity && <p className="bom-hint">{t('registration.enterQuantity')}</p>}
-        {defaultsError && <p className="bom-warning">{productionMessage(defaultsError)}</p>}
-        <div className="registration-materials-list">
-          {materialItems.map(row => {
-            const source = order.items.find(item => item.product_id === row.product_id);
-            return <div className="registration-material" key={row.product_id}>
-              <div className="registration-material-head">
-                <strong>{source.name}</strong>
-                <p className="bom-hint registration-available-pill">{t('production.available')} {count(exactQuantity(source, 'available_quantity'))} {source.unit}</p>
-              </div>
-              <div className="registration-material-fields">
-                <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.name })} inputMode="text" disabled={action.busy} value={row.quantity} onChange={event => patchItem(row.product_id, { quantity: event.target.value })} /></label>
-                <label>{t('production.usageVarianceReason2')}<Input.TextArea aria-label={t('production.usageVarianceReason', { v0: source.name })} maxLength={500} rows={2} value={row.variance_reason} disabled={action.busy} onChange={event => patchItem(row.product_id, { variance_reason: event.target.value })} /></label>
-              </div>
-            </div>;
-          })}
-        </div>
-      </section>}
       {!registerable && <p className="bom-warning registration-closed-warning" role="status">{t('registration.closed')}</p>}
       <details className="panel bom-section registration-details" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
         <summary><span>{t('registration.more')}</span><ChevronDown className="registration-details-chevron" size={16} aria-hidden="true" /></summary>
         <div className="registration-details-body">
           <div className="registration-details-meta">
-            {target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.postProcessing ? t('production.postProcessing') : target.additional ? t('production.additionalOperations') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
+            {target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.postProcessing ? t('production.postProcessing') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
             {can('production') && target?.node && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
           </div>
           {target?.node?.note && <p className="production-note registration-operation-note">{target.node.note}</p>}

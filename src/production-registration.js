@@ -4,7 +4,6 @@ import { stageInputDefaults } from '../shared/production-stages.js';
 import { pooledProductionStages } from '../shared/production-pools.js';
 import { t } from './i18n/index.js';
 import { scrapExpectedQuantity } from '../shared/scrap.js';
-import { additionalMaterialDefaults } from '../shared/additional-operations.js';
 import { quantityInput } from '../shared/exact-quantity.js';
 import { postProcessingUnit } from '../shared/post-processing.js';
 
@@ -66,24 +65,22 @@ export function registrationTargets(order) {
       showPath: boms(row) > 1, showStep: paths(row) > 1,
     };
   });
-  const independentTargets = (order.operation_routes || []).filter(route => route.additional_quantity != null || route.product_coefficient != null).map(route => {
-    const node = route.operations[0], postProcessing = route.product_coefficient != null;
-    const unit = postProcessing ? route.unit || postProcessingUnit : order.unit;
-    const planned_quantity = postProcessing ? route.post_processing_limit : route.additional_quantity;
+  const postTargets = (order.operation_routes || []).filter(route => route.product_coefficient != null).map(route => {
+    const node = route.operations[0];
+    const unit = route.unit || postProcessingUnit;
     return {
       id: JSON.stringify([route.path, node.id]), path: route.path,
-      layer: { ...order, path: route.path, name: node.name, unit, planned_quantity, completed_quantity: node.completed_quantity, ...(postProcessing ? { unit_round_up: true } : {}) },
-      node, route, ancestors: [], name: node.name, routeName: route.route_name, bomName: '', step: 1,
-      unit, output: false, additional: !postProcessing, postProcessing,
-      context: `${t(postProcessing ? 'production.postProcessing' : 'production.additionalOperations')} · ${route.route_name}`, showPath: false, showStep: false,
+      layer: { path: route.path, name: node.name, unit, planned_quantity: route.post_processing_limit, completed_quantity: node.completed_quantity, unit_round_up: true },
+      node, ancestors: [], name: node.name, routeName: route.route_name, bomName: '', step: 1,
+      unit, output: false, postProcessing: true,
+      context: `${t('production.postProcessing')} · ${route.route_name}`, showPath: false, showStep: false,
     };
   });
-  return [...regularTargets, ...independentTargets];
+  return [...regularTargets, ...postTargets];
 }
 
 // Defaults follow the existing full registration forms, including rounding and scrap rules.
 export function registrationDefaults(order, target, quantity) {
-  if (target.additional) return { items: [], scraps: [], material_items: additionalMaterialDefaults(target.route, quantity) };
   if (!target.output) return { items: [], scraps: [] };
 
   const items = order.stage_workflow

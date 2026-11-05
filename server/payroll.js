@@ -31,7 +31,7 @@ export function payrollStatistics(db, warehouseId, query) {
   };
   const worker = db.prepare('SELECT id,name,username,employee_no,active FROM users WHERE id=?').get(workerId);
   const rows = db.prepare(`SELECT r.*, p.number production_number, p.product_name, p.unit,
-    s.path, s.route_id, s.route_name, s.graph, s.additional_quantity, s.product_coefficient, st.name stage_name, st.unit stage_unit
+    s.path, s.route_id, s.route_name, s.graph, s.product_coefficient, st.name stage_name, st.unit stage_unit
     FROM production_operation_reports r JOIN production_orders p ON p.id=r.production_id
     JOIN production_routes s ON s.id=r.route_snapshot_id
     LEFT JOIN production_stages st ON st.production_id=p.id AND st.path=s.path
@@ -47,7 +47,7 @@ export function payrollStatistics(db, warehouseId, query) {
     const multiplier = node.multiplier ?? row.multiplier ?? 1;
     const amount = operationWageCents(node, { ...row, multiplier }), unit = row.product_coefficient == null ? row.stage_unit ?? row.unit : postProcessingUnit;
     const report = { id: row.id, production_id: row.production_id, production_number: row.production_number,
-      product_name: row.stage_name ?? row.product_name, path: row.path, additional_operation: row.additional_quantity != null, post_processing_operation: row.product_coefficient != null, route_name: row.route_name, operation_name: node.name,
+      product_name: row.stage_name ?? row.product_name, path: row.path, post_processing_operation: row.product_coefficient != null, route_name: row.route_name, operation_name: node.name,
       worker_name: row.worker_name, registered_by_name: row.registered_by_name, created_at: row.created_at,
       quantity: row.quantity, quantity_fraction: row.quantity_fraction, multiplier, unit, unit_price: node.unit_price ?? null, currency: node.currency ?? null,
       amount_cents: amount, status: row.status, note: row.note, void_reason: row.void_reason };
@@ -129,7 +129,7 @@ export function payrollOrderStatistics(db, warehouseId, query = {}) {
   const { material_workflow, material_phase, completed_at, ...orderRest } = orderRow;
   const order = { ...orderRest, status: publicStatus(orderRow) };
   const rows = db.prepare(`SELECT r.*, p.number production_number, p.product_name, p.unit,
-    s.path, s.route_id, s.route_name, s.graph, s.additional_quantity, s.product_coefficient, st.name stage_name, st.unit stage_unit,
+    s.path, s.route_id, s.route_name, s.graph, s.product_coefficient, st.name stage_name, st.unit stage_unit,
     u.username worker_username, u.employee_no worker_employee_no, u.active worker_active, u.name current_worker_name
     FROM production_operation_reports r
     JOIN production_orders p ON p.id=r.production_id
@@ -148,7 +148,7 @@ export function payrollOrderStatistics(db, warehouseId, query = {}) {
     const amount = operationWageCents(node, { ...row, multiplier }), unit = row.product_coefficient == null ? row.stage_unit ?? row.unit : postProcessingUnit;
     const report = {
       id: row.id, production_id: row.production_id, production_number: row.production_number,
-      product_name: row.stage_name ?? row.product_name, path: row.path, additional_operation: row.additional_quantity != null, post_processing_operation: row.product_coefficient != null,
+      product_name: row.stage_name ?? row.product_name, path: row.path, post_processing_operation: row.product_coefficient != null,
       route_name: row.route_name, operation_name: node.name,
       worker_id: row.worker_id, worker_name: row.worker_name, registered_by_name: row.registered_by_name, created_at: row.created_at,
       quantity: row.quantity, quantity_fraction: row.quantity_fraction, multiplier, unit,

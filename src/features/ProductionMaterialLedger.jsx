@@ -54,9 +54,6 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
             {open && <>
               <dl className="production-ledger-metadata">
                 <div><dt>{t('production.requestedQuantity')}</dt><dd>{count(item.requested_quantity)} {item.unit}</dd></div>
-                {item.additional_planned_quantity > 0 && <div><dt>{t('production.additionalPlannedMaterial')}</dt><dd>{count(item.additional_planned_quantity)} {item.unit}</dd></div>}
-                {item.additional_consumed_quantity > 0 && <div><dt>{t('production.additionalUsedMaterial')}</dt><dd>{count(item.additional_consumed_quantity)} {item.unit}</dd></div>}
-                {costs && item.additional_consumed_cost_cents > 0 && <div><dt>{t('production.additionalMaterialCost')}</dt><dd>{cost(item.additional_consumed_cost_cents)}</dd></div>}
                 {item.closed_request_quantity > 0 && <div><dt>{t('production.closedQuantity')}</dt><dd>{count(item.closed_request_quantity)} {item.unit}</dd></div>}
                 {item.base_quantity !== null && <>
                   <div><dt>{t('production.baseNetUsage')}</dt><dd>{item.base_quantity_fraction || count(item.base_quantity)} {item.unit}</dd></div>

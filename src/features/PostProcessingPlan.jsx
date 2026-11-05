@@ -17,13 +17,13 @@ function estimatedRuns(plannedQuantity, coefficient) {
 export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity, disabled }) {
   useLocale();
   const [picker, setPicker] = useState(false);
-  return <section className="panel bom-section additional-operations post-processing-plan">
+  return <section className="panel bom-section post-processing-plan">
     <h2>{t('production.postProcessing')}</h2>
     <p className="bom-hint">{t('production.postProcessingPlanHint')}</p>
     {rows.map((row, index) => {
       const estimate = estimatedRuns(plannedQuantity, row.product_coefficient);
       const label = `${t('production.productCoefficient')} ${row.name}`;
-      return <section key={`${row.route_id}:${row.node_id}`} className="additional-operation-plan">
+      return <section key={`${row.route_id}:${row.node_id}`} className="post-processing-binding">
         <div className="production-material">
           <div className="production-material-name"><strong>{row.name}</strong><small>{row.route_name}</small></div>
           <label>{t('production.productCoefficient')}（{unit}）<FormField required value={row.product_coefficient} label={label}>

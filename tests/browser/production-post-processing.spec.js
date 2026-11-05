@@ -45,6 +45,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} bin
     await button('新建生产单').click();
     await page.getByRole('button', { name: /^选择配方 后处理成品 ·/ }).click();
     await page.getByLabel('计划产量', { exact: true }).fill('110');
+    await expect(button('添加附加工序')).toHaveCount(0);
     for (const [route, node, coefficient] of [['后处理模板', '包装', '20'], ['贴标模板', '贴标', '50']]) {
       await button('添加后处理工序').click();
       const picker = dialog('添加后处理工序');
@@ -55,7 +56,9 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} bin
       await page.getByLabel(`每次处理成品数量 ${node}`, { exact: true }).fill(coefficient);
     }
     await expect(page.locator('.post-processing-plan')).toContainText('预计 6 次');
+    const created = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/production-orders');
     await button('保存生产草稿').click();
+    expect((await created).postDataJSON()).not.toHaveProperty('additional_operations');
     await expect(page.locator('.bom-success')).toContainText('库存未变动');
     const { id } = db.prepare('SELECT id FROM production_orders ORDER BY id DESC LIMIT 1').get();
     const get = async () => (await page.request.get(`${base}/api/production-orders/${id}`)).json();

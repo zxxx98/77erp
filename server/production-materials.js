@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { allocate, moveInventory } from './commerce.js';
-import { addQuantity, validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
+import { validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { notifyStockChanges } from './notifications.js';
 import { stageDirectBatches } from './production-stages.js';
-import { additionalPlannedQuantities } from '../shared/additional-operations.js';
 import { exactQuantity, exactAdd, exactSubtract, exactCompare, exactMax, exactNumber, quantityFields, parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
 import { saveExactQuantity } from './exact-quantity.js';
 
@@ -107,7 +106,6 @@ export function materialDocuments(db, productionId, warehouseId) {
 
 export function materialBalances(order) {
   const documents = order.material_documents.map(materialDocumentProgress);
-  const additionalPlans = additionalPlannedQuantities(order.operation_routes);
   return order.items.map(item => {
     let issued = 0, returned = 0, cost = 0n;
     let requested = 0, pending = 0, closed = 0;
@@ -131,22 +129,15 @@ export function materialBalances(order) {
       }
     }
     const productionConsumed = consumed;
-    let additionalConsumed = 0, additionalCost = 0;
-    for (const report of order.additional_material_reports || []) if (report.status === 'active') for (const row of report.material_items) if (row.product_id === item.product_id) {
-      additionalConsumed = exactAdd(additionalConsumed, exactQuantity(row)); additionalCost += row.cost_cents;
-      consumed = exactAdd(consumed, exactQuantity(row)); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
-    }
     for (const row of order.quantity_rounding || []) if (row.kind === 'material' && row.product_id === item.product_id) {
       consumed = exactAdd(consumed, exactQuantity(row)); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
     }
-    const additionalPlanned = additionalPlans.get(item.product_id) || 0, totalPlanned = addQuantity(item.planned_quantity, additionalPlanned);
-    if (!validStoredQuantity(totalPlanned) || !Number.isSafeInteger(additionalCost) || consumedCost > BigInt(Number.MAX_SAFE_INTEGER)) fail('附加工序材料成本或计划数量超出范围。');
+    if (consumedCost > BigInt(Number.MAX_SAFE_INTEGER)) fail('生产材料成本超出范围。');
     // Lifetime turnover can exceed Number's exact range even when the remaining pool is small.
     if (cost < 0n || cost > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${item.name}材料余额成本不足或超出范围。`);
     return { ...item, ...quantityFields(requested, 'requested_quantity'), ...quantityFields(pending, 'pending_issue_quantity'), ...quantityFields(closed, 'closed_request_quantity'), ...quantityFields(issued, 'issued_quantity'), ...quantityFields(returned, 'returned_quantity'),
-      ...quantityFields(exactMax(0, exactSubtract(issued, totalPlanned)), 'over_plan_quantity'),
-      additional_planned_quantity: additionalPlanned, total_planned_quantity: totalPlanned,
-      ...quantityFields(additionalConsumed, 'additional_consumed_quantity'), additional_consumed_cost_cents: additionalCost,
+      ...quantityFields(exactMax(0, exactSubtract(issued, item.planned_quantity)), 'over_plan_quantity'),
+      total_planned_quantity: item.planned_quantity,
       ...quantityFields(consumed, 'consumed_quantity'), consumed_cost_cents: Number(consumedCost),
       ...(order.stage_workflow ? { ...quantityFields(productionConsumed, 'direct_consumed_quantity'), direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
       ...quantityFields(exactSubtract(exactSubtract(issued, returned), consumed), 'available_quantity'), available_cost_cents: Number(cost) };
@@ -388,8 +379,6 @@ export function validateProductionMaterialBackup(data) {
         order.material_phase !== 'in_progress' && (order.completed_at || documents.some(doc => doc.status === 'confirmed')) ||
         order.status === 'void' && pending.has(order.id)) fail('备份生产领料阶段与材料单不一致。');
     const balances = materialBalances({ ...order, quantity_rounding: (data.production_quantity_rounding || []).filter(row => row.production_id === order.id && row.status === 'active'), items: data.production_items.filter(row => row.production_id === order.id), material_documents: documents,
-      operation_routes: data.production_routes.filter(row => row.production_id === order.id),
-      additional_material_reports: data.production_operation_reports.filter(row => row.production_id === order.id).map(row => ({ ...row, material_items: JSON.parse(row.material_items) })),
       stage_direct_batches:stageDirectBatches(data,order.id),
       batches: data.production_batches.filter(row => row.production_id === order.id).map(batch => ({ ...batch, items: data.production_batch_items.filter(row => row.batch_id === batch.id) })) });
     if (balances.some(item => !validStoredQuantity(exactQuantity(item,'issued_quantity')) || !validStoredQuantity(exactQuantity(item,'returned_quantity')) || !validStoredQuantity(exactQuantity(item,'available_quantity')) || !money(item.available_cost_cents) ||

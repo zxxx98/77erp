@@ -112,8 +112,6 @@ export function validateProductionRoundingBackup(data) {
       items: data.production_material_document_items.filter(item => item.document_id === doc.id),
       issues: data.production_material_issues.filter(issue => issue.document_id === doc.id).map(issue => ({...issue, items: data.production_material_issue_items.filter(item => item.issue_id === issue.id)})) }));
     const balances = materialBalances({...order, items, material_documents: documents, stage_direct_batches: stageDirectBatches(data, order.id),
-      operation_routes: data.production_routes.filter(route => route.production_id === order.id),
-      additional_material_reports: data.production_operation_reports.filter(report => report.production_id === order.id).map(report => ({...report, material_items: JSON.parse(report.material_items)})),
       batches: data.production_batches.filter(batch => batch.production_id === order.id).map(batch => ({...batch, items: data.production_batch_items.filter(item => item.batch_id === batch.id)})) });
     let cost = 0;
     const checked = new Set();

@@ -33,10 +33,4 @@ export function validateExactQuantityBackup(data) {
         throw new Error('备份数量与精确分数不一致。');
     }
   }
-  for (const report of data.production_operation_reports || []) for (const item of JSON.parse(report.material_items || '[]')) {
-    if (Object.keys(item).some(key => !['product_id','quantity','quantity_fraction','cost_cents','variance_reason'].includes(key)) ||
-        item.quantity_fraction !== undefined && (typeof item.quantity_fraction !== 'string' || item.quantity_fraction.length > 4096 ||
-          item.quantity_fraction !== '' && (!/^\d+\/\d+$/.test(item.quantity_fraction) || !validExactQuantity(item.quantity_fraction) || exactNumber(item.quantity_fraction) !== item.quantity)))
-      throw new Error('备份附加工序用量与精确分数不一致。');
-  }
 }

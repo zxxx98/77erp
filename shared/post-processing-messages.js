@@ -1,6 +1,5 @@
 export const postProcessingMessages = {
   POST_PRODUCTION_BINDING_ONLY: ['物料和BOM只能绑定生产工艺。', 'Materials and BOMs can only be linked to production processes.', 'Vật tư và BOM chỉ được liên kết với quy trình sản xuất.'],
-  POST_ADDITIONAL_ROUTE_KIND: ['请选择生产工艺作为附加工序。', 'Select a production process for an additional operation.', 'Chọn quy trình sản xuất cho công đoạn bổ sung.'],
   POST_ROUTE_KIND: ['请选择有效的工艺类型。', 'Select a valid process type.', 'Chọn loại quy trình hợp lệ.'],
   POST_ROUTE_REFERENCED: ['工艺已被引用，不能变更工艺类型。', 'This process is referenced; its type cannot be changed.', 'Quy trình đang được tham chiếu, không thể đổi loại.'],
   POST_OPERATION_LIMIT: ['后处理工序最多 50 道。', 'An order can have at most 50 post-processing operations.', 'Một lệnh có tối đa 50 công đoạn hậu xử lý.'],

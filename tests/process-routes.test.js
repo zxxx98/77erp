@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
+import { migrateProcessRoutes } from '../server/process-routes.js';
 import { validateProcessGraph, arrangeProcessGraph } from '../shared/process-routes.js';
 
 const node = (id, name = id) => ({ id, name, note: '', x: 24, y: 24 });
@@ -223,7 +224,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 51);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 52);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);
@@ -500,196 +501,6 @@ test('process routes filter by output product production_type and search by rout
   assert.equal((await f.request('/process-routes?sort=name%3Bdrop')).status,400);
 });
 
-for (const multi of [false, true]) test(`${multi ? 'layered' : 'single-level'} additional operations keep independent quantities, reports, payroll and backups outside the BOM`, async t => {
-  const f = await fixture(t, { multi, routed: false, graph: { ...serial, nodes: serial.nodes.map(n => ({ ...n, unit_price: 2, currency: 'CNY', multiplier: 1.5 })) } });
-  const additional_operations = [{ route_id: f.route.id, route_version: f.route.version, node_id: 'out', quantity: 3 }];
-  const bomBefore = f.ok(await f.request(`/boms/${f.root.id}`));
-  let order = await f.create({ additional_operations });
-  const extra = () => order.operation_routes.find(r => r.additional_quantity != null);
-  assert.equal(extra().operations[0].is_output, false);
-  assert.equal(extra().operations[0].available_quantity, 3);
-  assert.deepEqual(f.ok(await f.request(`/boms/${f.root.id}`)), bomBefore);
-  f.ok(await f.command(`/process-routes/${f.route.id}`, { ...f.route, enabled: 0, graph: { ...serial, nodes: serial.nodes.map(n => ({ ...n, unit_price: 99, currency: 'CNY', multiplier: 2 })) } }));
-  order = await f.start(order);
-  const inventory = () => f.db.prepare('SELECT id,stock,inventory_value_cents FROM products ORDER BY id').all();
-  const before = inventory(), materials = structuredClone(order.items);
-  assert.equal((await f.report(order, 'out', 4, extra().path, { auto_overflow: true })).status, 409);
-  const original = order, body = { request_id: randomUUID(), auto_overflow: true };
-  order = f.ok(await f.report(order, 'out', 1, extra().path, body));
-  assert.deepEqual(f.ok(await f.report(original, 'out', 1, extra().path, body)), order);
-  assert.equal(extra().operations[0].completed_quantity, 1);
-  assert.equal(extra().operations[0].available_quantity, 2);
-  assert.equal(extra().reports[0].output_kind, null);
-  assert.equal(extra().reports[0].multiplier, 1.5);
-  assert.equal(order.completed_quantity ?? 0, 0);
-  assert.equal(order.batch_count, 0);
-  assert.deepEqual(order.items, materials);
-  assert.deepEqual(inventory(), before);
-  assert.equal(order.receipt_documents.length, 0);
-  assert.equal((await f.report(original, 'out', 1, extra().path)).status, 409);
-  const reportId = extra().reports[0].id;
-  const history = f.ok(await f.request(`/production-orders/${order.id}/operations/reports?snapshot_id=${extra().id}`));
-  assert.equal(history.total, 1);
-  const payroll = f.ok(await f.request(`/payroll?worker_id=${extra().reports[0].worker_id}&start_at=2000-01-01T00:00:00.000Z&end_at=2100-01-01T00:00:00.000Z`));
-  assert.equal(payroll.reports[0].amount_cents, 300);
-  assert.equal(payroll.reports[0].additional_operation, true);
-  const backup = f.ok(await f.request('/backup'));
-  const preview = f.ok(await f.command('/backup/preview', { backup }));
-  f.ok(await f.command('/backup/restore', { backup, token: preview.token, current_token: preview.current_token, confirmation: 'RESTORE_BUSINESS_DATA' }));
-  order = await f.get(order.id);
-  assert.equal(extra().additional_quantity, 3);
-  assert.equal(extra().reports[0].id, reportId);
-  for (const mutate of [
-    b => b.data.production_routes[0].additional_quantity = 0,
-    b => b.data.production_routes[0].additional_quantity = 0.5,
-    b => b.data.production_routes[0].path = '1',
-    b => b.data.production_operation_reports[0].output_kind = 'batch',
-  ]) {
-    const bad = structuredClone(backup); mutate(bad);
-    assert.equal((await f.command('/backup/preview', { backup: bad })).status, 400);
-  }
-  order = f.ok(await f.command(`/production-orders/${order.id}/operations/${reportId}/void`, { version: order.version, reason: '重录附加工序' }));
-  assert.equal(extra().operations[0].available_quantity, 3);
-  assert.deepEqual(inventory(), before);
-  assert.equal((await f.command(`/production-orders/${order.id}/finish`, { version: order.version })).data.error, '附加工序尚未完成，请登记完成后再结束生产。');
-  order = f.ok(await f.report(order, 'out', 3, extra().path));
-  if (multi) order = f.ok(await f.complete(order, 1, '1', { operation_node_id: undefined }));
-  order = f.ok(await f.complete(order, 1, '', { operation_node_id: undefined }));
-  order = f.ok(await f.command(`/production-orders/${order.id}/finish`, { version: order.version }));
-  assert.equal(order.status, 'completed');
-  assert.equal(order.completed_quantity, 1);
-  assert.equal((await f.report(order, 'out', 1, extra().path)).status, 409);
-  f.ok(await f.command('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
-});
-
-test('additional operation creation rejects invalid, stale, disabled and foreign selections atomically and old backups remain compatible', async t => {
-  const f = await fixture(t, { routed: false });
-  const valid = { route_id: f.route.id, route_version: f.route.version, node_id: 'cut', quantity: 2 };
-  const warehouse = f.ok(await f.request('/warehouses', { name: '其他工序仓库' }));
-  const foreign = f.ok(await f.command('/process-routes', { name: '其他仓库路线', note: '', enabled: 1, graph: serial }, { warehouseId: warehouse.id }));
-  for (const additional_operations of [null, {}, [null], [valid, valid], Array(51).fill(valid), [{ ...valid, quantity: 0 }], [{ ...valid, quantity: '2' }], [{ ...valid, quantity: 1.00001 }], [{ ...valid, node_id: 'missing' }], [{ ...valid, route_version: f.route.version + 1 }], [{ ...valid, route_id: foreign.id, route_version: foreign.version }]]) {
-    await assert.rejects(() => f.create({ additional_operations }));
-    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_orders').get().n, 0);
-  }
-  const material = { product_id: f.raw, quantity: 1 };
-  for (const materials of [null, {}, [null], [material, material], Array(101).fill(material), [{ ...material, product_id: 999999 }], [{ ...material, quantity: 0 }], [{ ...material, quantity: 1.00001 }]]) {
-    await assert.rejects(() => f.create({ additional_operations: [{ ...valid, materials }] }));
-    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_orders').get().n, 0);
-    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_items').get().n, 0);
-  }
-  f.ok(await f.command(`/process-routes/${f.route.id}/status`, { version: f.route.version, enabled: 0 }));
-  await assert.rejects(() => f.create({ additional_operations: [valid] }), /已启用/);
-  const order = await f.create();
-  const old = f.ok(await f.request('/backup')); old.version = 47;
-  for (const row of old.data.production_routes) delete row.additional_quantity;
-  const preview = f.ok(await f.command('/backup/preview', { backup: old }));
-  f.ok(await f.command('/backup/restore', { backup: old, token: preview.token, current_token: preview.current_token, confirmation: 'RESTORE_BUSINESS_DATA' }));
-  assert.equal((await f.get(order.id)).operation_routes.length, 0);
-});
-
-test('additional operations retain acceptance revisions and use the same registration permissions', async t => {
-  const f = await acceptanceFixture(t, { routed: false });
-  const group = f.ok(await f.command('/production-groups', { name: '附加工序组' }));
-  const position = f.ok(await f.command('/positions', { name: '附加工序登记', access_mode: 'production_only', permissions: ['production_register'] }));
-  const user = f.ok(await f.command('/users', { username: 'extra-worker', employee_no: 'extra-worker', password: 'Worker-test-123', role: 'employee', position_id: position.id, production_group_id: group.id }));
-  const login = await f.request('/auth/login', { username: 'extra-worker', password: 'Worker-test-123' }, { cookie: 'no-session' });
-  const options = { cookie: login.cookie };
-  const material_items = [{ product_id: f.raw, quantity: 1, variance_reason: '实际用量' }];
-  let order = await f.start(await f.create({ production_group_id: group.id, additional_operations: [{ route_id: f.route.id, route_version: f.route.version, node_id: 'out', quantity: 2, materials: [{ product_id: f.raw, quantity: 2 }] }] }));
-  const path = order.operation_routes[0].path;
-  assert.equal(order.operation_routes[0].operations[0].acceptance_revision_id, f.revisionId);
-  const rejected = await f.report(order, 'out', 1, path, {}, options);
-  assert.equal(rejected.status, 403); assert.equal(rejected.data.error, '该工序需要验收，请通知验收员');
-  f.ok(await f.request(`/positions/${position.id}`, { ...position, permissions: ['production_register', 'operation_accept'] }, { method: 'PUT' }));
-  assert.equal((await f.report(order, 'out', 1, path, { material_items }, options)).status, 400);
-  order = f.ok(await f.report(order, 'out', 1, path, { material_items, operation_acceptance: f.acceptance }, options));
-  assert.equal(order.operation_routes[0].reports[0].worker_id, user.id);
-  assert.ok(order.operation_routes[0].reports[0].acceptance_id);
-  assert.equal(JSON.stringify(order).includes('unit_price'), false);
-  assert.equal(JSON.stringify(order).includes('cost_cents'), false);
-  assert.equal(order.operation_routes[0].reports[0].material_items[0].quantity, 1);
-  const history = f.ok(await f.request(`/production-orders/${order.id}/operations/reports?snapshot_id=${order.operation_routes[0].id}`, undefined, options));
-  assert.equal(history.reports[0].material_items[0].variance_reason, '实际用量');
-  assert.equal(JSON.stringify(history).includes('cost_cents'), false);
-  const unrestricted = await f.get(order.id);
-  assert.equal(unrestricted.operation_routes[0].reports[0].material_items[0].cost_cents, 100);
-  f.ok(await f.command('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
-  const other = await f.start(await f.create({ additional_operations: [{ route_id: f.route.id, route_version: f.route.version, node_id: 'out', quantity: 2 }] }));
-  assert.equal((await f.report(other, 'out', 1, other.operation_routes[0].path, { operation_acceptance: f.acceptance }, options)).status, 404);
-});
-
-for (const multi of [false, true]) test(`${multi ? 'layered' : 'single-level'} additional materials join issue plans and actual consumption, returns and corrections conserve quantities and original costs`, async t => {
-  const f = await fixture(t, { multi, routed: false });
-  const solvent = f.ok(await f.request('/products', { name: '附加工序清洗剂', barcode: randomUUID(), category: '生产', unit: '千克', cost: 1, price: 2, threshold: 0 }));
-  f.db.prepare('UPDATE products SET stock=10,inventory_value_cents=1000 WHERE id=?').run(solvent.id);
-  let order = await f.create({ additional_operations: [{ route_id: f.route.id, route_version: f.route.version, node_id: 'out', quantity: 4,
-    materials: [{ product_id: f.raw, quantity: 8 }, { product_id: solvent.id, quantity: 3 }] }] });
-  const item = productId => order.items.find(item => item.product_id === productId);
-  assert.equal(item(f.raw).planned_quantity, 20); assert.equal(item(f.raw).total_planned_quantity, 28);
-  assert.equal(item(solvent.id).planned_quantity, 0); assert.equal(item(solvent.id).total_planned_quantity, 3);
-  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.raw).stock, 1000);
-  order = await f.start(order);
-  assert.equal(order.material_documents[0].items.find(row => row.product_id === f.raw).quantity, 28);
-  assert.equal(order.material_documents[0].items.find(row => row.product_id === solvent.id).quantity, 3);
-  const path = order.operation_routes[0].path;
-  const actuals = [{ product_id: f.raw, quantity: 5, variance_reason: '清洗额外损耗' }, { product_id: solvent.id, quantity: 1.7, variance_reason: '' }];
-  const before = order.version;
-  for (const material_items of [undefined, [actuals[0]], [actuals[0], actuals[0]], [{ ...actuals[0], quantity: 100 }, actuals[1]], [{ ...actuals[0], quantity: -1 }, actuals[1]]]) {
-    assert.ok([400,409].includes((await f.report(order, 'out', 2, path, { material_items })).status));
-    assert.equal((await f.get(order.id)).version, before);
-    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_operation_reports').get().n, 0);
-  }
-  const original = order, extra = { request_id: randomUUID(), material_items: actuals };
-  order = f.ok(await f.report(order, 'out', 2, path, extra));
-  assert.deepEqual(f.ok(await f.report(original, 'out', 2, path, extra)), order);
-  assert.equal(item(f.raw).available_quantity, 23); assert.equal(item(solvent.id).available_quantity, 1.3);
-  assert.equal(item(f.raw).consumed_quantity, 5); assert.equal(item(f.raw).additional_consumed_quantity, 5);
-  assert.equal(order.additional_material_cost_cents, 670); assert.equal(order.total_consumed_cost_cents, 670);
-  assert.equal(order.completed_quantity ?? 0, 0); assert.equal(order.receipt_documents.length, 0);
-  const report = order.operation_routes[0].reports[0];
-  assert.equal(report.material_items[0].cost_cents, 500);
-  assert.equal(report.material_items[0].variance_reason, '清洗额外损耗');
-  const history = f.ok(await f.request(`/production-orders/${order.id}/operations/reports?snapshot_id=${order.operation_routes[0].id}`));
-  assert.equal(history.reports[0].material_items[1].quantity, 1.7);
-  const backup = f.ok(await f.request('/backup'));
-  for (const mutate of [
-    b => b.data.production_routes[0].additional_materials = JSON.stringify([{ product_id: 99999, quantity: 1 }]),
-    b => b.data.production_operation_reports[0].material_items = '[]',
-    b => { const rows = JSON.parse(b.data.production_operation_reports[0].material_items); rows[0].quantity = 29; b.data.production_operation_reports[0].material_items = JSON.stringify(rows); },
-    b => { const rows = JSON.parse(b.data.production_operation_reports[0].material_items); rows[0].cost_cents = -1; b.data.production_operation_reports[0].material_items = JSON.stringify(rows); },
-  ]) { const invalid = structuredClone(backup); mutate(invalid); assert.equal((await f.command('/backup/preview', { backup: invalid })).status, 400); }
-  const preview = f.ok(await f.command('/backup/preview', { backup }));
-  f.ok(await f.command('/backup/restore', { backup, token: preview.token, current_token: preview.current_token, confirmation: 'RESTORE_BUSINESS_DATA' }));
-  order = await f.get(order.id);
-  assert.equal(item(f.raw).available_quantity, 23); assert.equal(order.additional_material_cost_cents, 670);
-  assert.equal((await f.command(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'in', items: [{ product_id: f.raw, quantity: 24 }], note: '' })).status, 400);
-  order = f.ok(await f.command(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'in', items: [{ product_id: f.raw, quantity: 20 }, { product_id: solvent.id, quantity: 1 }], note: '' }));
-  const doc = order.material_documents.at(-1);
-  f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version })); order = await f.get(order.id);
-  assert.equal(item(f.raw).available_quantity, 3);
-  assert.equal((await f.report(order, 'out', 2, path, { material_items: actuals })).status, 409);
-  order = f.ok(await f.command(`/production-orders/${order.id}/operations/${report.id}/void`, { version: order.version, reason: '重录实际耗用' }));
-  assert.equal(item(f.raw).available_quantity, 8); assert.equal(item(solvent.id).available_quantity, 2);
-  assert.equal(order.additional_material_cost_cents, 0);
-  order = f.ok(await f.report(order, 'out', 4, path, { material_items: [{ product_id: f.raw, quantity: 6 }, { product_id: solvent.id, quantity: 2 }] }));
-  const complete = async path => {
-    const layer = multi ? order.stages.find(stage => stage.path === path) : order;
-    const items = layer.items.map(row => multi ? { path: row.path, quantity: row.is_supplemental_input ? 0 : row.usage_mode === 'explode' ? 1 : 2 } : { product_id: row.product_id, quantity: row.product_id === f.raw ? 2 : 0 });
-    return f.ok(await f.command(`/production-orders/${order.id}/${multi ? 'stages/' : ''}complete`, { version: order.version, path, completed_quantity: 1, items, scraps: [], note: '', finish_order: false }));
-  };
-  if (multi) order = await complete('1');
-  order = await complete('');
-  assert.equal(order.total_cost_cents, 200);
-  assert.equal(order.additional_material_cost_cents, 800);
-  assert.equal(order.total_consumed_cost_cents, 1000);
-  assert.equal(item(f.raw).consumed_quantity, 8); assert.equal(item(f.raw).available_quantity, 0);
-  assert.equal(item(solvent.id).consumed_quantity, 2); assert.equal(item(solvent.id).available_quantity, 0);
-  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.raw).stock, 992);
-  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(solvent.id).stock, 8);
-  order = f.ok(await f.command(`/production-orders/${order.id}/finish`, { version: order.version }));
-  f.ok(await f.command('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
-});
-
 test('custom route order puts new routes first, persists drags and keeps other rows in place when a subset moves', async t => {
   const f = await fixture(t, { routed: false });
   const make = async name => f.ok(await f.command('/process-routes', { name, note: '', enabled: 1, graph: serial })).id;
@@ -803,12 +614,18 @@ test('short production confirmation releases the final count and protects reopen
 
 test('post-processing templates are scoped to order bindings and v50 backups restore ordinary routes', async t => {
   const f = await fixture(t);
-  const legacyOrder = await f.create();
+  let legacyOrder = await f.start(await f.create());
+  legacyOrder = f.ok(await f.report(legacyOrder,'cut',1));
   const legacy = f.ok(await f.request('/backup'));
   legacy.version = 50;
   for (const row of legacy.data.process_routes) delete row.route_kind;
-  for (const row of legacy.data.production_routes) delete row.product_coefficient;
+  for (const row of legacy.data.production_routes) {
+    delete row.product_coefficient;
+    row.additional_quantity = null;
+    row.additional_materials = '[]';
+  }
   for (const row of legacy.data.production_orders) delete row.output_completion_confirmed;
+  for (const row of legacy.data.production_operation_reports) row.material_items = '[]';
   const preview = f.ok(await f.request('/backup/preview',{backup:legacy}));
   f.ok(await f.command('/backup/restore',{backup:legacy,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
   assert.equal(f.ok(await f.request(`/process-routes/${f.route.id}`)).route_kind,'production');
@@ -829,4 +646,39 @@ test('post-processing templates are scoped to order bindings and v50 backups res
   assert.equal((await create([{...binding,route_version:route.version-1}])).status,409);
   const order = f.ok(await create([{...binding,product_coefficient:0.0001}]));
   assert.equal(order.operation_routes.find(r=>r.product_coefficient != null).product_coefficient,0.0001);
+});
+
+test('production rejects retired additional operations and exposes no dedicated data fields', async t => {
+  const f = await fixture(t);
+  const binding = {route_id:f.route.id,route_version:f.route.version,node_id:'out',quantity:2};
+  await assert.rejects(() => f.create({additional_operations:[binding]}), /附加工序功能已移除/);
+  let order = await f.start(await f.create());
+  assert.equal(Object.hasOwn(order.operation_routes[0],'additional_quantity'),false);
+  assert.equal(Object.hasOwn(order.operation_routes[0],'additional_materials'),false);
+  assert.equal(Object.hasOwn(order,'additional_material_cost_cents'),false);
+  assert.equal(Object.hasOwn(order.items[0],'additional_consumed_quantity'),false);
+  const rejected = await f.report(order,'cut',1,'',{material_items:[{product_id:f.raw,quantity:1}]});
+  assert.equal(rejected.status,400);
+  assert.match(rejected.data.error,/工序报工不支持独立材料耗用/);
+  order = f.ok(await f.report(order,'cut',1));
+  assert.equal(Object.hasOwn(order.operation_routes[0].reports[0],'material_items'),false);
+  const backup = f.ok(await f.request('/backup'));
+  assert.equal(backup.version,52);
+  assert.equal(Object.hasOwn(backup.data.production_routes[0],'additional_quantity'),false);
+  assert.equal(Object.hasOwn(backup.data.production_operation_reports[0],'material_items'),false);
+});
+
+test('removal drops unused SQLite columns while retaining ordinary operation reports', async t => {
+  const f = await fixture(t);
+  let order = await f.start(await f.create());
+  order = f.ok(await f.report(order,'cut',1));
+  const reports = order.operation_routes[0].reports;
+  f.db.exec(`ALTER TABLE production_routes ADD COLUMN additional_quantity REAL CHECK(additional_quantity>0);
+    ALTER TABLE production_routes ADD COLUMN additional_materials TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE production_operation_reports ADD COLUMN material_items TEXT NOT NULL DEFAULT '[]';`);
+  migrateProcessRoutes(f.db);
+  assert.deepEqual((await f.get(order.id)).operation_routes[0].reports,reports);
+  assert.equal(f.db.prepare('PRAGMA table_info(production_routes)').all().some(c => c.name.startsWith('additional_')),false);
+  assert.equal(f.db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'material_items'),false);
+  assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
 });

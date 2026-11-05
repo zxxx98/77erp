@@ -180,12 +180,6 @@
   line-height: 1.6;
 }
 
-.registration-additional-materials {
-  min-width: 0;
-}
-.registration-additional-materials > .bom-hint {
-  margin: 0 0 12px;
-}
 .registration-closed-warning {
   margin: 0 0 16px;
   padding: 10px 14px;

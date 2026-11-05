@@ -61,6 +61,8 @@ test('post-processing completion and correction errors are localized', () => {
     '成品生产已确认完成，请先撤销确认再登记成品。',
     '调整后已登记后处理次数将超过可登记上限，请先作废相应后处理记录。',
     '后处理报工次数必须为正整数。',
+    '附加工序功能已移除。',
+    '工序报工不支持独立材料耗用。',
   ]) {
     assert.ok(validationErrorInfo(source), source);
     for (const locale of ['en', 'vi']) assert.doesNotMatch(localizeServerText(source, locale), /[\u3400-\u9fff]/);
