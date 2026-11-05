@@ -69,6 +69,7 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
     await page.getByRole('option', {name:/routeadmin/}).click();
     await expect(page.locator('.payroll-totals')).toContainText('CNY 15.00');
     await expect(page.locator('.payroll-reports')).toContainText('4 件 × 1.5 × CNY 2.5');
+    await expect(page.locator('.payroll-reports')).toContainText(order.number);
     await expect(page.getByRole('heading', {name:'工序工资汇总',exact:true})).toHaveCount(0);
     for (const name of ['本月','上月','刷新统计']) await expect(page.getByRole('button', {name,exact:true})).toHaveCount(0);
     await expect(page.getByRole('heading', {name:'每日工资',exact:true})).toBeVisible();
@@ -90,9 +91,23 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
     await expect(page.locator('.payroll-order-card')).toContainText(order.number);
     await page.getByRole('button', {name:'查看工资',exact:true}).click();
     await expect(page.getByRole('heading', {name:'各成员工资汇总',exact:true})).toBeVisible();
-    await expect(page.locator('.payroll-worker-card')).toContainText('routeadmin');
-    await expect(page.locator('.payroll-worker-card')).toContainText('CNY 15.00');
-    await expect(page.locator('.payroll-worker-card')).toContainText('USD 8.00');
+    const chart = page.getByRole('region', {name:'各成员工资汇总',exact:true});
+    await expect(chart.getByRole('button', {name:'routeadmin · CNY 15.00',exact:true})).toBeVisible();
+    await expect(chart.getByRole('button', {name:'routeadmin · USD 8.00',exact:true})).toBeVisible();
+    await expect(page.getByRole('button', {name:'仅看此成员明细',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button', {name:'按成员查看',exact:true})).toHaveCount(0);
+    await expect(page.locator('.payroll-reports')).not.toContainText(order.number);
+    await expect(page.locator('.payroll-reports')).not.toContainText('· 凳架');
+    const bar = chart.getByRole('button', {name:'routeadmin · CNY 15.00',exact:true});
+    await bar.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('routeadmin');
+    await expect(dialog).toContainText('4 件 × 1.5 × CNY 2.5');
+    await expect(dialog).toContainText('CNY 15.00');
+    await expect(dialog).toContainText('USD 8.00');
+    await page.screenshot({path:`/tmp/77erp-payroll-worker-${mode}.png`,fullPage:true});
+    await dialog.getByRole('button', {name:'关闭弹窗',exact:true}).click();
+    await expect(dialog).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({path:`/tmp/77erp-payroll-${mode}.png`,fullPage:true});
     await page.getByRole('link', {name:`查看生产单 ${order.number}`,exact:true}).first().click();
@@ -107,4 +122,41 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
     await expect(page.getByRole('button', {name:`查看生产单 ${order.number}`,exact:true})).toBeVisible();
     expect(errors).toEqual([]);
   } finally { await context.close(); await f.close(); }
+});
+
+test('member bars rank each currency and open zero, unpriced and historical member details', async ({ page }) => {
+  const f = await fixture(page);
+  try {
+    const worker = (worker_id, worker_name, currencies, unpriced_count = 0) => ({worker_id, worker_name, currencies, unpriced_count, active_count:1, void_count:0, operations:[]});
+    await page.route('**/api/payroll/production-order?*', async route => {
+      const response = await route.fetch(), result = await response.json();
+      result.workers = [
+        worker(20, '较低工资', [{currency:'CNY',amount_cents:1000},{currency:'USD',amount_cents:5000}]),
+        worker(21, '较高工资', [{currency:'CNY',amount_cents:3000},{currency:'USD',amount_cents:2000}]),
+        worker(22, '零工资', [{currency:'CNY',amount_cents:0}]),
+        worker(null, '历史成员的长名字'.repeat(4), [], 1),
+      ];
+      await route.fulfill({response,json:result});
+    });
+    await page.goto(`${f.base}/#payroll`);
+    await page.getByRole('tab', {name:'按生产单查看',exact:true}).click();
+    await page.getByRole('button', {name:'查看工资',exact:true}).click();
+    const chart = page.getByRole('region', {name:'各成员工资汇总',exact:true});
+    await expect(chart.getByRole('group', {name:'CNY',exact:true}).getByRole('button')).toHaveText(['较高工资CNY 30.00','较低工资CNY 10.00','零工资CNY 0.00']);
+    await expect(chart.getByRole('group', {name:'USD',exact:true}).getByRole('button')).toHaveText(['较低工资USD 50.00','较高工资USD 20.00']);
+    const widths = await chart.getByRole('group', {name:'CNY',exact:true}).locator('.payroll-worker-bar-fill').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width));
+    expect(widths[0] / widths[1]).toBeCloseTo(3, 1);
+    expect(widths[2]).toBe(0);
+    const zero = chart.getByRole('button', {name:'零工资 · CNY 0.00',exact:true});
+    await zero.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog')).toContainText('零工资');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(zero).toBeFocused();
+    await page.setViewportSize({width:360,height:800});
+    await chart.getByRole('button', {name:/历史成员/}).click();
+    await expect(page.getByRole('dialog')).toContainText('未设单价');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  } finally { await f.close(); }
 });

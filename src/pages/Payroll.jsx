@@ -6,6 +6,7 @@ import { useQuery, queryPath } from '../queries.js';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { PayrollDailyChart } from '../features/PayrollDailyChart.jsx';
+import { PayrollWorkerChart } from '../features/PayrollWorkerChart.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { canViewProduction } from '../../shared/permissions.js';
 import { productionStatusLabels } from '../i18n/production-display.js';
@@ -26,11 +27,11 @@ const number = value => new Intl.NumberFormat(getFormatLocale(), { maximumFracti
 const amount = (cents, currency) => cents == null ? t('payroll.unpriced') : `${currency} ${new Intl.NumberFormat(getFormatLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100)}`;
 const statusTone = status => status === 'completed' ? 'green' : status === 'void' ? 'gray' : status === 'draft' ? 'blue' : 'orange';
 
-function ReportCards({ reports, total, hasMore, offset, setOffset, loading, user }) {
+function ReportCards({ reports, total, hasMore, offset, setOffset, loading, user, orderProductName }) {
   return <>
     <div className="payroll-reports">{reports.map(row => <article className={`payroll-report${row.status === 'void' ? ' is-void' : ''}`} key={row.id}>
-      <div className="payroll-report-heading"><strong>{row.operation_name} · {row.product_name}</strong><Badge tone={row.status === 'void' ? 'gray' : 'green'}>{t(row.status === 'void' ? 'payroll.void' : 'payroll.active')}</Badge></div>
-      <p>{canViewProduction(user) ? <a className="payroll-order-link" href={`#production?order=${row.production_id}`} aria-label={t('payroll.openOrder', { number: row.production_number })}>{row.production_number}</a> : <span title={t('payroll.orderPermission')}>{row.production_number}</span>} · {row.route_name}{row.post_processing_operation ? ` · ${t('production.postProcessing')}` : row.additional_operation ? ` · ${t('production.additionalOperations')}` : row.path ? ` · ${t('payroll.path')} ${row.path}` : ''} · #{row.id}</p>
+      <div className="payroll-report-heading"><strong>{row.operation_name}{(!orderProductName || row.product_name !== orderProductName) && ` · ${row.product_name}`}</strong><Badge tone={row.status === 'void' ? 'gray' : 'green'}>{t(row.status === 'void' ? 'payroll.void' : 'payroll.active')}</Badge></div>
+      <p>{!orderProductName && <>{canViewProduction(user) ? <a className="payroll-order-link" href={`#production?order=${row.production_id}`} aria-label={t('payroll.openOrder', { number: row.production_number })}>{row.production_number}</a> : <span title={t('payroll.orderPermission')}>{row.production_number}</span>} · </>}{row.route_name}{row.additional_operation ? ` · ${t('production.additionalOperations')}` : row.path ? ` · ${t('payroll.path')} ${row.path}` : ''} · #{row.id}</p>
       <div className="payroll-formula"><span>{row.quantity_fraction || number(row.quantity)} {row.unit} × {number(row.multiplier)} × {row.unit_price == null ? t('payroll.unpriced') : `${row.currency} ${number(row.unit_price)}`}</span><strong>{amount(row.amount_cents, row.currency)}</strong></div>
       <p>{new Date(row.created_at).toLocaleString(getFormatLocale())} · {t('payroll.worker')}: {row.worker_name} · {t('payroll.registrar')}: {row.registered_by_name}</p>
       {row.note && <p>{row.note}</p>}{row.status === 'void' && <p>{t('payroll.voidReason')}: {row.void_reason}</p>}
@@ -49,7 +50,7 @@ export function Payroll({ data }) {
   const [view, setView] = useState('member');
   const [worker, setWorker] = useState(''), [dates, setDates] = useState(() => monthRange()), [offset, setOffset] = useState(0);
   const [orderSearch, setOrderSearch] = useState(''), [orderListOffset, setOrderListOffset] = useState(0);
-  const [selectedOrderId, setSelectedOrderId] = useState(''), [orderWorkerFilter, setOrderWorkerFilter] = useState(''), [orderReportOffset, setOrderReportOffset] = useState(0);
+  const [selectedOrderId, setSelectedOrderId] = useState(''), [orderReportOffset, setOrderReportOffset] = useState(0);
 
   const members = useQuery(view === 'member' ? '/payroll/members' : null, data);
   const start = boundary(dates[0]), end = boundary(dates[1], true), valid = start && end && start < end;
@@ -57,7 +58,7 @@ export function Payroll({ data }) {
   const result = query.result;
 
   const ordersQuery = useQuery(view === 'order' && !selectedOrderId ? queryPath('/payroll/production-orders', { q: orderSearch.trim(), offset: orderListOffset, limit: 20 }) : null, data, orderSearch.trim() ? 200 : 0);
-  const orderPayrollQuery = useQuery(view === 'order' && selectedOrderId ? queryPath('/payroll/production-order', { production_id: selectedOrderId, worker_id: orderWorkerFilter || null, offset: orderReportOffset }) : null, data);
+  const orderPayrollQuery = useQuery(view === 'order' && selectedOrderId ? queryPath('/payroll/production-order', { production_id: selectedOrderId, offset: orderReportOffset }) : null, data);
   const orderResult = orderPayrollQuery.result;
 
   const chooseDates = values => { setDates(values); setOffset(0); };
@@ -80,7 +81,7 @@ export function Payroll({ data }) {
           onChange={event => {
             setOrderSearch(event.target.value);
             setOrderListOffset(0);
-            if (selectedOrderId) { setSelectedOrderId(''); setOrderWorkerFilter(''); setOrderReportOffset(0); }
+            if (selectedOrderId) { setSelectedOrderId(''); setOrderReportOffset(0); }
           }} />
       </label>}
     </section>
@@ -125,7 +126,7 @@ export function Payroll({ data }) {
               <p>{row.bom_name}{row.specification ? ` · ${row.specification}` : ''} · {t('payroll.plannedQuantity', { quantity: number(row.planned_quantity), unit: row.unit })}{row.completed_quantity != null ? ` · ${t('payroll.completedQuantity', { quantity: row.completed_quantity_fraction || number(row.completed_quantity), unit: row.unit })}` : ''}</p>
               <div className="payroll-order-card-footer">
                 <span>{new Date(row.created_at).toLocaleDateString(getFormatLocale())} · {t('payroll.orderCardStats', { workers: row.worker_count, reports: row.active_report_count })}</span>
-                <Button onClick={() => { setSelectedOrderId(String(row.id)); setOrderWorkerFilter(''); setOrderReportOffset(0); }}>{t('payroll.viewOrderPayroll')}</Button>
+                <Button onClick={() => { setSelectedOrderId(String(row.id)); setOrderReportOffset(0); }}>{t('payroll.viewOrderPayroll')}</Button>
               </div>
             </article>)}
           </div>
@@ -149,7 +150,7 @@ export function Payroll({ data }) {
             </div>
             <p>{orderResult.order.bom_name}{orderResult.order.specification ? ` · ${orderResult.order.specification}` : ''} · {t('payroll.plannedQuantity', { quantity: number(orderResult.order.planned_quantity), unit: orderResult.order.unit })}{orderResult.order.completed_quantity != null ? ` · ${t('payroll.completedQuantity', { quantity: orderResult.order.completed_quantity_fraction || number(orderResult.order.completed_quantity), unit: orderResult.order.unit })}` : ''}</p>
           </div>
-          <Button onClick={() => { setSelectedOrderId(''); setOrderWorkerFilter(''); setOrderReportOffset(0); }}>{t('payroll.backToOrders')}</Button>
+          <Button onClick={() => { setSelectedOrderId(''); setOrderReportOffset(0); }}>{t('payroll.backToOrders')}</Button>
         </section>
         <section className="payroll-totals" aria-label={t('payroll.totals')}>
           {orderResult.currencies.map(row => <article className="panel payroll-stat" key={row.currency}><span>{t('payroll.totals')} · {row.currency}</span><strong>{amount(row.amount_cents, row.currency)}</strong></article>)}
@@ -160,44 +161,10 @@ export function Payroll({ data }) {
         <p className="payroll-hint">{t('payroll.rule')}</p>
         {orderResult.summary.unpriced_count > 0 && <p className="payroll-warning" role="status">{t('payroll.unpricedWarning', { count: orderResult.summary.unpriced_count })}</p>}
         {!orderResult.workers.length ? <p className="payroll-empty">{t('payroll.orderEmpty')}</p> : <>
-          <section className="panel payroll-section" aria-label={t('payroll.workerBreakdown')}>
-            <h2>{t('payroll.workerBreakdown')}</h2>
-            <div className="payroll-workers">
-              {orderResult.workers.map(w => <article className={`payroll-worker-card${orderWorkerFilter && orderWorkerFilter === String(w.worker_id) ? ' is-selected' : ''}`} key={w.worker_id ?? w.worker_name}>
-                <div className="payroll-report-heading">
-                  <div>
-                    <strong>{w.worker_name}</strong>
-                    <span className="payroll-worker-meta"> ({w.employee_no || w.username || `#${w.worker_id}`}){w.active ? '' : ` · ${t('payroll.inactive')}`}</span>
-                  </div>
-                  <div className="payroll-worker-currencies">
-                    {w.currencies.length ? w.currencies.map(c => <strong key={c.currency}>{amount(c.amount_cents, c.currency)}</strong>) : <span className="payroll-muted">{w.unpriced_count > 0 ? t('payroll.unpriced') : '0.00'}</span>}
-                  </div>
-                </div>
-                <p>{t('payroll.workerReportStats', { active: w.active_count, void: w.void_count })}{w.unpriced_count > 0 ? ` · ${t('payroll.workerUnpriced', { count: w.unpriced_count })}` : ''}</p>
-                {w.operations.length > 0 && <ul className="payroll-worker-ops">
-                  {w.operations.map(op => <li key={op.key}>
-                    <span>{op.operation_name} · {op.route_name}（{t('payroll.operationCount', { count: op.report_count })}）</span>
-                    <span className="payroll-worker-op-formula">{op.quantity_fraction || number(op.quantity)} {op.unit} × {number(op.multiplier)} × {op.unit_price == null ? t('payroll.unpriced') : `${op.currency} ${number(op.unit_price)}`} = <strong>{amount(op.amount_cents, op.currency)}</strong></span>
-                  </li>)}
-                </ul>}
-                {w.worker_id != null && <div className="payroll-worker-actions">
-                  <Button onClick={() => { setOrderWorkerFilter(prev => prev === String(w.worker_id) ? '' : String(w.worker_id)); setOrderReportOffset(0); }}>
-                    {orderWorkerFilter === String(w.worker_id) ? t('payroll.showAllWorkers') : t('payroll.filterWorkerReports')}
-                  </Button>
-                  <Button onClick={() => { setView('member'); setWorker(String(w.worker_id)); setOffset(0); }}>{t('payroll.viewMemberPayroll')}</Button>
-                </div>}
-              </article>)}
-            </div>
-          </section>
+          <PayrollWorkerChart key={selectedOrderId} workers={orderResult.workers} />
           <section className="panel payroll-section">
-            <div className="payroll-section-heading">
-              <h2>{t('payroll.details')}</h2>
-              {orderWorkerFilter && <div className="payroll-filter-tag">
-                <span>{t('payroll.filteredByWorker', { name: orderResult.workers.find(w => String(w.worker_id) === orderWorkerFilter)?.worker_name || `#${orderWorkerFilter}` })}</span>
-                <Button onClick={() => { setOrderWorkerFilter(''); setOrderReportOffset(0); }}>{t('payroll.showAllWorkers')}</Button>
-              </div>}
-            </div>
-            <ReportCards reports={orderResult.reports} total={orderResult.total} hasMore={orderResult.has_more} offset={orderReportOffset} setOffset={setOrderReportOffset} loading={orderPayrollQuery.loading} user={user} />
+            <h2>{t('payroll.details')}</h2>
+            <ReportCards reports={orderResult.reports} total={orderResult.total} hasMore={orderResult.has_more} offset={orderReportOffset} setOffset={setOrderReportOffset} loading={orderPayrollQuery.loading} user={user} orderProductName={orderResult.order.product_name} />
           </section>
         </>}
       </>}

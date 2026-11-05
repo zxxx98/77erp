@@ -20,7 +20,6 @@
 .payroll-filter-tag {display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--text-muted,#64748b);}
 .payroll-orders,.payroll-workers,.payroll-reports {display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;}
 .payroll-order-card,.payroll-worker-card,.payroll-report {padding:16px;border:1px solid var(--border,#e5e9ee);border-radius:12px;min-width:0;overflow-wrap:anywhere;}
-.payroll-worker-card.is-selected {border-color:var(--primary,#2563eb);background:#f8fbff;}
 .payroll-report-heading,.payroll-formula,.payroll-order-card-footer {display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap;}
 .payroll-report p,.payroll-order-card p,.payroll-worker-card p,.payroll-order-banner p {font-size:12px;line-height:1.7;margin:10px 0 0;}
 .payroll-order-card-footer {margin-top:14px;font-size:12px;color:var(--text-muted,#687585);}
@@ -29,16 +28,30 @@
 .payroll-order-banner .payroll-report-heading {justify-content:flex-start;overflow-wrap:anywhere;}
 .payroll-worker-currencies {display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-variant-numeric:tabular-nums;}
 .payroll-worker-currencies strong {font-size:18px;color:var(--text,#0f172a);}
-.payroll-worker-ops {list-style:none;margin:12px 0 0;padding:10px 12px;border-radius:8px;background:var(--bg-subtle,#f8fafc);border:1px solid var(--border,#e5e9ee);display:grid;gap:8px;font-size:12px;font-variant-numeric:tabular-nums;}
-.payroll-worker-ops li {display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
-.payroll-worker-op-formula strong {font-size:13px;}
-.payroll-worker-actions {display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+.payroll-worker-chart-group + .payroll-worker-chart-group {margin-top:24px;}
+.payroll-worker-chart-group h3 {margin:0 0 8px;font-size:13px;color:var(--text-muted,#687585);}
+.payroll-worker-bars {list-style:none;margin:0;padding:0;display:grid;gap:8px;}
+.payroll-worker-bar {display:grid;grid-template-columns:minmax(0,140px) minmax(0,1fr) minmax(0,160px);align-items:center;gap:16px;width:100%;min-height:48px;padding:8px;border:0;border-radius:6px;background:transparent;color:var(--text,#0f172a);font:inherit;text-align:left;cursor:pointer;}
+.payroll-worker-bar:hover {background:var(--bg-subtle,#f1f5f9);}
+.payroll-worker-bar:focus-visible {outline:2px solid var(--primary,#2563eb);outline-offset:2px;}
+.payroll-worker-bar-name,.payroll-worker-bar-value {min-width:0;overflow-wrap:anywhere;}
+.payroll-worker-bar-value {text-align:right;font-variant-numeric:tabular-nums;}
+.payroll-worker-bar-track {display:block;height:20px;min-width:0;background:var(--bg-subtle,#f1f5f9);border-radius:4px;overflow:hidden;}
+.payroll-worker-bar-fill {display:block;height:100%;background:var(--primary,#2563eb);border-radius:4px;}
+.payroll-worker-detail {min-width:0;overflow-wrap:anywhere;}
+.payroll-worker-detail-list {list-style:none;margin:0;padding:0;}
+.payroll-worker-detail-list li {display:grid;gap:12px;padding:16px 0;border-top:1px solid var(--border,#e5e9ee);}
+.payroll-worker-detail-list p {margin:4px 0 0;color:var(--text-muted,#687585);font-size:12px;}
+.payroll-worker-detail-formula {display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;font-variant-numeric:tabular-nums;}
 .payroll-formula {margin-top:16px;font-variant-numeric:tabular-nums;}
 .payroll-formula strong {font-size:18px;}
 .payroll-report.is-void .payroll-formula {text-decoration:line-through;color:var(--text-muted,#687585);}
 .payroll-pagination {margin-top:18px;}
 .payroll-empty {text-align:center;padding:32px;color:var(--text-muted,#687585);}
 @media(max-width:700px) {
+  .payroll-worker-bar {grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;}
+  .payroll-worker-bar-track {grid-row:2;grid-column:1/-1;height:16px;}
+  .payroll-worker-bar-value {grid-row:1;grid-column:2;}
   .payroll-filters {grid-template-columns:1fr 1fr;padding:16px;}
   .payroll-filters>.dropdown {grid-column:1/-1;}
   .payroll-mode-tabs {width:100%;display:grid;grid-template-columns:1fr 1fr;}
