@@ -48,15 +48,17 @@ export function BusinessTools({ data, warehouses = [], warehouseId, onSaved, onU
             className={`btn btn-${active === id ? 'primary' : 'secondary'}`} onClick={() => { setTab(id); setVisited(current => new Set([...current, id])); }}>{label}</AntButton>
         ))}
       </div>
-      {active === 'contacts' && <Contacts onRefresh={onRefresh} />}
-      {active === 'templates' && <Templates onUse={onUse} />}
-      {active === 'finance' && <Finance />}
-      {active === 'profit' && <Profit />}
-      {can('stocktake') && (active === 'stocktake' || visited.has('stocktake')) && <div hidden={active !== 'stocktake'}><Stocktake data={data} onSaved={onSaved} /></div>}
-      {can('transfer') && (active === 'transfer' || visited.has('transfer')) && <div hidden={active !== 'transfer'}><Transfer data={data} warehouses={warehouses} warehouseId={warehouseId} onSaved={onSaved} /></div>}
-      {can('stocktake') && <div hidden={active !== 'multi-stocktake'}><MultiStocktake key={warehouseId} warehouses={warehouses} warehouseId={warehouseId} active={active === 'multi-stocktake'} /></div>}
-      {manage('data_io') && <div hidden={active !== 'import'}><ProductImport onSaved={onSaved} /></div>}
-      {manage('data_io') && <div hidden={active !== 'export'}><ProductExport warehouses={warehouses} warehouseId={warehouseId} /></div>}
+      <div className="operation-content">
+        {active === 'contacts' && <Contacts onRefresh={onRefresh} />}
+        {active === 'templates' && <Templates onUse={onUse} />}
+        {active === 'finance' && <Finance />}
+        {active === 'profit' && <Profit />}
+        {can('stocktake') && (active === 'stocktake' || visited.has('stocktake')) && <div hidden={active !== 'stocktake'}><Stocktake data={data} onSaved={onSaved} /></div>}
+        {can('transfer') && (active === 'transfer' || visited.has('transfer')) && <div hidden={active !== 'transfer'}><Transfer data={data} warehouses={warehouses} warehouseId={warehouseId} onSaved={onSaved} /></div>}
+        {can('stocktake') && <div hidden={active !== 'multi-stocktake'}><MultiStocktake key={warehouseId} warehouses={warehouses} warehouseId={warehouseId} active={active === 'multi-stocktake'} /></div>}
+        {manage('data_io') && <div hidden={active !== 'import'}><ProductImport onSaved={onSaved} /></div>}
+        {manage('data_io') && <div hidden={active !== 'export'}><ProductExport warehouses={warehouses} warehouseId={warehouseId} /></div>}
+      </div>
     </section>
   );
 }
@@ -91,34 +93,36 @@ function Contacts({ onRefresh }) {
         disabled={busy}
         onClick={() => { setForm(empty); }}
       >{translate("warehouse.add.new.contact.units")}</AntButton>
-      <label>{translate("warehouse.type.of.transaction")}<Select
-          aria-label={translate("warehouse.type.of.transaction")}
-          value={form.role}
-          disabled={busy || !!form.id}
-          onChange={(e) => setForm({ ...form, role: e })}
-        >
-          <option value="supplier">{translate("warehouse.supplier")}</option>
-          <option value="customer">{translate("warehouse.customer")}</option>
-          <option value="internal">{translate("warehouse.internal.unit")}</option>
-        </Select>
-      </label>
-      {[
-        ["name", translate("warehouse.unit.name"), 100],
-        ["person", translate("warehouse.contact.person"), 100],
-        ["phone", translate("warehouse.contact.number"), 50],
-        ["address", translate("warehouse.address"), 300],
-        ["note", translate("warehouse.remarks.on.correspondence"), 500],
-      ].map(([key, label, max]) => (
-        <label key={key}>
-          {label}
-          <AntInput
-            value={form[key]}
-            maxLength={max}
-            disabled={busy}
-            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-          />
+      <div className="form-grid">
+        <label>{translate("warehouse.type.of.transaction")}<Select
+            aria-label={translate("warehouse.type.of.transaction")}
+            value={form.role}
+            disabled={busy || !!form.id}
+            onChange={(e) => setForm({ ...form, role: e })}
+          >
+            <option value="supplier">{translate("warehouse.supplier")}</option>
+            <option value="customer">{translate("warehouse.customer")}</option>
+            <option value="internal">{translate("warehouse.internal.unit")}</option>
+          </Select>
         </label>
-      ))}
+        {[
+          ["name", translate("warehouse.unit.name"), 100],
+          ["person", translate("warehouse.contact.person"), 100],
+          ["phone", translate("warehouse.contact.number"), 50],
+          ["address", translate("warehouse.address"), 300],
+          ["note", translate("warehouse.remarks.on.correspondence"), 500],
+        ].map(([key, label, max]) => (
+          <label key={key}>
+            {label}
+            <AntInput
+              value={form[key]}
+              maxLength={max}
+              disabled={busy}
+              onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+            />
+          </label>
+        ))}
+      </div>
       <AntCheckbox  checked={!!form.active} disabled={busy} onChange={(e) =>
             setForm({ ...form, active: e.target.checked ? 1 : 0 })
           }>{translate("warehouse.activate.this.correspondent")}</AntCheckbox>

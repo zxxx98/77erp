@@ -74,7 +74,7 @@ export function PositionManager({ Modal, onChanged }) {
     </tbody></table></div>}
     {!editor && conflict && <Button htmlType="button" className="btn" disabled={busy} onClick={refresh}>{translate("system.refresh.job.list")}</Button>}
     {editor && <Modal title={editor.id ? translate("system.editor.position", { v0: positions.find(row => row.id === editor.id)?.name || editor.name }) : translate("system.new.positions")} className="permission-dialog" onClose={() => { if (!busy) { setEditor(null); setError(''); setConflict(false); } }}>
-      <div className="form-body"><div className="account-fields"><label>{translate("system.job.title")}<Input maxLength={60} value={editor.name} disabled={busy} onChange={e => setEditor(current => ({ ...current, name: e.target.value }))} /></label><label>{translate("system.job.description")}<Input.TextArea maxLength={200} rows={3} value={editor.description} disabled={busy} onChange={e => setEditor(current => ({ ...current, description: e.target.value }))} /></label></div>
+      <div className="form-body"><div className="account-fields"><label>{translate("system.job.title")}<Input maxLength={60} value={editor.name} disabled={busy} onChange={e => setEditor(current => ({ ...current, name: e.target.value }))} /></label><label>{translate("system.job.description")}<Input.TextArea maxLength={200} rows={2} value={editor.description} disabled={busy} onChange={e => setEditor(current => ({ ...current, description: e.target.value }))} /></label></div>
       <p className="info-box">{translate("system.saving.will.synchronize.the.effects")}{" "}{editor.member_count}{" "}{translate("system.employees.including.deactivated.accounts")}</p>
       {editor.legacy_permissions && <div className="position-legacy-notice"><p>{translate("system.this.position.inherits.the.old.employee.permissions.modifying.only.the.name")}</p><Checkbox checked={!!editor.convert_legacy} disabled={busy} onChange={e => {
         if (!e.target.checked || window.confirm(translate("system.are.you.sure.you.want.to.switch.employees.in.this.position", { v0: editor.member_count }))) setEditor(current => ({ ...current, convert_legacy: e.target.checked }));
@@ -86,8 +86,8 @@ export function PositionManager({ Modal, onChanged }) {
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       {conflict && <Button htmlType="button" className="btn" disabled={busy} onClick={refresh}>{translate("system.refresh.version.and.preserve.input")}</Button>}
-      <div className="permission-dialog-actions"><Button htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setEditor(null); setError(''); setConflict(false); }}>{translate("system.cancel")}</Button><Button type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={save}>{translate("system.save.post")}</Button></div>
       </div>
+      <div className="modal-footer permission-dialog-actions"><Button htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setEditor(null); setError(''); setConflict(false); }}>{translate("system.cancel")}</Button><Button type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={save}>{translate("system.save.post")}</Button></div>
     </Modal>}
   </section>;
 }

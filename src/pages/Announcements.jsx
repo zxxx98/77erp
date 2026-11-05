@@ -92,7 +92,7 @@ export function AnnouncementDetail({ id, data, onClose, onEdit, onSaved, onRead 
     catch (error) { setError(localizeError(error.message)); }
     finally { setBusy(false); }
   };
-  return <Modal title={translate("system.announcement.details")} className="announcement-modal" onClose={busy ? () => {} : onClose}>
+  return <Modal title={translate("system.announcement.details")} className="announcement-modal" presentation="drawer" onClose={busy ? () => {} : onClose}>
     <div className="form-body announcement-detail">
       <ErrorNotice retry={query.retry}>{query.error}</ErrorNotice>
       {query.loading && <LoadingStatus>{translate("system.reading.announcement")}</LoadingStatus>}
@@ -120,7 +120,7 @@ export function AnnouncementEditor({ item, onClose, onSaved }) {
     } catch (error) { setError(localizeError(error.message)); }
     finally { setBusy(false); }
   };
-  return <Modal title={item ? translate("system.editorial.notice") : translate("system.make.an.announcement")} subtitle={translate("system.visible.to.all.logged.in.users.and.all.warehouses")} onClose={busy ? () => {} : onClose}>
+  return <Modal title={item ? translate("system.editorial.notice") : translate("system.make.an.announcement")} subtitle={translate("system.visible.to.all.logged.in.users.and.all.warehouses")} presentation="drawer" onClose={busy ? () => {} : onClose}>
     <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
       <div className="form-body announcement-editor">
         <label><span>{translate("system.announcement.title")}</span><FormField value={title} required maxLength={100}><AntInput value={title} onChange={event => setTitle(event.target.value)} maxLength={100}  disabled={busy} placeholder={translate("system.for.example.month.end.inventory.arrangement")} /></FormField></label>

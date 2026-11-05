@@ -42,17 +42,19 @@ function SourceSheet({workbook,sheetName,region,corrections,issues,busy,onCorrec
     viewport.scrollTop+=bounds.top-container.top-(viewport.clientHeight-bounds.height)/2;
     viewport.scrollLeft+=bounds.left-container.left-(viewport.clientWidth-bounds.width)/2;
   },[sheet,selected]);
-  return <Modal title={pt("production.locateUploadedFileCells")} subtitle={`${sheetName} · ${region||'A1'}`} wide onClose={onClose}><div className="form-body">
-    <label>{pt("production.worksheet2")}<Select aria-label={pt("production.worksheet2")} disabled={busy} value={sheet.name} onChange={e=>{setName(e);setAddress('A1');}}>{workbook.sheets.map(s=><option key={s.name}>{s.name}</option>)}</Select></label>
-    <section className="quality-source-correction" aria-label={pt("production.correctCellManually")}>
-      <h3>{sheet.name}!{editingAddress}{correction&&<span className="quality-manual-marker">{pt("production.manuallyCorrected")}</span>}</h3>
-      <p className="muted">{pt("production.selectACellBelowToCorrectItParsing")}</p>
-      <label>{pt("production.originalContent")}<pre>{original||pt("production.empty")}</pre></label>
-      <label>{pt("production.correctionText")}<AntInput.TextArea aria-label={pt("production.correctionText")} value={value} maxLength={10000} rows={3} disabled={busy} onChange={e=>setValue(e.target.value)}/></label>
-      {issues.filter(issue=>issue.sheetName===sheet.name).map((issue,i)=><p className="form-error" key={i}>{issue.region}：{productionMessage(issue.message)}</p>)}
-      {correctionError&&<p role="alert" className="form-error">{productionMessage(correctionError)}</p>}
-      <div className="quality-actions"><Button kind="primary" busy={busy} disabled={value===current} onClick={()=>submit(false)}>{pt("production.applyManualCorrection")}</Button>{correction&&<Button disabled={busy} onClick={()=>submit(true)}>{pt("production.restoreOriginalContent")}</Button>}</div>
-    </section>
+  return <Modal title={pt("production.locateUploadedFileCells")} subtitle={`${sheetName} · ${region||'A1'}`} wide className="quality-source-modal" onClose={onClose}><div className="form-body quality-source-layout">
+    <div className="quality-source-sidebar">
+      <label>{pt("production.worksheet2")}<Select aria-label={pt("production.worksheet2")} disabled={busy} value={sheet.name} onChange={e=>{setName(e);setAddress('A1');}}>{workbook.sheets.map(s=><option key={s.name}>{s.name}</option>)}</Select></label>
+      <section className="quality-source-correction" aria-label={pt("production.correctCellManually")}>
+        <h3>{sheet.name}!{editingAddress}{correction&&<span className="quality-manual-marker">{pt("production.manuallyCorrected")}</span>}</h3>
+        <p className="muted">{pt("production.selectACellBelowToCorrectItParsing")}</p>
+        <label>{pt("production.originalContent")}<pre>{original||pt("production.empty")}</pre></label>
+        <label>{pt("production.correctionText")}<AntInput.TextArea aria-label={pt("production.correctionText")} value={value} maxLength={10000} rows={3} disabled={busy} onChange={e=>setValue(e.target.value)}/></label>
+        {issues.filter(issue=>issue.sheetName===sheet.name).map((issue,i)=><p className="form-error" key={i}>{issue.region}：{productionMessage(issue.message)}</p>)}
+        {correctionError&&<p role="alert" className="form-error">{productionMessage(correctionError)}</p>}
+        <div className="quality-actions"><Button kind="primary" busy={busy} disabled={value===current} onClick={()=>submit(false)}>{pt("production.applyManualCorrection")}</Button>{correction&&<Button disabled={busy} onClick={()=>submit(true)}>{pt("production.restoreOriginalContent")}</Button>}</div>
+      </section>
+    </div>
     <div className="quality-sheet-scroll quality-source-sheet"><table className="quality-grid"><colgroup><col style={{width:46}}/>{sheet.widths.map((width,i)=><col key={i} style={{width}}/>)}</colgroup><thead><tr><th>{pt("production.rowColumn")}</th>{sheet.widths.map((_,i)=><th key={i}>{cellAddress(1,i+1).slice(0,-1)}</th>)}</tr></thead><tbody>{Array.from({length:sheet.rows},(_,i)=><tr key={i}><th className="quality-row-number">{i+1}</th>{Array.from({length:sheet.cols},(_,j)=>{
       const row=i+1,col=j+1,address=cellAddress(row,col),r=merged.get(address)||{r1:row,c1:col,r2:row,c2:col};
       if(r.r1!==row||r.c1!==col)return null;
@@ -228,7 +230,7 @@ export function QualityAcceptances({data,onTemplates,onAreaChange}) {
     {detail&&preview&&<WorkbookResults key={detail.id} sheetNavigation definition={definition} preview={preview} onLocate={draft?(sheetName,region)=>setSource({sheetName,region}):undefined} renderSheet={sheetName=><QualityMaterialBinding key={sheetName} sheetName={sheetName} data={data} busy={busy} readOnly={!draft} binding={(draft?bindings:detail.bindings)?.find(binding=>binding.sheetName===sheetName)} onChange={changed=>setBindings(values=>values.map(binding=>binding.sheetName===sheetName?changed:binding))}/>}/>}
     {detail?.operation_reports?.length>0&&<section className="panel quality-acceptance-detail"><h3>{pt('route.acceptanceRecord')}</h3>{detail.operation_reports.map(report=><p key={report.id}>{report.production_number} · {report.quantity} · {pt(report.status==='void'?'route.voided':'route.active')} {report.void_reason}</p>)}</section>}
     {draft&&parsed&&<section className="panel quality-sheet-summaries" aria-label={pt("production.worksheetParseList")}>{sheets.map(sheet=><QualityMaterialBinding key={sheet.sheetName} compact sheetName={sheet.sheetName} data={data} busy={busy} issueCount={sheet.issues.length} reviewNeeded={needsQualityReview(sheet)} binding={bindings.find(binding=>binding.sheetName===sheet.sheetName)} onChange={changed=>setBindings(values=>values.map(binding=>binding.sheetName===sheet.sheetName?changed:binding))} onPreview={()=>setResultSheet(sheet.sheetName)}/>)}</section>}
-    {selectedSheet&&!source&&<Modal title={pt("production.worksheetParseResults")} subtitle={selectedSheet.sheetName} wide onClose={()=>setResultSheet(null)}><div className="form-body">
+    {selectedSheet&&!source&&<Modal title={pt("production.worksheetParseResults")} subtitle={selectedSheet.sheetName} wide presentation="drawer" drawerSize="wide" onClose={()=>setResultSheet(null)}><div className="form-body">
       {!!selectedSheet?.issues.length&&<section className="panel quality-acceptance-issues" aria-label={pt("production.parseIssues")}><h2>{pt("production.cellsRequiringCorrection")}</h2>{selectedSheet.issues.map((issue,i)=>{
         const name=selectedSheet.sheetName;
         const field=definition.fields.find(f=>f.id===issue.fieldId),property=field?.properties?.find(p=>p.id===issue.propertyId);

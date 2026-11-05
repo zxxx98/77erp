@@ -17,7 +17,14 @@
   /* Popup alignment measures temporary coordinates; these must update immediately. */
   .language-menu { transition: none !important; }
 }
+@media (max-width: 1150px) {
+  .topbar .language-name { display: none; }
+  .topbar .language-short { display: inline; }
+  .topbar .language-trigger { padding-inline: 8px; gap: 5px; }
+}
 @media (max-width: 760px) {
+  .topbar .language-short, .topbar .language-trigger > svg { display: none; }
+  .topbar .language-trigger { padding: 6px; min-height: 32px; }
   .auth-language { top: max(12px, env(safe-area-inset-top)); right: 16px; }
   .auth-language .language-trigger { min-height: 44px; }
   .language-option { min-height: 36px; }

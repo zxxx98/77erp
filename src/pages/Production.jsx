@@ -500,24 +500,28 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         <Button disabled={action.busy} onClick={() => setMoreOpen(true)}>{pt('production.moreActions')}</Button>
       </div>
     </div>
-    {moreOpen && <Modal title={pt('production.moreActions')} onClose={() => { if (!action.busy) setMoreOpen(false); }}>
+    {moreOpen && <Modal title={pt('production.moreActions')} className="production-more-modal" onClose={() => { if (!action.busy) setMoreOpen(false); }}>
       <div className="form-body production-more-actions">
-        {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
-        {management && detail.status === 'in_progress' && <>
-          <Button disabled={action.busy || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>
-          {(!detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')) && <p className="bom-hint">{pt('production.finishRequirements')}</p>}
-        </>}
-        <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
-        {management && detail.status !== 'void' && !!detail.operation_routes?.length && (
-          <Button disabled={action.busy} onClick={() => { setMoreOpen(false); setSyncPriceConfirm(true); }}>
-            {pt('production.syncOperationPrices')}
-          </Button>
-        )}
-        <div className="production-detail-export"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
-        <ProductionRegistrationQr order={detail} data={data} />
-        <p className="bom-hint">{pt("production.thePdfQrCodeUsesThisAddressThe")} {location.origin}{pt("production.andSignInWithAnAuthorizedAccountTo")}</p>
-        {management && detail.status !== 'void' && can('corrections') && <Button kind="danger" icon={XCircle} disabled={action.busy || !detail.material_workflow && detail.received_quantity > 0 && !can('purchase')} onClick={() => begin({ kind: 'void', reason: '' })}>{pt("production.voidProductionOrder")}</Button>}
-        {management && detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>{pt("production.deleteProductionOrder")}</Button>}
+        <div className="production-more-controls">
+          {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
+          {management && detail.status === 'in_progress' && <>
+            <Button disabled={action.busy || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>
+            {(!detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')) && <p className="bom-hint">{pt('production.finishRequirements')}</p>}
+          </>}
+          <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
+          {management && detail.status !== 'void' && !!detail.operation_routes?.length && (
+            <Button disabled={action.busy} onClick={() => { setMoreOpen(false); setSyncPriceConfirm(true); }}>
+              {pt('production.syncOperationPrices')}
+            </Button>
+          )}
+          <div className="production-detail-export"><Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select><Button disabled={action.busy} onClick={() => action.run(() => downloadProductionPdf(detail, data.warehouse_id, outputLanguage || locale))}>{pt("production.exportPdf")}</Button></div>
+          {management && detail.status !== 'void' && can('corrections') && <Button kind="danger" icon={XCircle} disabled={action.busy || !detail.material_workflow && detail.received_quantity > 0 && !can('purchase')} onClick={() => begin({ kind: 'void', reason: '' })}>{pt("production.voidProductionOrder")}</Button>}
+          {management && detail.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(detail)}>{pt("production.deleteProductionOrder")}</Button>}
+        </div>
+        <div className="production-more-qr">
+          <ProductionRegistrationQr order={detail} data={data} />
+          <p className="bom-hint">{pt("production.thePdfQrCodeUsesThisAddressThe")} {location.origin}{pt("production.andSignInWithAnAuthorizedAccountTo")}</p>
+        </div>
       </div>
     </Modal>}
     {syncPriceConfirm && <Modal title={pt('production.syncOperationPrices')} subtitle={detail.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>

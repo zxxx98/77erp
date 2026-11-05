@@ -61,18 +61,18 @@ export function useOperationAcceptance() {
       if(result.preview.issues.length||needsQualityReview(result.preview))setError(t('route.acceptanceInvalid'));
     }catch(e){setError(e.message);}finally{setBusy(false);}
   };
-  const dialog=draft&&<Modal title={t('route.acceptanceTitle')} wide className="operation-acceptance-modal" subtitle={`${draft.online.template.template.name} · v${draft.online.template.template.revision} · ${draft.context}`} onClose={close}>
+  const dialog=draft&&<Modal title={t('route.acceptanceTitle')} wide presentation="drawer" drawerSize="wide" className="operation-acceptance-modal" subtitle={`${draft.online.template.template.name} · v${draft.online.template.template.revision} · ${draft.context}`} onClose={close}>
     <div className="form-body" onSubmit={event=>{event.preventDefault();event.stopPropagation();}}>
       <QualityOnlineEditor online={draft.online} busy={busy} validated={draft.validated} onChange={change} onValidate={validate}/>
       {draft.preview&&<WorkbookResults definition={draft.online.template.definition} preview={draft.preview}/>}
       {error&&<p role="alert" className="form-error">{error}</p>}
       <Checkbox checked={draft.passed} disabled={!draft.validated||busy} onChange={event=>setDraft(previous=>({...previous,passed:event.target.checked}))}>{t('route.acceptancePassed')}</Checkbox>
       <p className="bom-hint">{t('route.acceptanceHint')}</p>
-      <div className="bom-actions"><Button disabled={busy} onClick={close}>{t('route.cancel')}</Button><Button kind="primary" disabled={busy||!draft.validated||!draft.passed} onClick={()=>{
-        const value={revision_id:draft.online.template.template.revision_id,values:draft.online.values,passed:true};
-        cached.current={key:draft.key,online:draft.online};pending.current?.resolve(value);pending.current=null;setDraft(null);
-      }}>{t('route.acceptanceSubmit')}</Button></div>
     </div>
+    <div className="modal-footer"><Button disabled={busy} onClick={close}>{t('route.cancel')}</Button><Button kind="primary" disabled={busy||!draft.validated||!draft.passed} onClick={()=>{
+      const value={revision_id:draft.online.template.template.revision_id,values:draft.online.values,passed:true};
+      cached.current={key:draft.key,online:draft.online};pending.current?.resolve(value);pending.current=null;setDraft(null);
+    }}>{t('route.acceptanceSubmit')}</Button></div>
   </Modal>;
   return {enrich,dialog};
 }

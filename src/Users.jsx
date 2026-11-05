@@ -178,7 +178,7 @@ export function UserManager({ Modal, onChanged }) {
     {permissionUser && <Modal title={translate("system.effective.permissions.for", { v0: permissionUser.username })} className="permission-dialog" onClose={() => setPermissionUser(null)}>
       <div className="form-body"><p>{translate("system.position.2")}<strong>{permissionUser.position_names?.join('、') || translate("system.unassigned.position")}</strong></p><p className="muted">{translate("system.permissions.are.configured.uniformly.by.position.and.are.only.for.viewing")}</p><EffectivePermissions permissions={permissionUser.permissions} legacy={permissionUser.legacy_permissions} accessMode={permissionUser.access_mode} standardPermissions={permissionUser.standard_permissions} /></div>
     </Modal>}
-    {positionUser && <Modal title={positionUser.downgrade ? translate("system.change.to.employee", { v0: positionUser.username }) : translate("system.adjust.s.position", { v0: positionUser.username })} onClose={() => { if (!busy) { setPositionUser(null); setError(''); setConflict(false); } }}>
+    {positionUser && <Modal title={positionUser.downgrade ? translate("system.change.to.employee", { v0: positionUser.username }) : translate("system.adjust.s.position", { v0: positionUser.username })} className="permission-dialog" onClose={() => { if (!busy) { setPositionUser(null); setError(''); setConflict(false); } }}>
       <div className="form-body account-fields"><p className="muted">{positionUser.downgrade ? translate("system.please.select.an.employee.position.first.after.modifying.the.role.the") : translate("system.the.permissions.for.the.selected.position.will.be.used.immediately.after")}</p>
         <PositionPicker label={translate("system.staff.positions")} positions={positions} value={nextPositions} disabled={busy} onChange={setNextPositions} />
         {!!nextPositions.length && <EffectivePermissions permissions={preview.permissions} legacy={preview.legacy_permissions} accessMode={preview.access_mode} standardPermissions={preview.standard_permissions} />}
@@ -190,14 +190,14 @@ export function UserManager({ Modal, onChanged }) {
           if (latest.role !== positionUser.role) throw new Error(translate("system.the.account.role.has.been.changed.please.close.and.select.again"));
           setPositionUser(current => ({ ...current, ...latest }));
         }, translate("system.the.account.version.has.been.refreshed.and.the.position.selection.has"))}>{translate("system.refresh.version.and.keep.selection")}</AntButton>}
-        <div className="permission-dialog-actions"><AntButton htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPositionUser(null); setError(''); }}>{translate("system.cancel")}</AntButton><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
-          if (!nextPositions.length) { setError(translate("system.please.select.a.staff.position")); return; }
-          void run(async () => {
-            await api(positionUser.downgrade ? `/users/${positionUser.id}` : `/users/${positionUser.id}/position`, { method: 'PUT', body: positionUser.downgrade ? { role: 'employee', active: positionUser.active, position_ids: nextPositions } : { position_ids: nextPositions, version: positionUser.permissions_version } });
-            setPositionUser(null);
-          }, translate("system.the.position.has.been.updated.and.the.permissions.will.take.effect"));
-        }}>{translate("system.save.post")}</AntButton></div>
       </div>
+      <div className="modal-footer permission-dialog-actions"><AntButton htmlType="button" className="btn btn-secondary" disabled={busy} onClick={() => { setPositionUser(null); setError(''); }}>{translate("system.cancel")}</AntButton><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
+        if (!nextPositions.length) { setError(translate("system.please.select.a.staff.position")); return; }
+        void run(async () => {
+          await api(positionUser.downgrade ? `/users/${positionUser.id}` : `/users/${positionUser.id}/position`, { method: 'PUT', body: positionUser.downgrade ? { role: 'employee', active: positionUser.active, position_ids: nextPositions } : { position_ids: nextPositions, version: positionUser.permissions_version } });
+          setPositionUser(null);
+        }, translate("system.the.position.has.been.updated.and.the.permissions.will.take.effect"));
+      }}>{translate("system.save.post")}</AntButton></div>
     </Modal>}
     {resetUser && <Modal title={`${translate("system.reset")} ${resetUser.username} ${translate("system.password.2")}`} onClose={() => { if (!busy) { setResetUser(null); setResetPassword(''); setError(''); } }}>
       <div className="form-body account-fields">

@@ -2067,9 +2067,9 @@ table {
   animation: fade-in 0.15s ease-out;
 }
 .modal {
-  width: 510px;
+  width: 580px;
   max-width: 100%;
-  max-height: 92vh;
+  max-height: min(84dvh, 780px);
   overflow: auto;
   border-radius: 14px;
   background: #fff;
@@ -2077,7 +2077,7 @@ table {
   animation: modal-in 0.2s ease-out;
 }
 .modal-wide {
-  width: 800px;
+  width: 920px;
 }
 .modal-header {
   padding: 24px 26px 20px;
@@ -4690,10 +4690,17 @@ table {
 }
 
 .warehouse-switch-loading { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; gap: 12px; background: rgba(247,248,250,.8); color: #17243c; }
+.topbar .global-search > * { flex: 1; min-width: 0; }
+@media (max-width: 960px) {
+  .topbar .breadcrumb > span, .topbar .breadcrumb > svg { display: none; }
+  .topbar .warehouse-select { width: 120px; max-width: 120px; min-width: 80px; }
+  .topbar .global-search { width: 148px; min-width: 0; }
+  .topbar .global-search kbd { display: none; }
+}
 @media (max-width: 700px) {
   .topbar .breadcrumb { display: none; }
   .topbar-right { width: 100%; min-width: 0; }
-  .topbar .warehouse-select { width: 100px; max-width: 100px; min-width: 72px; }
+  .topbar .warehouse-select { width: 92px; max-width: 92px; min-width: 68px; }
   .topbar .global-search, .topbar .global-search:focus-within { flex: 1; width: auto; min-width: 0; }
   :where(.topbar .global-search input) { width: 100%; min-width: 0; }
 }
@@ -4728,9 +4735,119 @@ table {
 .product-conflict dd span { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .product-conflict img { max-width: 100px; max-height: 100px; object-fit: contain; }
 
-button[hidden], .operation-panel > div[hidden] { display: none !important; }
+button[hidden], :is(.operation-panel, .operation-content) > div[hidden] { display: none !important; }
 
 .business-modal .operation-panel { padding: 0; border: 0; margin: 0; }
+html:not(.mobile-device) .modal:not(.modal-drawer) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+html:not(.mobile-device) .modal:not(.modal-drawer) > .modal-header {
+  flex-shrink: 0;
+  position: static;
+}
+html:not(.mobile-device) .modal:not(.modal-drawer) > form:not(.form-body) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+html:not(.mobile-device) .modal:not(.modal-drawer) > :is(.form-body, .barcode-detail, .help-content),
+html:not(.mobile-device) .modal:not(.modal-drawer) > form:not(.form-body) > .form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+html:not(.mobile-device) .modal:not(.modal-drawer) .modal-footer {
+  flex-shrink: 0;
+  position: static;
+}
+html:not(.mobile-device) .business-modal.modal {
+  width: 1040px;
+  height: min(760px, 88dvh);
+  max-height: 88dvh;
+}
+html:not(.mobile-device) .business-modal.modal > .form-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+html:not(.mobile-device) .business-modal .operation-panel {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+  overflow: hidden;
+}
+html:not(.mobile-device) .business-modal .operation-tabs {
+  width: 210px;
+  flex-shrink: 0;
+  padding: 14px 10px;
+  background: #f7f8fa;
+  border-right: 1px solid #e9ecf1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+html:not(.mobile-device) .business-modal .operation-tabs > .btn {
+  width: 100%;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  background: transparent;
+  color: #647084;
+  font-weight: 500;
+  text-align: left;
+}
+html:not(.mobile-device) .business-modal .operation-tabs > .btn:hover {
+  background: #edf1f7;
+  color: #253858;
+}
+html:not(.mobile-device) .business-modal .operation-tabs > .btn[aria-pressed="true"] {
+  background: #e8efff;
+  color: #2563eb;
+  font-weight: 600;
+}
+html:not(.mobile-device) .business-modal .operation-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px 28px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+html:not(.mobile-device) .business-modal .operation-scroll {
+  max-height: none;
+  overflow: visible;
+}
+@media (max-width: 760px) {
+  html:not(.mobile-device) .business-modal.modal { height: 92dvh; max-height: 92dvh; }
+  html:not(.mobile-device) .business-modal .operation-panel { flex-direction: column; }
+  html:not(.mobile-device) .business-modal .operation-tabs {
+    width: 100%;
+    flex-direction: row;
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid #e9ecf1;
+    overflow-x: auto;
+  }
+  html:not(.mobile-device) .business-modal .operation-tabs > .btn {
+    width: auto;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  html:not(.mobile-device) .business-modal .operation-content { padding: 18px; }
+}
 
 /* Opt-in desktop drawers; mobile sheets keep their existing DOM and styles. */
 html:not(.mobile-device) .drawer-backdrop {
@@ -4791,6 +4908,7 @@ html:not(.mobile-device) .modal-drawer .modal-footer {
 }
 :where(html:not(.mobile-device) .modal-drawer .modal-footer .btn) { white-space: normal; }
 html:not(.mobile-device) .modal-drawer .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html:not(.mobile-device) .modal-drawer .order-delivery-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 :where(html:not(.mobile-device) .modal-drawer .form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { font-size: 13px; }
 :where(html:not(.mobile-device) .modal-drawer .form-body label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > small) { font-size: 12px; line-height: 1.6; }
 html:not(.mobile-device) .modal-drawer .table-scroll { flex-shrink: 0; max-width: 100%; }
@@ -4813,6 +4931,7 @@ html:not(.mobile-device) .modal-drawer .stock-qr-line > div:last-child { flex-sh
   html:not(.mobile-device) .modal-drawer > form > .form-body { padding: 16px; }
   html:not(.mobile-device) .modal-drawer .modal-footer { padding: 14px 16px; }
   html:not(.mobile-device) .modal-drawer .form-grid,
+  html:not(.mobile-device) .modal-drawer .order-delivery-grid,
   html:not(.mobile-device) .modal-drawer .product-detail-fields { grid-template-columns: 1fr; }
   html:not(.mobile-device) .modal-drawer .order-form-footer { flex-direction: row; align-items: center; }
   html:not(.mobile-device) .modal-drawer .stock-qr-line { flex-wrap: wrap; }

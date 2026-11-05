@@ -149,11 +149,13 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
       title={internal ? (type === "in" ? translate("warehouse.create.a.new.internal.warehouse") : translate("warehouse.create.a.new.internal.warehouse.2")) : type === "in" ? translate("warehouse.new.stock.in") : translate("warehouse.new.stock.out")}
       subtitle={translate('stockApproval.noStockChange')}
       onClose={busy || templateAction.busy ? () => {} : onClose}
+      presentation="drawer"
+      drawerSize="wide"
       wide
     >
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={submit}>
-        {selection.error && <div role="alert">{selection.error}</div>}<QueryStatus query={contacts} />
         <div className="form-body order-form-body">
+          {selection.error && <div role="alert">{selection.error}</div>}<QueryStatus query={contacts} />
           <AntCheckbox className="inactive-product-option" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)}>{translate("warehouse.contains.discontinued.materials.used.for.operations.such.as.inventory.clearance")}</AntCheckbox>
 
           <Templates collapsible type={type} activeId={template?.id} refreshKey={templateRevision} disabled={busy || templateAction.busy} onUse={d => {
@@ -180,7 +182,7 @@ function OrderForm({ type, initialProduct, initialTemplate, data, onClose, onSav
             <label>{translate("warehouse.inbound.and.outbound.warehouse")}<AntInput value={data.settings.warehouse_name} disabled />
             </label>
           </div>
-          {type === "in" && <div className="form-grid">{["delivery_number", "delivery_time", "order_number"].map(key => <label key={key}>{translate(`warehouse.${key.replaceAll('_', '.')}`)}<AntInput type={key === "delivery_time" ? "datetime-local" : "text"} maxLength={key === "delivery_time" ? undefined : 100} value={delivery[key]} onChange={e => setDelivery(current => ({ ...current, [key]: e.target.value }))} /></label>)}</div>}
+          {type === "in" && <div className="form-grid order-delivery-grid">{["delivery_number", "delivery_time", "order_number"].map(key => <label key={key}>{translate(`warehouse.${key.replaceAll('_', '.')}`)}<AntInput type={key === "delivery_time" ? "datetime-local" : "text"} maxLength={key === "delivery_time" ? undefined : 100} value={delivery[key]} onChange={e => setDelivery(current => ({ ...current, [key]: e.target.value }))} /></label>)}</div>}
           {internal && <p className="info-box">{translate("warehouse.internal.transfers.only.adjust.inventory.and.do.not.include.purchases.sales")}</p>}
           <div className="order-scan-row">
             <Button
