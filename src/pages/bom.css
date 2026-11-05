@@ -45,6 +45,7 @@
 .bom-list-info { min-width: 0; }
 .bom-list-info > p { margin: 8px 0; font-size: 13px; overflow-wrap: anywhere; }
 .bom-actions { flex-wrap: wrap; }
+:where(.bom-section:not(.bom-calculation-result), .stage-row, .stage-row > details, .stage-input, .production-batch, .bom-disclosure, .bom-scrap-rule, .bom-page form:not(.bom-calculate-form), .production-page form:not(.process-report-form, .bom-calculate-form), .process-page form:not(.process-report-form)) > :not(summary) + :where(.bom-actions, .btn) { margin-top: 14px; }
 .bom-pagination { justify-content: center; margin-top: 18px; font-size: 13px; }
 .bom-filter-product { justify-content: space-between; padding: 0 2px 16px; font-size: 13px; }
 .bom-filter-product > span { overflow-wrap: anywhere; }

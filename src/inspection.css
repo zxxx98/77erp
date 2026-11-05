@@ -6,6 +6,7 @@
 .inspection-row small { color: #7e8798; }
 .inspection-row span { font-size: 13px; color: #91600b; }
 .inspection-row > button { flex-shrink: 0; }
+:where(.inspection-panel > .btn) { margin-top: 12px; }
 .inspection-success { color: #148468; font-size: 14px; }
 .mw-shell .inspection-panel { padding: 16px; margin: 0; }
 .mw-shell .inspection-row { align-items: flex-start; gap: 10px; }

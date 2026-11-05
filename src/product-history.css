@@ -7,3 +7,4 @@
 .product-history-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .product-history-list time { display: block; color: var(--muted, #7e8798); font-size: 12px; margin: 6px 0; }
 .product-history-list p { margin: 6px 0 0; font-size: 13px; white-space: pre-wrap; }
+:where(.product-history-body .btn) { margin-top: 10px; }

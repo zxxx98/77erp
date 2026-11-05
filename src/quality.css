@@ -267,11 +267,15 @@
 .quality-rule-match { display: block; color: var(--muted); margin-top: 6px; }
 .quality-checks-editor { padding: 18px; margin: 16px 0; }
 .quality-checks-editor > summary, .quality-check-rule > summary { cursor: pointer; font-weight: 600; }
+.quality-checks-editor > .muted { margin-top: 8px; }
 .quality-checks-editor fieldset { border: 0; padding: 12px 0 0; min-width: 0; display: grid; gap: 14px; }
+:where(.quality-checks-editor fieldset > .btn, .quality-special-values > .btn, .quality-item-rules > .btn, .quality-item-rule-content > .btn) { justify-self: start; }
 .quality-check-rule { border: 1px solid var(--border); padding: 14px; border-radius: 8px; }
 :where(.quality-check-rule label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)), .quality-check-reference { display: grid; gap: 8px; margin: 12px 0; }
 :where(.quality-check-rule input:not([type=checkbox])), :where(.quality-check-rule textarea) { width: 100%; }
-.quality-check-bound { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.quality-check-bound { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+.quality-check-rule > .quality-check { margin: 12px 0; }
+:where(.quality-check-rule > .btn, .quality-check-rule > div > .btn) { margin: 10px 8px 0 0; }
 :where(.quality-check-bound label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { flex: 1; min-width: 180px; }
 .quality-check-results { padding: 20px; display: grid; gap: 16px; }
 .quality-check-result { padding: 14px; border: 1px solid var(--border); border-radius: 8px; display: grid; gap: 10px; }

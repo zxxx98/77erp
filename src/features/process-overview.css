@@ -46,10 +46,11 @@
 .overview-materials { margin-top: 12px; color: #536178; font-size: 12px; }
 .overview-materials summary { cursor: pointer; padding: 6px 0; }
 .overview-materials ul { max-height: 200px; overflow: auto; }
-.overview-detail { padding: 18px 0 0; margin-top: 18px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.overview-detail { display: grid; gap: 10px; padding: 18px 0 0; margin-top: 18px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .overview-detail-heading { justify-content: space-between; }
 .overview-detail h3 { margin: 0; font-size: 15px; }
 .overview-detail p { white-space: pre-wrap; color: #536178; line-height: 1.6; }
+:where(.overview-detail > .btn) { justify-self: start; margin-top: 2px; }
 .overview-footnote { margin-bottom: 0; font-size: 12px; }
 @media (max-width: 760px) {
   .overview-toolbar { align-items: stretch; }

@@ -14,10 +14,17 @@
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
-:where(.operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) {
+:where(.operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)),
+.operation-panel .dropdown-field,
+.operation-panel .file-upload-field {
   display: grid;
   gap: 6px;
   margin: 10px 0;
+}
+:where(.operation-panel, .operation-panel > div, .operation-panel > div > div) > :where(.ant-checkbox-wrapper, .adm-checkbox) {
+  display: flex;
+  width: fit-content;
+  margin: 12px 0;
 }
 .operation-panel input:not([type="checkbox"], [type="radio"]) {
   width: 100%;
@@ -25,6 +32,12 @@
 }
 .operation-panel button {
   margin: 4px;
+}
+:where(.operation-panel > div, .operation-panel > div > div, .operation-row) > .btn {
+  margin: 10px 8px 4px 0;
+}
+:where(.operation-panel div[role="alert"] > button) {
+  margin-left: 8px;
 }
 .operation-tabs {
   display: flex;

@@ -4574,7 +4574,10 @@ table {
 .settings-content .operation-panel { padding: 0; border: 0; gap: 18px; }
 .settings-content .operation-tabs { border-bottom: 1px solid #e9ecf1; padding-bottom: 14px; }
 .settings-content .operation-panel button { margin: 0; }
-:where(.settings-content .operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { margin: 14px 0; }
+:where(.settings-content .operation-panel > div, .settings-content .operation-panel > div > div, .settings-content .operation-row) > .btn { margin: 10px 8px 4px 0; }
+:where(.settings-content .operation-panel label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)),
+.settings-content .operation-panel .dropdown-field,
+.settings-content .operation-panel .file-upload-field { margin: 14px 0; }
 .settings-content .operation-scroll { max-height: none; overflow: visible; }
 .settings-content .info-box p { font-size: 12px; color: #647084; }
 .settings-content .info-box > svg { flex-shrink: 0; }
