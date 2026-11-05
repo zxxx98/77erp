@@ -450,8 +450,9 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} com
     await page.goto(`${f.base}/#bom`);
     if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
     const bom = page.locator('.bom-list-item').filter({ hasText: '凳子配方' });
-    await expect(bom.getByRole('button', { name: '工艺流程图', exact: true })).toBeVisible();
-    await bom.getByRole('button', { name: '工艺流程图', exact: true }).click();
+    await expect(bom.getByRole('button', { name: '更多操作', exact: true })).toBeVisible();
+    await bom.getByRole('button', { name: '更多操作', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '工艺流程图', exact: true }).click();
     await expect(page.getByRole('heading', { name: '工艺流程图', exact: true })).toBeVisible();
     const overview = page.getByTestId('process-overview');
     await expect(overview).toBeVisible();
@@ -540,7 +541,8 @@ for (const mode of ['desktop', 'iPhone 13']) test(`${mode} nested overview expan
     const leaf = await f.post('/boms', { name: '钢管配方', product_id: f.raw.id, base_quantity: 1, base_unit: '件', enabled: 1, note: '', items: [{ product_id: source.id, quantity: 1, unit: '件', note: '' }] });
     await f.post(`/boms/${f.child.id}`, { name: f.child.name, version: f.child.version, product_id: f.half.id, base_quantity: 1, base_unit: '件', enabled: 1, note: '', items: [{ product_id: f.raw.id, quantity: 2, unit: '件', note: '', usage_mode: 'explode', child_bom_id: leaf.id }] });
     await page.goto(`${f.base}/#bom`);
-    await page.locator('.bom-list-item').filter({ hasText: '凳子配方' }).getByRole('button', { name: '工艺流程图', exact: true }).click();
+    await page.locator('.bom-list-item').filter({ hasText: '凳子配方' }).getByRole('button', { name: '更多操作', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '工艺流程图', exact: true }).click();
     const overview = page.getByTestId('process-overview');
     await expect(overview).toBeVisible();
     await overview.getByRole('button', { name: '流程图', exact: true }).click();

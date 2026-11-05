@@ -57,20 +57,23 @@ for (const mobile of [false, true]) {
       const row = page.locator('.bom-list-item');
       await expect(row).toHaveCount(1);
       page.once('dialog', dialog => dialog.dismiss());
-      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await row.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
       await expect(row).toHaveCount(1);
       expect(f.db.prepare('SELECT COUNT(*) n FROM boms').get().n).toBe(1);
 
       const updated = await f.post(`/boms/${bom.id}`, { ...f.definition, version: bom.version, name: '另一设备更新的配方' });
       page.once('dialog', dialog => dialog.accept());
-      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await row.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
       await expect(page.getByRole('alert')).toContainText('BOM已被修改');
       expect(f.db.prepare('SELECT name FROM boms WHERE id=?').get(bom.id).name).toBe(updated.name);
 
       await page.reload();
       await expect(row).toContainText(updated.name);
       page.once('dialog', async dialog => { expect(dialog.message()).toContain(updated.name); await dialog.accept(); });
-      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await row.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
       await expect(page.locator('.bom-success')).toContainText('BOM已删除');
       await expect(row).toHaveCount(0);
       await page.reload();
@@ -82,7 +85,8 @@ for (const mobile of [false, true]) {
       await page.reload();
       await expect(row).toHaveCount(1);
       page.once('dialog', dialog => dialog.accept());
-      await row.getByRole('button', { name: '删除', exact: true }).click();
+      await row.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
       await expect(page.getByRole('alert')).toContainText('此配方已被生产单引用');
       await expect(row).toHaveCount(1);
     } finally { await f.close(); }
@@ -144,19 +148,23 @@ for (const mobile of [false, true]) {
       await page.getByLabel('生产数量', { exact: true }).fill('20');
       await expect(page.getByRole('button', { name: '导出备料表', exact: true })).toHaveCount(0);
       await page.getByRole('button', { name: '返回BOM', exact: true }).click();
-      await page.getByRole('button', { name: '复制', exact: true }).click();
+      await page.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
       await expect(page.getByLabel('基准产量', { exact: true })).toHaveValue('2');
       await expect(page.getByLabel('螺丝材料用量', { exact: true })).toHaveValue('32');
       await expect(page.getByRole('button', { name: '保存BOM', exact: true })).toBeEnabled();
+      await page.getByRole('button', { name: '更换成品', exact: true }).click();
       await page.getByRole('searchbox', { name: '搜索成品', exact: true }).fill('TABLE-002');
       await page.getByRole('button', { name: '选择成品 小号桌子', exact: true }).click();
       await page.getByRole('button', { name: '保存BOM', exact: true }).click();
       await expect(page.locator('.bom-list-item')).toHaveCount(2);
       const original = page.locator('.bom-list-item').filter({ has: page.getByText('桌子配方', { exact: true }) });
-      await original.getByRole('button', { name: '停用', exact: true }).click();
+      await original.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '停用', exact: true }).click();
       await expect(original.getByText('已停用', { exact: true })).toBeVisible();
       await expect(original.getByRole('button', { name: '测算备料', exact: true })).toBeDisabled();
-      await original.getByRole('button', { name: '启用', exact: true }).click();
+      await original.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '启用', exact: true }).click();
       await expect(original.getByRole('button', { name: '测算备料', exact: true })).toBeEnabled();
       expect(errors).toEqual([]);
     } finally { await f.close(); }
@@ -236,7 +244,8 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await expect(page.getByLabel('分摊辅料用量', { exact: true })).toHaveValue('1/3');
     // Merely opening a saved fractional recipe must not mark it as changed.
     await page.getByRole('button', { name: '返回BOM', exact: true }).click();
-    await page.getByRole('button', { name: '复制', exact: true }).click();
+    await page.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
     await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1/40');
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '取消', exact: true }).click();
@@ -336,7 +345,8 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) {
       await page.goto(f.base + '/#bom');
       if (context) await page.evaluate(() => navigator.serviceWorker.ready);
       await page.getByRole('searchbox', { name: '搜索BOM', exact: true }).fill('桌子配方');
-      await page.getByRole('button', { name: '复制', exact: true }).click();
+      await page.getByRole('button', { name: '更多操作', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
       await expect(page.getByText('成品：示例桌子', { exact: true })).toBeVisible();
       await expect(page.getByLabel('BOM 名称', { exact: true })).toHaveValue('桌子配方副本');
       await page.getByRole('button', { name: '取消下级配方关联', exact: true }).click();

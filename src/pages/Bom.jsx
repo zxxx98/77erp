@@ -12,11 +12,11 @@ import { FormField } from './../ui/FormField.jsx';
 import { BomResultViews } from '../features/BomResultViews.jsx';
 import { ChildBomPicker } from '../features/ChildBomPicker.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Calculator, Copy, Download, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Calculator, Copy, Download, Network, Plus, Power, Save, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { useBusiness } from '../business-api.js';
 import { useQuery, queryPath } from '../queries.js';
-import { PageHeading, Button, Badge, QueryStatus } from '../components/common.jsx';
+import { PageHeading, Button, Badge, Modal, QueryStatus } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { downloadFile } from '../app/download.js';
 import { bomStructureCSV, bomCSV } from '../bom-csv.js';
@@ -121,7 +121,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
   const [filterProduct, setFilterProduct] = useState(initialProduct || null), [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [calculation, setCalculation] = useState(null);
   const [message, setMessage] = useState('');
-  const [overviewId, setOverviewId] = useState(null);
+  const [overviewId, setOverviewId] = useState(null), [moreBom, setMoreBom] = useState(null), [changingProduct, setChangingProduct] = useState(false);
   const action = useBusiness();
   const queryData = useMemo(() => ({ ...data, bomRevision: revision }), [data, revision]);
   const list = useQuery(queryPath('/boms', { q, status, offset, product_id: filterProduct?.id }), queryData, 150);
@@ -135,7 +135,7 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
-  const apply = bom => { const value = editable(bom); setEditor(value); setBaseline(JSON.stringify(value)); setCalculation(null); action.setError(''); setMessage(''); };
+  const apply = bom => { setChangingProduct(false); const value = editable(bom); setEditor(value); setBaseline(JSON.stringify(value)); setCalculation(null); action.setError(''); setMessage(''); };
   const back = () => { if (action.busy || dirty && !window.confirm(pt("production.thisBomHasUnsavedChangesLeave"))) return; setEditor(null); setCalculation(null); action.setError(''); };
   const open = (id, kind) => action.run(async () => {
     const bom = await api(`/boms/${id}`, { warehouseId: data.warehouse_id });
@@ -169,18 +169,20 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
       <section className="panel bom-section"><h2>{pt("production.finishedProductAndRecipe")}</h2>
         <div className="bom-form-grid"><label>{pt("production.bomName")}<FormField label={pt("production.bomName")} value={editor.name} required maxLength={100}><AntInput maxLength={100}  value={editor.name} disabled={action.busy} onChange={e => update({ name: e.target.value })} /></FormField></label>
           <label>{pt("production.baseOutput")}{editor.product && `（${editor.product.unit}）`}<FormField value={editor.base_quantity} required label={pt("production.baseOutput")}><AntInput aria-label={pt("production.baseOutput")} inputMode="decimal"  value={editor.base_quantity} disabled={action.busy} onChange={e => update({ base_quantity: e.target.value })} /></FormField></label></div>
-        {editor.product && <div className="bom-selected-product"><div><strong>{pt("production.finishedProduct2")}{editor.product.name}</strong><small>{editor.product.barcode} · {editor.product.unit}</small></div></div>}
+        {editor.product && <div className="bom-selected-product"><div><strong>{pt("production.finishedProduct2")}{editor.product.name}</strong><small>{editor.product.barcode} · {editor.product.unit}</small></div>
+          <Button type="button" disabled={action.busy} aria-expanded={changingProduct} onClick={() => setChangingProduct(value => !value)}>{changingProduct ? pt('production.cancel') : pt('production.changeFinishedProduct')}</Button></div>}
         {editor.product && editor.base_unit !== editor.product.unit && <p className="bom-warning">{pt("production.productUnitChangedFrom")} {editor.base_unit} {pt("production.to")} {editor.product.unit}{pt("production.verifyBaseOutputBeforeSaving")}</p>}
         {!editor.product && <p className="bom-hint">{pt("production.selectAFinishedOrSemiFinishedProductOne")}</p>}
-        <ProductPicker data={data} disabled={action.busy} onSelect={product => {
+        {(!editor.product || changingProduct) && <ProductPicker data={data} disabled={action.busy} onSelect={product => {
           if ([...editor.items, ...editor.scraps].some(item => item.product_id === product.id)) { action.setError(pt("production.theFinishedProductCannotAlsoBeAnInput")); return; }
+          setChangingProduct(false);
           update({ product, product_id: product.id, base_unit: product.unit, name: editor.name || `${product.name}BOM`.slice(0, 100) });
-        }} />
+        }} />}
         <label className="bom-note">{pt("production.note")}<AntInput.TextArea rows={2} maxLength={500} value={editor.note} disabled={action.busy} onChange={e => update({ note: e.target.value })} /></label>
         <AntCheckbox className="bom-checkbox" checked={!!editor.enabled} disabled={action.busy} onChange={e => update({ enabled: e.target.checked ? 1 : 0 })}>{pt("production.enableThisBom")}</AntCheckbox>
       </section>
-      <section className="panel bom-section"><h2>{pt('route.override')}</h2><RoutePicker warehouseId={data.warehouse_id} inherit inheritedValue={editor.product?.default_route_id} value={editor.route_override_id} onChange={value => update({ route_override_id: value })} disabled={action.busy} />
-        <Button disabled={action.busy || dirty || !editor.id} onClick={() => setOverviewId(editor.id)}>{pt('overview.bom')}</Button>
+      <section className="panel bom-section"><div className="bom-section-heading"><h2>{pt('route.override')}</h2>
+        <Button disabled={action.busy || dirty || !editor.id} onClick={() => setOverviewId(editor.id)}>{pt('overview.bom')}</Button></div><RoutePicker warehouseId={data.warehouse_id} inherit inheritedValue={editor.product?.default_route_id} value={editor.route_override_id} onChange={value => update({ route_override_id: value })} disabled={action.busy} />
         {(dirty || !editor.id) && <p className="bom-hint">{pt('overview.saveFirst')}</p>}
       </section>
       <section className="panel bom-section"><div className="bom-section-heading"><h2>{pt("production.materialUsage")}</h2><span className="bom-hint">{pt("production.added")} {editor.items.length} / {BOM_MAX_ITEMS} {pt("production.types")}</span></div>
@@ -206,8 +208,8 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: e.target.value } : row) })} /></FormField></label>
           <label>{pt("production.standardLossRate2")}<FormField value={item.loss_rate} required maxLength={20} label={pt("production.standardLossRate3", { v0: item.product.name })}><AntInput aria-label={pt("production.standardLossRate3", { v0: item.product.name })} aria-describedby="bom-loss-help" inputMode="decimal" maxLength={20}  value={item.loss_rate} disabled={action.busy}
             onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, loss_rate: e.target.value } : row) })} /></FormField></label>
-          <label className="bom-material-note">{pt("production.materialNote")}<AntInput aria-label={pt("production.note2", { v0: item.product.name })} maxLength={200} value={item.note} disabled={action.busy}
-            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></label>
+          <label className="bom-material-note">{pt("production.materialNote")}<FormField value={item.note} maxLength={200} label={pt("production.note2", { v0: item.product.name })}><AntInput aria-label={pt("production.note2", { v0: item.product.name })} maxLength={200} value={item.note} disabled={action.busy}
+            onChange={e => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, note: e.target.value } : row) })} /></FormField></label>
           <Button type="button" icon={Trash2} disabled={action.busy} aria-label={pt("production.removeMaterial", { v0: item.product.name })} onClick={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}>{pt("production.remove")}</Button>
           <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} lossMethod={editor.loss_method} />
           <details className="bom-disclosure" open={item.usage_mode === 'explode' || undefined}>
@@ -276,27 +278,33 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
           <small>{pt("production.baseOutput")} {count(bom.base_quantity)} {bom.base_unit} · {bom.item_count} {pt("production.materialsUpdatedBy")} {bom.updated_by_name}</small>
           <div><Badge tone={bom.enabled ? 'green' : 'orange'}>{bom.enabled ? pt("production.enabled") : pt("production.disabled2")}</Badge>{!bom.product_active && <Badge tone="orange">{pt("production.productDisabled")}</Badge>}</div></div>
         <div className="bom-actions"><Button icon={Calculator} disabled={action.busy || !bom.enabled} onClick={() => open(bom.id, 'calculate')}>{pt("production.planMaterials")}</Button>
-          <Button disabled={action.busy} onClick={() => setOverviewId(bom.id)}>{pt('overview.bom')}</Button>
           {onCreateProduction && <Button disabled={action.busy || !bom.enabled || !bom.product_active} onClick={() => onCreateProduction(bom)}>{pt("production.newProductionOrder")}</Button>}
           <Button disabled={action.busy} onClick={() => open(bom.id, 'edit')}>{pt("production.edit")}</Button>
-          <Button icon={Copy} disabled={action.busy} onClick={() => open(bom.id, 'copy')}>{pt("production.copy2")}</Button>
-          <Button disabled={action.busy} onClick={() => action.run(async () => {
-            await action.send(`/boms/${bom.id}/status`, { version: bom.version, enabled: bom.enabled ? 0 : 1 }, { warehouseId: data.warehouse_id });
-            setRevision(n => n + 1); setMessage(bom.enabled ? pt("production.bomDisabled") : pt("production.bomEnabled"));
-          })}>{bom.enabled ? pt("production.disable") : pt("production.enable")}</Button>
-          <Button icon={Trash2} kind="danger" disabled={action.busy} onClick={() => {
-            if (!window.confirm(pt("production.deleteBomThisCannotBeUndoneRecipesReferenced", { v0: bom.name, v1: bom.id }))) return;
-            action.run(async () => {
-              setMessage('');
-              await action.send(`/boms/${bom.id}/delete`, { version: bom.version }, { warehouseId: data.warehouse_id });
-              if (list.result.boms.length === 1 && offset > 0) setOffset(n => Math.max(0, n - 30));
-              setRevision(n => n + 1); setMessage(pt("production.bomDeleted"));
-            });
-          }}>{pt("production.delete")}</Button></div>
+          <Button disabled={action.busy} onClick={() => setMoreBom(bom)}>{pt('production.moreActions')}</Button></div>
       </article>)}</div>
       {list.result && !list.result.boms.length && <p className="bom-empty">{pt("production.noMatchingBomsCreateAProductRecipeTo")}</p>}
       {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination"><Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>{pt("production.previous")}</Button>
         <span>{pt("production.total")} {list.result.total} {pt("production.orders")}</span><Button disabled={!list.result.has_more} onClick={() => setOffset(n => n + 30)}>{pt("production.next")}</Button></div>}
     </section>
+    {moreBom && <Modal title={pt('production.moreActions')} subtitle={`${moreBom.name} #${moreBom.id}`} onClose={() => { if (!action.busy) setMoreBom(null); }}>
+      <div className="form-body bom-more-actions">
+        <Button icon={Network} disabled={action.busy} onClick={() => { const id = moreBom.id; setMoreBom(null); setOverviewId(id); }}>{pt('overview.bom')}</Button>
+        <Button icon={Copy} disabled={action.busy} onClick={() => { const id = moreBom.id; setMoreBom(null); open(id, 'copy'); }}>{pt("production.copy2")}</Button>
+        <Button icon={Power} disabled={action.busy} onClick={() => { const bom = moreBom; setMoreBom(null); action.run(async () => {
+          await action.send(`/boms/${bom.id}/status`, { version: bom.version, enabled: bom.enabled ? 0 : 1 }, { warehouseId: data.warehouse_id });
+          setRevision(n => n + 1); setMessage(bom.enabled ? pt("production.bomDisabled") : pt("production.bomEnabled"));
+        }); }}>{moreBom.enabled ? pt("production.disable") : pt("production.enable")}</Button>
+        <Button icon={Trash2} kind="danger" disabled={action.busy} onClick={() => {
+          const bom = moreBom; setMoreBom(null);
+          if (!window.confirm(pt("production.deleteBomThisCannotBeUndoneRecipesReferenced", { v0: bom.name, v1: bom.id }))) return;
+          action.run(async () => {
+            setMessage('');
+            await action.send(`/boms/${bom.id}/delete`, { version: bom.version }, { warehouseId: data.warehouse_id });
+            if (list.result.boms.length === 1 && offset > 0) setOffset(n => Math.max(0, n - 30));
+            setRevision(n => n + 1); setMessage(pt("production.bomDeleted"));
+          });
+        }}>{pt("production.delete")}</Button>
+      </div>
+    </Modal>}
   </div>;
 }

@@ -74,6 +74,7 @@ export default {
   "production.supplyRemoveReference": ["取消下级配方关联", "Remove child recipe reference", "Bỏ liên kết công thức con"],
 
   "production.listHint": ["查看进度、处理待办与登记产量。", "Track progress, handle pending tasks and register output.", "Theo dõi tiến độ, xử lý việc chờ và ghi nhận sản lượng."],
+  "production.changeFinishedProduct": ["更换成品", "Change finished product", "Đổi thành phẩm"],
   "production.moreActions": ["更多操作", "More actions", "Thao tác khác"],
   "production.nextSteps": ["当前待办", "Next steps", "Việc cần làm"],
   "production.next_draft": ["确认计划和生产指派后，即可开始生产。", "Check the plan and assignments, then start production.", "Kiểm tra kế hoạch và phân công, sau đó bắt đầu sản xuất."],

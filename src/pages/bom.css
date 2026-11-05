@@ -29,17 +29,22 @@
 :where(.bom-search-product > .btn) { flex-shrink: 0; }
 .bom-search-results > .bom-actions { padding: 12px 0; }
 .bom-empty { padding: 28px 10px; text-align: center; color: #7e8798; font-size: 13px; }
-.bom-material { display: grid; grid-template-columns: minmax(140px, 1.4fr) minmax(90px, .8fr) minmax(110px, .9fr) minmax(150px, 1.2fr) minmax(120px, 1fr) auto; align-items: end; column-gap: 14px; row-gap: 16px; border-top: 1px solid #e9ecf1; padding: 20px 0; }
+.bom-material { display: grid; grid-template-columns: minmax(140px, 1.4fr) minmax(90px, .8fr) minmax(110px, .9fr) minmax(150px, 1.4fr) auto; align-items: end; column-gap: 14px; row-gap: 16px; border-top: 1px solid #e9ecf1; padding: 20px 0; }
 .bom-material-name { min-width: 0; align-self: center; }
 :where(.bom-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { line-height: 20px; }
 :where(.bom-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > input), .bom-material .dropdown-control, :where(.bom-material > .btn) { height: 44px; }
 .bom-material .dropdown { width: 100%; min-width: 0; }
+.bom-material > .bom-disclosure { grid-column: 1 / -1; }
 .bom-material > .bom-usage-preview { grid-column: 1 / -1; margin: 0; align-self: start; }
 .bom-warning, .bom-shortage { color: #b45309; }
 .bom-warning { font-size: 12px; display: block; margin-top: 5px; }
 .bom-error { padding: 0 2px 14px; }
-.bom-editor-actions { justify-content: flex-end; flex-wrap: wrap; padding: 4px 0 24px; }
+.bom-editor-actions { justify-content: flex-end; flex-wrap: wrap; padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; z-index: 20; background: #f7f8fa; border-top: 1px solid #e9ecf1; }
+.mobile-device .bom-editor-actions { bottom: calc(68px + env(safe-area-inset-bottom)); padding-bottom: 12px; }
+.bom-selected-product { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bom-more-actions { display: flex; flex-direction: column; gap: 12px; }
 .bom-list-filters { justify-content: space-between; margin-bottom: 18px; }
+.bom-list-filters .dropdown { min-width: 160px; flex-shrink: 0; }
 :where(.bom-list-filters > input) { max-width: 420px; }
 .bom-list-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 0; border-top: 1px solid #e9ecf1; }
 .bom-list-info { min-width: 0; }
