@@ -85,6 +85,14 @@ for (const mode of ['desktop', 'android', 'ios-pwa']) test(`${mode} configures o
     await page.getByLabel('开始日期',{exact:true}).fill(`${yearMonth}-01`);
     await expect(page.locator('.payroll-totals')).toContainText('CNY 15.00');
     await expect(page.getByLabel('结束日期',{exact:true})).toHaveValue(end);
+    await page.getByRole('tab', {name:'按生产单查看',exact:true}).click();
+    await page.getByRole('searchbox', {name:'搜索生产单',exact:true}).fill(order.number);
+    await expect(page.locator('.payroll-order-card')).toContainText(order.number);
+    await page.getByRole('button', {name:'查看工资',exact:true}).click();
+    await expect(page.getByRole('heading', {name:'各成员工资汇总',exact:true})).toBeVisible();
+    await expect(page.locator('.payroll-worker-card')).toContainText('routeadmin');
+    await expect(page.locator('.payroll-worker-card')).toContainText('CNY 15.00');
+    await expect(page.locator('.payroll-worker-card')).toContainText('USD 8.00');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.screenshot({path:`/tmp/77erp-payroll-${mode}.png`,fullPage:true});
     await page.getByRole('link', {name:`查看生产单 ${order.number}`,exact:true}).first().click();

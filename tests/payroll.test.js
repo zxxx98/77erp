@@ -188,3 +188,87 @@ test('sync operation prices updates production order route snapshot and recalcul
   assert.equal(stats.summary.unpriced_count, 0);
   assert.deepEqual(stats.currencies, [{ currency: 'VND', amount_cents: 15000 }]);
 });
+
+test('payroll production order search and per-worker breakdown aggregate across multiple workers and currencies', async t => {
+  const f = await fixture(t, { graph: { ...priced, nodes: priced.nodes.map((n, i) => ({ ...n, ...(i === 0 ? { multiplier: 1.5 } : i === 1 ? { multiplier: 2 } : {}) })) } });
+  const admin = f.db.prepare("SELECT id FROM users WHERE username='routeadmin'").get().id;
+  const workerPosition = f.ok(await f.request('/positions', { name: '登记员', access_mode: 'production_only', permissions: ['production_register'] }));
+  f.ok(await f.request('/users', { username: 'workerA', employee_no: 'WA01', name: '张工', password: 'Worker-1234', role: 'employee', position_id: workerPosition.id }));
+  const workerA = f.db.prepare("SELECT id FROM users WHERE username='workerA'").get().id;
+  const financePosition = f.ok(await f.request('/positions', { name: '财务', access_mode: 'standard', permissions: ['finance'] }));
+  f.ok(await f.request('/users', { username: 'finuser', employee_no: 'FN01', name: '财务员', password: 'Finance-1234', role: 'employee', position_id: financePosition.id }));
+  const finLogin = await f.request('/auth/login', { username: 'finuser', password: 'Finance-1234' }, { cookie: ' ' });
+  const workerLogin = await f.request('/auth/login', { username: 'workerA', password: 'Worker-1234' }, { cookie: ' ' });
+
+  let order1 = await f.start(await f.create({ user_ids: [workerA] }));
+  const order2 = await f.create();
+  order1 = f.ok(await f.report(order1, 'cut', 4, '', { worker_id: workerA }));
+  order1 = f.ok(await f.report(order1, 'weld', 4));
+  order1 = f.ok(await f.complete(order1, 2));
+
+  // Search production orders with finance permission
+  const searchAll = f.ok(await f.request('/payroll/production-orders', undefined, { cookie: finLogin.cookie }));
+  assert.equal(searchAll.total, 2);
+  const found1 = searchAll.orders.find(o => o.id === order1.id);
+  assert.equal(found1.active_report_count, 3);
+  assert.equal(found1.worker_count, 2);
+  assert.equal(found1.status, 'in_progress');
+  const found2 = searchAll.orders.find(o => o.id === order2.id);
+  assert.equal(found2.active_report_count, 0);
+  assert.equal(found2.worker_count, 0);
+
+  const searchByNum = f.ok(await f.request(`/payroll/production-orders?q=${encodeURIComponent(order1.number)}`, undefined, { cookie: finLogin.cookie }));
+  assert.equal(searchByNum.total, 1);
+  assert.equal(searchByNum.orders[0].id, order1.id);
+
+  // Breakdown for order1
+  let orderStats = f.ok(await f.request(`/payroll/production-order?production_id=${order1.id}`, undefined, { cookie: finLogin.cookie }));
+  assert.equal(orderStats.order.number, order1.number);
+  assert.equal(orderStats.summary.active_count, 3);
+  assert.equal(orderStats.summary.worker_count, 2);
+  assert.equal(orderStats.summary.unpriced_count, 1);
+  assert.deepEqual(orderStats.currencies.sort((a, b) => a.currency.localeCompare(b.currency)), [
+    { currency: 'CNY', amount_cents: 1500 },
+    { currency: 'USD', amount_cents: 99 },
+  ]);
+  const wA = orderStats.workers.find(w => w.worker_id === workerA);
+  assert.equal(wA.worker_name, '张工');
+  assert.equal(wA.employee_no, 'WA01');
+  assert.equal(wA.active_count, 1);
+  assert.deepEqual(wA.currencies, [{ currency: 'CNY', amount_cents: 1500 }]);
+  assert.equal(wA.operations.length, 1);
+  assert.equal(wA.operations[0].operation_name, '下料');
+  assert.equal(wA.operations[0].quantity, 4);
+  assert.equal(wA.operations[0].multiplier, 1.5);
+  assert.equal(wA.operations[0].amount_cents, 1500);
+
+  const wAdmin = orderStats.workers.find(w => w.worker_id === admin);
+  assert.equal(wAdmin.active_count, 2);
+  assert.equal(wAdmin.unpriced_count, 1);
+  assert.deepEqual(wAdmin.currencies, [{ currency: 'USD', amount_cents: 99 }]);
+
+  // Filter reports by worker_id while keeping full workers summary
+  const filtered = f.ok(await f.request(`/payroll/production-order?production_id=${order1.id}&worker_id=${workerA}`, undefined, { cookie: finLogin.cookie }));
+  assert.equal(filtered.workers.length, 2);
+  assert.equal(filtered.total, 1);
+  assert.equal(filtered.reports[0].worker_id, workerA);
+
+  // Voided report handling
+  f.db.prepare("UPDATE production_operation_reports SET status='void',void_reason='作废测试' WHERE node_id='cut'").run();
+  orderStats = f.ok(await f.request(`/payroll/production-order?production_id=${order1.id}`, undefined, { cookie: finLogin.cookie }));
+  assert.equal(orderStats.summary.void_count, 1);
+  assert.equal(orderStats.summary.active_count, 2);
+  assert.equal(orderStats.summary.worker_count, 1);
+  assert.equal(orderStats.workers.find(w => w.worker_id === workerA).void_count, 1);
+  assert.equal(orderStats.workers.find(w => w.worker_id === workerA).active_count, 0);
+
+  // Permissions, warehouse isolation and invalid queries
+  for (const path of ['/payroll/production-orders', `/payroll/production-order?production_id=${order1.id}`]) {
+    assert.equal((await f.request(path, undefined, { cookie: workerLogin.cookie })).status, 403);
+  }
+  const warehouse2 = f.ok(await f.request('/warehouses', { name: '二号仓' }));
+  assert.equal((await f.request(`/payroll/production-order?production_id=${order1.id}`, undefined, { warehouseId: warehouse2.id })).status, 404);
+  for (const bad of ['/payroll/production-orders?limit=0', '/payroll/production-orders?offset=-1', '/payroll/production-order', '/payroll/production-order?production_id=abc', `/payroll/production-order?production_id=${order1.id}&worker_id=abc`]) {
+    assert.equal((await f.request(bad)).status, 400);
+  }
+});

@@ -1,19 +1,37 @@
 .payroll-page {display:grid;gap:18px;min-width:0;}
 .payroll-filters {display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(150px,1fr));gap:16px;padding:20px;}
 .payroll-filters label {display:grid;gap:8px;min-width:0;}
+.payroll-mode-tabs {grid-column:1/-1;display:inline-flex;gap:4px;padding:4px;border-radius:10px;background:var(--bg-subtle,#f1f5f9);border:1px solid var(--border,#e5e9ee);justify-self:start;max-width:100%;}
+.payroll-mode-tab {border:none;background:transparent;color:var(--text-muted,#64748b);font:inherit;font-size:13px;font-weight:600;padding:7px 16px;border-radius:7px;cursor:pointer;transition:background 0.15s ease,color 0.15s ease;}
+.payroll-mode-tab.is-active {background:#ffffff;color:var(--primary,#2563eb);box-shadow:0 1px 2px rgba(15,23,42,0.06);}
+.payroll-mode-tab:focus-visible {outline:2px solid var(--primary,#2563eb);outline-offset:2px;}
+.payroll-order-search {grid-column:1/-1;}
 .payroll-actions {display:flex;flex-wrap:wrap;align-items:center;gap:10px;grid-column:1/-1;}
 .payroll-totals {display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;}
 .payroll-stat {padding:20px;display:grid;gap:12px;min-width:0;}
 .payroll-stat strong {font-size:24px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}
-.payroll-stat span,.payroll-hint,.payroll-report p {color:var(--text-muted,#687585);}
+.payroll-stat span,.payroll-hint,.payroll-report p,.payroll-order-card p,.payroll-worker-card p,.payroll-order-banner p,.payroll-muted,.payroll-worker-meta {color:var(--text-muted,#687585);}
 .payroll-hint {margin:0;line-height:1.7;}
 .payroll-warning {padding:14px 18px;border-radius:10px;background:#fff7e6;color:#81520a;line-height:1.7;margin:0;}
 .payroll-section {padding:20px;min-width:0;}
 .payroll-section h2 {font-size:17px;margin:0 0 16px;}
-.payroll-reports {display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;}
-.payroll-report {padding:16px;border:1px solid var(--border,#e5e9ee);border-radius:12px;min-width:0;overflow-wrap:anywhere;}
-.payroll-report-heading,.payroll-formula {display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap;}
-.payroll-report p {font-size:12px;line-height:1.7;margin:10px 0 0;}
+.payroll-section-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+.payroll-section-heading h2 {margin:0;}
+.payroll-filter-tag {display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--text-muted,#64748b);}
+.payroll-orders,.payroll-workers,.payroll-reports {display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;}
+.payroll-order-card,.payroll-worker-card,.payroll-report {padding:16px;border:1px solid var(--border,#e5e9ee);border-radius:12px;min-width:0;overflow-wrap:anywhere;}
+.payroll-worker-card.is-selected {border-color:var(--primary,#2563eb);background:#f8fbff;}
+.payroll-report-heading,.payroll-formula,.payroll-order-card-footer {display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap;}
+.payroll-report p,.payroll-order-card p,.payroll-worker-card p,.payroll-order-banner p {font-size:12px;line-height:1.7;margin:10px 0 0;}
+.payroll-order-card-footer {margin-top:14px;font-size:12px;color:var(--text-muted,#687585);}
+.payroll-order-banner {padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;min-width:0;}
+.payroll-order-banner-main {min-width:0;flex:1 1 260px;}
+.payroll-worker-currencies {display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-variant-numeric:tabular-nums;}
+.payroll-worker-currencies strong {font-size:18px;color:var(--text,#0f172a);}
+.payroll-worker-ops {list-style:none;margin:12px 0 0;padding:10px 12px;border-radius:8px;background:var(--bg-subtle,#f8fafc);border:1px solid var(--border,#e5e9ee);display:grid;gap:8px;font-size:12px;font-variant-numeric:tabular-nums;}
+.payroll-worker-ops li {display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.payroll-worker-op-formula strong {font-size:13px;}
+.payroll-worker-actions {display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
 .payroll-formula {margin-top:16px;font-variant-numeric:tabular-nums;}
 .payroll-formula strong {font-size:18px;}
 .payroll-report.is-void .payroll-formula {text-decoration:line-through;color:var(--text-muted,#687585);}
@@ -22,9 +40,12 @@
 @media(max-width:700px) {
   .payroll-filters {grid-template-columns:1fr 1fr;padding:16px;}
   .payroll-filters>.dropdown {grid-column:1/-1;}
+  .payroll-mode-tabs {width:100%;display:grid;grid-template-columns:1fr 1fr;}
+  .payroll-mode-tab {text-align:center;padding:7px 8px;}
   .payroll-totals {grid-template-columns:1fr 1fr;gap:10px;}
   .payroll-stat {padding:14px;}.payroll-stat strong {font-size:20px;}
-  .payroll-section {padding:16px;}.payroll-reports {grid-template-columns:1fr;}
+  .payroll-section,.payroll-order-banner {padding:16px;}
+  .payroll-orders,.payroll-workers,.payroll-reports {grid-template-columns:1fr;}
   .payroll-page .page-heading {padding:0;}
 }
 .payroll-order-link {color:var(--primary,#2563eb);text-decoration:underline;text-underline-offset:3px;}
