@@ -33,8 +33,10 @@
 .production-page .bom-section form:not(.process-report-form, .bom-calculate-form) > p { margin: 0; }
 .production-page .bom-section > .btn + div > .material-documents > .material-document:first-child { margin-top: 14px; }
 .production-page .material-documents + .btn { margin-bottom: 16px; }
+.additional-operation-plan { padding: 16px; border: 1px solid #e4eaf3; border-radius: 12px; background: #fbfcfe; margin-bottom: 14px; }
+.additional-operation-plan > .production-material:first-child { padding-top: 0; border-top: 0; }
 .additional-operation-plan > h3 { margin: 14px 0 6px; font-size: 14px; }
-.additional-operation-plan > .product-picker { margin: 12px 0 18px; }
+.additional-operation-plan > .product-picker { margin: 12px 0 6px; }
 :where(.additional-operation-plan .production-material > .btn) { justify-self: start; align-self: end; }
 .production-batch-detail { margin-top: 18px; }
 .production-page .production-receipt-action { margin-bottom: 16px; }
@@ -185,8 +187,9 @@
   .production-list-shortcuts > .btn { flex-shrink: 0; }
 }
 
-.production-supply-row { padding: 14px 0; border-bottom: 1px solid var(--border, #e5e7eb); }
-.production-supply-row .bom-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.production-supply-row { padding: 16px; margin-bottom: 12px; border: 1px solid #e4eaf3; border-radius: 10px; background: #fbfcfe; }
+.production-supply-row > strong > small { display: inline; font-weight: 500; color: #64748b; margin-left: 4px; }
+.production-supply-row .bom-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); margin-bottom: 0; }
 
 .production-warning-box {
   padding: 14px 16px;

@@ -133,7 +133,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   const choices = rows => <div className="registration-operations" role="group" aria-label={t('registration.chooseOperation')}>
     {rows.map(row => <div key={row.id} className="registration-option-row"><Radio className="registration-operation" checked={selectedId === row.id} name={`registration-${order.id}`}
       disabled={action.busy || !registerable} onChange={() => select(row)}>
-      <span className="registration-option-content"><OperationName target={row} /><span className="registration-option-quantity">{row.node?.available_quantity != null
+      <span className="registration-option-content"><OperationName target={row} /><span className={`registration-option-quantity${row.node?.available_quantity > 0 ? ' is-available' : ''}`}>{row.node?.available_quantity != null
         ? t('registration.available', { quantity: count(row.node.available_quantity), unit: row.unit })
         : t('registration.completed', { quantity: count(row.node?.completed_quantity ?? row.layer.completed_quantity ?? 0), unit: row.unit })}</span></span>
     </Radio></div>)}
@@ -143,73 +143,111 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     <PageHeading title={t('production.productionRegistration')} description={`${order.number} · ${order.product_name}`}>
       <Button icon={ArrowLeft} disabled={action.busy} onClick={() => leave(onBack)}>{t('production.backToOrderDetails')}</Button>
     </PageHeading>
-    <form onSubmit={submit} className="panel bom-section registration-form">
-      <h2>{t('registration.chooseOperation')}</h2>
-      {targets.length <= 6 ? choices(targets) : <Button className="registration-picker-trigger" disabled={action.busy || !registerable} onClick={() => { setSearch(''); setPicker(true); }}>
-        {target ? <OperationName target={target} /> : t('registration.chooseOperation')}<ChevronDown size={18} />
-      </Button>}
-      {picker && <Modal title={t('registration.chooseOperation')} className="registration-picker-modal" onClose={() => setPicker(false)}>
-        <div className="form-body"><Input type="search" aria-label={t('registration.search')} placeholder={t('registration.search')} value={search} onChange={event => setSearch(event.target.value)} />
-          {choices(targets.filter(row => `${row.name} ${row.context} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())))}
+    <form onSubmit={submit} className="registration-form">
+      <div className="registration-workspace-grid">
+        <section className="panel bom-section registration-step-block">
+          <div className="bom-section-heading registration-section-head">
+            <h2>{t('registration.chooseOperation')}</h2>
+          </div>
+          {targets.length <= 6 ? choices(targets) : <Button className="registration-picker-trigger" disabled={action.busy || !registerable} onClick={() => { setSearch(''); setPicker(true); }}>
+            {target ? <OperationName target={target} /> : t('registration.chooseOperation')}<ChevronDown size={18} aria-hidden="true" />
+          </Button>}
+          {picker && <Modal title={t('registration.chooseOperation')} className="registration-picker-modal" onClose={() => setPicker(false)}>
+            <div className="form-body"><Input type="search" aria-label={t('registration.search')} placeholder={t('registration.search')} value={search} onChange={event => setSearch(event.target.value)} />
+              {choices(targets.filter(row => `${row.name} ${row.context} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())))}
+            </div>
+          </Modal>}
+        </section>
+        <section className="panel bom-section registration-quantity-block">
+          <div className="bom-section-heading registration-section-head">
+            <h2>{t('registration.quantity')}</h2>
+            {target && <span className="bom-hint registration-selected-target">{target.name}</span>}
+          </div>
+          <label className="registration-quantity-label">{t('registration.quantity')}{target && `（${target.unit}）`}
+            <Input aria-label={t('registration.quantity')} inputMode="text" value={quantity} placeholder={t('registration.enterQuantity')}
+              disabled={action.busy || !target || !registerable} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
+          </label>
+          <div className="registration-context-box">
+            <p className="bom-hint registration-meta-line">{target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
+            <p className="bom-hint">{t('production.fractionRegistrationHint')}</p>
+            {target?.output && <p className="bom-hint">{t('registration.standardUsage')}{!target.path && ` ${t('registration.pendingReceipt')}`}</p>}
+            {target?.layer.pool_paths && <p className="bom-hint">{t('production.poolHint')}</p>}
+          </div>
+          {target?.layer.pool_paths && <label className="registration-pool-note">{t('production.poolBatchNote')}<Input.TextArea aria-label={t('production.poolBatchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
+          {(allocations.length > 1 || allocations.length === 1 && allocations[0].path !== target.path) && <div className="registration-allocation" role="status"><p className="bom-hint">{t('registration.overflowHint')}</p><ul>{allocations.map(part => <li key={part.path}>{part.layer.name} · {t('registration.layer', { path: part.path || t('production.finalProduct') })}: {count(part.quantity)} {target.unit}</li>)}</ul></div>}
+        </section>
+      </div>
+      {target?.additional && <section className="panel bom-section registration-additional-materials">
+        <div className="bom-section-heading registration-section-head">
+          <h3>{t('production.additionalMaterials')}</h3>
         </div>
-      </Modal>}
-      <p className="bom-hint">{t('production.fractionRegistrationHint')}</p>
-      <label className="registration-quantity-label">{t('registration.quantity')}{target && `（${target.unit}）`}
-        <Input aria-label={t('registration.quantity')} inputMode="text" value={quantity} placeholder={t('registration.enterQuantity')}
-          disabled={action.busy || !target || !registerable} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
-      </label>
-      <p className="bom-hint">{target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
-      {target?.layer.pool_paths && <p className="bom-hint">{t('production.poolHint')}</p>}
-      {target?.layer.pool_paths && <label>{t('production.poolBatchNote')}<Input.TextArea aria-label={t('production.poolBatchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
-      {(allocations.length > 1 || allocations.length === 1 && allocations[0].path !== target.path) && <div className="registration-allocation" role="status"><p className="bom-hint">{t('registration.overflowHint')}</p><ul>{allocations.map(part => <li key={part.path}>{part.layer.name} · {t('registration.layer', { path: part.path || t('production.finalProduct') })}: {count(part.quantity)} {target.unit}</li>)}</ul></div>}
-      {target?.output && <p className="bom-hint">{t('registration.standardUsage')}{!target.path && ` ${t('registration.pendingReceipt')}`}</p>}
-      {target?.additional && <section className="registration-additional-materials">
-        <h3>{t('production.additionalMaterials')}</h3><p className="bom-hint">{t('production.additionalConsumptionHint')}</p>
+        <p className="bom-hint">{t('production.additionalConsumptionHint')}</p>
         {!quantity && <p className="bom-hint">{t('registration.enterQuantity')}</p>}
         {defaultsError && <p className="bom-warning">{productionMessage(defaultsError)}</p>}
-        {materialItems.map(row => {
-          const source = order.items.find(item => item.product_id === row.product_id);
-          return <div className="registration-material" key={row.product_id}>
-            <strong>{source.name}</strong><p className="bom-hint">{t('production.available')} {count(exactQuantity(source, 'available_quantity'))} {source.unit}</p>
-            <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.name })} inputMode="text" disabled={action.busy} value={row.quantity} onChange={event => patchItem(row.product_id, { quantity: event.target.value })} /></label>
-            <label>{t('production.usageVarianceReason2')}<Input.TextArea aria-label={t('production.usageVarianceReason', { v0: source.name })} maxLength={500} rows={2} value={row.variance_reason} disabled={action.busy} onChange={event => patchItem(row.product_id, { variance_reason: event.target.value })} /></label>
-          </div>;
-        })}
-      </section>}
-      {!registerable && <p className="bom-warning" role="status">{t('registration.closed')}</p>}
-      <details className="registration-details" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
-        <summary>{t('registration.more')}</summary>
-        {target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.additional ? t('production.additionalOperations') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
-        {can('production') && target?.node && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
-        {target?.node?.note && <p className="production-note">{target.node.note}</p>}
-        {target?.output && <>
-          <h3>{t('production.verifyInputsForThisLevel')}</h3>
-          {defaultsError && <p className="bom-warning">{productionMessage(defaultsError)}</p>}
-          {!quantity && <p className="bom-hint">{t('registration.enterQuantity')}</p>}
-          {items.map(row => {
-            const key = itemKey(order, row), source = sourceFor(row);
-            return <div className="registration-material" key={key}>
-              <strong>{source.name}</strong>
-              {order.stage_workflow && <small className="bom-hint">{source.is_supplemental_input ? t('production.supplementalInput') : t('registration.layer', { path: source.path })} · {t(source.usage_mode === 'explode' ? 'production.supplyProduce' : 'production.supplyStock')}</small>}
-              {source.available_quantity != null && <p className="bom-hint">{t('production.available')} {count(exactQuantity(source, 'available_quantity'))} {source.unit}</p>}
-              <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.is_supplemental_input ? `${source.name}（${t('production.supplementalInput')}）` : source.name })} inputMode="text" disabled={action.busy} value={row.quantity} onChange={event => patchItem(key, { quantity: event.target.value })} /></label>
-              {order.stage_workflow
-                ? <label>{t('production.usageVarianceReason2')}<Input.TextArea rows={2} aria-label={t('production.usageVarianceReason', { v0: source.is_supplemental_input ? `${source.name}（${t('production.supplementalInput')}）` : source.name })} maxLength={500} disabled={action.busy} value={row.variance_reason} onChange={event => patchItem(key, { variance_reason: event.target.value })} /></label>
-                : <MaterialVariance row={{ ...source, ...row }} analysis={productionMaterialAnalysis(source, outputQuantity, order.base_quantity, row.quantity, order.loss_method, order.snapshot_format === 2 ? order.nodes : undefined, order.quantity_decimals)} complete disabled={action.busy} onReason={(_, variance_reason) => patchItem(key, { variance_reason })} />}
+        <div className="registration-materials-list">
+          {materialItems.map(row => {
+            const source = order.items.find(item => item.product_id === row.product_id);
+            return <div className="registration-material" key={row.product_id}>
+              <div className="registration-material-head">
+                <strong>{source.name}</strong>
+                <p className="bom-hint registration-available-pill">{t('production.available')} {count(exactQuantity(source, 'available_quantity'))} {source.unit}</p>
+              </div>
+              <div className="registration-material-fields">
+                <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.name })} inputMode="text" disabled={action.busy} value={row.quantity} onChange={event => patchItem(row.product_id, { quantity: event.target.value })} /></label>
+                <label>{t('production.usageVarianceReason2')}<Input.TextArea aria-label={t('production.usageVarianceReason', { v0: source.name })} maxLength={500} rows={2} value={row.variance_reason} disabled={action.busy} onChange={event => patchItem(row.product_id, { variance_reason: event.target.value })} /></label>
+              </div>
             </div>;
           })}
-          <Button disabled={action.busy || !quantity} onClick={() => setOverrides({ items: {}, scraps: {} })}>{t('production.fillUsageFromThisBatchSOutput')}</Button>
-          <ScrapOutputs rows={scrapRows} materials={target.layer.items} complete disabled={action.busy} onChange={patchScrap} />
-        </>}
-        {!target?.layer.pool_paths && <label>{t('production.batchNote')}<Input.TextArea aria-label={t('production.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
+        </div>
+      </section>}
+      {!registerable && <p className="bom-warning registration-closed-warning" role="status">{t('registration.closed')}</p>}
+      <details className="panel bom-section registration-details" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
+        <summary><span>{t('registration.more')}</span><ChevronDown className="registration-details-chevron" size={16} aria-hidden="true" /></summary>
+        <div className="registration-details-body">
+          <div className="registration-details-meta">
+            {target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.additional ? t('production.additionalOperations') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
+            {can('production') && target?.node && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
+          </div>
+          {target?.node?.note && <p className="production-note registration-operation-note">{target.node.note}</p>}
+          {target?.output && <div className="registration-output-materials">
+            <div className="registration-materials-header">
+              <h3>{t('production.verifyInputsForThisLevel')}</h3>
+              <Button disabled={action.busy || !quantity} onClick={() => setOverrides({ items: {}, scraps: {} })}>{t('production.fillUsageFromThisBatchSOutput')}</Button>
+            </div>
+            {defaultsError && <p className="bom-warning">{productionMessage(defaultsError)}</p>}
+            {!quantity && <p className="bom-hint">{t('registration.enterQuantity')}</p>}
+            <div className="registration-materials-list">
+              {items.map(row => {
+                const key = itemKey(order, row), source = sourceFor(row);
+                return <div className="registration-material" key={key}>
+                  <div className="registration-material-head">
+                    <div className="registration-material-title">
+                      <strong>{source.name}</strong>
+                      {!!order.stage_workflow && <small className="bom-hint">{source.is_supplemental_input ? t('production.supplementalInput') : t('registration.layer', { path: source.path })} · {t(source.usage_mode === 'explode' ? 'production.supplyProduce' : 'production.supplyStock')}</small>}
+                    </div>
+                    {source.available_quantity != null && <p className="bom-hint registration-available-pill">{t('production.available')} {count(exactQuantity(source, 'available_quantity'))} {source.unit}</p>}
+                  </div>
+                  <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.is_supplemental_input ? `${source.name}（${t('production.supplementalInput')}）` : source.name })} inputMode="text" disabled={action.busy} value={row.quantity} onChange={event => patchItem(key, { quantity: event.target.value })} /></label>
+                  {order.stage_workflow
+                    ? <label>{t('production.usageVarianceReason2')}<Input.TextArea rows={2} aria-label={t('production.usageVarianceReason', { v0: source.is_supplemental_input ? `${source.name}（${t('production.supplementalInput')}）` : source.name })} maxLength={500} disabled={action.busy} value={row.variance_reason} onChange={event => patchItem(key, { variance_reason: event.target.value })} /></label>
+                    : <MaterialVariance row={{ ...source, ...row }} analysis={productionMaterialAnalysis(source, outputQuantity, order.base_quantity, row.quantity, order.loss_method, order.snapshot_format === 2 ? order.nodes : undefined, order.quantity_decimals)} complete disabled={action.busy} onReason={(_, variance_reason) => patchItem(key, { variance_reason })} />}
+                </div>;
+              })}
+            </div>
+            <ScrapOutputs rows={scrapRows} materials={target.layer.items} complete disabled={action.busy} onChange={patchScrap} />
+          </div>}
+          {!target?.layer.pool_paths && <label className="registration-batch-note">{t('production.batchNote')}<Input.TextArea aria-label={t('production.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
+        </div>
       </details>
       {action.error && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
       {message && <p className="bom-success" role="status">{message}</p>}
-      <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable}>{t('registration.submit')}</Button>
-      <details className="production-disclosure" open={!!action.error}><summary>{t('production.registrationTools')}</summary><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
-        const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
-        clear(); setMessage(''); await onSaved(latest, false);
-      }))}>{t('production.reloadProductionOrder')}</Button></details>
+      <div className="registration-footer-actions">
+        <details className="production-disclosure registration-tools-disclosure" open={!!action.error}><summary><span>{t('production.registrationTools')}</span><ChevronDown className="registration-details-chevron" size={14} aria-hidden="true" /></summary><div className="registration-tools-body"><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
+          const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
+          clear(); setMessage(''); await onSaved(latest, false);
+        }))}>{t('production.reloadProductionOrder')}</Button></div></details>
+        <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable}>{t('registration.submit')}</Button>
+      </div>
     </form>
   </div>;
 }
