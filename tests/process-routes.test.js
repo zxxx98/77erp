@@ -491,6 +491,13 @@ test('process routes filter by output product production_type and search by rout
   assert.deepEqual((await list({production_type:'成品',q:'定制圆桌'})).map(r=>r.id),[bomRoute.id]);
   assert.deepEqual((await list({production_type:'成品',q:'喷涂椅架'})).map(r=>r.id),[]);
   assert.equal((await f.request('/process-routes?production_type=invalid')).status,400);
+  const names=rows=>rows.map(r=>r.name);
+  const asc=names(await list({production_type:'all',sort:'name_asc'})), desc=names(await list({production_type:'all',sort:'name_desc'}));
+  assert.deepEqual(asc,[...asc].sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:a.toLowerCase()>b.toLowerCase()?1:0));
+  assert.deepEqual(desc,[...asc].reverse());
+  const created=(await list({production_type:'all',sort:'created_asc'})).map(r=>r.id);
+  assert.deepEqual((await list({production_type:'all',sort:'created_desc'})).map(r=>r.id),[...created].reverse());
+  assert.equal((await f.request('/process-routes?sort=name%3Bdrop')).status,400);
 });
 
 for (const multi of [false, true]) test(`${multi ? 'layered' : 'single-level'} additional operations keep independent quantities, reports, payroll and backups outside the BOM`, async t => {
@@ -681,4 +688,32 @@ for (const multi of [false, true]) test(`${multi ? 'layered' : 'single-level'} a
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(solvent.id).stock, 8);
   order = f.ok(await f.command(`/production-orders/${order.id}/finish`, { version: order.version }));
   f.ok(await f.command('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
+});
+
+test('custom route order puts new routes first, persists drags and keeps other rows in place when a subset moves', async t => {
+  const f = await fixture(t, { routed: false });
+  const make = async name => f.ok(await f.command('/process-routes', { name, note: '', enabled: 1, graph: serial })).id;
+  const [b, c, d, e] = [await make('B'), await make('C'), await make('D'), await make('E')];
+  const ids = async (params = '') => (await f.request(`/process-routes${params}`)).data.routes.map(r => r.id);
+  const a = f.route.id;
+  assert.deepEqual(await ids(), [e, d, c, b, a], 'new routes appear first');
+  // Move the fifth to the first position.
+  assert.equal((await f.command('/process-routes/reorder', { ids: [a, e, d, c, b] })).status, 200);
+  assert.deepEqual(await ids(), [a, e, d, c, b]);
+  assert.deepEqual(await ids('?sort=custom'), [a, e, d, c, b]);
+  // Editing or toggling a route must not disturb the manual order.
+  const row = (await f.request(`/process-routes/${c}`)).data;
+  f.ok(await f.command(`/process-routes/${c}/status`, { version: row.version, enabled: 0 }));
+  assert.deepEqual(await ids(), [a, e, d, c, b]);
+  // Reordering a subset keeps the other rows' slots.
+  assert.equal((await f.command('/process-routes/reorder', { ids: [b, e] })).status, 200);
+  assert.deepEqual(await ids(), [a, b, d, c, e]);
+  const created = f.ok(await f.command('/process-routes', { name: 'F', note: '', enabled: 1, graph: serial })).id;
+  assert.deepEqual(await ids(), [created, a, b, d, c, e]);
+  for (const bad of [[a], [a, a], [a, 0], [a, 'x'], 'x', Array.from({ length: 101 }, (_, i) => i + 1)])
+    assert.equal((await f.command('/process-routes/reorder', { ids: bad })).status, 400, JSON.stringify(bad));
+  assert.equal((await f.command('/process-routes/reorder', { ids: [a, 99999] })).status, 409);
+  const other = f.ok(await f.request('/warehouses', { name: '路线分仓' })).id;
+  assert.equal((await f.command('/process-routes/reorder', { ids: [a, b] }, { warehouseId: other })).status, 409);
+  assert.deepEqual(await ids(), [created, a, b, d, c, e]);
 });

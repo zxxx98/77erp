@@ -5,6 +5,7 @@ import { useBusiness } from '../business-api.js';
 import { useQuery, queryPath } from '../queries.js';
 import { PageHeading, Button, Badge, Modal, QueryStatus } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
+import { SortHandle, useSortableList } from '../components/SortableList.jsx';
 import { Input as AntInput } from '../ui/controls.jsx';
 import { parseQuantity } from '../../shared/quantity.js';
 import { parseBomQuantity, validateBom } from '../../shared/bom.js';
@@ -41,11 +42,14 @@ function BomList({
   setQ,
   status,
   setStatus,
+  sort,
+  setSort,
   offset,
   setOffset,
   filterProduct,
   setFilterProduct,
   list,
+  sortable,
   message,
   action,
   moreBom,
@@ -78,17 +82,32 @@ function BomList({
           value={q}
           onChange={e => { setQ(e.target.value); setOffset(0); }}
         />
-        <Select aria-label={pt("production.bomStatus")} value={status} onChange={e => { setStatus(e); setOffset(0); }}>
-          <option value="all">{pt("production.allStatuses")}</option>
-          <option value="enabled">{pt("production.enabled")}</option>
-          <option value="disabled">{pt("production.disabled2")}</option>
-        </Select>
+        <div className="bom-filter-right">
+          <Select aria-label={pt("production.bomStatus")} value={status} onChange={e => { setStatus(e); setOffset(0); }}>
+            <option value="all">{pt("production.allStatuses")}</option>
+            <option value="enabled">{pt("production.enabled")}</option>
+            <option value="disabled">{pt("production.disabled2")}</option>
+          </Select>
+          <Select aria-label={pt('production.sortBy')} value={sort} onChange={e => { setSort(e); setOffset(0); }}>
+            <option value="custom">{pt('production.sortCustom')}</option>
+          <option value="updated_desc">{pt('production.sortUpdatedDesc')}</option>
+            <option value="updated_asc">{pt('production.sortUpdatedAsc')}</option>
+            <option value="created_desc">{pt('production.sortCreatedDesc')}</option>
+            <option value="created_asc">{pt('production.sortCreatedAsc')}</option>
+            <option value="name_asc">{pt('production.sortNameAsc')}</option>
+            <option value="name_desc">{pt('production.sortNameDesc')}</option>
+          </Select>
+        </div>
       </div>
       <QueryStatus query={list} />
+      {!!list.result?.boms.length && <p className="bom-hint sort-hint">{pt(sort === 'custom' ? 'production.dragSortHint' : 'production.dragSortDisabledHint')}</p>}
       <div className="bom-list">
-        {list.result?.boms.map(bom => <article className="bom-list-item" key={bom.id}>
+        {sortable.ordered.map(bom => <article className="bom-list-item" key={bom.id} {...sortable.itemProps(bom.id)}>
           <div className="bom-list-info">
-            <strong>{bom.name}</strong>
+            <div className="bom-list-heading">
+              {sort === 'custom' && <SortHandle sortable={sortable} id={bom.id} label={pt('production.dragToSort')} />}
+              <strong>{bom.name}</strong>
+            </div>
             <small>BOM #{bom.id} {pt("production.revision")} {bom.version}</small>
             <p>{bom.product_name} · {bom.barcode}</p>
             <small>{pt("production.baseOutput")} {count(bom.base_quantity)} {bom.base_unit} · {bom.item_count} {pt("production.materialsUpdatedBy")} {bom.updated_by_name}</small>
@@ -129,15 +148,27 @@ function BomList({
 
 export function Bom({ data, initialProduct, onCreateProduction }) {
   useLocale();
-  const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0);
+  const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [sort, setSort] = useState('custom'), [offset, setOffset] = useState(0);
   const [filterProduct, setFilterProduct] = useState(initialProduct || null), [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [calculation, setCalculation] = useState(null);
   const [message, setMessage] = useState('');
   const [overviewId, setOverviewId] = useState(null), [moreBom, setMoreBom] = useState(null), [changingProduct, setChangingProduct] = useState(false);
   const action = useBusiness();
   const queryData = useMemo(() => ({ ...data, bomRevision: revision }), [data, revision]);
-  const list = useQuery(queryPath('/boms', { q, status, offset, product_id: filterProduct?.id }), queryData, 150);
+  const list = useQuery(queryPath('/boms', { q, status, sort, offset, product_id: filterProduct?.id }), queryData, 150);
   const dirty = !!editor && (JSON.stringify(editor) !== baseline || !editor.id && (!!editor.name.trim() || editor.items.length > 0));
+  const sortable = useSortableList({
+    items: list.result?.boms,
+    enabled: sort === 'custom' && !action.busy,
+    onReorder: async ids => {
+      let saved = false;
+      await action.run(async () => {
+        await action.send('/boms/reorder', { ids }, { warehouseId: data.warehouse_id });
+        saved = true;
+      });
+      return saved;
+    },
+  });
   const state = useRef({ dirty, busy: action.busy });
   state.current = { dirty, busy: action.busy };
 
@@ -252,11 +283,14 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
     setQ={setQ}
     status={status}
     setStatus={setStatus}
+    sort={sort}
+    setSort={setSort}
     offset={offset}
     setOffset={setOffset}
     filterProduct={filterProduct}
     setFilterProduct={setFilterProduct}
     list={list}
+    sortable={sortable}
     message={message}
     action={action}
     moreBom={moreBom}

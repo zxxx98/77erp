@@ -1,3 +1,4 @@
+import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
 import { saveOperationAcceptance, acceptancePermissionMessage } from './operation-acceptance.js';
 import { operationAllocation } from '../shared/operation-overflow.js';
 import { productionPools, stagePoolPaths, productionPoolOrder } from '../shared/production-pools.js';
@@ -54,6 +55,7 @@ export function migrateProcessRoutes(db) {
   for (const [table, column] of [['products', 'default_route_id'], ['boms', 'route_override_id']])
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} INTEGER REFERENCES process_routes(id)`);
+  migrateSortOrder(db, 'process_routes');
   const advance = `UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT COALESCE(MAX(version),0) FROM process_routes))+1 WHERE key='process_route_version';
     UPDATE process_routes SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='process_route_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS process_route_version_insert AFTER INSERT ON process_routes BEGIN ${advance} END;
@@ -86,9 +88,17 @@ export function deleteProductionOperations(db, productionId) {
   }
 }
 
+const ROUTE_SORTS = {
+  custom: 'sort_order ASC,id DESC',
+  updated_desc: 'updated_at DESC,id DESC', updated_asc: 'updated_at ASC,id ASC',
+  created_desc: 'created_at DESC,id DESC', created_asc: 'created_at ASC,id ASC',
+  name_asc: 'name COLLATE NOCASE ASC,id ASC', name_desc: 'name COLLATE NOCASE DESC,id DESC',
+};
+
 export function listProcessRoutes(db, warehouseId, query = {}) {
-  const { q = '', status = 'all', production_type = 'all', offset = '0', limit = '30' } = query;
+  const { q = '', status = 'all', sort = 'custom', production_type = 'all', offset = '0', limit = '30' } = query;
   if (typeof q !== 'string' || q.length > 100 || !['all', 'enabled', 'disabled'].includes(status) ||
+      typeof sort !== 'string' || !Object.hasOwn(ROUTE_SORTS, sort) ||
       !['all', 'unset', '', ...productionTypes].includes(production_type) ||
       typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
       typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100)
@@ -110,7 +120,7 @@ export function listProcessRoutes(db, warehouseId, query = {}) {
   }
   const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) n FROM process_routes WHERE ${where}`).get(...params).n;
   const productStmt = db.prepare(`SELECT DISTINCT p.id,p.name,p.barcode,p.production_type FROM products p WHERE p.warehouse_id=? AND (p.default_route_id=? OR EXISTS (SELECT 1 FROM boms b WHERE b.warehouse_id=p.warehouse_id AND b.product_id=p.id AND b.route_override_id=?)) ORDER BY p.id`);
-  const routes = db.prepare(`SELECT * FROM process_routes WHERE ${where} ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset))
+  const routes = db.prepare(`SELECT * FROM process_routes WHERE ${where} ORDER BY ${ROUTE_SORTS[sort]} LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset))
     .map(row => ({ ...row, graph: parseGraph(row.graph), products: productStmt.all(warehouseId, row.id, row.id), product_count: db.prepare('SELECT COUNT(*) n FROM products WHERE default_route_id=?').get(row.id).n, bom_count: db.prepare('SELECT COUNT(*) n FROM boms WHERE route_override_id=?').get(row.id).n }));
   return { routes, total, has_more: Number(offset) + routes.length < total };
 }
@@ -148,11 +158,12 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     let routeId = old?.id;
     if (old) db.prepare('UPDATE process_routes SET name=?,note=?,enabled=?,graph=?,updated_by_name=?,updated_at=? WHERE id=?')
       .run(body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), at, routeId);
-    else routeId = Number(db.prepare('INSERT INTO process_routes(warehouse_id,name,note,enabled,graph,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
-      .run(req.warehouse.id, body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), actor(req), at, at).lastInsertRowid);
+    else routeId = Number(db.prepare('INSERT INTO process_routes(warehouse_id,name,note,enabled,graph,created_by_name,updated_by_name,created_at,updated_at,sort_order) VALUES (?,?,?,?,?,?,?,?,?,' + nextTopOrder('process_routes') + ')')
+      .run(req.warehouse.id, body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), actor(req), at, at, req.warehouse.id).lastInsertRowid);
     return get(req.warehouse.id, routeId);
   };
   app.get('/api/process-routes', route(req => listProcessRoutes(db, req.warehouse.id, req.query)));
+  app.post('/api/process-routes/reorder', route(req => reorderRows(db, 'process_routes', req.warehouse.id, req.body.ids, fail, '工艺路线'), true));
   app.get('/api/process-routes/acceptance-templates', route(req => ({templates:db.prepare(`SELECT t.id,r.name,r.revision FROM quality_templates t JOIN quality_template_revisions r ON r.id=t.published_revision WHERE t.warehouse_id=? AND t.enabled=1 ORDER BY r.name,t.id`).all(req.warehouse.id)})));
   app.get('/api/process-routes/:id', route(req => get(req.warehouse.id, req.params.id)));
   app.post('/api/process-routes', route(save, true));

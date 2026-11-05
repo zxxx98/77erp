@@ -813,6 +813,61 @@ export default {
     "Show all BOMs",
     "Hiện tất cả BOM"
   ],
+  "production.sortBy": [
+    "排序方式",
+    "Sort by",
+    "Sắp xếp theo"
+  ],
+  "production.sortUpdatedDesc": [
+    "最近更新优先",
+    "Recently updated first",
+    "Cập nhật gần nhất trước"
+  ],
+  "production.sortUpdatedAsc": [
+    "最早更新优先",
+    "Least recently updated first",
+    "Cập nhật cũ nhất trước"
+  ],
+  "production.sortCreatedDesc": [
+    "最新创建优先",
+    "Newest created first",
+    "Tạo mới nhất trước"
+  ],
+  "production.sortCreatedAsc": [
+    "最早创建优先",
+    "Oldest created first",
+    "Tạo cũ nhất trước"
+  ],
+  "production.sortNameAsc": [
+    "名称 A→Z",
+    "Name A→Z",
+    "Tên A→Z"
+  ],
+  "production.sortNameDesc": [
+    "名称 Z→A",
+    "Name Z→A",
+    "Tên Z→A"
+  ],
+  "production.sortCustom": [
+    "自定义排序",
+    "Custom order",
+    "Thứ tự tùy chỉnh"
+  ],
+  "production.dragSortHint": [
+    "拖动左侧手柄可调整顺序，也可聚焦手柄后按上下方向键；顺序会自动保存。",
+    "Drag the handle to reorder, or focus it and use the up/down arrow keys. The order is saved automatically.",
+    "Kéo biểu tượng tay cầm để sắp xếp, hoặc chọn rồi dùng phím mũi tên lên/xuống. Thứ tự được lưu tự động."
+  ],
+  "production.dragSortDisabledHint": [
+    "选择「自定义排序」后可拖动调整顺序。",
+    "Choose “Custom order” to drag and reorder.",
+    "Chọn “Thứ tự tùy chỉnh” để kéo sắp xếp."
+  ],
+  "production.dragToSort": [
+    "拖动调整顺序",
+    "Drag to reorder",
+    "Kéo để sắp xếp"
+  ],
   "production.searchBoms": [
     "搜索BOM",
     "Search BOMs",

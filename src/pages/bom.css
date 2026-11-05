@@ -48,9 +48,12 @@
 .bom-more-actions { display: flex; flex-direction: column; gap: 12px; }
 .bom-list-filters { justify-content: space-between; margin-bottom: 18px; }
 .bom-list-filters .dropdown { min-width: 160px; flex-shrink: 0; }
+.bom-filter-right { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
 :where(.bom-list-filters > input) { max-width: 420px; }
 .bom-list-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 0; border-top: 1px solid #e9ecf1; }
 .bom-list-info { min-width: 0; }
+.bom-list-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bom-list-heading > .sort-handle { margin-left: -8px; }
 .bom-list-info > p { margin: 8px 0; font-size: 13px; overflow-wrap: anywhere; }
 .bom-actions { flex-wrap: wrap; }
 :where(.bom-section:not(.bom-calculation-result), .stage-row, .stage-row > details, .stage-input, .production-batch, .bom-disclosure, .bom-scrap-rule, .bom-page form:not(.bom-calculate-form), .production-page form:not(.process-report-form, .bom-calculate-form), .process-page form:not(.process-report-form)) > :not(summary) + :where(.bom-actions, .btn) { margin-top: 14px; }
@@ -93,6 +96,8 @@
   .bom-list-filters { align-items: stretch; flex-direction: column; }
   :where(.bom-list-filters > input) { max-width: none; }
   .bom-list-filters .dropdown { max-width: 100%; }
+  .bom-filter-right { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .bom-filter-right .dropdown { min-width: 0; width: 100%; }
   .bom-calculate-form { align-items: stretch; flex-direction: column; }
   :where(.bom-calculate-form > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { width: 100%; }
   .bom-calculation-result { gap: 16px; }

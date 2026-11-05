@@ -1,3 +1,4 @@
+import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
 import { buildProductionSupply } from './production-supply.js';
 import { routeBinding } from './process-routes.js';
 import { validQuantity } from '../shared/quantity.js';
@@ -65,6 +66,7 @@ export function migrateBom(db) {
   if (db.prepare('PRAGMA index_list(boms)').all().some(index => index.unique &&
       db.prepare(`PRAGMA index_info("${index.name}")`).all().map(row => row.name).join(',') === 'warehouse_id,product_id'))
     rebuildTable(db, 'boms', sql => sql.replace(/,\s*UNIQUE\s*\(warehouse_id,\s*product_id\)/i, ''));
+  migrateSortOrder(db, 'boms');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS boms_product_name ON boms(warehouse_id,product_id,trim(name)); CREATE INDEX IF NOT EXISTS boms_product ON boms(warehouse_id,product_id);');
   if (!db.prepare('PRAGMA table_info(bom_items)').all().some(column => column.name === 'usage_mode'))
     db.exec("ALTER TABLE bom_items ADD COLUMN usage_mode TEXT NOT NULL DEFAULT 'stock' CHECK(usage_mode IN ('stock','explode')); ALTER TABLE bom_items ADD COLUMN child_bom_id INTEGER REFERENCES boms(id);");
@@ -84,9 +86,17 @@ export function clearBom(db, warehouseId) {
   }
 }
 
+const BOM_SORTS = {
+  custom: 'b.sort_order ASC,b.id DESC',
+  updated_desc: 'b.updated_at DESC,b.id DESC', updated_asc: 'b.updated_at ASC,b.id ASC',
+  created_desc: 'b.created_at DESC,b.id DESC', created_asc: 'b.created_at ASC,b.id ASC',
+  name_asc: 'b.name COLLATE NOCASE ASC,b.id ASC', name_desc: 'b.name COLLATE NOCASE DESC,b.id DESC',
+};
+
 export function listBoms(db, warehouseId, query = {}) {
-  const { q = '', status = 'all', product_id, offset = '0', limit = '30' } = query;
+  const { q = '', status = 'all', sort = 'custom', product_id, offset = '0', limit = '30' } = query;
   if (typeof q !== 'string' || q.length > 100 || !['all', 'enabled', 'disabled'].includes(status) ||
+      typeof sort !== 'string' || !Object.hasOwn(BOM_SORTS, sort) ||
       typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
       typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100 ||
       (product_id !== undefined && (typeof product_id !== 'string' || !/^\d+$/.test(product_id) || !Number.isSafeInteger(Number(product_id)) || Number(product_id) < 1)))
@@ -98,7 +108,7 @@ export function listBoms(db, warehouseId, query = {}) {
   const from = `FROM boms b JOIN products p ON p.id=b.product_id WHERE ${clauses.join(' AND ')}`;
   const total = db.prepare(`SELECT COUNT(*) AS n ${from}`).get(...params).n;
   const boms = db.prepare(`SELECT b.*,p.name AS product_name,p.barcode,p.unit AS product_unit,p.active AS product_active,
-    (SELECT COUNT(*) FROM bom_items WHERE bom_id=b.id) AS item_count ${from} ORDER BY b.updated_at DESC,b.id DESC LIMIT ? OFFSET ?`)
+    (SELECT COUNT(*) FROM bom_items WHERE bom_id=b.id) AS item_count ${from} ORDER BY ${BOM_SORTS[sort]} LIMIT ? OFFSET ?`)
     .all(...params, Number(limit), Number(offset));
   return { boms, total, has_more: Number(offset) + boms.length < total, next_offset: Number(offset) + boms.length };
 }
@@ -300,8 +310,8 @@ export function installBom(app, db) {
         .run(body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.loss_method, body.note.trim(), body.enabled, owner, at, id);
       db.prepare('DELETE FROM bom_scraps WHERE bom_id=?').run(id);
       db.prepare('DELETE FROM bom_items WHERE bom_id=?').run(id);
-    } else id = Number(db.prepare('INSERT INTO boms(warehouse_id,product_id,name,base_quantity,base_unit,loss_method,note,enabled,created_by_name,updated_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(req.warehouse.id, body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.loss_method, body.note.trim(), body.enabled, owner, owner, at, at).lastInsertRowid);
+    } else id = Number(db.prepare('INSERT INTO boms(warehouse_id,product_id,name,base_quantity,base_unit,loss_method,note,enabled,created_by_name,updated_by_name,created_at,updated_at,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,' + nextTopOrder('boms') + ')')
+      .run(req.warehouse.id, body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.loss_method, body.note.trim(), body.enabled, owner, owner, at, at, req.warehouse.id).lastInsertRowid);
     const routeId = routeBinding(db, req.warehouse.id, req.body.route_override_id, existing?.route_override_id ?? null);
     db.prepare('UPDATE boms SET route_override_id=? WHERE id=?').run(routeId, id);
     const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,loss_rate,unit,note,position,usage_mode,child_bom_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
@@ -312,6 +322,7 @@ export function installBom(app, db) {
     return getBom(db, req.warehouse.id, id);
   };
   app.get('/api/boms', route(req => listBoms(db, req.warehouse.id, req.query)));
+  app.post('/api/boms/reorder', route(req => reorderRows(db, 'boms', req.warehouse.id, req.body.ids, fail, 'BOM'), true));
   app.get('/api/boms/:id', route(current));
   app.get('/api/boms/:id/process-overview', route(req => bomProcessOverview(db, req.warehouse.id, Number(req.params.id))));
   app.post('/api/boms', route(req => save(req), true));

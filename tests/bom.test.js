@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { parseBomQuantity, bomRequiredQuantity, validateBomLossRate } from '../shared/bom.js';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
+import { DatabaseSync } from 'node:sqlite';
+import { migrateSortOrder } from '../server/custom-order.js';
 import { bomCSV } from '../src/bom-csv.js';
 import { parseCSV } from '../src/data-files.js';
 
@@ -58,6 +60,10 @@ test('BOM maintenance is idempotent, warehouse-scoped, searchable and does not c
     const list = (await f.request('/boms?q=' + q)).data;
     assert.equal(list.total, 1); assert.equal(list.boms[0].id, bom.id);
   }
+  const sorted = async sort => (await f.request('/boms?sort=' + sort)).data.boms.map(b => b.id);
+  for (const sort of ['custom', 'updated_desc', 'updated_asc', 'created_desc', 'created_asc', 'name_asc', 'name_desc'])
+    assert.deepEqual(await sorted(sort), [bom.id]);
+  assert.equal((await f.request('/boms?sort=name;drop')).status, 400);
   const other = (await f.request('/warehouses', { name: 'BOM分仓' })).data.id;
   assert.equal((await f.request('/boms', undefined, { warehouseId: other })).data.total, 0);
   assert.equal((await f.request(`/boms/${bom.id}`, undefined, { warehouseId: other })).status, 404);
@@ -510,4 +516,41 @@ test('selected BOM graph rejects cycles, wrong child identity and unsupported sc
   assert.equal(disabledSelection.status, 400); assert.match(disabledSelection.data.error, /已停用/);
   const stockRoot = await f.create({ name: '直接领用配方', items: [{ product_id: f.material, quantity: 1, unit: '个', note: '' }] });
   assert.equal((await f.request(`/boms/${stockRoot.id}/calculate`, { production_quantity: 1 })).status, 200);
+});
+
+test('custom BOM order starts with new BOMs, persists drags and is unaffected by edits', async t => {
+  const f = await fixture(t);
+  const products = [f.parent];
+  for (const code of ['PROD-2', 'PROD-3', 'PROD-4', 'PROD-5']) products.push(await f.product(code));
+  const boms = [];
+  for (const [index, product_id] of products.entries()) boms.push((await f.create({ product_id, name: `配方${index + 1}` })).id);
+  const ids = async (query = '') => (await f.request('/boms' + query)).data.boms.map(b => b.id);
+  const reversed = [...boms].reverse();
+  assert.deepEqual(await ids(), reversed);
+  const [e, d, c, b, a] = reversed;
+  assert.equal((await f.command('/boms/reorder', { ids: [a, e, d, c, b] })).status, 200);
+  assert.deepEqual(await ids(), [a, e, d, c, b]);
+  const bom = (await f.request(`/boms/${c}`)).data;
+  assert.equal((await f.command(`/boms/${c}/status`, { version: bom.version, enabled: 0 })).status, 200);
+  assert.deepEqual(await ids(), [a, e, d, c, b], 'edits keep manual order');
+  assert.deepEqual(await ids('?sort=updated_desc'), [c, ...(await ids('?sort=updated_desc')).filter(id => id !== c)]);
+  assert.equal((await f.command('/boms/reorder', { ids: [b, d] })).status, 200);
+  assert.deepEqual(await ids(), [a, e, b, c, d]);
+  const created = (await f.create({ product_id: f.parent, name: '新配方' })).id;
+  assert.deepEqual(await ids(), [created, a, e, b, c, d]);
+  for (const bad of [[a], [a, a], [a, -1], [a, 1.5], 'x']) assert.equal((await f.command('/boms/reorder', { ids: bad })).status, 400, JSON.stringify(bad));
+  assert.equal((await f.command('/boms/reorder', { ids: [a, 99999] })).status, 409);
+  const other = (await f.request('/warehouses', { name: 'BOM排序分仓' })).data.id;
+  assert.equal((await f.command('/boms/reorder', { ids: [a, b] }, { warehouseId: other })).status, 409);
+  assert.deepEqual(await ids(), [created, a, e, b, c, d]);
+});
+
+test('existing BOMs and routes keep their recently-updated order when the custom order column is added', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec("CREATE TABLE t(id INTEGER PRIMARY KEY, warehouse_id INTEGER, updated_at TEXT)");
+  db.exec("INSERT INTO t VALUES (1,1,'2024-01-01'),(2,1,'2024-03-01'),(3,2,'2024-02-01'),(4,1,'2024-02-01')");
+  migrateSortOrder(db, 't');
+  migrateSortOrder(db, 't');
+  assert.deepEqual(db.prepare('SELECT id FROM t WHERE warehouse_id=1 ORDER BY sort_order').all().map(r => r.id), [2, 4, 1]);
+  assert.equal(db.prepare('SELECT sort_order FROM t WHERE id=3').get().sort_order, 1);
 });

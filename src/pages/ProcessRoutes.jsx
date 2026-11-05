@@ -5,6 +5,7 @@ import { Plus, ArrowLeft, GitBranch, Sparkles, Link2, Trash2 } from 'lucide-reac
 import { Button, PageHeading, QueryStatus, Badge } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { Select } from '../Dropdown.jsx';
+import { SortHandle, useSortableList } from '../components/SortableList.jsx';
 import { useQuery, queryPath } from '../queries.js';
 import { api } from '../api.js';
 import { useBusiness } from '../business-api.js';
@@ -19,12 +20,24 @@ import './bom.css';
 export function ProcessRoutes({ data }) {
   useLocale();
   const action = useBusiness();
-  const [q, setQ] = useState(''), [productionType, setProductionType] = useState('成品'), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
+  const [q, setQ] = useState(''), [productionType, setProductionType] = useState('成品'), [status, setStatus] = useState('all'), [sort, setSort] = useState('custom'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [selected, setSelected] = useState('');
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph'), [connecting, setConnecting] = useState(null), [message, setMessage] = useState('');
   const queryData = useMemo(() => ({ ...data, routeRevision: revision }), [data, revision]);
   const templates = useQuery(editor ? '/process-routes/acceptance-templates' : null, data);
-  const list = useQuery(queryPath('/process-routes', { q, production_type: productionType, status, offset }), queryData, 150);
+  const list = useQuery(queryPath('/process-routes', { q, production_type: productionType, status, sort, offset }), queryData, 150);
+  const sortable = useSortableList({
+    items: list.result?.routes,
+    enabled: sort === 'custom' && !action.busy,
+    onReorder: async ids => {
+      let saved = false;
+      await action.run(async () => {
+        await action.send('/process-routes/reorder', { ids }, { warehouseId: data.warehouse_id });
+        saved = true;
+      });
+      return saved;
+    },
+  });
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
   useEffect(() => {
@@ -66,13 +79,24 @@ export function ProcessRoutes({ data }) {
             <option value="enabled">{t('route.enabled')}</option>
             <option value="disabled">{t('route.disabled')}</option>
           </Select>
+          <Select aria-label={t('route.sortBy')} value={sort} onChange={next => { setSort(next); setOffset(0); }}>
+            <option value="custom">{t('route.sortCustom')}</option>
+            <option value="updated_desc">{t('route.sortUpdatedDesc')}</option>
+            <option value="updated_asc">{t('route.sortUpdatedAsc')}</option>
+            <option value="created_desc">{t('route.sortCreatedDesc')}</option>
+            <option value="created_asc">{t('route.sortCreatedAsc')}</option>
+            <option value="name_asc">{t('route.sortNameAsc')}</option>
+            <option value="name_desc">{t('route.sortNameDesc')}</option>
+          </Select>
         </div>
       </div>
       <QueryStatus query={list} />
+      {!!list.result?.routes.length && <p className="bom-hint sort-hint">{t(sort === 'custom' ? 'route.dragSortHint' : 'route.dragSortDisabledHint')}</p>}
       <div className="process-route-list">
-        {list.result?.routes.map(route => <article key={route.id} className="process-operation process-route-card">
+        {sortable.ordered.map(route => <article key={route.id} className="process-operation process-route-card" {...sortable.itemProps(route.id)}>
           <div className="process-route-card-top">
             <div className="process-route-card-title">
+              {sort === 'custom' && <SortHandle sortable={sortable} id={route.id} label={t('route.dragToSort')} />}
               <h2>{route.name}</h2>
               <Badge tone={route.enabled ? 'green' : 'gray'}>{t(route.enabled ? 'route.enabled' : 'route.disabled')}</Badge>
               <span className="process-meta-pill">{t('route.version', { version: route.version })}</span>
