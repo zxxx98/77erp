@@ -32,6 +32,125 @@ async function fixture(page, fractional = false) {
   return { base, db, post, order, link, longName, get, close: async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); } };
 }
 
+test('desktop registration drawer preserves detail, guards drafts and closes after reporting', async ({ page }) => {
+  const f = await fixture(page);
+  try {
+    await page.goto(`${f.base}/#production?order=${f.order.id}`);
+    const opener = page.getByRole('button', { name: '登记', exact: true });
+    await opener.click();
+    const drawer = page.getByRole('dialog', { name: '生产登记', exact: true });
+    await expect(drawer).toBeVisible();
+    await expect(page.locator('.production-detail-header')).toBeAttached();
+    await drawer.getByRole('button', { name: '选择工序', exact: true }).click();
+    await drawer.getByRole('searchbox').fill('半成品配方');
+    await drawer.locator('.registration-option-row').filter({ hasText: f.longName }).getByRole('radio').click();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    const quantity = drawer.getByLabel('本次数量', { exact: true });
+    const pickerHeight = await drawer.locator('.registration-picker-trigger').evaluate(element => element.getBoundingClientRect().height);
+    const quantityHeight = await quantity.evaluate(element => element.getBoundingClientRect().height);
+    expect(pickerHeight).toBe(44);
+    expect(quantityHeight).toBe(pickerHeight);
+    await quantity.fill('2');
+    await page.screenshot({ path: test.info().outputPath('desktop-registration-selected.png') });
+    page.once('dialog', dialog => dialog.dismiss());
+    await drawer.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(quantity).toHaveValue('2');
+    await drawer.locator('.registration-details summary').click();
+    await page.setViewportSize({ width: 1000, height: 600 });
+    await drawer.locator('.registration-drawer-body').evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await expect(drawer.getByRole('button', { name: '提交登记', exact: true })).toBeInViewport();
+    await page.screenshot({ path: test.info().outputPath('desktop-registration-drawer.png') });
+    let releaseReport;
+    const pendingReport = new Promise(resolve => { releaseReport = resolve; });
+    await page.route('**/api/production-orders/*/operations/report', async route => { await pendingReport; await route.continue(); });
+    await drawer.getByRole('button', { name: '提交登记', exact: true }).click();
+    await expect(drawer.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeVisible();
+    releaseReport();
+    await expect(drawer).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    await expect(page.getByRole('status').filter({ hasText: '已登记' })).toBeVisible();
+    expect((await f.get()).operation_routes.find(route => route.path === '1').reports).toHaveLength(1);
+    await opener.click();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+  } finally { await f.close(); }
+});
+
+test('desktop registration drawer restores progress scroll and its expanded operation', async ({ page }) => {
+  const f = await fixture(page);
+  try {
+    await page.setViewportSize({ width: 1440, height: 600 });
+    await page.goto(`${f.base}/#production?order=${f.order.id}`);
+    const tab = page.getByRole('tab', { name: '生产进度', exact: true });
+    await tab.click();
+    const half = page.locator('.production-progress-item').filter({ has: page.getByRole('button', { name: '查看批次 半成品', exact: true }) });
+    const disclosure = half.locator('details').filter({ hasText: '工序进度与登记' });
+    await disclosure.locator('summary').click();
+    const opener = half.getByRole('button', { name: `登记 ${f.longName}`, exact: true });
+    await opener.scrollIntoViewIfNeeded();
+    const scroll = await page.evaluate(() => window.scrollY);
+    await opener.click();
+    const drawer = page.getByRole('dialog', { name: '生产登记', exact: true });
+    await expect(drawer.locator('.registration-picker-trigger')).toContainText(f.longName);
+    await drawer.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(opener).toBeFocused();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    await expect(disclosure).toHaveAttribute('open', '');
+    expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
+    await half.getByRole('button', { name: '查看工序记录', exact: true }).click();
+    const operations = page.locator('.production-stages.process-page');
+    await page.getByRole('button', { name: '工序列表', exact: true }).click();
+    await operations.getByRole('button', { name: `登记工序 ${f.longName}`, exact: true }).click();
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(operations).toBeVisible();
+  } finally { await f.close(); }
+});
+
+test('desktop registration drawer retains failed drafts and stays open after reload', async ({ page }) => {
+  const f = await fixture(page);
+  try {
+    await page.goto(`${f.base}/#production?order=${f.order.id}`);
+    await page.getByRole('button', { name: '登记', exact: true }).click();
+    const drawer = page.getByRole('dialog', { name: '生产登记', exact: true });
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole('button', { name: '选择工序', exact: true }).click();
+    await drawer.getByRole('searchbox').fill('半成品配方');
+    await drawer.locator('.registration-option-row').filter({ hasText: f.longName }).getByRole('radio').click();
+    const quantity = drawer.getByLabel('本次数量', { exact: true });
+    await quantity.fill('2');
+    const order = await f.get();
+    await f.post(`/production-orders/${order.id}/operations/report`, { version: order.version, path: '1', operation_node_id: 'n0', quantity: 1 });
+    await drawer.getByRole('button', { name: '提交登记', exact: true }).click();
+    await expect(drawer.getByRole('alert')).toBeVisible();
+    await expect(quantity).toHaveValue('2');
+    page.once('dialog', dialog => dialog.accept());
+    await drawer.getByRole('button', { name: '重新读取生产单', exact: true }).click();
+    await expect(quantity).toHaveValue('');
+    await expect(drawer).toBeVisible();
+    await quantity.fill('1');
+    page.once('dialog', dialog => dialog.accept());
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+    expect((await f.get()).operation_routes.find(route => route.path === '1').reports).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+for (const mode of ['iPhone 13', 'Pixel 7']) test(`${mode} detail registration remains a standalone page`, async ({ browser }) => {
+  const context = await browser.newContext({ ...devices[mode], locale: 'zh-CN' });
+  const page = await context.newPage(), f = await fixture(page);
+  try {
+    await page.goto(`${f.base}/#production?order=${f.order.id}`);
+    await page.getByRole('button', { name: '登记', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '返回单据详情', exact: true })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('mobile-registration-page.png'), fullPage: true });
+  } finally { await f.close(); await context.close(); }
+});
+
 for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fractional output consumes exact BOM materials`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage(), fixtureData = await fixture(page, true);
@@ -127,7 +246,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} unf
     if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
     await page.getByRole('button', { name: '选择工序', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '选择工序', exact: true });
-    const scroller = mode === 'desktop' ? dialog : dialog.locator('.form-body');
+    const scroller = dialog.locator('.form-body');
     await expect(dialog.getByRole('radio')).toHaveCount(8);
     await expect(dialog.getByRole('radio').nth(1)).toBeEnabled();
     await expect(dialog.getByRole('radio').nth(1)).toHaveAccessibleName(/可报 0 件/);

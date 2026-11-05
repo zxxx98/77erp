@@ -94,6 +94,8 @@ export default {
   'route.multiplierHint': ['用于工资统计，不影响产量和耗料。', 'For payroll calculations; does not affect output or material usage.', 'Dùng để tính lương; không ảnh hưởng sản lượng hoặc tiêu hao.'],
   'registration.enterQuantity': ['请输入本次完成数量', 'Enter the completed quantity', 'Nhập số lượng hoàn thành'],
   'registration.submit': ['提交登记', 'Submit report', 'Gửi ghi nhận'],
+  'registration.savedDrawer': ['已登记 {{name}}：{{quantity}} {{unit}}。', 'Reported {{name}}: {{quantity}} {{unit}}.', 'Đã ghi {{name}}: {{quantity}} {{unit}}.'],
+  'registration.noMatches': ['没有匹配的工序，请尝试其他关键词。', 'No matching operations. Try another search.', 'Không có công đoạn phù hợp. Hãy thử từ khóa khác.'],
   'registration.more': ['更多信息 / 调整用料', 'More / Adjust usage', 'Thông tin thêm / Điều chỉnh tiêu hao'],
   'registration.standardUsage': ['用料按本次数量和配方标准自动带出，可展开调整实际用料及余料。', 'Usage is filled from this quantity and the recipe. Expand to adjust actual usage and scrap.', 'Tiêu hao được điền theo số lượng và định mức BOM. Mở rộng để chỉnh tiêu hao và phế liệu thực tế.'],
   'registration.pendingReceipt': ['成品登记后待仓库批准入库。', 'Finished output awaits warehouse receipt approval.', 'Thành phẩm chờ kho duyệt nhập sau khi ghi nhận.'],

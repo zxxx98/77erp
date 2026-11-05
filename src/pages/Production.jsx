@@ -39,6 +39,7 @@ import { MaterialDocumentList } from '../features/ProductionMaterialDocuments.js
 import { ProductionReceiptList } from '../features/ProductionReceipts.jsx';
 import { useProductionRegistration, ProductionRegistrationQr } from '../features/ProductionRegistration.jsx';
 import { ProductionQuickRegistration } from '../features/ProductionQuickRegistration.jsx';
+import { mobileDevice } from '../device.js';
 import { ProductionStages } from '../features/ProductionStages.jsx';
 import { downloadProductionPdf } from '../production-pdf.js';
 import './bom.css';
@@ -143,6 +144,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const [q, setQ] = useState(''), [status, setStatus] = useState('all'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState(null), [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [message, setMessage] = useState('');
   const [stageActivity, setStageActivity] = useState(null);
+  const [registrationDrawer, setRegistrationDrawer] = useState(null);
+  const [registrationActivity, setRegistrationActivity] = useState(null);
   const [linkLoading, setLinkLoading] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [moreOpen, setMoreOpen] = useState(false);
@@ -159,7 +162,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
   // A workspace refresh after warehouse approval must refresh an open detail too.
   // Leave edits untouched; their version is checked when submitted.
-  const detailId = detail?.id, editing = !!editor;
+  const detailId = detail?.id, editing = !!editor || !!registrationDrawer;
   useEffect(() => {
     if (!detailId || editing || action.busy) return;
     const controller = new AbortController();
@@ -285,8 +288,14 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity, items.map(item => ({ ...item, quantity: item.quantity })))), disposition: 'stock' }));
     return { items, scraps };
   };
-  const beginCompletion = (targetId) => begin({ kind: 'quick_registration', targetId: typeof targetId === 'string' ? targetId : undefined });
-  const registration = useProductionRegistration({ data, onSwitchWarehouse, navigationState: stageActivity || editor, navigationBusy: action.busy || !!stageActivity?.busy, onError: action.setError, onOrder: order => {
+  const beginCompletion = (targetId) => {
+    const selection = { targetId: typeof targetId === 'string' ? targetId : undefined };
+    if (mobileDevice) return begin({ kind: 'quick_registration', ...selection });
+    setMoreOpen(false); setMessage(''); action.setError('');
+    setRegistrationDrawer({ ...selection, session: ++stageSession.current });
+  };
+  const registration = useProductionRegistration({ data, onSwitchWarehouse, navigationState: registrationActivity || stageActivity || editor, navigationBusy: action.busy || !!registrationActivity?.busy || !!stageActivity?.busy, onError: action.setError, onOrder: order => {
+    setRegistrationDrawer(null);
     setMoreOpen(false);
     if (detail?.id !== order.id) setDetailTab('overview');
     setDetail(order); setEditor(null); setMessage(''); action.setError('');
@@ -375,7 +384,15 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const heading = (title, description, label = pt("production.backToProductionOrders")) => <PageHeading title={title} description={description}>
     <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{label}</Button>
   </PageHeading>;
-  const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}</>;
+  const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
+    {registrationDrawer && <ProductionQuickRegistration key={`${detail.id}:${registrationDrawer.session}`} presentation="drawer" order={detail} data={listData}
+      initialTargetId={registrationDrawer.targetId} onActivity={setRegistrationActivity} onBack={() => setRegistrationDrawer(null)}
+      onSaved={async (order, stockChanged, notice) => {
+        setDetail(order); setRevision(value => value + 1);
+        if (notice) { setRegistrationDrawer(null); setMessage(notice); }
+        if (stockChanged) await onChanged?.();
+      }} />}
+  </>;
 
   if (linkLoading) return <p role="status">{pt('production.loadingProductionOrder')}</p>;
 

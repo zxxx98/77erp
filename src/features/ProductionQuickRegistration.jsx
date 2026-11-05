@@ -23,9 +23,9 @@ import './production-registration.css';
 const count = value => formatExactQuantity(value, getFormatLocale());
 const itemKey = (order, item) => order.stage_workflow ? item.path : item.product_id;
 
-function OperationName({ target }) {
+function OperationName({ target, compact = false }) {
   return <span className="registration-operation-name"><strong>{target.name}</strong>
-    {(target.context || target.showPath || target.showStep) && <small>{[
+    {!compact && (target.context || target.showPath || target.showStep) && <small>{[
       target.context,
       target.showPath && t('registration.layer', { path: target.path || t('production.finalProduct') }),
       target.showStep && t('registration.step', { step: target.step }),
@@ -33,8 +33,9 @@ function OperationName({ target }) {
   </span>;
 }
 
-export function ProductionQuickRegistration({ order, data, initialTargetId, onSaved, onBack, onActivity }) {
+export function ProductionQuickRegistration({ order, data, initialTargetId, onSaved, onBack, onActivity, presentation = 'page' }) {
   useLocale();
+  const drawer = presentation === 'drawer';
   const { user, can } = usePermissions();
   const action = useBusiness();
   const acceptance=useOperationAcceptance();
@@ -126,8 +127,9 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...await acceptance.enrich(`/production-orders/${order.id}${suffix}`,body,{warehouseId:data.warehouse_id}),
         }, { warehouseId: data.warehouse_id });
         clear();
-        setMessage(t('registration.saved', { name: target.name, quantity: count(value), unit: target.unit }));
-        await onSaved(result, target.output);
+        const notice = t(drawer ? 'registration.savedDrawer' : 'registration.saved', { name: target.name, quantity: count(value), unit: target.unit });
+        setMessage(notice);
+        await onSaved(result, target.output, notice);
       } catch (error) { if (target.output) setExpanded(true); throw error; }
     });
   };
@@ -139,37 +141,49 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
         : t('registration.completed', { quantity: count(row.node?.completed_quantity ?? row.layer.completed_quantity ?? 0), unit: row.unit })}</span></span>
     </Radio></div>)}
   </div>;
-  return <div className="production-quick-registration">
-    {acceptance.dialog}
-    <PageHeading title={t('production.productionRegistration')} description={`${order.number} · ${order.product_name}`}>
-      <Button icon={ArrowLeft} disabled={action.busy} onClick={() => leave(onBack)}>{t('production.backToOrderDetails')}</Button>
-    </PageHeading>
-    <form onSubmit={submit} className="registration-form">
+  const filteredTargets = targets.filter(row => `${row.name} ${row.context} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const pickerContent = <>
+    <Input type="search" aria-label={t('registration.search')} placeholder={t('registration.search')} value={search} onChange={event => setSearch(event.target.value)} />
+    {choices(filteredTargets)}
+    {!filteredTargets.length && <p className="bom-hint" role="status">{t('registration.noMatches')}</p>}
+  </>;
+  const reload = <details className="production-disclosure registration-tools-disclosure" open={!!action.error}><summary><span>{t('production.registrationTools')}</span><ChevronDown className="registration-details-chevron" size={14} aria-hidden="true" /></summary><div className="registration-tools-body"><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
+    const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
+    clear(); setMessage(''); await onSaved(latest, false);
+  }))}>{t('production.reloadProductionOrder')}</Button></div></details>;
+  const form = <form onSubmit={submit} className="registration-form">
+    <div className={drawer ? 'form-body registration-drawer-body' : undefined}>
       <div className="registration-workspace-grid">
         <section className="panel bom-section registration-step-block">
           <div className="bom-section-heading registration-section-head">
             <h2>{t('registration.chooseOperation')}</h2>
           </div>
-          {targets.length <= 6 ? choices(targets) : <Button className="registration-picker-trigger" disabled={action.busy || !registerable} onClick={() => { setSearch(''); setPicker(true); }}>
-            {target ? <OperationName target={target} /> : t('registration.chooseOperation')}<ChevronDown size={18} aria-hidden="true" />
+          {targets.length <= 6 ? choices(targets) : <Button className="registration-picker-trigger" title={drawer ? target?.name : undefined} aria-expanded={picker} disabled={action.busy || !registerable} onClick={() => { setSearch(''); setPicker(value => !value); }}>
+            {target ? <OperationName target={target} compact={drawer} /> : t('registration.chooseOperation')}<ChevronDown size={18} aria-hidden="true" />
           </Button>}
-          {picker && <Modal title={t('registration.chooseOperation')} className="registration-picker-modal" onClose={() => setPicker(false)}>
-            <div className="form-body"><Input type="search" aria-label={t('registration.search')} placeholder={t('registration.search')} value={search} onChange={event => setSearch(event.target.value)} />
-              {choices(targets.filter(row => `${row.name} ${row.context} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())))}
+          {picker && (drawer ? <div className="registration-inline-picker">{pickerContent}</div> : <Modal title={t('registration.chooseOperation')} className="registration-picker-modal" onClose={() => setPicker(false)}>
+            <div className="form-body">{pickerContent}</div>
+          </Modal>)}
+          {drawer && target && <div className="registration-drawer-context">
+            <p>{[target.bomName, target.routeName, !target.postProcessing && t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>
+            <div className="registration-drawer-quantities">
+              {target.node?.available_quantity != null && <strong>{t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })}</strong>}
+              <span>{t('registration.completed', { quantity: count(exactQuantity(target.node || target.layer, 'completed_quantity')), unit: target.unit })}</span>
             </div>
-          </Modal>}
+            {target.node?.note && <p className="registration-operation-note">{target.node.note}</p>}
+          </div>}
         </section>
         <section className="panel bom-section registration-quantity-block">
-          <div className="bom-section-heading registration-section-head">
+          {!drawer && <div className="bom-section-heading registration-section-head">
             <h2>{t('registration.quantity')}</h2>
             {target && <span className="bom-hint registration-selected-target">{target.name}</span>}
-          </div>
+          </div>}
           <label className="registration-quantity-label">{t('registration.quantity')}{target && `（${target.unit}）`}
             <Input aria-label={t('registration.quantity')} inputMode={target?.postProcessing ? 'numeric' : 'text'} value={quantity} placeholder={t('registration.enterQuantity')}
               disabled={action.busy || !target || !registerable || outputLocked} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
           </label>
           <div className="registration-context-box">
-            <p className="bom-hint registration-meta-line">{target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
+            <p className="bom-hint registration-meta-line">{!drawer && target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
             <p className="bom-hint">{t(target?.postProcessing ? 'production.postProcessingInteger' : 'production.fractionRegistrationHint')}</p>
             {outputLocked && <p className="bom-warning">{t('production.outputRegistrationLocked')}</p>}
             {target?.output && <p className="bom-hint">{t('registration.standardUsage')}{!target.path && ` ${t('registration.pendingReceipt')}`}</p>}
@@ -184,10 +198,10 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
         <summary><span>{t('registration.more')}</span><ChevronDown className="registration-details-chevron" size={16} aria-hidden="true" /></summary>
         <div className="registration-details-body">
           <div className="registration-details-meta">
-            {target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.postProcessing ? t('production.postProcessing') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
+            {!drawer && target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.postProcessing ? t('production.postProcessing') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
             {can('production') && target?.node && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
           </div>
-          {target?.node?.note && <p className="production-note registration-operation-note">{target.node.note}</p>}
+          {!drawer && target?.node?.note && <p className="production-note registration-operation-note">{target.node.note}</p>}
           {target?.output && <div className="registration-output-materials">
             <div className="registration-materials-header">
               <h3>{t('production.verifyInputsForThisLevel')}</h3>
@@ -220,13 +234,22 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       </details>
       {action.error && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
       {message && <p className="bom-success" role="status">{message}</p>}
-      <div className="registration-footer-actions">
-        <details className="production-disclosure registration-tools-disclosure" open={!!action.error}><summary><span>{t('production.registrationTools')}</span><ChevronDown className="registration-details-chevron" size={14} aria-hidden="true" /></summary><div className="registration-tools-body"><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
-          const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
-          clear(); setMessage(''); await onSaved(latest, false);
-        }))}>{t('production.reloadProductionOrder')}</Button></div></details>
+      {drawer && reload}
+    </div>
+      <div className={drawer ? 'modal-footer registration-drawer-footer' : 'registration-footer-actions'}>
+        {drawer ? <Button disabled={action.busy} onClick={() => leave(onBack)}>{t('production.cancel')}</Button> : reload}
         <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable || outputLocked}>{t('registration.submit')}</Button>
       </div>
-    </form>
+    </form>;
+  if (drawer) return <Modal presentation="drawer" className="production-registration-drawer" title={t('production.productionRegistration')}
+    subtitle={`${order.number} · ${order.product_name}`} onClose={() => leave(onBack)}>
+    {form}{acceptance.dialog}
+  </Modal>;
+  return <div className="production-quick-registration">
+    {acceptance.dialog}
+    <PageHeading title={t('production.productionRegistration')} description={`${order.number} · ${order.product_name}`}>
+      <Button icon={ArrowLeft} disabled={action.busy} onClick={() => leave(onBack)}>{t('production.backToOrderDetails')}</Button>
+    </PageHeading>
+    {form}
   </div>;
 }

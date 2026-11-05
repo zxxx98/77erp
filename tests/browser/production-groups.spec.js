@@ -93,7 +93,8 @@ test('admin configures groups, strict positions, optional employee membership an
     const editor = page.getByRole('dialog', { name: '新增岗位', exact: true });
     await editor.getByLabel('岗位名称', { exact: true }).fill('新增登记岗位');
     await choose(page, editor.getByRole('combobox', { name: '访问模式', exact: true }), '仅生产作业');
-    const checks = editor.getByRole('checkbox');
+    await expect(editor.getByRole('checkbox', { name: /^工序验收/ })).toBeEnabled();
+    const checks = editor.getByRole('checkbox', { name: /^(?!工序验收)/ });
     for (const check of await checks.all()) await expect(check).toBeDisabled();
     await expect(editor.getByRole('checkbox', { name: /^本组生产登记/ })).toBeChecked();
     await editor.getByRole('button', { name: '保存岗位', exact: true }).click();

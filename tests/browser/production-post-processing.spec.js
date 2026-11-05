@@ -78,7 +78,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} bin
     await page.getByLabel('本次数量', { exact: true }).fill('101');
     await button('提交登记').click();
     await expect(page.getByRole('status').filter({ hasText: '已登记 后处理成品' })).toBeVisible();
-    await button('返回单据详情').click();
+    if (mode !== 'desktop') await button('返回单据详情').click();
     await more();
     await expect(dialog('更多操作')).toContainText('包装还需 5 次');
     await expect(dialog('更多操作')).toContainText('贴标还需 2 次');
@@ -103,11 +103,12 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} bin
     await page.getByLabel('本次数量', { exact: true }).fill('6');
     await button('提交登记').click();
     await expect(page.getByRole('status').filter({ hasText: '已登记 包装' })).toContainText('6 次');
+    if (mode === 'desktop') await button('登记').click();
     await page.getByRole('radio', { name: /贴标.*后处理工序/ }).click();
     await page.getByLabel('本次数量', { exact: true }).fill('3');
     await button('提交登记').click();
     await expect(page.getByRole('status').filter({ hasText: '已登记 贴标' })).toContainText('3 次');
-    await button('返回单据详情').click();
+    if (mode !== 'desktop') await button('返回单据详情').click();
     await more();
     await expect(button('结束生产', dialog('更多操作'))).toBeEnabled();
     await button('结束生产', dialog('更多操作')).click();
@@ -117,7 +118,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} bin
     expect(order.status).toBe('completed');
     expect(order.receipt_documents).toHaveLength(1);
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
-    await packing.locator('summary').click();
+    if (!await packing.locator('summary').evaluate(element => element.parentElement.open)) await packing.locator('summary').click();
     await button('查看工序记录', packing).click();
     await expect(page.locator('.process-history-card')).toContainText('包装 · 6 次');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -1,4 +1,53 @@
 .production-quick-registration { min-width: 0; }
+/* Only in-context desktop registration opts into this compact drawer. */
+html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px; }
+.production-registration-drawer .registration-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+  margin-bottom: 24px;
+}
+.production-registration-drawer .registration-workspace-grid > .bom-section {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.production-registration-drawer .registration-quantity-label { font-size: 15px; color: #17243c; }
+.production-registration-drawer .registration-quantity-label input { min-height: 44px; }
+.production-registration-drawer .registration-picker-trigger.btn {
+  height: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.production-registration-drawer .registration-picker-trigger .registration-operation-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.production-registration-drawer .registration-context-box { border: 0; padding-top: 0; }
+.production-registration-drawer .registration-details {
+  border: 0;
+  border-block: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  margin-bottom: 16px;
+}
+.production-registration-drawer .registration-details > summary { padding-inline: 0; }
+.production-registration-drawer .registration-details-body { padding-inline: 0; }
+.production-registration-drawer .registration-drawer-body { display: block; }
+.production-registration-drawer .registration-drawer-footer { justify-content: flex-end; gap: 12px; }
+.registration-inline-picker { display: grid; gap: 12px; margin-top: 12px; min-width: 0; }
+.registration-inline-picker .registration-operations {
+  max-height: min(360px, 45dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.registration-drawer-context { display: grid; gap: 10px; margin-top: 14px; color: #64748b; font-size: 13px; }
+.registration-drawer-context p { margin: 0; overflow-wrap: anywhere; line-height: 1.6; }
+.registration-drawer-quantities { display: flex; flex-wrap: wrap; gap: 8px 24px; font-variant-numeric: tabular-nums; }
+.registration-drawer-quantities strong { color: #17243c; font-weight: 600; }
 .registration-form {
   display: block;
   min-width: 0;

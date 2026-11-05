@@ -97,7 +97,7 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     expect(f.stock()).toBe(90);
     await page.goto(`${f.base}/#production`);
     await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
-    await expect(page.getByText('生产中', { exact: true })).toBeVisible();
+    await expect(page.locator('.production-detail-header').getByText('生产中', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '登记', exact: true }).click();
     await page.getByLabel('本次数量', { exact: true }).fill('3');
     await adjustUsage(page);

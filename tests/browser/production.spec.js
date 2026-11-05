@@ -277,7 +277,7 @@ test('concurrent changes preserve completion input and production-only employees
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '重新读取生产单', exact: true }).click();
     await expect(page.getByLabel('本次数量', { exact: true })).toHaveValue('');
-    await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
+    await page.getByRole('dialog', { name: '生产登记', exact: true }).getByRole('button', { name: '取消', exact: true }).click();
     await expect(page.getByText('另一人已修改', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '登记', exact: true }).click();
     await page.getByLabel('本次数量', { exact: true }).fill('10');

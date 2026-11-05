@@ -37,18 +37,25 @@ async function fixture(page) {
   return {base,db,position,draft,link,objects,route,template,close:async()=>{await notifications.stop();await r2Backup.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}};
 }
 
-for(const mode of ['desktop','mobile','pwa']) test(`${mode} requires an inspector and atomically registers a completed acceptance form`,async({browser})=>{
-  const context=await browser.newContext({locale:'zh-CN',...(mode==='desktop'?{}:devices['iPhone 13']),serviceWorkers:mode==='pwa'?'allow':'block'});
+for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} requires an inspector and atomically registers a completed acceptance form`,async({browser})=>{
+  const context=await browser.newContext({locale:'zh-CN',...(['desktop','drawer'].includes(mode)?{}:devices['iPhone 13']),serviceWorkers:mode==='pwa'?'allow':'block'});
   if(mode==='pwa') await context.addInitScript(()=>{const match=window.matchMedia.bind(window);window.matchMedia=query=>{const result=match(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
   const page=await context.newPage(),f=await fixture(page),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const openRegistration=async()=>{
+    await page.goto(mode==='drawer'?`${f.base}/#production?order=${f.draft.id}`:f.link);
+    if(mode==='drawer'){
+      await page.reload();
+      await page.getByRole('button',{name:'登记',exact:true}).click();
+    }
+  };
   try{
-    await page.goto(f.link);await expect(page.getByRole('heading',{name:'生产登记',exact:true})).toBeVisible();
+    await openRegistration();await expect(page.getByRole('heading',{name:'生产登记',exact:true})).toBeVisible();
     const dialogPromise=page.waitForEvent('dialog');
     const click=page.locator('.registration-operation').filter({hasText:'下料'}).click();
     const denied=await dialogPromise;expect(denied.message()).toBe('该工序需要验收，请通知验收员');await denied.accept();await click;
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_operation_reports').get().n).toBe(0);
     f.db.prepare('UPDATE positions SET permissions=? WHERE id=?').run(JSON.stringify(['production_register','operation_accept']),f.position.id);
-    await page.goto(f.link);await page.locator('.registration-operation').filter({hasText:'下料'}).click();
+    await openRegistration();await page.locator('.registration-operation').filter({hasText:'下料'}).click();
     await page.getByLabel('本次数量',{exact:true}).fill('2');await page.getByRole('button',{name:'提交登记',exact:true}).click();
     let modal=page.getByRole('dialog',{name:'工序验收单',exact:true});await expect(modal).toBeVisible();
     await modal.getByRole('button',{name:'取消',exact:true}).click();await expect(modal).toHaveCount(0);
@@ -65,6 +72,7 @@ for(const mode of ['desktop','mobile','pwa']) test(`${mode} requires an inspecto
     expect(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n).toBe(1);
     const report=f.db.prepare('SELECT * FROM production_operation_reports').get();expect(report.quantity).toBe(2);expect(report.acceptance_id).toBeGreaterThan(0);
     const acceptance=f.db.prepare('SELECT result FROM quality_acceptances').get();expect(JSON.parse(acceptance.result).sheets[0].value.测量值).toBe(12);
+    if(mode==='drawer')await page.getByRole('button',{name:'登记',exact:true}).click();
     await page.locator('.registration-operation').filter({hasText:'最终检验'}).click();await page.getByLabel('本次数量',{exact:true}).fill('1');
     await page.getByRole('button',{name:'提交登记',exact:true}).click();modal=page.getByRole('dialog',{name:'工序验收单',exact:true});
     await modal.getByRole('button',{name:'字段填写',exact:true}).click();await modal.getByRole('textbox',{name:'测量值 · B1',exact:true}).fill('11');
