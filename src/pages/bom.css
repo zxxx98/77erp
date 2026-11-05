@@ -63,6 +63,11 @@
 .bom-calculation-result > .bom-warning { line-height: 1.7; }
 :where(.bom-calculation-result > .btn) { justify-self: start; }
 .bom-result-summary { font-size: 13px; margin-bottom: 16px; }
+.bom-result-summary-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.bom-result-summary-row .bom-result-summary { margin: 0; }
+.bom-result-summary.has-shortage { color: #b45309; font-weight: 600; }
+.bom-result-table tr.bom-shortage-row td { background: #fff7ed; }
+.bom-result-actions { justify-content: flex-end; }
 .bom-result-table { width: 100%; overflow-x: auto; }
 .bom-result-table table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 13px; }
 .bom-result-table th { background: #f7f8fa; color: #647084; font-weight: 500; }
@@ -88,6 +93,9 @@
   .bom-calculate-form { align-items: stretch; flex-direction: column; }
   :where(.bom-calculate-form > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { width: 100%; }
   .bom-calculation-result { gap: 16px; }
+  .bom-result-actions { width: 100%; }
+  .bom-result-actions > .btn-primary { flex: 1 1 100%; }
+  .bom-result-actions > .btn:not(.btn-primary), .bom-result-actions > .dropdown { flex: 1 1 auto; }
   :where(.bom-editor-actions > .btn) { flex: 1 1 auto; }
   .bom-result-table table, .bom-result-table tbody { display: block; min-width: 0; }
   .bom-result-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

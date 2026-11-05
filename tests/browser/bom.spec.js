@@ -127,6 +127,10 @@ for (const mobile of [false, true]) {
       await page.getByLabel('生产数量', { exact: true }).fill('10');
       await page.getByRole('button', { name: '开始测算', exact: true }).click();
       await expect(page.locator('.bom-result-summary')).toHaveText('共 3 种材料，2 种缺料。');
+      await page.getByRole('checkbox', { name: '只看缺料' }).check();
+      await expect(page.locator('.bom-result-table tbody tr')).toHaveCount(2);
+      await page.getByRole('checkbox', { name: '只看缺料' }).uncheck();
+      await expect(page.locator('.bom-result-table tbody tr')).toHaveCount(3);
       const rows = page.locator('.bom-result-table tbody tr');
       await expect(rows.nth(0).locator('td').nth(2)).toHaveText('10 块');
       await expect(rows.nth(0).locator('td').nth(4)).toHaveText('2 块');
@@ -361,6 +365,8 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) {
       await page.getByRole('button', { name: '开始测算', exact: true }).click();
       await expect(page.locator('.bom-result-summary')).toHaveText('共 1 种材料，0 种缺料。');
       await expect(page.locator('.bom-result-table tbody tr')).toContainText('6 颗');
+      await expect(page.locator('.bom-result-table tbody tr td').nth(1)).toContainText('标准损耗率');
+      await expect(page.getByRole('button', { name: /^查看 \d+ 条来源$/ })).toHaveCount(0);
       await expect(page.locator('.bom-warning')).toContainText('中间半成品库存未抵扣');
       await page.getByRole('tab', { name: '配方结构', exact: true }).click();
       await page.getByRole('button', { name: '进入分支 桌面材料', exact: true }).click();

@@ -50,15 +50,15 @@ function NodeDetails({ node, path, onClose }) {
   </section>;
 }
 
-export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true, isSnapshot = false, horizontal = false }) {
+export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true, isSnapshot = false, horizontal = false, hideGrossHint = false }) {
   useLocale();
   // Changing production quantity keeps the current view. Replacing a recipe or
   // snapshot starts at its root, since positional paths can name different goods.
   const identity = useMemo(() => JSON.stringify(nodes.map(node => [node.path, node.product_id, node.bom_id, node.bom_version, node.usage_mode, node.child_bom_id])), [nodes]);
-  return <StructureBrowser key={identity} nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={active} isSnapshot={isSnapshot} horizontal={horizontal} />;
+  return <StructureBrowser key={identity} nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={active} isSnapshot={isSnapshot} horizontal={horizontal} hideGrossHint={hideGrossHint} />;
 }
 
-function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot, horizontal }) {
+function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot, horizontal, hideGrossHint }) {
   useLocale();
   const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
@@ -205,7 +205,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
       </ZoomViewport>
       {selected && !narrow && <NodeDetails node={selected} path={fullPath(selected)} onClose={closeDetails} />}
     </div>
-    <p className="bom-hint">{pt("production.expandedByGrossRequirementsWithoutDeductingIntermediateStock2")}</p>
+    {!hideGrossHint && <p className="bom-hint">{pt("production.expandedByGrossRequirementsWithoutDeductingIntermediateStock2")}</p>}
     {/* Retain the drawer shell so closing during its opening animation still restores focus. */}
     {narrow && <Drawer title={pt("production.materialDetails")} placement="bottom" size="80vh" open={!!selected && active} onClose={closeDetails}
       mask={{ closable: preferences.closeDrawerOnBackdrop }}

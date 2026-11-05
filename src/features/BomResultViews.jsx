@@ -13,6 +13,6 @@ export function BomResultViews({ nodes, quantity, children }) {
   };
   return <Tabs className="bom-result-views" activeKey={view} onChange={setView} items={[
     { key: 'summary', label: pt("production.materialIssueSummary"), forceRender: true, children: children(showSources) },
-    { key: 'structure', label: pt("production.recipeStructure"), forceRender: true, children: <BomStructure nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={view === 'structure'} /> },
+    { key: 'structure', label: pt("production.recipeStructure"), forceRender: true, children: <BomStructure nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={view === 'structure'} hideGrossHint /> },
   ]} />;
 }

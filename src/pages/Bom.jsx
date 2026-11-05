@@ -60,7 +60,7 @@ function UsagePreview({ value, unit, lossRate, lossMethod }) {
 function BomCalculation({ bom, data, onBack, onCreateProduction }) {
   const { locale } = useLocale();
   const [outputLanguage, setOutputLanguage] = useState(null);
-  const [quantity, setQuantity] = useState(String(bom.base_quantity)), [snapshot, setSnapshot] = useState(null), [stale, setStale] = useState(false);
+  const [quantity, setQuantity] = useState(String(bom.base_quantity)), [snapshot, setSnapshot] = useState(null), [stale, setStale] = useState(false), [shortageOnly, setShortageOnly] = useState(false);
   const snapshotData = useRef(data);
   useEffect(() => {
     if (!snapshot || snapshotData.current === data) return;
@@ -91,7 +91,8 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
     </section>
     {snapshot && <section className="panel bom-section bom-calculation-result">
       <div className="bom-section-heading"><div><h2>{pt("production.materialRequirements")}</h2><p className="bom-hint">{snapshot.warehouse.name} {pt("production.stockReadAt")} {new Date(snapshot.captured_at).toLocaleString(getFormatLocale(), { hour12: false })}</p></div>
-        <div className="bom-actions">
+        <div className="bom-actions bom-result-actions">
+          {onCreateProduction && <Button kind="primary" disabled={stale} onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>{pt("production.createProductionOrderForThisQuantity")}</Button>}
           <Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}><option value="zh-CN">简体中文</option><option value="en">English</option><option value="vi">Tiếng Việt</option></Select>
           <Button icon={Download} onClick={() => downloadFile(bomCSV(snapshot, outputLanguage || locale), pt("production.materialPlanCsv", { v0: snapshot.product.barcode, v1: snapshot.captured_at.slice(0, 10) }), 'text/csv;charset=utf-8')}>{pt("production.exportMaterialPlan")}</Button>
           <Button icon={Download} onClick={() => downloadFile(bomStructureCSV(snapshot, outputLanguage || locale), pt("production.bomStructureCsv", { v0: snapshot.bom_id }), 'text/csv;charset=utf-8')}>{pt("production.exportStructureDetails")}</Button>
@@ -99,13 +100,19 @@ function BomCalculation({ bom, data, onBack, onCreateProduction }) {
       </div>
       {snapshot.multi_level && <p className="bom-warning">{pt("production.expandedByGrossRequirementsIntermediateStockIsNot")}</p>}
       {stale && <p className="bom-warning">{pt("production.recipeOrMaterialInformationChangedRecalculateBeforeCreating")}</p>}
-      {onCreateProduction && <Button disabled={stale} onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>{pt("production.createProductionOrderForThisQuantity")}</Button>}
       <BomResultViews nodes={snapshot.nodes} quantity={snapshot.production_quantity}>{showSources => <>
-      <p className="bom-result-summary" role="status">{pt("production.total")} {snapshot.rows.length} {pt("production.materials")}{snapshot.rows.filter(row => row.shortage > 0).length} {pt("production.shortages")}</p>
+      {(() => { const shortages = snapshot.rows.filter(row => row.shortage > 0).length; return <div className="bom-result-summary-row">
+        <p className={`bom-result-summary${shortages ? ' has-shortage' : ''}`} role="status">{pt("production.total")} {snapshot.rows.length} {pt("production.materials")}{shortages} {pt("production.shortages")}</p>
+        {shortages > 0 && <AntCheckbox checked={shortageOnly} onChange={e => setShortageOnly(e.target.checked)}>{pt('production.shortageOnly')}</AntCheckbox>}</div>; })()}
       <div className="bom-result-table"><table><thead><tr><th>{pt("production.material")}</th><th>{pt("production.baseNetUsage")}</th><th>{pt("production.requiredQuantityIncludingLoss")}</th><th>{pt("production.bookStock")}</th><th>{pt("production.shortageQuantity")}</th><th>{pt("production.note")}</th></tr></thead>
-        <tbody>{snapshot.rows.map(row => <tr key={row.product_id}>
+        <tbody>{snapshot.rows.filter(row => !shortageOnly || row.shortage > 0).map(row => <tr key={row.product_id} className={row.shortage > 0 ? 'bom-shortage-row' : undefined}>
           <td><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small></td>
-          <td data-label={pt("production.baseNetUsage")}>{row.quantity === null ? <button type="button" className="bom-tree-action" onClick={() => showSources(row)}>{pt("production.view")} {row.sources.length} {pt("production.sources")}</button> : <>{row.quantity_fraction || count(row.quantity)} {row.unit}<small>{pt("production.standardLossRate")} {count(row.loss_rate)}%</small></>}</td><td data-label={pt("production.requiredQuantityIncludingLoss")}>{count(row.required)} {row.unit}</td><td data-label={pt("production.bookStock")}>{count(row.stock)} {row.unit}</td>
+          <td data-label={pt("production.baseNetUsage")}>{(() => {
+            const single = row.quantity === null && row.sources.length === 1 ? snapshot.nodes.find(node => node.path === row.sources[0]) : null;
+            const shown = single || (row.quantity === null ? null : row);
+            return shown ? <>{shown.quantity_fraction || count(shown.quantity)} {row.unit}<small>{pt("production.standardLossRate")} {count(shown.loss_rate)}%</small></>
+              : <button type="button" className="bom-tree-action" onClick={() => showSources(row)}>{pt("production.view")} {row.sources.length} {pt("production.sources")}</button>;
+          })()}</td><td data-label={pt("production.requiredQuantityIncludingLoss")}>{count(row.required)} {row.unit}</td><td data-label={pt("production.bookStock")}>{count(row.stock)} {row.unit}</td>
           <td data-label={pt("production.shortageQuantity")} className={row.shortage > 0 ? 'bom-shortage' : ''}>{count(row.shortage)} {row.unit}</td><td data-label={pt("production.note")}>{row.note || '—'}</td>
         </tr>)}</tbody></table></div>
       <ScrapOutputs rows={snapshot.scraps || []} materials={snapshot.rows} />
