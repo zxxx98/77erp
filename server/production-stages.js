@@ -179,6 +179,12 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if(s.path==='')assertOutputOpen(o);
     if(!validExactQuantity(parseExactQuantity(req.body.completed_quantity,true),true)||req.body.note!==undefined&&(typeof req.body.note!=='string'||req.body.note.length>500)||typeof req.body.finish_order!=='boolean')fail('请核对本批产量、备注及继续生产选项。');
     if(s.path!==''&&(req.body.finish_order||req.body.scraps?.length))fail('半成品层只能登记继续，不登记废料或结束整单。');
+    if (Array.isArray(req.body.items)) {
+      const supplied = new Set(req.body.items.map(item => item?.path));
+      const postOnly = new Set(o.items.filter(item => item.is_post_processing_only).map(item => item.product_id));
+      req.body.items = [...req.body.items, ...s.items.filter(item => postOnly.has(item.product_id) && item.is_supplemental_input && !supplied.has(item.path))
+        .map(item => ({ path: item.path, quantity: 0 }))];
+    }
     if(!Array.isArray(req.body.items)||req.body.items.length!==s.items.length||new Set(req.body.items.map(i=>i?.path)).size!==s.items.length)fail('请核对全部直属投入，路径不能重复或增删。');
     const actuals=s.items.map(n=>{const a=req.body.items.find(i=>i?.path===n.path);if(!a||!validExactQuantity(parseExactQuantity(a.quantity,!stageInputCanBeZero(n,s.items)),!stageInputCanBeZero(n,s.items))||a.variance_reason!==undefined&&(typeof a.variance_reason!=='string'||a.variance_reason.length>500))fail('直属投入需为有效数量且最多 4 位小数；有库存投入的半成品允许本单投入为零。');
       const p=db.prepare('SELECT * FROM products WHERE id=?').get(n.product_id);if(!p||p.warehouse_id!==o.warehouse_id||p.unit!==n.unit||p.unit_round_up!==n.unit_round_up)fail(`${n.name}单位或取整规则已变化。`,409);if(!p.active)fail(`${n.name}已停用。`);

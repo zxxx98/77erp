@@ -602,3 +602,29 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   .registration-operations .registration-operation { padding: 12px; min-height: 56px; }
   .registration-operation-name small { line-height: 1.55; }
 }
+.registration-fixed-materials {
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+.registration-fixed-materials h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+.registration-fixed-materials ul,
+.post-processing-material-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.registration-fixed-materials li,
+.post-processing-material-list li {
+  border-inline-start: 2px solid var(--border, #e9ecf1);
+  padding-inline-start: 8px;
+  overflow-wrap: anywhere;
+}
+.registration-fixed-materials li p,
+.post-processing-material-list li p {
+  margin: 4px 0 0;
+}

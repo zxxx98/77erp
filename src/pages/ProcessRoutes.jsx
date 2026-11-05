@@ -15,6 +15,7 @@ import { mobileDevice } from '../device.js';
 import { validateProcessGraph, arrangeProcessGraph } from '../../shared/process-routes.js';
 import { ProcessGraph, ProcessFlowStrip, orderProcessNodes } from '../features/ProcessGraph.jsx';
 import { addProcessNode } from '../features/process-graph-editing.js';
+import { PostProcessingMaterialEditor, postProcessingMaterialPayload } from '../features/PostProcessingMaterialEditor.jsx';
 import './bom.css';
 
 export function ProcessRoutes({ data }) {
@@ -141,6 +142,17 @@ export function ProcessRoutes({ data }) {
   </div>;
   const graph = editor.graph, orderedNodes = orderProcessNodes(graph), node = orderedNodes.find(n => n.id === selected) || graph.nodes.find(n => n.id === selected);
   const patchNode = changes => update({ graph: { ...graph, nodes: graph.nodes.map(n => n.id === selected ? { ...n, ...changes } : n) } });
+  const save = () => action.run(async () => {
+    const nodes = graph.nodes.map(({ materials, ...row }) => editor.route_kind === 'post_processing'
+      ? { ...row, materials: postProcessingMaterialPayload(materials) } : row);
+    const payload = { ...graph, nodes };
+    validateProcessGraph(payload);
+    await action.send(editor.id ? `/process-routes/${editor.id}` : '/process-routes', {
+      name: editor.name, note: editor.note, enabled: editor.enabled, route_kind: editor.route_kind, graph: payload,
+      ...(editor.id ? { version: editor.version } : {}),
+    }, { warehouseId: data.warehouse_id });
+    setEditor(null); setRevision(n => n + 1); setMessage(t('route.saved'));
+  });
   const createNode = ({ x, y, ...connection }) => {
     if (action.busy) return;
     try {
@@ -216,6 +228,8 @@ export function ProcessRoutes({ data }) {
             {templates.result?.templates.map(row=><option key={row.id} value={row.id}>{row.name} · v{row.revision} (#{row.id})</option>)}
           </Select></label><QueryStatus query={templates}/>
           <p className="bom-hint">{t('route.acceptanceBindingHint')}</p>
+          {editor.route_kind === 'post_processing' && <PostProcessingMaterialEditor key={node.id} data={data} materials={node.materials || []}
+            onChange={materials => patchNode({ materials })} onError={action.setError} disabled={action.busy} />}
           {graph.nodes.length > 1 && <fieldset className="process-predecessors" disabled={action.busy}>
             <legend>{t('route.predecessors')}</legend>
             {graph.nodes.filter(n => n.id !== node.id).map(parent => {
@@ -230,6 +244,6 @@ export function ProcessRoutes({ data }) {
             <Button kind="danger" icon={Trash2} disabled={action.busy || graph.nodes.length <= 1} onClick={() => { if (!window.confirm(t('route.removeConfirm'))) return; update({ graph: { nodes: graph.nodes.filter(n => n.id !== node.id), edges: graph.edges.filter(e => e.from !== node.id && e.to !== node.id) } }); setSelected(graph.nodes.find(n => n.id !== node.id)?.id || ''); }}>{t('route.remove')}</Button>
           </div>
         </aside>}
-      </div></section>{notices}<div className="bom-editor-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button>{editor.id && <Button disabled={action.busy} onClick={() => { if (!dirty || window.confirm(t('route.reloading'))) open(editor); }}>{t('route.reload')}</Button>}<Button kind="primary" busy={action.busy} disabled={!editor.name.trim()} onClick={() => action.run(async () => { validateProcessGraph(editor.graph); await action.send(editor.id ? `/process-routes/${editor.id}` : '/process-routes', { name: editor.name, note: editor.note, enabled: editor.enabled, route_kind: editor.route_kind, graph: editor.graph, ...(editor.id ? { version: editor.version } : {}) }, { warehouseId: data.warehouse_id }); setEditor(null); setRevision(n => n + 1); setMessage(t('route.saved')); })}>{t('route.save')}</Button></div>
+      </div></section>{notices}<div className="bom-editor-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button>{editor.id && <Button disabled={action.busy} onClick={() => { if (!dirty || window.confirm(t('route.reloading'))) open(editor); }}>{t('route.reload')}</Button>}<Button kind="primary" busy={action.busy} disabled={!editor.name.trim()} onClick={save}>{t('route.save')}</Button></div>
   </div>;
 }

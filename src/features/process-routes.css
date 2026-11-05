@@ -631,6 +631,27 @@
   gap: 8px;
   margin-bottom: 14px;
 }
+.process-fixed-materials {
+  margin-block: 16px;
+  padding-block: 12px;
+  border-block: 1px solid var(--border, #e9ecf1);
+}
+.process-fixed-materials .bom-search-row {
+  flex-wrap: wrap;
+}
+.process-fixed-materials .bom-search-row > input {
+  flex-basis: 100%;
+}
+.process-fixed-material,
+.process-fixed-material > label {
+  display: grid;
+  gap: 6px;
+}
+.process-fixed-material {
+  justify-items: start;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
 .process-predecessors {
   display: grid;
   gap: 8px;

@@ -3,6 +3,7 @@ import { validateExactQuantityBackup } from './exact-quantity.js';
 import { validExactQuantity } from '../shared/exact-quantity.js';
 import { validateProductionRoundingBackup } from './production-rounding.js';
 import { processRouteTables, productionOperationTables, clearProcessRoutes, validateProcessRouteBackup } from './process-routes.js';
+import { stripLegacyPostMaterials } from './post-processing-materials.js';
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
 import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from '../shared/quantity.js';
@@ -438,7 +439,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 52,
+    version: 53,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -447,7 +448,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
@@ -470,6 +471,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         if (report.material_items !== undefined && report.material_items !== '[]') fail('备份包含已移除的附加工序。');
         delete report.material_items;
       }
+    }
+    if (value.version < 53) {
+      for (const report of data.production_operation_reports || []) {
+        if (report.post_materials !== undefined && report.post_materials !== '[]') fail('备份后处理材料配置、用量或成本无效。');
+        report.post_materials = '[]';
+      }
+      for (const table of ['process_routes', 'production_routes'])
+        for (const row of data[table] || []) row.graph = stripLegacyPostMaterials(row.graph);
     }
     if (value.version < 47) {
       for (const order of data.orders || []) for (const key of ['delivery_number','delivery_time','order_number']) order[key] ??= '';
@@ -865,11 +874,11 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     validateQualityBackup(data);
     validateBomBackup(data);
     validateExactQuantityBackup(data);
-    validateProductionBackup(data);
+    const postPlans = validateProcessRouteBackup(data);
+    validateProductionBackup(data, postPlans);
     validateProductionMaterialBackup(data);
     validateProductionReceiptBackup(data);
     validateProductionStageBackup(data);
-    validateProcessRouteBackup(data);
     validateProductionRoundingBackup(data);
     return data;
   }

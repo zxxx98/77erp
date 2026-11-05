@@ -2,7 +2,8 @@ import { createOperationAcceptanceService, assertOperationAcceptancePermission }
 import { positionAuthorization } from './positions.js';
 import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
 import { assertOutputOpen, assertPostProcessingLimits, reopenAfterRootOutputVoid } from './post-processing.js';
-import { productionOperationTables, captureProductionRoutes, capturePostProcessingOperations, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
+import { productionOperationTables, captureProductionRoutes, capturePostProcessingOperations, readProductionRoutes, readPostMaterialUsage, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
+import { postMaterialPlanByProduct, sumPostMaterialCosts } from './post-processing-materials.js';
 import { requestLanguage } from './i18n.js';
 import { productionRegistrationGroup, isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
 import { rebuildTable } from './table-migration.js';
@@ -244,7 +245,8 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     readProductionStages(db, order);
     readProductionRoutes(db, order);
     order.quantity_rounding = productionRounding(db, order.id);
-    if (order.material_workflow) order.items = materialBalances(order);
+    if (order.material_workflow) order.items = materialBalances(order, readPostMaterialUsage(db, order.id), postMaterialPlanByProduct(order.operation_routes));
+    order.post_processing_material_cost_cents = sumPostMaterialCosts(order.items.map(item => ({ cost_cents: item.post_processing_consumed_cost_cents ?? 0 })));
     Object.assign(order, quantityFields(exactAdd(exactQuantity(order, 'completed_quantity'), order.quantity_rounding.filter(row => row.kind === 'product').reduce((sum, row) => exactAdd(sum, exactQuantity(row)), 0)), 'settled_completed_quantity'));
     order.settled_total_cost_cents = (order.total_cost_cents || 0) + order.quantity_rounding.filter(row => row.kind === 'material').reduce((sum, row) => sum + row.cost_cents, 0);
     order.total_consumed_cost_cents = order.items.reduce((sum, item) => sum + (item.consumed_cost_cents || 0), 0);
@@ -514,6 +516,11 @@ export function installProduction(app, db, options = {}) {
     if (order.stage_workflow) fail('分层生产请按指定层登记，不能通过旧登记入口完成。',409);
     assertOutputOpen(order);
     if (req.body.finish_order !== false) assertNoPendingMaterials(db, order);
+    if (Array.isArray(req.body.items)) {
+      const supplied = new Set(req.body.items.map(item => item?.product_id));
+      req.body.items = [...req.body.items, ...order.items.filter(item => item.is_post_processing_only && !supplied.has(item.product_id))
+        .map(item => ({ product_id: item.product_id, quantity: 0 }))];
+    }
     validateProductionCompletion(req.body, order.items);
     req.body.completed_quantity = parseExactQuantity(req.body.completed_quantity, true);
     for (const item of req.body.items) item.quantity = parseExactQuantity(item.quantity);
@@ -668,7 +675,7 @@ export function installProduction(app, db, options = {}) {
   installProductionStages(app,db,{route,current,version,units,updateBatchTotals,reverseBatch,stockBefore,notifyStockChanges});
 }
 
-export function validateProductionBackup(data) {
+export function validateProductionBackup(data, postPlans = new Map()) {
   const validQuantity = validExactQuantity;
   const products = new Map(data.products.map(p => [p.id, p])), boms = new Map(data.boms.map(b => [b.id, b]));
   const orders = new Map(data.production_orders.map(o => [o.id, o])), grouped = new Map(), numbers = new Set();
@@ -742,6 +749,7 @@ export function validateProductionBackup(data) {
     for (const row of rows) {
       const supplemental = row.base_quantity === 0;
       if (supplemental && (!order.material_workflow || row.base_quantity_fraction !== '' || row.loss_rate !== 0 || row.planned_quantity !== 0 ||
+          !postPlans.get(order.id)?.has(row.product_id) &&
           !data.production_material_documents.some(doc => doc.production_id === order.id && doc.kind === 'supplement' && data.production_material_document_items.some(item=>item.document_id===doc.id && item.product_id===row.product_id)))) fail('备份补料材料来源无效。');
       if (![0,1].includes(row.unit_round_up)) fail('备份材料取整属性无效。');
       if (!expanded || supplemental) validateBomLossRate(row.loss_rate);

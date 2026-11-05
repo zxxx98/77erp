@@ -18,7 +18,7 @@ export function IndependentOperationPicker({ data, routeKind, title, emptyMessag
       </> : <>
         <strong>{selected.name}</strong>
         {selected.graph.nodes.map(node => <Button key={node.id} disabled={rows.some(row => row.route_id === selected.id && row.node_id === node.id)} onClick={() => {
-          onSelect({ route_id: selected.id, route_version: selected.version, node_id: node.id, name: node.name, route_name: selected.name });
+          onSelect({ route_id: selected.id, route_version: selected.version, node_id: node.id, name: node.name, route_name: selected.name, materials: node.materials });
           onClose();
         }}>{node.name}</Button>)}
         <Button onClick={() => setSelected(null)}>{t('route.back')}</Button>

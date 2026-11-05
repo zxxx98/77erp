@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Button, Modal, PageHeading } from '../components/common.jsx';
 import { Input, Radio } from '../ui/controls.jsx';
 import { OperationWorkerSelect } from './ProductionOperations.jsx';
+import { PostProcessingMaterialPreview } from './PostProcessingMaterialPreview.jsx';
 import { ScrapOutputs } from './ScrapOutputs.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { useBusiness } from '../business-api.js';
@@ -119,7 +120,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
               items: actuals.filter(item => part.layer.items.some(source => source.path === item.path)) }));
           }
           if (!actuals.some(item => exactCompare(item.quantity, 0) > 0)) throw new Error(t('production.actualInputForAtLeastOneMaterialMust'));
-        } else { suffix = '/complete'; validateProductionCompletion(body, order.items); }
+        } else { suffix = '/complete'; validateProductionCompletion(body, order.items.filter(item => !item.is_post_processing_only)); }
         validateScrapActuals(actualScraps, target.path ? [] : order.scraps || []);
       }
       try {
@@ -189,6 +190,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
             {target?.output && <p className="bom-hint">{t('registration.standardUsage')}{!target.path && ` ${t('registration.pendingReceipt')}`}</p>}
             {target?.layer.pool_paths && <p className="bom-hint">{t('production.poolHint')}</p>}
           </div>
+          {target?.postProcessing && <PostProcessingMaterialPreview materials={target.node.materials} items={order.items} runs={outputQuantity} />}
           {target?.layer.pool_paths && <label className="registration-pool-note">{t('production.poolBatchNote')}<Input.TextArea aria-label={t('production.poolBatchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
           {(allocations.length > 1 || allocations.length === 1 && allocations[0].path !== target.path) && <div className="registration-allocation" role="status"><p className="bom-hint">{t('registration.overflowHint')}</p><ul>{allocations.map(part => <li key={part.path}>{part.layer.name} · {t('registration.layer', { path: part.path || t('production.finalProduct') })}: {count(part.quantity)} {target.unit}</li>)}</ul></div>}
         </section>

@@ -6,6 +6,7 @@ import { notifyStockChanges } from './notifications.js';
 import { stageDirectBatches } from './production-stages.js';
 import { exactQuantity, exactAdd, exactSubtract, exactCompare, exactMax, exactNumber, quantityFields, parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
 import { saveExactQuantity } from './exact-quantity.js';
+import { postMaterialUsage, sumPostMaterialCosts, totalPlannedMaterials } from './post-processing-materials.js';
 
 export const productionMaterialTables = ['production_material_documents', 'production_material_document_items', 'production_material_issues', 'production_material_issue_items'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -104,7 +105,7 @@ export function materialDocuments(db, productionId, warehouseId) {
     .map(row => materialDocument(db, row.id, warehouseId));
 }
 
-export function materialBalances(order) {
+export function materialBalances(order, postUsage = new Map(), postPlan = new Map()) {
   const documents = order.material_documents.map(materialDocumentProgress);
   return order.items.map(item => {
     let issued = 0, returned = 0, cost = 0n;
@@ -129,6 +130,11 @@ export function materialBalances(order) {
       }
     }
     const productionConsumed = consumed;
+    const productionConsumedCost = Number(consumedCost);
+    const post = postUsage.get(item.product_id) ?? { quantity: 0, cost_cents: 0 };
+    const postQuantity = postPlan.get(item.product_id) ?? 0;
+    const postOnly = item.base_quantity === 0 && postQuantity > 0;
+    consumed = exactAdd(consumed, post.quantity); cost -= BigInt(post.cost_cents); consumedCost += BigInt(post.cost_cents);
     for (const row of order.quantity_rounding || []) if (row.kind === 'material' && row.product_id === item.product_id) {
       consumed = exactAdd(consumed, exactQuantity(row)); cost -= BigInt(row.cost_cents); consumedCost += BigInt(row.cost_cents);
     }
@@ -136,10 +142,12 @@ export function materialBalances(order) {
     // Lifetime turnover can exceed Number's exact range even when the remaining pool is small.
     if (cost < 0n || cost > BigInt(Number.MAX_SAFE_INTEGER)) fail(`${item.name}材料余额成本不足或超出范围。`);
     return { ...item, ...quantityFields(requested, 'requested_quantity'), ...quantityFields(pending, 'pending_issue_quantity'), ...quantityFields(closed, 'closed_request_quantity'), ...quantityFields(issued, 'issued_quantity'), ...quantityFields(returned, 'returned_quantity'),
-      ...quantityFields(exactMax(0, exactSubtract(issued, item.planned_quantity)), 'over_plan_quantity'),
-      total_planned_quantity: item.planned_quantity,
+      ...totalPlannedMaterials(item, postQuantity),
+      ...quantityFields(exactMax(0, exactSubtract(issued, exactAdd(item.planned_quantity, postQuantity))), 'over_plan_quantity'),
+      ...quantityFields(post.quantity, 'post_processing_consumed_quantity'), post_processing_consumed_cost_cents: post.cost_cents,
+      ...(postOnly ? { is_post_processing_only: true, is_supplemental: false } : {}),
       ...quantityFields(consumed, 'consumed_quantity'), consumed_cost_cents: Number(consumedCost),
-      ...(order.stage_workflow ? { ...quantityFields(productionConsumed, 'direct_consumed_quantity'), direct_consumed_cost_cents: Number(order.stage_direct_batches.filter(b=>b.status==='active').reduce((n,b)=>n+b.items.filter(r=>r.product_id===item.product_id).reduce((n,r)=>n+r.cost_cents,0),0)) } : {}),
+      ...(order.stage_workflow ? { ...quantityFields(productionConsumed, 'direct_consumed_quantity'), direct_consumed_cost_cents: productionConsumedCost } : {}),
       ...quantityFields(exactSubtract(exactSubtract(issued, returned), consumed), 'available_quantity'), available_cost_cents: Number(cost) };
   });
 }
@@ -380,7 +388,9 @@ export function validateProductionMaterialBackup(data) {
         order.status === 'void' && pending.has(order.id)) fail('备份生产领料阶段与材料单不一致。');
     const balances = materialBalances({ ...order, quantity_rounding: (data.production_quantity_rounding || []).filter(row => row.production_id === order.id && row.status === 'active'), items: data.production_items.filter(row => row.production_id === order.id), material_documents: documents,
       stage_direct_batches:stageDirectBatches(data,order.id),
-      batches: data.production_batches.filter(row => row.production_id === order.id).map(batch => ({ ...batch, items: data.production_batch_items.filter(row => row.batch_id === batch.id) })) });
+      batches: data.production_batches.filter(row => row.production_id === order.id).map(batch => ({ ...batch, items: data.production_batch_items.filter(row => row.batch_id === batch.id) })) },
+      postMaterialUsage(data.production_operation_reports.filter(row => row.production_id === order.id)));
+    sumPostMaterialCosts(balances.map(item => ({ cost_cents: item.consumed_cost_cents })));
     if (balances.some(item => !validStoredQuantity(exactQuantity(item,'issued_quantity')) || !validStoredQuantity(exactQuantity(item,'returned_quantity')) || !validStoredQuantity(exactQuantity(item,'available_quantity')) || !money(item.available_cost_cents) ||
         item.available_quantity === 0 && item.available_cost_cents !== 0 || order.status === 'void' && item.available_quantity !== 0)) fail('备份生产材料余额或成本无效。');
   }

@@ -77,6 +77,21 @@ test('semi defaults use produced balance first, stock for its deficit and zero f
   assert.deepEqual(registrationDefaults(order,target,5).items.map(i=>i.quantity),['8','2','0']);
 });
 
+test('ordinary output registration keeps shared material and omits post-processing-only inputs', () => {
+  const shared = { product_id: 3, base_quantity: 2, loss_rate: 0 };
+  const fixed = { product_id: 4, base_quantity: 0, is_post_processing_only: true };
+  const order = { base_quantity: 1, product_name: '成品', unit: '件', items: [shared, fixed] };
+  assert.deepEqual(registrationDefaults(order, registrationTargets(order)[0], 5).items,
+    [{ product_id: 3, quantity: '10', variance_reason: '' }]);
+
+  const stageShared = { ...shared, path: '1', parent_path: '', usage_mode: 'stock', quantity: 2, bom_base_quantity: 1, loss_method: 'internal' };
+  const stageFixed = { ...stageShared, product_id: 4, path: '@stock:root:4', is_supplemental_input: true, quantity: 0 };
+  const stageSupplement = { ...stageFixed, product_id: 5, path: '@stock:root:5' };
+  const staged = { ...order, stage_workflow: 1, stages: [{ path: '', name: '成品', unit: '件', items: [stageShared, stageFixed, stageSupplement] }] };
+  assert.deepEqual(registrationDefaults(staged, registrationTargets(staged)[0], 5).items.map(row => [row.product_id, row.quantity]),
+    [[3, '10'], [5, '0']]);
+});
+
 const postRoute = (path, name, limit, done) => ({ path, route_name: '包装工艺', product_coefficient: 20, post_processing_limit: limit, unit: '次',
   operations: [{ id: 'a', name, completed_quantity: done, available_quantity: limit - done, is_output: false }] });
 

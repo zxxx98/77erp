@@ -282,7 +282,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   };
   const batchDefaults = (quantity, order = detail) => {
 
-    const items = order.items.map(item => ({ product_id: item.product_id,
+    const items = order.items.filter(item => !item.is_post_processing_only).map(item => ({ product_id: item.product_id,
       quantity: quantityInput(productionActualDefault(item, quantity, order)), variance_reason: '' }));
     const scraps = (order.scraps || []).map(row => ({ product_id: row.product_id,
       quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity, items.map(item => ({ ...item, quantity: item.quantity })))), disposition: 'stock' }));
@@ -314,6 +314,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"), true);
   });
   const finishState = postProcessingFinishState(detail);
+  const hasPostMaterialUsage = detail?.items.some(item => item.post_processing_consumed_quantity > 0);
   const canConfirmOutput = detail?.status === 'in_progress' && detail.operation_routes?.some(route => route.product_coefficient != null)
     && (detail.output_completion_confirmed || !detail.output_completed && exactCompare(exactQuantity(detail, 'completed_quantity'), 0) > 0);
   const changeOutputCompletion = completed => action.run(async () => {
@@ -362,7 +363,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         const body = { version: detail.version, ...(editor.operation_node_id ? { operation_node_id: editor.operation_node_id, worker_id: editor.worker_id } : {}), completed_quantity: parseExactQuantity(editor.completed_quantity, true), finish_order: finishOrder, note: editor.note,
           items: editor.items.map(row => ({ product_id: row.product_id, quantity: parseExactQuantity(row.quantity), variance_reason: row.variance_reason })),
           scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: parseExactQuantity(row.quantity), disposition: row.disposition })) };
-        validateProductionCompletion(body, detail.items);
+        validateProductionCompletion(body, detail.items.filter(item => !item.is_post_processing_only));
         validateScrapActuals(body.scraps, detail.scraps || []);
         if (!window.confirm(pt("production.registerThisBatchOfAndRecordScrapThen", { v0: count(body.completed_quantity), v1: detail.unit, v2: detail.product_name, v3: detail.material_workflow ? pt("production.recordUsageFromTheIssuedBalance") : pt("production.deductStockByThisBatchSActualUsage"), v4: finishOrder ? pt("production.endTheProductionOrder") : pt("production.continueProduction") }))) return;
         await saved(await send(`/production-orders/${detail.id}/complete`, body, options), pt("production.batchRegisteredProductsAndReceivedScrapAwaitWarehouse", { v0: detail.material_workflow ? pt("production.actualUsageRecorded") : pt("production.actualUsageDeductedFromStock"), v1: finishOrder ? pt("production.productionEnded") : pt("production.productionOrderRemainsOpen") }), true);
@@ -443,13 +444,14 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     let rows = source?.items || source?.rows.map(row => ({ ...row, base_quantity: row.quantity, base_quantity_fraction: row.quantity_fraction, planned_quantity: row.required, product: { stock: row.stock, unit: row.unit, active: 1 } })) || [];
     let quantityError = '';
     if (planning && source) {
+      rows = rows.filter(row => !row.is_post_processing_only);
       try {
         const quantity = parseQuantity(editor.planned_quantity, true);
         const standards = source.snapshot_format === 2 || source.multi_level ? new Map(calculateBomNodes(source.nodes, quantity, source.quantity_decimals ?? 4).rows.map(row => [row.product_id, row.required])) : null;
         rows = rows.map(row => ({ ...row, planned_quantity: productionItemQuantity(row, quantity, source, standards) }));
       } catch (error) { quantityError = error.message; }
     }
-    if (editor.kind === 'complete') rows = rows.map(row => ({ ...row, ...editor.items.find(item => item.product_id === row.product_id) }));
+    if (editor.kind === 'complete') rows = rows.filter(row => !row.is_post_processing_only).map(row => ({ ...row, ...editor.items.find(item => item.product_id === row.product_id) }));
     const scrapRows = (source?.scraps || []).map(row => {
       let planned_quantity = row.planned_quantity, expected_quantity = null;
       try {
@@ -493,6 +495,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         {editor.kind === 'new' && source && <ProductionSupply supplies={source.supplies || []} choices={editor.supply_choices || []} onChange={supply_choices => update({ supply_choices })} onCalculate={recalculateSupply} stale={supplyStale} disabled={action.busy} />}
         {editor.kind === 'new' && source && <PostProcessingPlan rows={editor.post_processing_operations || []} onChange={post_processing_operations => update({ post_processing_operations })}
           data={listData} unit={unit} plannedQuantity={editor.planned_quantity} disabled={action.busy} />}
+        {editor.kind === 'edit' && source.operation_routes?.some(route => route.product_coefficient != null && route.post_processing_materials?.length) && <PostProcessingPlan
+          rows={source.operation_routes.filter(route => route.product_coefficient != null).map(route => ({
+            route_id: route.id, node_id: route.operations[0].id, route_name: route.route_name, name: route.operations[0].name,
+            product_coefficient: route.product_coefficient, materials: route.post_processing_materials,
+          }))} unit={unit} plannedQuantity={editor.planned_quantity} readOnly />}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}
@@ -620,7 +627,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.note && <p className="production-note">{detail.note}</p>}
       <details className="production-disclosure"><summary>{pt('production.orderInformation')}</summary>
       <p className="bom-hint">{detail.barcode}</p>
-      {management && can('finance') && detail.completed_at && <p>{pt('production.totalMaterialCost')} {money(detail.total_cost_cents)}</p>}
+      {management && can('finance') && detail.completed_at && <p>{pt(hasPostMaterialUsage ? 'production.finishedOutputMaterialCost' : 'production.totalMaterialCost')} {money(detail.total_cost_cents)}</p>}
+      {management && can('finance') && hasPostMaterialUsage && detail.post_processing_material_cost_cents != null && <>
+        <p>{pt('production.postProcessingMaterialCost')} {money(detail.post_processing_material_cost_cents)}</p>
+        <p>{pt('production.totalConsumedMaterialCost')} {money(detail.total_consumed_cost_cents)}</p>
+      </>}
       <p className="bom-hint">{pt("production.recipe")}{detail.bom_name} #{detail.bom_id} {pt("production.baseOutput2")} {count(detail.base_quantity)} {detail.unit} {pt("production.recipeRetainedFromOrderCreation")}</p>
       <p className="bom-hint">{detail.snapshot_format === 2 ? pt("production.rootRecipeLossCalculation") : pt("production.standardLossCalculation")}：{bomLossMethodLabels[detail.loss_method]}{pt("production.standardInput")}{bomLossMethodFormulas[detail.loss_method]}。</p>
       <div className="production-audit"><p>{pt("production.created")}{detail.created_by_name} · {time(detail.created_at)}</p><p>{pt("production.updated")}{detail.updated_by_name} · {time(detail.updated_at)}</p>

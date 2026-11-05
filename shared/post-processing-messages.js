@@ -1,4 +1,12 @@
 export const postProcessingMessages = {
+  POST_MATERIAL_PRODUCT: ['请选择当前仓库已启用的后处理材料。', 'Select active post-processing materials in this warehouse.', 'Chọn vật tư hậu xử lý đang hoạt động trong kho hiện tại.'],
+  POST_MATERIAL_CONFIG: ['后处理材料不能重复，每次用量须为正数且最多 4 位小数。', 'Post-processing materials cannot repeat. Usage per run must be positive with at most 4 decimal places.', 'Vật tư hậu xử lý không được trùng. Lượng dùng mỗi lần phải dương, tối đa 4 chữ số thập phân.'],
+  POST_MATERIAL_QUANTITY: ['后处理材料数量超出范围，请拆分生产单。', 'Post-processing material quantity is out of range. Split the production order.', 'Số lượng vật tư hậu xử lý vượt giới hạn. Hãy chia lệnh sản xuất.'],
+  POST_MATERIAL_BACKUP: ['备份后处理材料配置、用量或成本无效。', 'Invalid post-processing material configuration, usage or cost in the backup.', 'Cấu hình, lượng dùng hoặc chi phí vật tư hậu xử lý trong bản sao lưu không hợp lệ.'],
+  POST_MATERIAL_KIND: ['仅后处理工序可以配置固定材料。', 'Only post-processing operations can configure fixed material usage.', 'Chỉ công đoạn hậu xử lý được cấu hình lượng vật tư cố định.'],
+  POST_MATERIAL_WHOLE: ['后处理材料每次用量须符合整单位规则。', 'Post-processing usage per run must follow whole-unit rules.', 'Lượng vật tư hậu xử lý mỗi lần phải tuân theo quy tắc đơn vị nguyên.'],
+  POST_MATERIAL_ORDER_LIMIT: ['生产单材料最多 500 种，请拆分生产单。', 'A production order supports at most 500 materials. Split the order.', 'Một lệnh sản xuất hỗ trợ tối đa 500 loại vật tư. Hãy chia lệnh.'],
+  POST_MATERIAL_REFERENCED: ['物料被后处理工艺引用，不能删除，请移除引用或使用停用。', 'This material is referenced by a post-processing process. Remove the reference or disable the material instead of deleting it.', 'Vật tư đang được quy trình hậu xử lý tham chiếu. Hãy xóa tham chiếu hoặc ngừng sử dụng vật tư thay vì xóa.'],
   POST_PRODUCTION_BINDING_ONLY: ['物料和BOM只能绑定生产工艺。', 'Materials and BOMs can only be linked to production processes.', 'Vật tư và BOM chỉ được liên kết với quy trình sản xuất.'],
   POST_ROUTE_KIND: ['请选择有效的工艺类型。', 'Select a valid process type.', 'Chọn loại quy trình hợp lệ.'],
   POST_ROUTE_REFERENCED: ['工艺已被引用，不能变更工艺类型。', 'This process is referenced; its type cannot be changed.', 'Quy trình đang được tham chiếu, không thể đổi loại.'],

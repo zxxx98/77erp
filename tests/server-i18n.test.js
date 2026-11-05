@@ -63,6 +63,14 @@ test('post-processing completion and correction errors are localized', () => {
     '后处理报工次数必须为正整数。',
     '附加工序功能已移除。',
     '工序报工不支持独立材料耗用。',
+    '请选择当前仓库已启用的后处理材料。',
+    '后处理材料不能重复，每次用量须为正数且最多 4 位小数。',
+    '后处理材料数量超出范围，请拆分生产单。',
+    '备份后处理材料配置、用量或成本无效。',
+    '仅后处理工序可以配置固定材料。',
+    '后处理材料每次用量须符合整单位规则。',
+    '生产单材料最多 500 种，请拆分生产单。',
+    '物料被后处理工艺引用，不能删除，请移除引用或使用停用。',
   ]) {
     assert.ok(validationErrorInfo(source), source);
     for (const locale of ['en', 'vi']) assert.doesNotMatch(localizeServerText(source, locale), /[\u3400-\u9fff]/);

@@ -12,6 +12,7 @@ import { validateProcessGraph, processProgress, productionRouteProgress } from '
 import { validateOperationPrice } from '../shared/payroll.js';
 import { postProcessingLimit, postProcessingUnit, productionOutputCompleted } from '../shared/post-processing.js';
 import { productionTypes } from '../shared/product-production-type.js';
+import { normalizePostMaterials, planPostMaterials, postMaterialPlanByProduct, totalPlannedMaterials, savePostMaterialItems, consumePostMaterials, readPostMaterialReport, postMaterialUsage, sumPostMaterialCosts, validatePostMaterialGraph, validatePostMaterialReport, stripLegacyPostMaterials } from './post-processing-materials.js';
 
 export const processRouteTables = ['process_routes'];
 export const productionOperationTables = ['production_routes', 'production_operation_reports'];
@@ -53,6 +54,23 @@ export function migrateProcessRoutes(db) {
   for (const [table, column] of [['production_routes', 'additional_quantity'], ['production_routes', 'additional_materials'], ['production_operation_reports', 'material_items']])
     if (db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
       db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+  if (!db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'post_materials')) {
+    db.exec('SAVEPOINT migrate_post_materials');
+    try {
+      db.exec("ALTER TABLE production_operation_reports ADD COLUMN post_materials TEXT NOT NULL DEFAULT '[]'");
+      for (const table of ['process_routes', 'production_routes']) {
+        const update = db.prepare(`UPDATE ${table} SET graph=? WHERE id=?`);
+        for (const row of db.prepare(`SELECT id,graph FROM ${table} WHERE graph LIKE '%"materials"%'`).all()) {
+          const graph = stripLegacyPostMaterials(row.graph);
+          if (graph !== row.graph) update.run(graph, row.id);
+        }
+      }
+      db.exec('RELEASE migrate_post_materials');
+    } catch (error) {
+      db.exec('ROLLBACK TO migrate_post_materials; RELEASE migrate_post_materials');
+      throw error;
+    }
+  }
   db.exec('CREATE INDEX IF NOT EXISTS operation_reports_acceptance ON production_operation_reports(acceptance_id,status)');
   for (const [table, column] of [['products', 'default_route_id'], ['boms', 'route_override_id']])
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
@@ -159,12 +177,13 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
       fail('工艺已被引用，不能变更工艺类型。', 409);
     validateProcessGraph(body.graph);
     const { product_coefficient, ...graph } = body.graph;
-    body.graph = {...graph,nodes:graph.nodes.map(({acceptance_revision_id,acceptance_template_name,product_coefficient,...node})=>{
+    body.graph = {...graph,nodes:graph.nodes.map(({acceptance_revision_id,acceptance_template_name,product_coefficient,materials,...node})=>{
       if(node.acceptance_template_id) {
         const template=db.prepare('SELECT enabled,published_revision FROM quality_templates WHERE id=? AND warehouse_id=?').get(node.acceptance_template_id,req.warehouse.id);
         if(!template?.enabled || !template.published_revision) fail('请选择当前仓库已启用且已发布的验收模板。');
       }
-      return node;
+      const fixed = normalizePostMaterials(db, req.warehouse.id, materials, kind === 'post_processing');
+      return fixed.length ? { ...node, materials: fixed } : node;
     })};
     const at = new Date().toISOString();
     let routeId = old?.id;
@@ -221,7 +240,9 @@ export function capturePostProcessingOperations(db, order, operations = []) {
     if (route.version !== input.route_version) fail('后处理工艺已变化，请重新选择后保存。', 409);
     const node = parseGraph(route.graph).nodes.find(node => node.id === input.node_id);
     if (!node) fail('所选后处理工序不存在。');
-    const graph = { nodes: [node], edges: [] };
+    const materials = normalizePostMaterials(db, order.warehouse_id, node.materials, true);
+    const graph = { nodes: [materials.length ? { ...node, materials } : node], edges: [] };
+    savePostMaterialItems(db, order, materials);
     captureAcceptanceVersions(db, graph, order.warehouse_id);
     db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph,product_coefficient) VALUES (?,?,?,?,?,?,?)')
       .run(order.id, `@post:${index + 1}`, route.id, route.version, route.name, JSON.stringify(graph), input.product_coefficient);
@@ -248,20 +269,26 @@ export function readProductionRoutes(db, order) {
   order.output_completion_confirmed = Boolean(order.output_completion_confirmed);
   order.operation_routes = db.prepare('SELECT * FROM production_routes WHERE production_id=? ORDER BY id').all(order.id).map(row => {
     const graph = parseGraph(row.graph), all = db.prepare('SELECT * FROM production_operation_reports WHERE route_snapshot_id=? ORDER BY id').all(row.id);
-    const post = row.product_coefficient == null ? {} : {
+    const isPost = row.product_coefficient != null;
+    const post = !isPost ? {} : {
+      ...planPostMaterials(graph, order.planned_quantity, row.product_coefficient),
       post_processing_limit: postProcessingLimit(order.status === 'void' ? 0 : exactQuantity(order, 'completed_quantity'), row.product_coefficient, order.output_completed),
       unit: postProcessingUnit,
     };
     const route = { ...row, ...post, graph };
-    return { ...route, operations: productionRouteProgress(route, all), reports: all.slice(-100).reverse(), report_count: all.length };
+    return { ...route, operations: productionRouteProgress(route, all), reports: all.slice(-100).reverse().map(report => readPostMaterialReport(report, graph, isPost)), report_count: all.length };
   });
   for (const group of productionPools(order)) {
     if (group.length < 2) continue;
     const routes = order.operation_routes.filter(r => group.some(s => s.path === r.path));
     const ids = new Set(routes.map(r => r.id));
     const reports = db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? ORDER BY id').all(order.id).filter(r => ids.has(r.route_snapshot_id));
-    for (const route of routes) Object.assign(route, { operations: processProgress(route.graph, reports), reports: reports.slice(-100).reverse(), report_count: reports.length });
+    for (const route of routes) Object.assign(route, { operations: processProgress(route.graph, reports), reports: reports.slice(-100).reverse().map(report => readPostMaterialReport(report, route.graph, false)), report_count: reports.length });
   }
+}
+
+export function readPostMaterialUsage(db, orderId) {
+  return postMaterialUsage(db.prepare("SELECT status,post_materials FROM production_operation_reports WHERE production_id=? AND status='active' AND post_materials!='[]'").all(orderId));
 }
 
 export function syncProductionOperationPrices(db, req, order) {
@@ -348,9 +375,11 @@ function nextOperationSequence(db, productionId) {
 }
 function insertReport(db, req, order, input, quantity, kind = null, batchId = null) {
   if (!input) return;
+  const materials = input.route.product_coefficient != null ? consumePostMaterials(db, order, input.node, quantity) : [];
+  sumPostMaterialCosts(materials);
   const acceptanceId=saveOperationAcceptance(db,req,order,input);
-  const reportId = Number(db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(order.id, input.route.id, input.node.id, exactNumber(quantity), input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,input.node.multiplier ?? 1).lastInsertRowid);
+  const reportId = Number(db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier,post_materials) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(order.id, input.route.id, input.node.id, exactNumber(quantity), input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,input.node.multiplier ?? 1,JSON.stringify(materials)).lastInsertRowid);
   saveExactQuantity(db, 'production_operation_reports', reportId, 'quantity', quantity);
 }
 export function recordOperationOutput(db, req, order, path, quantity, kind, batchId) {
@@ -391,7 +420,8 @@ export function installProductionOperations(app, db, { route, current, version }
     const snapshot = order.operation_routes.find(r => r.id === Number(snapshot_id));
     const paths = stagePoolPaths(order, snapshot.path), ids = new Set(order.operation_routes.filter(r => paths.includes(r.path)).map(r => r.id));
     const all = db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? ORDER BY id DESC').all(order.id).filter(r => ids.has(r.route_snapshot_id)), total = all.length;
-    const reports = all.slice(Number(offset), Number(offset) + Number(limit));
+    const reports = all.slice(Number(offset), Number(offset) + Number(limit))
+      .map(report => readPostMaterialReport(report, snapshot.graph, snapshot.product_coefficient != null));
     return { reports, total, has_more: Number(offset) + reports.length < total };
   }));
   app.post('/api/production-orders/:id/operations/report', route(req => {
@@ -440,6 +470,11 @@ export function installProductionOperations(app, db, { route, current, version }
 export function validateProcessRouteBackup(data) {
   const routes = new Map(data.process_routes.map(row => [row.id, row])), orders = new Map(data.production_orders.map(row => [row.id, row]));
   const warehouses = new Set(data.warehouses.map(row => row.id)), snapshots = new Map();
+  const products = new Map(data.products.map(row => [row.id, row])), items = new Map();
+  for (const item of data.production_items) {
+    if (!items.has(item.production_id)) items.set(item.production_id, new Map());
+    items.get(item.production_id).set(item.product_id, item);
+  }
   const text = (value, max, required = false) => typeof value === 'string' && value.length <= max && (!required || !!value.trim());
   const association = value => value === null || id(value);
   const checkTemplates = (graph,warehouseId,snapshot=false) => {
@@ -453,12 +488,16 @@ export function validateProcessRouteBackup(data) {
   for (const row of routes.values()) {
     if (!routeKinds.includes(row.route_kind) || !warehouses.has(row.warehouse_id) || !text(row.name, 100, true) || !text(row.note, 1000) || ![0,1].includes(row.enabled) || !id(row.version) ||
         !text(row.created_by_name, 100, true) || !text(row.updated_by_name, 100, true) || !Number.isFinite(Date.parse(row.created_at)) || !Number.isFinite(Date.parse(row.updated_at)) || names.has(`${row.warehouse_id}:${row.name}`)) fail('备份工艺路线无效。');
-    names.add(`${row.warehouse_id}:${row.name}`); checkTemplates(parseGraph(row.graph),row.warehouse_id);
+    names.add(`${row.warehouse_id}:${row.name}`);
+    const graph = parseGraph(row.graph);
+    checkTemplates(graph,row.warehouse_id);
+    validatePostMaterialGraph(graph, row.route_kind === 'post_processing', products, row.warehouse_id);
   }
   for (const [table, column] of [['products','default_route_id'], ['boms','route_override_id']]) for (const row of data[table]) {
     if (!association(row[column]) || row[column] !== null && (routes.get(row[column])?.warehouse_id !== row.warehouse_id || routes.get(row[column]).route_kind !== 'production')) fail('备份工艺路线绑定跨仓或无效。');
   }
   const keys = new Set(), postBindings = new Set(), postOrders = new Set();
+  const postPlans = new Map();
   for (const row of data.production_routes) {
     const order = orders.get(row.production_id), key = `${row.production_id}:${row.path}`;
     const source = routes.get(row.route_id), graph = parseGraph(row.graph), post = row.product_coefficient !== null;
@@ -476,6 +515,13 @@ export function validateProcessRouteBackup(data) {
       fail('备份生产工艺快照无效。');
     }
     checkTemplates(graph,order.warehouse_id,true);
+    validatePostMaterialGraph(graph, post, products, order.warehouse_id, items.get(order.id) ?? new Map());
+    if (post && graph.nodes[0].materials?.length) {
+      if (!order.material_workflow) fail('备份后处理材料配置、用量或成本无效。');
+      const plans = postPlans.get(order.id) ?? [];
+      plans.push(planPostMaterials(graph, order.planned_quantity, row.product_coefficient));
+      postPlans.set(order.id, plans);
+    }
     keys.add(key); snapshots.set(row.id, { ...row, graph, reports: [] });
   }
   for (const order of orders.values()) {
@@ -504,6 +550,7 @@ export function validateProcessRouteBackup(data) {
     } else if(row.acceptance_id!==null) fail('未绑定模板的工序不能关联验收单。');
     if (snapshot.product_coefficient !== null && (!id(row.quantity) || row.quantity_fraction !== ''))
       fail('备份后处理报工次数必须为正整数。');
+    validatePostMaterialReport(row, node, snapshot.product_coefficient !== null);
     if (row.node_id === output && snapshot.product_coefficient == null) {
       const kind = order.stage_workflow ? 'stage' : 'batch', batch = (kind === 'stage' ? data.production_stage_batches : data.production_batches).find(b => b.id === row.output_batch_id);
       const key = `${kind}:${row.output_batch_id}`;
@@ -559,4 +606,10 @@ export function validateProcessRouteBackup(data) {
     if (order.status === 'completed' && operations.some(n => exactCompare(exactQuantity(n,'completed_quantity'),exactQuantity(operations.find(n => n.is_output),'completed_quantity')) !== 0) ||
         order.status === 'void' && operations.some(n => n.completed_quantity !== 0)) fail('备份已结束生产单仍有工序在制数量。');
   }
+  for (const [orderId, plans] of postPlans) {
+    const totals = postMaterialPlanByProduct(plans);
+    for (const [productId, quantity] of totals) totalPlannedMaterials(items.get(orderId).get(productId), quantity);
+    postPlans.set(orderId, totals);
+  }
+  return postPlans;
 }

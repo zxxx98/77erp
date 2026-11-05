@@ -5,6 +5,7 @@ import { hasPermission } from '../shared/permissions.js';
 import { materialBalances } from './production-materials.js';
 import { stageDirectBatches } from './production-stages.js';
 import { notifyStockChanges } from './notifications.js';
+import { postMaterialUsage } from './post-processing-materials.js';
 
 export function migrateProductionRounding(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS production_quantity_rounding (
@@ -112,7 +113,8 @@ export function validateProductionRoundingBackup(data) {
       items: data.production_material_document_items.filter(item => item.document_id === doc.id),
       issues: data.production_material_issues.filter(issue => issue.document_id === doc.id).map(issue => ({...issue, items: data.production_material_issue_items.filter(item => item.issue_id === issue.id)})) }));
     const balances = materialBalances({...order, items, material_documents: documents, stage_direct_batches: stageDirectBatches(data, order.id),
-      batches: data.production_batches.filter(batch => batch.production_id === order.id).map(batch => ({...batch, items: data.production_batch_items.filter(item => item.batch_id === batch.id)})) });
+      batches: data.production_batches.filter(batch => batch.production_id === order.id).map(batch => ({...batch, items: data.production_batch_items.filter(item => item.batch_id === batch.id)})) },
+      postMaterialUsage(data.production_operation_reports.filter(row => row.production_id === order.id)));
     let cost = 0;
     const checked = new Set();
     const check = (kind, productId, delta, expectedCost) => {

@@ -83,9 +83,13 @@ export function registrationTargets(order) {
 export function registrationDefaults(order, target, quantity) {
   if (!target.output) return { items: [], scraps: [] };
 
+  const postOnly = new Set((order.items || []).filter(item => item.is_post_processing_only).map(item => item.product_id));
   const items = order.stage_workflow
-    ? stageInputDefaults(target.layer.items, quantity).map(row => ({ ...row, product_id: target.layer.items.find(item=>item.path===row.path).product_id }))
-    : target.layer.items.map(item => ({ product_id: item.product_id, quantity: quantityInput(productionActualDefault(item, quantity, order)), variance_reason: '' }));
+    ? stageInputDefaults(target.layer.items, quantity).flatMap(row => {
+      const source = target.layer.items.find(item => item.path === row.path);
+      return source.is_supplemental_input && postOnly.has(source.product_id) ? [] : [{ ...row, product_id: source.product_id }];
+    })
+    : target.layer.items.filter(item => !postOnly.has(item.product_id)).map(item => ({ product_id: item.product_id, quantity: quantityInput(productionActualDefault(item, quantity, order)), variance_reason: '' }));
   const scraps = target.path ? [] : (order.scraps || []).map(row => ({ product_id: row.product_id,
     quantity: quantityInput(scrapExpectedQuantity(row, quantity, order.base_quantity,
       items.map(item => ({ product_id: item.product_id, quantity: item.quantity })), order.quantity_decimals)), disposition: 'stock' }));

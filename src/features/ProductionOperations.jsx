@@ -16,7 +16,13 @@ import { ProcessGraph } from './ProcessGraph.jsx';
 import { mobileDevice } from '../device.js';
 import { postProcessingUnit } from '../../shared/post-processing.js';
 import { outputRegistrationLocked } from '../production-registration.js';
+import { PostProcessingMaterialPreview } from './PostProcessingMaterialPreview.jsx';
+import { currencySymbol, money } from '../app/format.js';
 const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const cost = cents => `${currencySymbol()}${money(cents / 100)}`;
+function postRunCount(value) {
+  try { return parseQuantity(value, true); } catch { return null; }
+}
 
 export function OperationWorkerSelect({ order, warehouseId, value, onChange, disabled }) {
   useLocale();
@@ -88,6 +94,12 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             <span className="process-meta-pill">{t('route.operations')} {route.operations.length}</span>
           </div>
           <p className="bom-hint">{t(postProcessing ? 'production.postProcessingReportHint' : 'route.reportHint')}</p>
+          {route.post_processing_materials?.length > 0 && <ul className="post-processing-material-list">
+            {route.post_processing_materials.map(row => <li key={row.product_id}>
+              <strong>{row.name}</strong>
+              <p className="bom-hint">{t('production.fixedMaterialPerRun', { quantity: count(row.quantity), unit: row.unit })} · {t('production.fixedMaterialPlanned', { quantity: count(row.planned_quantity), unit: row.unit })}</p>
+            </li>)}
+          </ul>}
         </div>
         {!onRegister && canRegister && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
       </div>
@@ -145,6 +157,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
           <label>{t('route.quantity')}（{unit}）<Input autoFocus aria-label={t('route.quantity')} inputMode={postProcessing ? 'numeric' : 'text'} value={form.quantity} disabled={action.busy} onChange={event => { setForm({ ...form, quantity: event.target.value }); action.setError(''); }} /></label>
           {activeNode?.available_quantity > 0 && <Button disabled={action.busy} onClick={() => { setForm({ ...form, quantity: String(exactQuantity(activeNode, 'available_quantity')) }); action.setError(''); }}>{t('route.fillAvailable')} ({count(exactQuantity(activeNode, 'available_quantity'))})</Button>}
         </div>
+        {postProcessing && <PostProcessingMaterialPreview materials={activeNode?.materials} items={order.items} runs={postRunCount(form.quantity)} />}
         <label>{t('route.batchNote')}<Input.TextArea rows={3} aria-label={t('route.batchNote')} maxLength={500} value={form.note} disabled={action.busy} onChange={event => setForm({ ...form, note: event.target.value })} /></label>
         <div className="bom-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button><Button type="submit" kind="primary" busy={action.busy}>{t('route.report')}</Button></div>
       </form>}
@@ -176,6 +189,16 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             <p className="bom-hint">{new Date(report.created_at).toLocaleString(getFormatLocale())}</p>
             {report.acceptance_id && <Button disabled={action.busy} onClick={()=>action.run(async()=>setAcceptanceDetail(await api(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`,{warehouseId:data.warehouse_id})))}>{t('route.acceptanceRecord')} #{report.acceptance_id}</Button>}
             {report.note && <p className="process-history-note">{report.note}</p>}
+            {report.post_processing_materials?.length > 0 && <>
+              <p className="bom-hint">{t('production.postProcessingConsumed')}</p>
+              <ul className="post-processing-material-list">
+                {report.post_processing_materials.map(row => <li key={row.product_id}>
+                  <strong>{row.name}</strong>
+                  <p>{count(row.quantity)} {row.unit}{can('finance') && row.cost_cents != null && ` · ${cost(row.cost_cents)}`}</p>
+                </li>)}
+              </ul>
+              {can('finance') && report.post_processing_material_cost_cents != null && <p className="bom-hint">{t('production.postProcessingMaterialCost')} {cost(report.post_processing_material_cost_cents)}</p>}
+            </>}
             {report.status === 'void' && <p className="process-history-void-reason">{t('route.reason')}: {report.void_reason}</p>}
             {report.output_kind && <p className="bom-hint">{t('route.outputVoidHint')}</p>}
           </div>

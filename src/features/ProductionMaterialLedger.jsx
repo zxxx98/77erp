@@ -33,9 +33,10 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
       </tr></thead>
       {order.items.map(item => {
         const open = expanded.has(item.product_id), detailsId = `${id}-${item.product_id}`;
-        const values = { ...item, planned_quantity: item.total_planned_quantity ?? item.planned_quantity, used_quantity: exactQuantity(item, item.consumed_quantity != null ? 'consumed_quantity' : order.stage_workflow ? 'direct_consumed_quantity' : 'actual_quantity') };
+        const values = { ...item, used_quantity: exactQuantity(item, item.consumed_quantity != null ? 'consumed_quantity' : order.stage_workflow ? 'direct_consumed_quantity' : 'actual_quantity') };
+        const planned = item.post_processing_planned_quantity > 0 ? item.total_planned_quantity : exactQuantity(item, 'planned_quantity');
         const shortage = !order.completed_at && item.product && (issued || item.product.stock !== undefined)
-          ? bomShortage(values.planned_quantity, issued ? item.available_quantity : item.product.stock) : 0;
+          ? bomShortage(item.total_planned_quantity ?? item.planned_quantity, issued ? item.available_quantity : item.product.stock) : 0;
         return <tbody key={item.product_id}>
           <tr className="production-ledger-row">
             <th scope="row" className="production-ledger-material"><strong>{item.name}</strong><small>{item.barcode}{item.specification && ` · ${item.specification}`}</small>
@@ -45,7 +46,7 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
               {item.product && !item.product.active && <p className="bom-warning">{t('production.materialDisabled')}</p>}
             </th>
             {columns.map(([field, label]) => <td key={field} data-field={field} data-label={t(`production.${label}`)} className={field === 'available_quantity' ? 'production-ledger-balance' : undefined}>
-              <span>{count(exactQuantity(values, field))} <small>{item.unit}</small></span>
+              <span>{count(field === 'planned_quantity' ? planned : exactQuantity(values, field))} <small>{item.unit}</small></span>
             </td>)}
             <td className="production-ledger-toggle"><button type="button" className="bom-tree-action" disabled={busy} aria-expanded={open} aria-controls={detailsId}
               aria-label={t(open ? 'production.collapseLedgerDetails' : 'production.viewDetails2', { v0: item.name })} onClick={() => toggle(item.product_id)}>{t(open ? 'production.collapse' : 'production.viewDetails')}</button></td>
@@ -53,9 +54,15 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
           <tr id={detailsId} hidden={!open} className="production-ledger-details"><td colSpan={8}>
             {open && <>
               <dl className="production-ledger-metadata">
+                {item.post_processing_planned_quantity > 0 && <>
+                  <div><dt>{t('production.bomPlannedRequirement')}</dt><dd>{count(exactQuantity(item, 'planned_quantity'))} {item.unit}</dd></div>
+                  <div><dt>{t('production.postProcessingPlannedRequirement')}</dt><dd>{count(item.post_processing_planned_quantity)} {item.unit}</dd></div>
+                </>}
+                {item.post_processing_consumed_quantity > 0 && <div><dt>{t('production.postProcessingConsumed')}</dt><dd>{count(item.post_processing_consumed_quantity)} {item.unit}</dd></div>}
+                {costs && item.post_processing_consumed_quantity > 0 && item.post_processing_consumed_cost_cents != null && <div><dt>{t('production.postProcessingMaterialCost')}</dt><dd>{cost(item.post_processing_consumed_cost_cents)}</dd></div>}
                 <div><dt>{t('production.requestedQuantity')}</dt><dd>{count(item.requested_quantity)} {item.unit}</dd></div>
                 {item.closed_request_quantity > 0 && <div><dt>{t('production.closedQuantity')}</dt><dd>{count(item.closed_request_quantity)} {item.unit}</dd></div>}
-                {item.base_quantity !== null && <>
+                {item.base_quantity !== null && !item.is_post_processing_only && <>
                   <div><dt>{t('production.baseNetUsage')}</dt><dd>{item.base_quantity_fraction || count(item.base_quantity)} {item.unit}</dd></div>
                   <div><dt>{t('production.standardLoss')}</dt><dd>{count(item.loss_rate)}% · {bomLossMethodLabels[order.loss_method]}</dd></div>
                 </>}
@@ -67,7 +74,7 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
               {item.base_quantity === null && <p className="bom-hint">{t('production.multiLevelRecipeSummarySeeStructureSourcesFor')}</p>}
               {item.note && <p className="production-note">{item.note}</p>}
               {!!order.stage_workflow && <p className="bom-hint">{t('production.ledgerStageUsageHint')}</p>}
-              {order.completed_at && <><p className="bom-hint">{t('production.standardUsageUsesTheSavedNetUsageLoss')}</p><MaterialVariance row={item} analysis={item} /></>}
+              {order.completed_at && !item.is_post_processing_only && <><p className="bom-hint">{t('production.standardUsageUsesTheSavedNetUsageLoss')}</p><MaterialVariance row={item} analysis={item} /></>}
             </>}
           </td></tr>
         </tbody>;

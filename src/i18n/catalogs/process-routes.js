@@ -1,4 +1,12 @@
 export default {
+  'route.fixedMaterials': ['固定用料', 'Fixed materials', 'Vật tư cố định'],
+  'route.fixedMaterialsHint': ['每报工一次，按这里填写的用量从生产单已领材料中扣减。', 'Each reported run uses the quantities entered here from materials already issued to the order.', 'Mỗi lần báo công sử dụng lượng đã nhập ở đây từ vật tư đã cấp cho lệnh.'],
+  'route.materialPerRun': ['每次用量', 'Quantity per run', 'Lượng mỗi lần'],
+  'route.materialRemove': ['移除 {{name}}', 'Remove {{name}}', 'Xóa {{name}}'],
+  'route.materialDuplicate': ['已添加 {{name}}。', '{{name}} is already added.', 'Đã thêm {{name}}.'],
+  'route.materialQuantityInvalid': ['{{name}}的每次用量须为正数，最多 4 位小数，上限为 99999999。', '{{name}} requires a positive quantity per run with up to 4 decimal places and a maximum of 99999999.', 'Lượng mỗi lần của {{name}} phải lớn hơn 0, tối đa 4 chữ số thập phân và không vượt quá 99999999.'],
+  'route.materialWholeUnit': ['{{name}}的每次用量须为整数。', '{{name}} requires a whole number per run.', 'Lượng mỗi lần của {{name}} phải là số nguyên.'],
+  'route.materialLimit': ['每道工序最多配置 100 种材料。', 'Each operation can use up to 100 materials.', 'Mỗi công đoạn có thể dùng tối đa 100 loại vật tư.'],
   "payroll.daily": ["每日工资", "Daily earnings", "Lương theo ngày"],
   "payroll.chartCurrency": ["图表币种", "Chart currency", "Tiền tệ biểu đồ"],
   "payroll.chartHint": ["按本地日期汇总有效报工工资；不同币种分别查看。点击柱形查看当天金额，无计薪记录的日期为 0。可左右滑动图表查看全部日期。", "Active report earnings by local date, with separate currencies. Select a bar to view the daily amount. Days without paid reports are 0. Scroll horizontally to view all dates.", "Tổng lương ghi nhận hợp lệ theo ngày địa phương, xem riêng từng tiền tệ. Chọn cột để xem số tiền trong ngày. Ngày không có ghi nhận tính lương bằng 0. Vuốt ngang để xem tất cả ngày."],

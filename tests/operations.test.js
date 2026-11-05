@@ -519,7 +519,7 @@ test('material returns increase inventory once, preserve average cost, reject st
 test('business backup uses production group aware format', async t => {
   const f = await fixture(t);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 52);
+  assert.equal(backup.version, 53);
   const legacy = structuredClone(backup); legacy.version = 36;
   assert.equal((await f.request('/backup/preview', { backup: legacy })).status, 200);
 });

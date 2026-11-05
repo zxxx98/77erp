@@ -575,6 +575,9 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return "物料被出入库二维码引用，请先从二维码明细移除或使用停用。";
     if (db.prepare("SELECT 1 FROM quality_acceptances a,json_each(a.bindings) b WHERE json_extract(b.value,'$.product_id')=? LIMIT 1").get(product.id))
       return "物料已绑定验收单，不能删除，请使用停用。";
+    if (db.prepare(`SELECT 1 FROM process_routes r, json_each(r.graph,'$.nodes') n, json_each(n.value,'$.materials') m
+      WHERE r.warehouse_id=? AND r.route_kind='post_processing' AND json_extract(m.value,'$.product_id')=? LIMIT 1`).get(product.warehouse_id, product.id))
+      return '物料被后处理工艺引用，不能删除，请移除引用或使用停用。';
     if (db.prepare('SELECT 1 FROM production_orders WHERE product_id=? LIMIT 1').get(product.id) ||
         db.prepare('SELECT 1 FROM production_items WHERE product_id=? LIMIT 1').get(product.id) ||
         db.prepare('SELECT 1 FROM production_scraps WHERE product_id=? LIMIT 1').get(product.id) ||
