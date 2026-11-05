@@ -1,3 +1,4 @@
+import { stageReceiptDocument } from './production-stage-receipts.js';
 import { randomUUID } from 'node:crypto';
 import { moveInventory } from './commerce.js';
 import { addQuantity, validStoredQuantity } from '../shared/quantity.js';
@@ -93,9 +94,13 @@ export function installProductionReceipts(app, db, {route}) {
     const clauses = ['warehouse_id=?'], params = [req.warehouse.id];
     if (status !== 'all') {clauses.push('status=?'); params.push(status);}
     if (q.trim()) {clauses.push("(number LIKE ? ESCAPE '\\' OR production_number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\')"); params.push(...Array(3).fill(`%${q.trim().replace(/[\\%_]/g,c=>`\\${c}`)}%`));}
-    const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) n FROM production_receipts WHERE ${where}`).get(...params).n;
-    const docs = db.prepare(`SELECT id FROM production_receipts WHERE ${where} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset));
-    return {documents: docs.map(row => receiptDocument(db,row.id,req.warehouse.id)), total, has_more:Number(offset)+docs.length<total};
+    const where = clauses.join(' AND ');
+    const union = `SELECT id,number,production_number,product_name,warehouse_id,status,created_at,0 stage FROM production_receipts
+      UNION ALL SELECT r.id,r.number,o.number,s.name,r.warehouse_id,r.status,r.created_at,1 stage FROM production_stage_receipts r
+      JOIN production_orders o ON o.id=r.production_id JOIN production_stage_batches b ON b.id=r.source_batch_id JOIN production_stages s ON s.id=b.stage_id`;
+    const total=db.prepare(`SELECT COUNT(*) n FROM (${union}) WHERE ${where}`).get(...params).n;
+    const docs=db.prepare(`SELECT id,stage FROM (${union}) WHERE ${where} ORDER BY created_at DESC,stage DESC,id DESC LIMIT ? OFFSET ?`).all(...params,Number(limit),Number(offset));
+    return {documents:docs.map(row=>row.stage?stageReceiptDocument(db,row.id,req.warehouse.id):receiptDocument(db,row.id,req.warehouse.id)),total,has_more:Number(offset)+docs.length<total};
   }, false, authorize));
   app.post('/api/production-receipts/:id/confirm', route(req => {
     const id = Number(req.params.id); if (!isId(id)) fail('生产入库单编号无效。');

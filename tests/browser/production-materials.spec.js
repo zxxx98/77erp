@@ -126,7 +126,7 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     expect(f.stock()).toBe(90);
     await page.getByRole('tab', { name: '完工与入库', exact: true }).click();
     await page.getByRole('button', { name: '前往入库审批', exact: true }).click();
-    const receipts = page.getByRole('region', { name: '生产成品入库单', exact: true });
+    const receipts = page.getByRole('region', { name: '生产入库单', exact: true });
     await expect(receipts.getByText(f.order.number, { exact: false })).toHaveCount(2);
     await page.screenshot({ path: test.info().outputPath('production-receipt-pending.png'), fullPage: true });
     for (const remaining of [1, 0]) {
@@ -179,8 +179,8 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} multi
     await page.goto(`${f.base}/#purchases`);
     // API login changes the cookie; reload to initialize the new user's UI permissions.
     await page.reload();
-    await page.getByRole('tab', { name: /成品待入库/ }).click();
-    const receipts = page.getByRole('region', { name: '生产成品入库单', exact: true });
+    await page.getByRole('tab', { name: /生产待入库/ }).click();
+    const receipts = page.getByRole('region', { name: '生产入库单', exact: true });
     await expect(receipts.getByRole('button', { name: /查看并审批/ })).toHaveCount(2);
     for (const stock of [2, 4]) {
       await receipts.getByRole('button', { name: /查看并审批/ }).first().click();

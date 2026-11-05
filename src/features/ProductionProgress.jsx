@@ -36,6 +36,7 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
             {!layer.additional && <Button disabled={busy} onClick={() => onHistory(layer.path)} aria-label={t('production.viewBatches', { v0: layer.name })}>{t('production.batchRecords')}</Button>}
           </div>
         </div>
+        {!!order.stage_workflow && layer.path && !layer.additional && <p className="bom-hint">{t('production.availableInOrder')} {count(layer.available_quantity)} {layer.unit} · {t('production.pendingReceipt')} {count(layer.pending_receipt_quantity)} {layer.unit} · {t('production.received')} {count(layer.received_quantity)} {layer.unit}</p>}
         {layer.pool_paths && <><p className="bom-hint">{t('production.poolHint')}</p>
           <p className="bom-hint">{t('production.availableInOrder')} <strong>{count(layer.available_quantity)} {layer.unit}</strong> · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>
           <details className="production-disclosure"><summary>{t('production.poolUsage')}</summary>

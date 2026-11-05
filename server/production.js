@@ -192,7 +192,7 @@ export function listProductionOrders(db, warehouseId, query = {}, costs = false,
     if (status === 'in_progress') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='in_progress') OR (material_workflow=0 AND completed_at IS NOT NULL))");
     else if (status === 'draft') clauses.push("status='draft' AND ((material_workflow=1 AND material_phase='draft') OR (material_workflow=0 AND completed_at IS NULL))");
     else if (status === 'awaiting_materials') clauses.push("status='draft' AND material_workflow=1 AND material_phase='awaiting_materials'");
-    else if (status === 'pending_receipt') clauses.push("status!='void' AND EXISTS (SELECT 1 FROM production_batches b JOIN production_receipts r ON r.batch_id=b.id WHERE b.production_id=production_orders.id AND b.status='active' AND r.status='pending')");
+    else if (status === 'pending_receipt') clauses.push("(status!='void' AND EXISTS (SELECT 1 FROM production_batches b JOIN production_receipts r ON r.batch_id=b.id WHERE b.production_id=production_orders.id AND b.status='active' AND r.status='pending') OR status!='void' AND EXISTS (SELECT 1 FROM production_stage_receipts r WHERE r.production_id=production_orders.id AND r.status='pending'))");
     else if (status !== 'all') { clauses.push('status=?'); params.push(status); }
     if (q.trim()) { clauses.push("(number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR bom_name LIKE ? ESCAPE '\\')"); params.push(...Array(4).fill(pattern(q.trim()))); }
     const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) AS n FROM production_orders WHERE ${where}`).get(...params).n;

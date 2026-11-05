@@ -2110,9 +2110,9 @@ export default {
     "Hồ sơ chứng từ"
   ],
   "warehouse.finished.products.awaiting.storage": [
-    "成品待入库",
-    "Finished products awaiting storage",
-    "Thành phẩm chờ bảo quản"
+    "生产待入库",
+    "Production awaiting receipt",
+    "Sản phẩm sản xuất chờ nhập kho"
   ],
   "warehouse.returned.materials.awaiting.storage": [
     "退料待入库",

@@ -1,3 +1,4 @@
+import { ProductionStageReceipts } from '../features/ProductionStageReceipts.jsx';
 import { useOperationAcceptance } from '../features/OperationAcceptance.jsx';
 import { ProductPicker } from '../features/ProductPicker.jsx';
 import { ProductionSupply } from '../features/ProductionSupply.jsx';
@@ -586,6 +587,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     <ProductionProgress order={detail} busy={action.busy} onRegister={beginCompletion}
       onHistory={path => detail.stage_workflow ? begin({ kind: 'stages', historyPath: path }) : setDetailTab('records')}
       onOperations={path => begin({ kind: 'operations', path })} />
+    {!!detail.stage_workflow && management && <ProductionStageReceipts key={detail.id} order={detail} data={listData} busy={action.busy} onSaved={saved} onApprove={onNavigate ? () => onNavigate('purchases', { approval: 'receipts', q: detail.number }) : undefined} />}
     {!!detail.stage_workflow && <details className="production-disclosure panel bom-section" open={processDiagramOpen} onToggle={event => setProcessDiagramOpen(event.currentTarget.open)}><summary>{pt('production.processDiagram')}</summary>{processDiagramOpen && <ProductionProcessOverview key={`overview:${detail.id}`} order={detail} disabled={action.busy} onOpen={path => begin({ kind: 'operations', path })} />}</details>}
     {!detail.stage_workflow && detail.operation_routes?.some(route => route.path === '') && <details className="production-disclosure panel bom-section"><summary>{pt('production.processDiagram')}</summary><ProcessFlowStrip graph={detail.operation_routes.find(route => route.path === '').graph} operations={detail.operation_routes.find(route => route.path === '').operations} /></details>}
     {!detail.stage_workflow && detail.snapshot_format === 2 && <section className="panel bom-section">
@@ -617,7 +619,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       </div>}
     </section>}
     {!!detail.stage_workflow && management && can('finance') && <section className="panel bom-section"><h2>{pt("production.materialCostsByLevel")}</h2>
-      <div className="material-balance"><div><small>{pt("production.rawMaterialCostInvestedInAllLevels")}</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>{pt("production.remainingSemiFinishedCostInOrder")}</small><span>{money(detail.work_in_progress_cost_cents)}</span></div></div>
+      <div className="material-balance"><div><small>{pt("production.rawMaterialCostInvestedInAllLevels")}</small><span>{money(detail.direct_material_cost_cents)}</span></div><div><small>{pt("production.remainingSemiFinishedCostInOrder")}</small><span>{money(detail.work_in_progress_cost_cents)}</span></div><div><small>{pt("production.stageReceiptCost")}</small><span>{money(detail.stage_receipt_cost_cents)}</span></div></div>
       <p className="bom-hint">{pt("production.productCostIncludesOnlyInputsTransferredIntoRoot")}</p>
     </section>}
     {!detail.material_workflow && <section className="panel bom-section"><h2>{detail.completed_at ? pt("production.usageRecords") : pt("production.plannedMaterials")}</h2>

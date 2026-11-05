@@ -273,11 +273,12 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     if (/^\/quality(?:\/|$)/.test(path) && hasPermission(req.user, 'quality')) return next();
     if (/^\/process-routes(?:\/|$)/.test(path) && (hasPermission(req.user, 'bom') || read && ['products','production'].some(key => hasPermission(req.user,key)))) return next();
     if (/^\/boms(?:\/|$)/.test(path) && hasPermission(req.user, 'bom')) return next();
+    // Pending semi-finished receipts may be cancelled by production managers; the handler checks correction permissions for posted receipts.
     if (/^\/production-orders(?:\/|$)/.test(path) && hasPermission(req.user, 'production') &&
-        (!/\/(?:void|delete)$/.test(path) || hasPermission(req.user, 'corrections'))) return next();
+        (!/\/(?:void|delete)$/.test(path) || /^\/production-orders\/\d+\/stage-receipts\/\d+\/void$/.test(path) || hasPermission(req.user, 'corrections'))) return next();
     if (/^\/production-material-documents(?:\/|$)/.test(path) &&
         (hasPermission(req.user, 'stock_approve') || read && (hasPermission(req.user, 'purchase') || hasPermission(req.user, 'sale')) || post && /\/cancel$/.test(path) && hasPermission(req.user, 'production'))) return next();
-    if (/^\/production-receipts(?:\/|$)/.test(path) && (hasPermission(req.user, 'stock_approve') || read && hasPermission(req.user, 'purchase'))) return next();
+    if (/^\/production-(?:stage-)?receipts(?:\/|$)/.test(path) && (hasPermission(req.user, 'stock_approve') || read && hasPermission(req.user, 'purchase'))) return next();
     if (read && ['/workspace', '/style', '/updates'].includes(path)) return next();
     if (hasPermission(req.user, 'basic_view') && ((read && (['/announcements', '/announcements/unread-count'].includes(path) || /^\/announcements\/\d+$/.test(path))) ||
         (post && /^\/announcements\/\d+\/read$/.test(path)))) return next();

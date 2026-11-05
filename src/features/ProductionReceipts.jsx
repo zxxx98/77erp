@@ -23,7 +23,7 @@ export function ProductionReceiptList({ documents, busy, onConfirm, defaultExpan
   return <div className="material-documents">{documents.map(doc => <article className="material-document" id={`production-receipt-${doc.id}`} tabIndex={-1} key={doc.id}>
     <div className="material-document-heading"><div><strong>{doc.number}</strong><p>{doc.production_number} {pt("production.batch3")} {doc.batch_number} {pt("production.batch2")}</p></div>
       <Badge tone={doc.status === 'pending' ? 'orange' : doc.status === 'confirmed' ? 'green' : 'gray'}>{statusLabels()[doc.status]}</Badge></div>
-    <p>{doc.product_name} · {formatExactQuantity(exactQuantity(doc))} {doc.unit}</p>
+    <p>{doc.kind === 'stage' && <strong>{pt('production.stageReceiptTitle')} · </strong>}{doc.product_name} · {formatExactQuantity(exactQuantity(doc))} {doc.unit}</p>
     <p className="material-muted">{pt("production.registered")}{doc.created_by_name} · {dateTime(doc.created_at)}</p>
     {doc.confirmed_at && <p className="material-muted">{pt("production.received2")}{doc.confirmed_by_name} · {dateTime(doc.confirmed_at)}</p>}
     {doc.voided_at && <p className="material-muted">{pt("production.voided")}{doc.voided_by_name} · {dateTime(doc.voided_at)}{doc.void_reason && ` · ${doc.void_reason}`}</p>}
@@ -35,7 +35,7 @@ export function ProductionReceiptList({ documents, busy, onConfirm, defaultExpan
       {doc.status === 'pending' && onConfirm && <Button kind="primary" disabled={busy} onClick={() => onConfirm(doc)}>{pt("production.approveAndConfirmReceipt")}</Button>}
     </div>
     {expanded === doc.id && <ul className="material-document-lines">{doc.items.map(item => <li key={`${item.kind}:${item.product_id}`}>
-      <div><strong>{item.name}</strong><small>{item.kind === 'scrap' ? pt("production.scrap") : pt("production.acceptedProducts")} · {item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
+      <div><strong>{item.name}</strong><small>{item.kind === 'stage' ? pt('production.semiFinishedInThisOrder') : item.kind === 'scrap' ? pt("production.scrap") : pt("production.acceptedProducts")} · {item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
       <span>{formatExactQuantity(exactQuantity(item))} {item.unit}</span>
       {can('finance') && item.cost_cents != null && <small>{pt("production.receiptCost")} {currencySymbol()}{money(item.cost_cents / 100)}</small>}
     </li>)}</ul>}
@@ -64,7 +64,7 @@ export function ProductionReceipts({ data, onChanged, initialQuery = '', onRefre
   const confirm = doc => action.run(async () => {
     setMessage('');
     if (!window.confirm(pt("production.approveAndReceiveTheFullBatchAndListed", { v0: doc.number, v1: formatExactQuantity(exactQuantity(doc)), v2: doc.unit, v3: doc.product_name }))) return;
-    await action.send(`/production-receipts/${doc.id}/confirm`, { version: doc.version }, { warehouseId: data.warehouse_id });
+    await action.send(doc.kind === 'stage' ? `/production-stage-receipts/${doc.stage_receipt_id}/confirm` : `/production-receipts/${doc.id}/confirm`, { version: doc.version }, { warehouseId: data.warehouse_id });
     setMessage(pt("production.received3", { v0: doc.number }));
     setSelection(null);
     if (offset > 0 && documents.length === 1 && status === 'pending') setOffset(value => Math.max(0, value - 10));

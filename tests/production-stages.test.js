@@ -101,7 +101,7 @@ test('untouched historic drafts explicitly enable from saved snapshot; plans ref
 test('backup roundtrip retains WIP and rejects cross-source, quantity and cost corruption',async t=>{
   const f=await fixture(t); let o=await f.active();
   o=f.ok(await f.complete(o,'1',12,[['1.1',36]]));
-  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 49);
+  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 50);
   let preview=f.ok(await f.request('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
   o=await f.get(o.id);assert.equal(o.stages[1].available_quantity,12);
@@ -189,6 +189,12 @@ test('shared semi-finished output supplies either branch with FIFO costs, usage 
   const upper=(await f.batches(o,'')).batches[0];o=f.ok(await f.voidBatch(o,upper.id));
   o=f.ok(await f.voidBatch(o,rightBatch.id));assert.equal(o.stage_pools[0].available_quantity,2);
   assert.equal(o.stage_pools[0].pool_usages.length,1);
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'2.1',quantity:'3/2'}));
+  const receipts=o.receipt_documents.filter(d=>d.kind==='stage');
+  assert.equal(receipts.length,2);assert.deepEqual(receipts.map(r=>r.path),['1.1','2.1']);
+  assert.equal(o.stage_pools[0].available_quantity,0.5);assert.equal(o.stage_pools[0].pending_receipt_quantity,1.5);
+  assert.equal(o.stage_pools[0].consumed_quantity,1);
+  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
 });
 
 test('all half batches must be corrected before order void; returned pools permit deletion with clean foreign keys',async t=>{
@@ -431,4 +437,91 @@ test('produce-only semi can be supplemented over plan after a batch, consumed fr
   doc=o.material_documents.at(-1);f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.b).stock,30);
   backup=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup}));
+});
+
+test('remaining semi-finished receipts reserve exact balances, approve costs, reopen on reversal and survive restore',async t=>{
+  const f=await fixture(t);let o=await f.active();
+  o=f.ok(await f.complete(o,'1',12,[['1.1',36]]));
+  o=f.ok(await f.complete(o,'',5,[['1',10]]));
+  const initialCost=o.stages[1].available_cost_cents;
+  const request={request_id:randomUUID(),schema_version:2,stage_schema_version:1,version:o.version,path:'1',quantity:'1/3'};
+  const first=f.ok(await f.request(`/production-orders/${o.id}/stage-receipts`,request));
+  assert.deepEqual(f.ok(await f.request(`/production-orders/${o.id}/stage-receipts`,request)),first);
+  o=first;let doc=o.receipt_documents.find(d=>d.kind==='stage');
+  assert.equal(doc.quantity_fraction,'1/3');assert.equal(o.stages[1].available_quantity_fraction,'5/3');
+  assert.equal(o.stages[1].consumed_quantity,10);assert.equal(o.stages[1].pending_receipt_quantity_fraction,'1/3');
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.b).stock,0);
+  assert.equal((await f.complete(o,'',1,[['1',2]])).status,400);
+  assert.equal((await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'1',quantity:2})).status,409);
+  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+  doc=f.ok(await f.command(`/production-stage-receipts/${doc.stage_receipt_id}/confirm`,{version:doc.version}));
+  assert.equal((await f.command(`/production-stage-receipts/${doc.stage_receipt_id}/confirm`,{version:doc.version})).status,409);
+  assert.equal(f.db.prepare('SELECT stock_fraction FROM products WHERE id=?').get(f.b).stock_fraction,'1/3');
+  o=await f.get(o.id);
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'1',quantity:'5/3'}));
+  assert.equal(o.stages[1].available_quantity,0);
+  assert.equal((await f.command(`/production-orders/${o.id}/finish`,{version:o.version})).status,409);
+  const pending=o.receipt_documents.find(d=>d.kind==='stage'&&d.status==='pending');
+  const queue=f.ok(await f.request('/production-receipts?status=pending'));
+  assert.ok(queue.documents.some(d=>d.id===pending.id));
+  f.ok(await f.command(`/production-stage-receipts/${pending.stage_receipt_id}/confirm`,{version:pending.version}));
+  o=await f.get(o.id);o=f.ok(await f.command(`/production-orders/${o.id}/finish`,{version:o.version}));
+  assert.equal(o.status,'completed');assert.equal(o.stages[1].received_quantity,2);
+  assert.equal(f.db.prepare('SELECT inventory_value_cents FROM products WHERE id=?').get(f.b).inventory_value_cents,initialCost);
+  const backup=f.ok(await f.request('/backup')),preview=f.ok(await f.request('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
+  o=await f.get(o.id);doc=o.receipt_documents.find(d=>d.kind==='stage');
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts/${doc.stage_receipt_id}/void`,{version:o.version,reason:'更正'}));
+  assert.equal(o.status,'in_progress');assert.equal(o.stages[1].available_quantity_fraction,'1/3');
+  const after=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup:after}));
+  for(const mutate of [d=>d.production_stage_receipts[0].total_cost_cents++,d=>d.production_stage_receipts[0].source_batch_id=99999,d=>{const r=d.production_stage_receipts[0];const parts=JSON.parse(r.components);parts[0].quantity++;r.components=JSON.stringify(parts);}]){
+    const broken=structuredClone(after);mutate(broken.data);assert.equal((await f.request('/backup/preview',{backup:broken})).status,400);
+  }
+});
+
+test('semi-finished receipt cancellation restores source and FIFO consumers after reservation',async t=>{
+  const f=await fixture(t);let o=await f.active();o=f.ok(await f.complete(o,'1',2,[['1.1',6]]));
+  const source=(await f.batches(o,'1')).batches[0];
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'1',quantity:1}));
+  const doc=o.receipt_documents.find(d=>d.kind==='stage');
+  assert.equal((await f.voidBatch(o,source.id)).status,409);
+  o=f.ok(await f.complete(o,'',1,[['1',1]]));
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts/${doc.stage_receipt_id}/void`,{version:o.version,reason:'继续生产'}));
+  assert.equal(o.stages[1].available_quantity,1);
+  o=f.ok(await f.complete(o,'',1,[['1',1]],{finish_order:true}));
+  const backup=f.ok(await f.request('/backup'));f.ok(await f.request('/backup/preview',{backup}));
+});
+
+test('semi-finished receipts enforce permissions and warehouse scope, and preserve root rounding',async t=>{
+  const f=await fixture(t);
+  const user=async(username,permissions)=>{
+    const pos=await f.request('/positions',{name:username,permissions,access_mode:'standard'});assert.equal(pos.status,201);
+    const created=await f.request('/users',{username,employee_no:username,password:'Test-staff-123',position_id:pos.data.id});assert.equal(created.status,201);
+    return {cookie:(await f.request('/auth/login',{username,password:'Test-staff-123'},{cookie:null})).cookie};
+  };
+  const manager=await user('receipt-manager',['production']),approver=await user('receipt-approver',['stock_approve']);
+  let o=await f.active();o=f.ok(await f.complete(o,'1',2,[['1.1',6]]));
+  o=f.ok(await f.complete(o,'','1/3',[['1',1]]));
+  assert.equal((await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'1',quantity:1},approver)).status,403);
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'1',quantity:1},manager));
+  let doc=o.receipt_documents.find(d=>d.kind==='stage');
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts/${doc.stage_receipt_id}/void`,{version:o.version,reason:'重新申请'},manager));
+  assert.equal(o.stages[1].available_quantity,1);
+  o=f.ok(await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'1',quantity:1},manager));
+  doc=o.receipt_documents.find(d=>d.kind==='stage'&&d.status==='pending');
+  assert.equal((await f.command(`/production-stage-receipts/${doc.stage_receipt_id}/confirm`,{version:doc.version},manager)).status,403);
+  const wh=(await f.request('/warehouses',{name:'半成品分仓'})).data;
+  assert.equal((await f.command(`/production-stage-receipts/${doc.stage_receipt_id}/confirm`,{version:doc.version},{warehouseId:wh.id})).status,404);
+  assert.equal(f.ok(await f.request('/production-orders?status=pending_receipt',undefined,{warehouseId:wh.id})).total,0);
+  doc=f.ok(await f.command(`/production-stage-receipts/${doc.stage_receipt_id}/confirm`,{version:doc.version},approver));
+  assert.equal(JSON.stringify(doc).includes('cost'),false);
+  o=await f.get(o.id);
+  assert.equal((await f.command(`/production-orders/${o.id}/stage-receipts/${doc.stage_receipt_id}/void`,{version:o.version,reason:'更正'},manager)).status,403);
+  o=f.ok(await f.command(`/production-orders/${o.id}/finish`,{version:o.version}));
+  assert.equal(o.settled_completed_quantity,0.3334);
+  assert.ok(o.quantity_rounding.every(r=>r.receipt_id===null||typeof r.receipt_id==='number'));
+  const history=f.ok(await f.request(`/products/${f.b}/history`));assert.ok(history.records.some(r=>r.number===doc.number&&r.delta===1));
+  const before=structuredClone(o);f.db.prepare('UPDATE products SET stock=0,inventory_value_cents=0 WHERE id=?').run(f.b);
+  assert.equal((await f.command(`/production-orders/${o.id}/stage-receipts/${doc.stage_receipt_id}/void`,{version:o.version,reason:'不能倒扣'})).status,400);
+  o=await f.get(o.id);assert.equal(o.status,'completed');assert.deepEqual(o.quantity_rounding,before.quantity_rounding);
 });

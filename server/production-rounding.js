@@ -57,7 +57,7 @@ export function finalizeProductionQuantities(db, req, order) {
     if (!Number.isSafeInteger(extraCost)) throw new Error('完结取整成本超出范围。');
     save(item.product_id, 'material', delta, cost, null, available, item.available_cost_cents);
   }
-  const documents = order.receipt_documents.filter(row => row.status !== 'void');
+  const documents = order.receipt_documents.filter(row => row.kind !== 'stage' && row.status !== 'void');
   const last = documents.at(-1);
   if (!last) throw new Error('请先登记有效成品批次再结束生产。');
   const output = exactQuantity(order, 'completed_quantity');

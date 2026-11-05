@@ -1,5 +1,31 @@
 // System UI only. Stored template content, values and material identifiers are not translated.
 export default {
+  "production.stageReceiptCost": ["半成品入库及待入库成本", "Received and pending semi-finished cost", "Chi phí bán thành phẩm đã nhập và chờ nhập"],
+  "production.stageReceiptErrorBalance": ["半成品入库数量超过本单可用余额。", "Receipt quantity exceeds the available semi-finished balance.", "Số lượng nhập vượt số dư bán thành phẩm khả dụng."],
+  "production.stageReceiptErrorPending": ["仍有半成品待入库，请先由仓库批准或取消申请。", "Semi-finished receipts are pending. Have the warehouse approve them or cancel the requests first.", "Còn phiếu nhập bán thành phẩm chờ duyệt. Kho cần phê duyệt hoặc hủy yêu cầu trước."],
+  "production.stageReceiptErrorSource": ["此批次有半成品入库申请，请先取消或作废入库单。", "This batch has semi-finished receipts. Cancel or void those receipts first.", "Lô này có phiếu nhập bán thành phẩm. Hãy hủy các phiếu trước."],
+  "production.stageReceiptErrorChanged": ["半成品入库单已变化，请刷新后核对。", "The semi-finished receipt has changed. Refresh and review it.", "Phiếu nhập bán thành phẩm đã thay đổi. Hãy làm mới và kiểm tra."],
+  "production.stageReceiptErrorPermissions": ["已入库半成品作废需要单据纠正和仓库入库权限。", "Voiding a received semi-finished receipt requires correction and warehouse receipt permissions.", "Hủy phiếu đã nhập cần quyền sửa chứng từ và nhập kho."],
+  "production.stageReceiptErrorProduct": ["半成品已停用或单位、取整规则已变化。", "The semi-finished item is disabled or its unit or rounding rule has changed.", "Bán thành phẩm đã tắt hoặc đơn vị, quy tắc làm tròn đã thay đổi."],
+  "production.stageReceiptErrorQuantity": ["半成品入库数量必须大于零。", "Semi-finished receipt quantity must be positive.", "Số lượng nhập bán thành phẩm phải lớn hơn không."],
+
+  "production.stageReceiptTitle": ["剩余半成品入库", "Remaining semi-finished receipts", "Nhập kho bán thành phẩm còn lại"],
+  "production.stageReceiptHint": ["本单生产的剩余半成品可申请入库。申请后暂占本单余额，仓库批准后数量和成本转入库存；按来源批次拆单。待入库单须先处理才能结束生产。", "Request warehouse receipt of remaining semi-finished output. Requests reserve the order balance; approval transfers quantity and cost to inventory. Each source batch creates a separate receipt. Resolve pending receipts before finishing production.", "Yêu cầu nhập kho bán thành phẩm còn lại. Yêu cầu giữ số dư của lệnh; phê duyệt chuyển số lượng và chi phí vào kho. Mỗi lô nguồn tạo một phiếu riêng. Xử lý phiếu chờ trước khi kết thúc sản xuất."],
+  "production.stageReceiptProduct": ["入库半成品", "Semi-finished item to receive", "Bán thành phẩm nhập kho"],
+  "production.stageReceiptSelect": ["请选择有余额的半成品", "Select a semi-finished item with a balance", "Chọn bán thành phẩm còn số dư"],
+  "production.stageReceiptQuantity": ["半成品入库数量", "Semi-finished receipt quantity", "Số lượng bán thành phẩm nhập kho"],
+  "production.stageReceiptAll": ["填入全部余额", "Use full balance", "Dùng toàn bộ số dư"],
+  "production.stageReceiptSubmit": ["申请半成品入库", "Request semi-finished receipt", "Yêu cầu nhập kho bán thành phẩm"],
+  "production.stageReceiptSubmitted": ["已申请半成品入库，请由仓库批准。", "Semi-finished receipt requested. Warehouse approval is required.", "Đã yêu cầu nhập kho bán thành phẩm. Cần kho phê duyệt."],
+  "production.stageReceiptEmpty": ["没有可申请入库的半成品余额。", "No semi-finished balance available for receipt.", "Không có số dư bán thành phẩm để nhập kho."],
+  "production.stageReceiptCancel": ["取消半成品入库申请", "Cancel semi-finished receipt request", "Hủy yêu cầu nhập kho bán thành phẩm"],
+  "production.stageReceiptVoid": ["作废半成品入库", "Void semi-finished receipt", "Hủy phiếu nhập kho bán thành phẩm"],
+  "production.stageReceiptVoidReason": ["半成品入库作废原因", "Reason for voiding semi-finished receipt", "Lý do hủy nhập kho bán thành phẩm"],
+  "production.stageReceiptVoidSave": ["确认作废入库单", "Confirm receipt void", "Xác nhận hủy phiếu nhập"],
+  "production.stageReceiptVoidConfirm": ["作废后将从仓库扣回原数量和成本，恢复本单半成品余额；已结束的生产单将重新打开。确认作废？", "Void this receipt? Original quantity and cost will leave inventory and return to this order. A finished production order will reopen.", "Hủy phiếu này? Số lượng và chi phí gốc sẽ được trừ kho và trả về lệnh. Lệnh đã kết thúc sẽ mở lại."],
+  "production.stageReceiptCancelConfirm": ["取消申请并恢复本单半成品可用余额？", "Cancel the request and restore the available semi-finished balance?", "Hủy yêu cầu và khôi phục số dư bán thành phẩm khả dụng?"],
+  "production.stageReceiptVoided": ["半成品入库单已作废，本单余额已恢复。", "Semi-finished receipt voided. Order balance restored.", "Đã hủy phiếu nhập bán thành phẩm và khôi phục số dư lệnh."],
+
   'production.fractionRegistrationHint': ['数量可填小数或分数（如 1/3）。过程中保留精确分数，整单完结时按物料规则统一向上取整。', 'Enter decimals or fractions (such as 1/3). Quantities remain exact during production and round up once per material when the order finishes.', 'Nhập số thập phân hoặc phân số (ví dụ 1/3). Giữ phân số chính xác trong sản xuất và làm tròn lên theo vật tư khi kết thúc lệnh.'],
   'production.settledOutput': ['完结结算产量', 'Settled output', 'Sản lượng quyết toán'],
   'production.roundingAdjustment': ['完结取整差额', 'Final rounding adjustment', 'Chênh lệch làm tròn cuối lệnh'],
@@ -1866,13 +1892,13 @@ export default {
     "Cấu trúc công thức đã lưu"
   ],
   "production.productionProductReceipts": [
-    "生产成品入库单",
+    "生产入库单",
     "Production product receipts",
-    "Phiếu nhập thành phẩm sản xuất"
+    "Phiếu nhập sản xuất"
   ],
   "production.approveEachBatchSeparatelyPendingReceiptsDoNot": [
-    "每批单独批准。待入库不增加仓库库存，结束生产后仍可入库；更正请作废对应批次。",
-    "Approve each batch separately. Pending receipts do not increase stock and can be approved after production ends. Void the corresponding batch to correct it.",
+    "每批单独批准后才增加库存。半成品待入库须在结束生产前处理；成品可在结束生产后入库。半成品更正请作废入库单，成品更正请作废对应批次。",
+    "Approve each batch separately to increase stock. Resolve semi-finished receipts before ending production; final products may be received afterwards. Void the receipt to correct semi-finished output, or void the batch to correct final output.",
     "Duyệt riêng từng lô. Chờ nhập không tăng tồn kho và vẫn nhập được sau khi kết thúc sản xuất. Hãy hủy lô tương ứng để sửa."
   ],
   "production.goToReceiptApproval": [
@@ -5696,8 +5722,8 @@ export default {
     "Công thức cấp dưới"
   ],
   "production.thisSemiFinishedItemIsNeitherIssuedNor": [
-    "本单不领用、不入库此半成品，按下级配方展开需求。",
-    "This semi-finished item is neither issued nor received for this order; requirements expand using its child recipe.",
+    "本单生产此半成品，按下级配方展开需求；剩余产出可申请入库。",
+    "Produce this semi-finished item using its child recipe; remaining output may be received into inventory.",
     "Lệnh này không cấp hoặc nhập bán thành phẩm này; nhu cầu được triển khai theo công thức cấp dưới."
   ],
   "production.rootRecipe": [
@@ -5811,8 +5837,8 @@ export default {
     "Chi tiết vật tư"
   ],
   "production.thisSemiFinishedItemIsNeitherIssuedNor2": [
-    "本单不领用、不入库此半成品，按指定下级配方备料。",
-    "This semi-finished item is neither issued nor received. Plan materials using the selected child recipe.",
+    "本单生产此半成品，按指定下级配方备料；剩余产出可申请入库。",
+    "Produce this semi-finished item using the selected child recipe; remaining output may be received into inventory.",
     "Không cấp hoặc nhập bán thành phẩm này. Chuẩn bị nguyên liệu theo công thức cấp dưới đã chọn."
   ],
   "production.childRecipe2": [
@@ -6196,9 +6222,9 @@ export default {
     "Làm mới phiếu nhập sản xuất"
   ],
   "production.verifyAcceptedProductsAndScrapForEachBatch": [
-    "核对每批合格成品及入库废料，批准后才增加库存。生产登记与结束生产不自动入库；更正请在生产单中作废对应批次。",
-    "Verify accepted products and scrap for each batch. Stock increases after approval only. Registration and ending production do not receive stock automatically; void the corresponding batch to correct it.",
-    "Kiểm tra thành phẩm đạt và phế liệu từng lô. Chỉ tăng tồn kho sau duyệt. Ghi nhận và kết thúc sản xuất không tự nhập; hãy hủy lô tương ứng để sửa."
+    "核对成品、半成品及入库废料，批准后才增加库存。半成品入库更正请在生产单中作废入库单；成品更正请作废对应批次。",
+    "Verify finished products, semi-finished products and scrap. Stock increases after approval only. Correct semi-finished receipts by voiding the receipt in its production order; correct final output by voiding its batch.",
+    "Kiểm tra thành phẩm, bán thành phẩm và phế liệu. Chỉ tăng tồn kho sau duyệt. Để sửa bán thành phẩm, hủy phiếu nhập trong lệnh sản xuất; với thành phẩm, hủy lô tương ứng."
   ],
   "production.searchProductionReceipts": [
     "搜索生产入库单",
@@ -6226,9 +6252,9 @@ export default {
     "Phiếu nhập sản xuất tiếp theo"
   ],
   "production.productionProductReceipt": [
-    "生产成品入库",
+    "生产入库",
     "Production product receipt",
-    "Nhập thành phẩm sản xuất"
+    "Nhập kho sản xuất"
   ],
   "production.switchToTheWarehouseInTheQrCode": [
     "请先切换至二维码对应的仓库后重试。",
@@ -6301,13 +6327,13 @@ export default {
     " cấp bán thành phẩm đã ghi nhận"
   ],
   "production.registerLowerLevelSemiFinishedOutputFirstFor": [
-    "先登记下层半成品，再供上层使用。半成品留在本单内，原材料只记录一次耗用。",
-    "Register lower-level semi-finished output first for parent levels. Semi-finished stock stays within this order; raw materials are consumed only once.",
+    "先登记下层半成品，再供上层使用；剩余半成品可申请入库。原材料只记录一次耗用。",
+    "Register lower-level semi-finished output first for parent levels. Remaining output can be received into inventory; raw materials are consumed only once.",
     "Ghi nhận bán thành phẩm cấp dưới trước để cấp trên dùng. Bán thành phẩm giữ trong lệnh; nguyên liệu chỉ tính tiêu hao một lần."
   ],
   "production.semiFinishedLevelsStillHaveAvailableQuantitiesConsume": [
-    "个半成品层仍有可用数量，使用完后才能结束生产。",
-    " semi-finished levels still have available quantities; consume them before ending production.",
+    "个半成品层仍有可用数量，使用或入库后才能结束生产。",
+    " semi-finished levels still have available quantities; consume or receive them into inventory before ending production.",
     " cấp bán thành phẩm còn lượng khả dụng; phải dùng hết trước khi kết thúc sản xuất."
   ],
   "production.viewProgressAndBatchesByLevel": [

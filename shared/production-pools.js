@@ -44,6 +44,7 @@ export function pooledProductionStages(order) {
     if (group.length === 1) return first;
     return { ...first, pool_paths: group.map(row => row.path),
       ...quantityFields(sum('planned_quantity'), 'planned_quantity'), ...quantityFields(sum('completed_quantity'), 'completed_quantity'),
+      ...quantityFields(sum('pending_receipt_quantity'), 'pending_receipt_quantity'), ...quantityFields(sum('received_quantity'), 'received_quantity'),
       ...quantityFields(sum('available_quantity'), 'available_quantity'), ...quantityFields(sum('consumed_quantity'), 'consumed_quantity'),
       ...(group.some(row => row.available_cost_cents !== undefined) ? { available_cost_cents: group.reduce((n,row) => n + (row.available_cost_cents || 0), 0) } : {}),
       items: first.items.map((item, index) => {

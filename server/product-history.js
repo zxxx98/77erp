@@ -108,6 +108,16 @@ export function installProductHistory(app, db) {
       FROM production_receipt_items i JOIN production_receipts d ON d.id=i.document_id
       WHERE i.product_id=? AND d.warehouse_id=? AND d.confirmed_at IS NOT NULL AND d.status='void' AND ?
       UNION ALL
+      SELECT 'production_in','stage-receipt:' || r.id,NULL,r.number,'in','production',r.status,r.confirmed_at,'',o.number || ' · 半成品入库',r.confirmed_by_name,
+        r.quantity,r.quantity,NULL,NULL,NULL,NULL,NULL,NULL,s.unit
+      FROM production_stage_receipts r JOIN production_orders o ON o.id=r.production_id JOIN production_stage_batches b ON b.id=r.source_batch_id JOIN production_stages s ON s.id=b.stage_id
+      WHERE s.product_id=? AND r.warehouse_id=? AND r.confirmed_at IS NOT NULL AND ?
+      UNION ALL
+      SELECT 'production_void_out','stage-receipt:' || r.id,NULL,r.number,'out','production',r.status,r.voided_at,'',r.void_reason,r.voided_by_name,
+        r.quantity,-r.quantity,NULL,NULL,NULL,NULL,NULL,NULL,s.unit
+      FROM production_stage_receipts r JOIN production_stage_batches b ON b.id=r.source_batch_id JOIN production_stages s ON s.id=b.stage_id
+      WHERE s.product_id=? AND r.warehouse_id=? AND r.confirmed_at IS NOT NULL AND r.status='void' AND ?
+      UNION ALL
       SELECT CASE WHEN d.type='out' THEN 'production_material_out' ELSE 'production_material_in' END,
         'material:' || i.id,NULL,d.number,d.type,'production',d.status,d.confirmed_at,'',d.production_number || ' · ' || d.note,d.confirmed_by_name,
         i.quantity,CASE WHEN d.type='out' THEN -i.quantity ELSE i.quantity END,NULL,NULL,NULL,NULL,NULL,NULL,i.unit
@@ -125,7 +135,7 @@ export function installProductHistory(app, db) {
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'stocktake')),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'finance')),
         ...Array.from({ length: 12 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production'))]).flat(),
-        ...Array.from({ length: 2 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production') || hasPermission(req.user, 'purchase'))]).flat(),
+        ...Array.from({ length: 4 }, () => [product.id, req.warehouse.id, Number(hasPermission(req.user, 'production') || hasPermission(req.user, 'purchase'))]).flat(),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'production')), Number(hasPermission(req.user, 'sale')), Number(hasPermission(req.user, 'purchase')),
         product.id, req.warehouse.id, Number(hasPermission(req.user, 'production')), Number(hasPermission(req.user, 'sale')), limit + 1, offset);
     const records = rows.slice(0, limit).map(row => {

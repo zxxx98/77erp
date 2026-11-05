@@ -371,3 +371,37 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers one sha
     expect(errors).toEqual([]);
   } finally { await f.close(); await context?.close(); }
 });
+
+for (const mode of ['desktop','mobile','pwa']) test(`${mode} requests remaining semi-finished stock and warehouse approves`,async({page,browser})=>{
+  test.setTimeout(90000);
+  const context=mode==='pwa'?await browser.newContext({locale:'zh-CN',serviceWorkers:'allow',viewport:{width:390,height:844},userAgent:iphone}):null;
+  if(context)page=await context.newPage();
+  if(mode==='mobile'){await page.setViewportSize({width:390,height:844});await page.addInitScript(ua=>Object.defineProperty(navigator,'userAgent',{value:ua}),iphone);}
+  const f=await fixture(page);
+  try {
+    let o=await f.get();
+    o=await f.post(`/production-orders/${o.id}/stages/complete`,{version:o.version,path:'1',completed_quantity:12,items:[{path:'1.1',quantity:36}],finish_order:false});
+    o=await f.post(`/production-orders/${o.id}/stages/complete`,{version:o.version,path:'',completed_quantity:5,items:[{path:'1',quantity:10}],scraps:[],finish_order:false});
+    page.on('dialog',dialog=>dialog.accept());
+    await page.goto(`${f.base}/#production`);
+    if(context)await page.evaluate(()=>navigator.serviceWorker.ready);
+    await page.getByRole('button',{name:`查看生产单 ${o.number}`,exact:true}).click();
+    await page.getByRole('tab',{name:'生产进度',exact:true}).click();
+    const panel=page.getByRole('region',{name:'剩余半成品入库',exact:true});
+    await panel.getByRole('combobox',{name:'入库半成品',exact:true}).click();
+    await page.getByRole('option',{name:/分层半成品 · 1 · 2 件/}).click();
+    await panel.getByRole('button',{name:'填入全部余额',exact:true}).click();
+    await expect(panel.getByLabel('半成品入库数量',{exact:true})).toHaveValue('2');
+    await panel.getByRole('button',{name:'申请半成品入库',exact:true}).click();
+    await expect(panel.getByRole('button',{name:'取消半成品入库申请',exact:true})).toBeVisible();
+    o=await f.get();const doc=o.receipt_documents.find(d=>d.kind==='stage');
+    expect(o.stages.find(s=>s.path==='1').available_quantity).toBe(0);
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.half.id).stock).toBe(0);
+    await page.goto(`${f.base}/#purchases?approval=receipts`);
+    await page.getByRole('button',{name:`查看并审批 ${doc.number}`,exact:true}).click();
+    await page.getByRole('button',{name:'批准并确认入库',exact:true}).click();
+    await expect.poll(()=>f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.half.id).stock).toBe(2);
+    o=await f.get();expect(o.stages.find(s=>s.path==='1').received_quantity).toBe(2);
+    expect((await f.post(`/production-orders/${o.id}/finish`,{version:o.version})).status).toBe('completed');
+  } finally {await f.close();await context?.close();}
+});

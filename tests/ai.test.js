@@ -257,6 +257,8 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} productio
   assert.match(prompt, /variance_rate是以标准耗料为分母的百分数/);
   assert.match(prompt, /不按计划产量或当前BOM重算/);
   assert.match(prompt, /stage_pools共用半成品/);
+  assert.match(prompt, /剩余半成品入库/);
+  assert.match(prompt, /receipt_documents中kind=stage/);
   assert.match(prompt, /后续生产实际领用时归集数量和成本/);
   assert.match(prompt, /不能重复相加/);
   assert.match(prompt, /AI不创建、修改、完工、作废或删除生产单/);
