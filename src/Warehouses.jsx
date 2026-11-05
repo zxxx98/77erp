@@ -39,10 +39,12 @@ export function WarehouseManager({ warehouses, onRefresh, onBusy }) {
     } catch (e) { setError(localizeError(e.message)); }
     finally { lock.current = false; setBusy(false); onBusy?.(false); }
   };
-  return <section className="operation-panel">
-    <h3>{translate("system.warehouse.management")}</h3>
+  return <section className="operation-panel warehouse-manager">
+    <div className="settings-section-heading">
+      <h3>{translate("system.warehouse.management")}</h3>
+      <p>{translate("system.after.adding.a.new.warehouse.you.can.switch.it.at.the")}</p>
+    </div>
     {busy && <p><LoadingStatus>{translate("system.processing.warehouse")}</LoadingStatus></p>}
-    <p>{translate("system.after.adding.a.new.warehouse.you.can.switch.it.at.the")}</p>
     <label>{translate("system.new.warehouse.name")}<AntInput maxLength={60} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
     <AntConfigProvider componentDisabled={busy}><fieldset className="warehouse-reuse" disabled={busy}>
       <legend>{translate("system.whether.to.reuse.the.current.warehouse")}{current?.name}{translate("system.material.classification.and.material.information")}</legend>

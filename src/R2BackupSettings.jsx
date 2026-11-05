@@ -32,23 +32,42 @@ export function R2BackupSettings({ active, onBusy, onDirty }) {
     <div className="settings-section-heading"><h3>{translate("system.cloudflare.r2.automatic.backup")}</h3><p>{translate("system.full.sqlite.online.backup.including.all.repositories.accounts.and.system.credentials")}</p></div>
     {config && <div className="notification-fields">
       <AntCheckbox className="notification-choice" checked={config.enabled} disabled={busy} onChange={e => field('enabled', e.target.checked)}><span>{translate("system.enable.scheduled.backup")}</span></AntCheckbox>
-      {[['account_id', 'Cloudflare Account ID', translate("system.32.digit.account.id")], ['bucket', translate("system.r2.bucket"), translate("system.pre.created.private.bucket")], ['prefix', translate("system.backup.directory.prefix"), '77erp'], ['cron', translate("system.cron.expression.five.paragraphs"), '0 2 * * *'], ['timezone', translate("system.execution.time.zone"), 'Asia/Shanghai']].map(([key, label, placeholder]) => <label key={key}>{label}<AntInput value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
-      <label>{translate("system.excel.directory.prefix")}<FormField value={config.excel_prefix || ''} required maxLength={200} label={translate("system.excel.directory.prefix")}><AntInput  value={config.excel_prefix || ''} maxLength={200} placeholder="excel" disabled={busy} onChange={e => field('excel_prefix', e.target.value)} /></FormField><small>{translate("system.the.original.excel.of.the.acceptance.form.uses.this.independent.directory")}</small></label>
-      <small>{translate("system.cron.order.minute.hour.day.month.week.for.example.0.2")}</small>
-      {[['access_key', 'R2 Access Key ID'], ['secret_key', 'R2 Secret Access Key']].map(([key, label]) => <React.Fragment key={key}>
-        <label>{label}<AntInput type="password" autoComplete="new-password" maxLength={4096} disabled={busy || credentials[`clear_${key}`]} value={credentials[key] || ''} placeholder={config[`has_${key}`] ? translate("system.saved.leave.blank.to.retain.2") : translate("system.not.configured.yet")} onChange={e => setCredentials(c => ({ ...c, [key]: e.target.value }))} /></label>
-        {config[`has_${key}`] && <AntCheckbox className="notification-choice" disabled={busy} checked={!!credentials[`clear_${key}`]} onChange={e => setCredentials(c => ({ ...c, [`clear_${key}`]: e.target.checked }))}><span>{translate("system.clear")}{label}</span></AntCheckbox>}
-      </React.Fragment>)}
-      <small>{translate("system.r2.credentials.require.object.read.and.write.permissions.including.enumeration.deletion")}</small>
-      <div className="notification-actions"><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
-        const c = await api('/settings/r2-backup', { method: 'PUT', body: { ...config, ...credentials } });
-        setConfig(c); setSaved(JSON.stringify(c)); setCredentials({}); setNotice(translate("system.r2.backup.settings.saved"));
-      })}>{translate("system.save.backup.settings")}</AntButton>
-      <AntButton type="default" htmlType="button" className="btn" disabled={busy || dirty} onClick={() => void run(async () => {
-        const result = await api('/settings/r2-backup/run', { method: 'POST', body: { version: config.version } });
-        setNotice(translate("system.backup.successful", { v0: result.object_key, v1: result.warning ? `；${result.warning}` : "" }));
-      })}>{busy ? translate("system.processing") : translate("system.back.up.now")}</AntButton></div>
-      <small>{translate("system.save.first.and.then.back.up.immediately.you.can.still.execute")}</small>
+      <div className="form-grid">
+        {[['account_id', 'Cloudflare Account ID', translate("system.32.digit.account.id")], ['bucket', translate("system.r2.bucket"), translate("system.pre.created.private.bucket")]].map(([key, label, placeholder]) => <label key={key}>{label}<AntInput value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
+      </div>
+      <div className="form-grid">
+        <label>{translate("system.backup.directory.prefix")}<AntInput value={config.prefix} maxLength={200} placeholder="77erp" disabled={busy} onChange={e => field('prefix', e.target.value)} /></label>
+        <div className="settings-field-group">
+          <label>{translate("system.excel.directory.prefix")}<FormField value={config.excel_prefix || ''} required maxLength={200} label={translate("system.excel.directory.prefix")}><AntInput value={config.excel_prefix || ''} maxLength={200} placeholder="excel" disabled={busy} onChange={e => field('excel_prefix', e.target.value)} /></FormField></label>
+          <small>{translate("system.the.original.excel.of.the.acceptance.form.uses.this.independent.directory")}</small>
+        </div>
+      </div>
+      <div className="settings-field-group">
+        <div className="form-grid">
+          {[['cron', translate("system.cron.expression.five.paragraphs"), '0 2 * * *'], ['timezone', translate("system.execution.time.zone"), 'Asia/Shanghai']].map(([key, label, placeholder]) => <label key={key}>{label}<AntInput value={config[key]} maxLength={200} placeholder={placeholder} disabled={busy} onChange={e => field(key, e.target.value)} /></label>)}
+        </div>
+        <small>{translate("system.cron.order.minute.hour.day.month.week.for.example.0.2")}</small>
+      </div>
+      <div className="settings-field-group">
+        <div className="form-grid">
+          {[['access_key', 'R2 Access Key ID'], ['secret_key', 'R2 Secret Access Key']].map(([key, label]) => <div className="settings-field-group" key={key}>
+            <label>{label}<AntInput type="password" autoComplete="new-password" maxLength={4096} disabled={busy || credentials[`clear_${key}`]} value={credentials[key] || ''} placeholder={config[`has_${key}`] ? translate("system.saved.leave.blank.to.retain.2") : translate("system.not.configured.yet")} onChange={e => setCredentials(c => ({ ...c, [key]: e.target.value }))} /></label>
+            {config[`has_${key}`] && <AntCheckbox className="notification-choice" disabled={busy} checked={!!credentials[`clear_${key}`]} onChange={e => setCredentials(c => ({ ...c, [`clear_${key}`]: e.target.checked }))}><span>{translate("system.clear")}{label}</span></AntCheckbox>}
+          </div>)}
+        </div>
+        <small>{translate("system.r2.credentials.require.object.read.and.write.permissions.including.enumeration.deletion")}</small>
+      </div>
+      <div className="settings-field-group">
+        <div className="notification-actions"><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => void run(async () => {
+          const c = await api('/settings/r2-backup', { method: 'PUT', body: { ...config, ...credentials } });
+          setConfig(c); setSaved(JSON.stringify(c)); setCredentials({}); setNotice(translate("system.r2.backup.settings.saved"));
+        })}>{translate("system.save.backup.settings")}</AntButton>
+        <AntButton type="default" htmlType="button" className="btn" disabled={busy || dirty} onClick={() => void run(async () => {
+          const result = await api('/settings/r2-backup/run', { method: 'POST', body: { version: config.version } });
+          setNotice(translate("system.backup.successful", { v0: result.object_key, v1: result.warning ? `；${result.warning}` : "" }));
+        })}>{busy ? translate("system.processing") : translate("system.back.up.now")}</AntButton></div>
+        <small>{translate("system.save.first.and.then.back.up.immediately.you.can.still.execute")}</small>
+      </div>
     </div>}
     {error && <p className="form-error" role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <p className="notification-help">{translate("system.to.restore.the.complete.database.you.need.to.stop.the.service")}</p>

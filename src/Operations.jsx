@@ -543,8 +543,11 @@ export function Backup({ onSaved }) {
   const [fileName, setFileName] = useState("");
   return (
     <div className="backup-business">
+      <div className="settings-section-heading">
+        <h3>{translate("warehouse.backup.and.recovery")}</h3>
+        <p>{translate("warehouse.the.backup.includes.all.warehouses.materials.inventory.costs.documents.inventory.dealing")}</p>
+      </div>
       {busy && <p><LoadingStatus>{translate("warehouse.processing.backup")}</LoadingStatus></p>}
-      <p>{translate("warehouse.the.backup.includes.all.warehouses.materials.inventory.costs.documents.inventory.dealing")}</p>
       <AntButton type="default"
         htmlType="button"
         className="btn"

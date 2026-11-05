@@ -1,5 +1,17 @@
 .account-fields { display: grid; gap: 12px; max-width: 420px; margin: 16px 0; }
-:where(.account-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 6px; }
+:where(.account-fields, .user-create-panel, .password-fields) label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > :is(.erp-form-field, .dropdown, .select-field, .ant-input, .ant-input-affix-wrapper, .ant-select, input:not([type="checkbox"], [type="radio"]), select, textarea) { margin-top: 6px; }
+.settings-section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.settings-section-header > .settings-section-heading { flex: 1; min-width: min(100%, 240px); }
+.settings-section-header > .btn { flex-shrink: 0; }
+.user-create-panel { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--border, #e9ecf1); border-radius: 10px; background: #fbfcfe; min-width: 0; }
+.user-create-actions, .password-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.password-section { display: grid; gap: 16px; min-width: 0; }
+.settings-section > .password-section { border-top: 1px solid var(--border, #e9ecf1); padding-top: 24px; }
+.password-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 14px; min-width: 0; }
+.account-modal-body { display: grid; gap: 20px; }
+.account-modal-body > .password-section { border-top: 1px solid var(--border, #e9ecf1); padding-top: 20px; }
+.account-modal-body > .account-identity + .password-section { border-top: 0; padding-top: 0; }
+.account-identity { margin: 0; padding: 12px 14px; border-radius: 8px; background: #f7f8fa; color: #253858; font-size: 13px; font-weight: 500; }
 .user-list { margin: 20px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; container-type: inline-size; }
 .user-table { width: 100%; border-collapse: collapse; }
 .user-table td { vertical-align: middle; }
@@ -22,7 +34,6 @@
   .user-table td:nth-child(2) { justify-self: end; white-space: nowrap; }
   .user-table td:nth-child(3), .user-table td:last-child { grid-column: 1 / -1; width: auto; }
   .user-table td:nth-child(3) { display: flex; align-items: center; gap: 12px; }
-  .user-table td:nth-child(3)::before { content: '角色'; flex-shrink: 0; }
   .user-table td:nth-child(3) .dropdown { width: 160px; }
   .user-actions { display: flex; flex-wrap: wrap; }
   .user-actions > .btn { flex: 0 0 auto; min-width: 64px; }
@@ -70,7 +81,7 @@
   .position-table td:nth-child(3) { grid-column: 2; grid-row: 1; }
   .position-table td:first-child, .position-table td:last-child { width: auto; }
   .user-table td:nth-child(3) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  .user-table td:nth-child(3)::before { content: '角色与岗位'; color: var(--muted); }
+  .user-table td:nth-child(3)::before { content: attr(data-label); color: var(--muted); font-size: 12px; }
   .user-table td:nth-child(3) .dropdown { width: 100%; margin: 0; max-width: 260px; }
 }
 @media (max-width: 640px) {
@@ -78,9 +89,9 @@
   .permission-dialog-actions > .btn { flex: 1 1 auto; }
 }
 
-.user-position-picker { min-width: 0; margin: 0; padding: 8px 12px 12px; border: 1px solid var(--border); border-radius: 8px; }
-.user-position-picker legend { padding: 0 4px; }
-.user-position-picker > div { display: grid; gap: 4px; max-height: 240px; overflow-y: auto; }
+.user-position-picker { min-width: 0; margin: 0; padding: 8px 12px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.user-position-picker legend { padding: 0 4px; font-size: 13px; font-weight: 500; }
+.user-position-picker > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 4px 12px; max-height: 240px; overflow-y: auto; }
 .user-position-picker .ant-checkbox-wrapper, .user-position-picker .adm-checkbox { margin: 0; min-height: 44px; display: flex; align-items: center; overflow-wrap: anywhere; }
 .user-table .user-position-button { display: block; width: 160px; height: auto; min-height: 44px; margin: 6px 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 @container (max-width: 640px) { .user-table .user-position-button { width: 100%; max-width: 260px; margin: 0; } }

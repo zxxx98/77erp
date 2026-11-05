@@ -343,7 +343,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     {mode === 'production' && canViewProduction(user) && <section className="mw-card"><Button onClick={() => navigate('production')}>{translate("warehouse.production.order.batch.registration")}</Button></section>}
     <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>{translate("warehouse.merchant.and.warehouse.settings")}</Button>}</section>
     <Button icon={Settings} onClick={() => openModal({ kind: 'preferences' })}>{translate("warehouse.user.habits")}</Button>
-    <Button onClick={() => openModal({ kind: 'account' })}>{translate("warehouse.change.password")}</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>{translate("warehouse.business.management")}</Button>
+    <Button onClick={() => openModal({ kind: 'account', passwordOnly: true })}>{translate("warehouse.change.password")}</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>{translate("warehouse.business.management")}</Button>
     {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>{translate("warehouse.inbound.and.outbound.qr.code")}</Button>}
     <Button icon={FilePenLine} onClick={() => openModal({ kind: 'drafts' })}>{translate("warehouse.local.draft")}</Button>
     <section className="mw-card"><p className="mw-field-label">{translate("warehouse.server.address")}</p><p className="mw-muted mw-break">{location.origin}</p></section>

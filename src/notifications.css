@@ -1,5 +1,6 @@
-.notification-fields { display: grid; gap: 16px; }
-:where(.notification-fields > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio):not(.notification-choice)), :where(.notification-schedule > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
+.notification-fields { display: grid; gap: 16px; min-width: 0; }
+.settings-field-group { display: grid; gap: 6px; min-width: 0; }
+:where(.notification-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio):not(.notification-choice)), :where(.notification-schedule > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
 .notification-fields small, .notification-help, .notification-logs small { color: #647084; font-size: 12px; line-height: 1.6; font-weight: 400; }
 .notification-fields fieldset { min-width: 0; padding: 16px; border: 1px solid #e9ecf1; border-radius: 10px; }
 .notification-fields legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
@@ -20,8 +21,6 @@
 .notification-logs article p { color: #647084; font-size: 12px; }
 @media (max-width: 760px) {
   .notification-choices, .notification-schedule { grid-template-columns: 1fr; }
-  .settings-nav { overflow-x: auto; }
-  .settings-nav button { flex: 0 0 auto; padding: 12px; }
 }
 
-.r2-backup-settings > .settings-section-heading { margin-bottom: 24px; }
+.r2-backup-settings > .settings-section-heading { margin-bottom: 16px; }

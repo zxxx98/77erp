@@ -16,9 +16,9 @@ export function UserPreferences({ disabled = false, showTitle = true }) {
   const { preferences, updatePreference, storageError } = usePreferences();
   const id = useId();
   return <section className="user-preferences" aria-label={translate("system.preferences")}>
-    <div className="preference-row"><div><strong>{translate('language.label')}</strong><p>{translate('language.accountPreference')}</p></div><LanguageSwitcher /></div>
     <div className="settings-section-heading">{showTitle && <h3>{translate("system.preferences")}</h3>}<p>{translate("system.it.will.only.take.effect.in.this.browser.for.the.current")}</p></div>
     <div className="preference-options">
+      <div className="preference-row"><div><strong>{translate('language.label')}</strong><p>{translate('language.accountPreference')}</p></div><LanguageSwitcher /></div>
       {options().map(([key, title, description]) => <div className="preference-row" key={key}>
         <div><label htmlFor={`${id}-${key}`}>{title}</label><p id={`${id}-${key}-hint`}>{description}</p></div>
         <Switch id={`${id}-${key}`} aria-label={title} aria-describedby={`${id}-${key}-hint`} checked={preferences[key]} disabled={disabled} onChange={value => updatePreference(key, value)} />

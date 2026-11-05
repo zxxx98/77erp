@@ -56,8 +56,10 @@ export function PositionManager({ Modal, onChanged }) {
     }, translate("system.the.position.has.been.saved.and.the.associated.employee.permissions.will"));
   };
   return <section aria-label={translate("system.position.configuration")} className="position-manager settings-list-layout">
-    <div className="settings-section-heading"><h3>{translate("system.position.configuration")}</h3><p>{translate("system.each.employee.chooses.a.position.adjusting.position.permissions.will.affect.all")}</p></div>
-    <Button type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => open(null)}>{translate("system.new.positions")}</Button>
+    <div className="settings-section-header">
+      <div className="settings-section-heading"><h3>{translate("system.position.configuration")}</h3><p>{translate("system.each.employee.chooses.a.position.adjusting.position.permissions.will.affect.all")}</p></div>
+      <Button type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => open(null)}>{translate("system.new.positions")}</Button>
+    </div>
     {busy && <p><LoadingStatus>{translate("system.updating.positions")}</LoadingStatus></p>}
     {!editor && error && <p className="form-error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}

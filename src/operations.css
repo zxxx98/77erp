@@ -75,4 +75,5 @@
 }
 
 .backup-business { display: grid; gap: 20px; min-width: 0; }
+.settings-section > .backup-business { border-top: 1px solid #e9ecf1; padding-top: 24px; }
 :where(.backup-business > .btn) { justify-self: start; }

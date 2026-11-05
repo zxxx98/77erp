@@ -3150,9 +3150,9 @@ export default {
     "Việc đặt lại sẽ xóa vĩnh viễn tất cả vật tư, hàng tồn kho, vật tư, đối tác, mẫu và hồ sơ nhận/thanh toán/hàng tồn kho, bao gồm cả dữ liệu chính thức. Giữ tài khoản, thông tin đăng nhập, cấu hình máy chủ và tên người bán và kho đã lưu."
   ],
   "warehouse.after.modifying.the.name.or.unit.of.measurement.click.save.settings": [
-    "修改名称或计量单位后，点击保存设置。",
-    "After modifying the name or unit of measurement, click Save Settings.",
-    "Sau khi sửa đổi tên hoặc đơn vị đo, nhấp vào Lưu cài đặt."
+    "修改名称、币种汇率、计量单位或库存对比表达式后，点击保存设置。",
+    "After modifying names, currency rates, units, or the stock comparison expression, click Save settings.",
+    "Sau khi sửa đổi tên, tỷ giá tiền tệ, đơn vị đo hoặc biểu thức so sánh tồn kho, nhấp vào Lưu cài đặt."
   ],
   "warehouse.modifications.to.user.habits.take.effect.immediately.and.are.automatically.saved": [
     "用户习惯修改后即时生效，自动保存在此浏览器。",

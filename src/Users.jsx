@@ -19,7 +19,7 @@ function PositionPicker({ label, positions, value, onChange, disabled }) {
   </fieldset>;
 }
 
-export function ChangePassword({ onChanged }) {
+export function ChangePassword({ onChanged, showTitle = true }) {
   useLocale();
   const [current, setCurrent] = useState('');
   const [password, setPassword] = useState('');
@@ -37,14 +37,20 @@ export function ChangePassword({ onChanged }) {
     } catch (e) { setError(localizeError(e.message)); }
     finally { lock.current = false; setBusy(false); }
   };
-  return <section className="account-fields" aria-label={translate("system.change.password")}>
-    <h3>{translate("system.change.password")}</h3>
-    <p className="muted">{translate("system.all.devices.need.to.log.in.again.after.modification")}</p>
-    <label>{translate("system.current.password")}<AntInput type="password" autoComplete="current-password" maxLength={128} value={current} onChange={e => setCurrent(e.target.value)} disabled={busy} /></label>
-    <label>{translate("system.new.password")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
-    <label>{translate("system.confirm.new.password")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
+  return <section className="password-section" aria-label={translate("system.change.password")}>
+    <div className="settings-section-heading">
+      {showTitle && <h3>{translate("system.change.password")}</h3>}
+      <p>{translate("system.all.devices.need.to.log.in.again.after.modification")}</p>
+    </div>
+    <div className="password-fields">
+      <label>{translate("system.current.password")}<AntInput type="password" autoComplete="current-password" maxLength={128} value={current} onChange={e => setCurrent(e.target.value)} disabled={busy} /></label>
+      <label>{translate("system.new.password")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
+      <label>{translate("system.confirm.new.password")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
+    </div>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <AntButton type="primary" className="btn btn-primary" htmlType="button" disabled={busy} onClick={save}>{busy ? <LoadingStatus size={20}>{translate("system.modifying")}</LoadingStatus> : translate("system.confirm.password.change")}</AntButton>
+    <div className="password-actions">
+      <AntButton type="primary" className="btn btn-primary" htmlType="button" disabled={busy} onClick={save}>{busy ? <LoadingStatus size={20}>{translate("system.modifying")}</LoadingStatus> : translate("system.confirm.password.change")}</AntButton>
+    </div>
   </section>;
 }
 
@@ -91,26 +97,36 @@ export function UserManager({ Modal, onChanged }) {
   const update = (user, next) => run(() => api(`/users/${user.id}`, {
     method: 'PUT', body: { role: user.role, active: user.active, ...next },
   }), translate("system.account.has.been.updated"));
-  return <section aria-label={translate("system.user.management")}>
-    <h3>{translate("system.user.management")}</h3>
+  return <section className="user-manager settings-list-layout" aria-label={translate("system.user.management")}>
+    <div className="settings-section-heading">
+      <h3>{translate("system.user.management")}</h3>
+      <p>{translate("system.all.repositories.are.shared.by.all.users.employees.obtain.business.permissions")}</p>
+    </div>
     {busy && <p><LoadingStatus>{translate("system.updating.account")}</LoadingStatus></p>}
-    <p className="muted">{translate("system.all.repositories.are.shared.by.all.users.employees.obtain.business.permissions")}</p>
-    <div className="account-fields">
-      <label>{translate("system.new.account")}<AntInput autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>
-      <label>{translate("system.account.name")}<AntInput maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder={translate("system.for.example.zhang.san")} /></label>
-      <label>{translate("system.employee.no")}<AntInput maxLength={60} value={employeeNo} onChange={e => setEmployeeNo(e.target.value)} disabled={busy} placeholder={translate("system.for.example.1001")} /></label>
-      <label>{translate("system.initial.password")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
-      <label>{translate("system.new.account.role")}<Select aria-label={translate("system.new.account.role")} value={role} onChange={e => setRole(e)} disabled={busy}><option value="employee">{translate("system.employee")}</option><option value="admin">{translate("system.administrator")}</option></Select></label>
+    <div className="user-create-panel">
+      <div className="form-grid">
+        <label>{translate("system.new.account")}<AntInput autoComplete="off" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} disabled={busy} /></label>
+        <label>{translate("system.account.name")}<AntInput maxLength={60} value={name} onChange={e => setName(e.target.value)} disabled={busy} placeholder={translate("system.for.example.zhang.san")} /></label>
+      </div>
+      <div className="form-grid">
+        <label>{translate("system.employee.no")}<AntInput maxLength={60} value={employeeNo} onChange={e => setEmployeeNo(e.target.value)} disabled={busy} placeholder={translate("system.for.example.1001")} /></label>
+        <label>{translate("system.initial.password")}<AntInput type="password" autoComplete="new-password" maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></label>
+      </div>
+      <div className="form-grid">
+        <label>{translate("system.new.account.role")}<Select aria-label={translate("system.new.account.role")} value={role} onChange={e => setRole(e)} disabled={busy}><option value="employee">{translate("system.employee")}</option><option value="admin">{translate("system.administrator")}</option></Select></label>
+        {role === 'employee' && <label>{translate("system.new.account.production.team")}<Select aria-label={translate("system.new.account.production.team")} value={groupId} disabled={busy} onChange={setGroupId}><option value="">{translate("system.not.grouped")}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select></label>}
+      </div>
       {role === 'employee' && <PositionPicker label={translate("system.new.account.position")} positions={positions} value={positionIds} disabled={busy} onChange={setPositionIds} />}
-      {role === 'employee' && <label>{translate("system.new.account.production.team")}<Select aria-label={translate("system.new.account.production.team")} value={groupId} disabled={busy} onChange={setGroupId}><option value="">{translate("system.not.grouped")}</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</Select></label>}
       {role === 'employee' && !positions.length && <p className="muted">{translate("system.please.go.to.the.post.configuration.to.add.a.new.position")}</p>}
-      <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
-        if (!employeeNo.trim()) { setError(translate("system.please.enter.the.employee.no")); return; }
-        if (role === 'employee' && !positionIds.length) { setError(translate("system.please.select.the.new.employee.s.position")); return; }
-        void run(async () => {
-        await api('/users', { method: 'POST', body: { username, password, role, name, employee_no: employeeNo.trim(), ...(role === 'employee' ? { position_ids: positionIds, production_group_id: groupId ? Number(groupId) : null } : {}) } });
-        setUsername(''); setPassword(''); setName(''); setEmployeeNo('');
-      }, translate("system.account.has.been.created")); }}>{translate("system.add.account")}</AntButton>
+      <div className="user-create-actions">
+        <AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => {
+          if (!employeeNo.trim()) { setError(translate("system.please.enter.the.employee.no")); return; }
+          if (role === 'employee' && !positionIds.length) { setError(translate("system.please.select.the.new.employee.s.position")); return; }
+          void run(async () => {
+          await api('/users', { method: 'POST', body: { username, password, role, name, employee_no: employeeNo.trim(), ...(role === 'employee' ? { position_ids: positionIds, production_group_id: groupId ? Number(groupId) : null } : {}) } });
+          setUsername(''); setPassword(''); setName(''); setEmployeeNo('');
+        }, translate("system.account.has.been.created")); }}>{translate("system.add.account")}</AntButton>
+      </div>
     </div>
     {error && !nameUser && !employeeUser && !positionUser && !resetUser && <p role="alert" className="form-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
@@ -121,7 +137,7 @@ export function UserManager({ Modal, onChanged }) {
           {users.map(user => <tr className="user-row" key={user.id}>
             <td><strong>{user.name}</strong><small className="user-login">{translate("system.account.2")}{user.username}</small><small className="user-login">{translate("system.employee.no.2")}{user.employee_no || translate("system.not.filled.in")}</small><div className="user-account-actions"><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => { setNameUser(user); setEditName(user.name); }}>{translate("system.modify.name")}</AntButton><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => { setEmployeeUser(user); setEditEmployeeNo(user.employee_no || ''); }}>{translate("system.modify.employee.no")}</AntButton></div></td>
             <td>{user.active ? translate("system.normal") : translate("system.deactivated")}</td>
-            <td><Select aria-label={translate("system.s.role", { v0: user.username })} value={user.role} disabled={busy} onChange={e => {
+            <td data-label={translate("system.roles.positions.and.production.teams")}><Select aria-label={translate("system.s.role", { v0: user.username })} value={user.role} disabled={busy} onChange={e => {
               const nextRole = e;
               if (nextRole === 'employee') { setPositionUser({ ...user, downgrade: true }); setNextPositions([]); setError(''); setConflict(false); }
               else if (window.confirm(translate("system.modify.s.role.this.account.needs.to.be.logged.in.again", { v0: user.username }))) void update(user, { role: nextRole });

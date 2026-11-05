@@ -11,7 +11,7 @@ import { FormField } from './../ui/FormField.jsx';
 
 import { Select } from '../Dropdown.jsx';
 import { Button, Modal, Badge } from '../components/common.jsx';
-import { Trash2, Plus, Settings, Camera, Bell, Warehouse, ShieldCheck, Check } from 'lucide-react';
+import { Trash2, Plus, Settings, SlidersHorizontal, Sparkles, Camera, Bell, Database, Users, ShieldCheck, UserCog, Check } from 'lucide-react';
 import { useRef, useState, useEffect } from 'react';
 import { api } from '../api.js';
 import { WarehouseManager } from '../Warehouses.jsx';
@@ -80,9 +80,17 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
   const [notificationDirty, setNotificationDirty] = useState(false);
   const [backupDirty, setBackupDirty] = useState(false);
   const closeSettings = () => { if (!(notificationDirty || backupDirty) || window.confirm(translate("warehouse.the.settings.have.not.been.saved.are.you.sure.you.want"))) onClose(); };
+  const navRef = useRef(null);
   const contentRef = useRef(null);
   const [section, setSection] = useState(initialSection);
   const [visited, setVisited] = useState(() => new Set([initialSection]));
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector('[aria-pressed="true"]');
+    if (!nav || !active || nav.scrollWidth <= nav.clientWidth) return;
+    const target = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, target) });
+  }, [section]);
   const [form, setForm] = useState(() => ({ ...settings, units: settings.units || ["个"] })),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -144,15 +152,16 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
     >
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => { if (section === "general") void submit(); }}>
         <div className="settings-layout">
-          <nav className="settings-nav" aria-label={translate("warehouse.set.categories")}>
-            {[["general", translate("warehouse.basic.settings"), Settings, translate("warehouse.name.warehouse.and.unit.of.measurement")], ["preferences", translate("warehouse.user.habits"), Settings, translate("warehouse.how.to.close.pop.up.windows.and.drawers")], ["ai", translate("warehouse.ai.assistant"), Settings, translate("warehouse.model.connection.and.operating.scope")], ["imagebed", translate("warehouse.picture.bed.configuration"), Camera, translate("warehouse.material.picture.upload.and.certification")], ["notifications", translate("warehouse.notification.settings"), Bell, translate("warehouse.webhooks.and.notification.types")], ["data", translate("warehouse.backup.and.recovery"), Warehouse, translate("warehouse.business.backup.recovery.and.reset")], ["groups", translate("warehouse.production.team"), ShieldCheck, translate("warehouse.production.team.and.employee.affiliation")], ["positions", translate("warehouse.position.configuration"), ShieldCheck, translate("warehouse.position.authority.and.related.employees")], ["users", translate("warehouse.user.management"), ShieldCheck, translate("warehouse.account.role.and.password")]].map(([id, title, Icon, caption]) => (
+          <nav className="settings-nav" ref={navRef} aria-label={translate("warehouse.set.categories")}>
+            {[["general", translate("warehouse.basic.settings"), Settings, translate("warehouse.name.warehouse.and.unit.of.measurement")], ["preferences", translate("warehouse.user.habits"), SlidersHorizontal, translate("warehouse.how.to.close.pop.up.windows.and.drawers")], ["ai", translate("warehouse.ai.assistant"), Sparkles, translate("warehouse.model.connection.and.operating.scope")], ["imagebed", translate("warehouse.picture.bed.configuration"), Camera, translate("warehouse.material.picture.upload.and.certification")], ["notifications", translate("warehouse.notification.settings"), Bell, translate("warehouse.webhooks.and.notification.types")], ["data", translate("warehouse.backup.and.recovery"), Database, translate("warehouse.business.backup.recovery.and.reset")], ["groups", translate("warehouse.production.team"), Users, translate("warehouse.production.team.and.employee.affiliation")], ["positions", translate("warehouse.position.configuration"), ShieldCheck, translate("warehouse.position.authority.and.related.employees")], ["users", translate("warehouse.user.management"), UserCog, translate("warehouse.account.role.and.password")]].map(([id, title, Icon, caption]) => (
               <AntButton type="text" key={id} htmlType="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); setVisited(current => new Set([...current, id])); contentRef.current?.scrollTo(0, 0); }}>
-                <Icon size={19} /><div><strong>{title}</strong><small>{caption}</small></div>
+                <Icon size={18} /><div><strong>{title}</strong><small>{caption}</small></div>
               </AntButton>
             ))}
           </nav>
           <div className="form-body settings-content" ref={contentRef}>
           <div hidden={section !== "general"} className="settings-section">
+          <section className="settings-block">
           <div className="settings-section-heading"><h3>{translate("warehouse.basic.settings")}</h3><p>{translate("warehouse.set.the.merchant.and.warehouse.names.displayed.in.the.business")}</p></div>
           <div className="form-grid">
           <label>{translate("warehouse.business.name")}<span>*</span>
@@ -176,6 +185,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
             /></FormField>
           </label>
           </div>
+          </section>
           <section className="currency-settings" aria-label={translate("warehouse.currency.settings")}>
             <div className="settings-section-heading"><h3>{translate("warehouse.currency.and.exchange.rate")}</h3><p>{translate("warehouse.business.data.is.stored.in.the.base.currency.switching.to.other")}</p></div>
             <div className="form-grid">
@@ -265,7 +275,7 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
           <Button type="button" onClick={closeSettings} disabled={busy}>
             {section === 'preferences' ? translate("warehouse.complete") : translate("warehouse.cancel")}
           </Button>
-          {section === "general" && <Button kind="primary" type="submit" icon={Check} busy={busy} disabled={notificationDirty}>
+          {section === "general" && <Button kind="primary" type="submit" icon={Check} busy={busy}>
             {busy ? translate("warehouse.saving.2") : translate("warehouse.save.settings")}
           </Button>}
         </div>

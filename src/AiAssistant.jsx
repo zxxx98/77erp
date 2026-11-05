@@ -43,18 +43,25 @@ export function AiSettings({ onBusy = () => {} }) {
     finally { lock.current = false; setBusy(false); onBusy(false); }
   };
   return <section className="ai-settings">
-    <h3>{translate("system.ai.assistant")}</h3><p>{translate("system.compatible.chat.completions.interface.that.supports.tool.calls.the.request.is")}</p>
+    <div className="settings-section-heading">
+      <h3>{translate("system.ai.assistant")}</h3>
+      <p>{translate("system.compatible.chat.completions.interface.that.supports.tool.calls.the.request.is")}</p>
+    </div>
     {form && <div className="ai-fields">
       {!form.encryption_ready && <p className="form-error">{translate("system.the.server.has.not.been.configured.with.ai.encryption.key.please")}</p>}
       <AntCheckbox  checked={form.enabled} disabled={busy} onChange={e => setForm({ ...form, enabled: e.target.checked })}>{translate("system.enable.ai.assistant")}</AntCheckbox>
-      <label>{translate("system.api.base.address")}<AntInput type="url" placeholder={translate("system.https.yourserviceaddress.v1")} value={form.base_url} disabled={busy} onChange={e => setForm({ ...form, base_url: e.target.value })} /></label>
-      <label>{translate("system.model.name")}<AntInput value={form.model} maxLength={100} disabled={busy} onChange={e => setForm({ ...form, model: e.target.value })} /></label>
-      <label>API Key<AntInput type="password" autoComplete="new-password" value={form.secret} disabled={busy} placeholder={form.has_secret ? translate("system.saved.leave.blank.to.retain.the.original.key") : translate("system.please.enter.api.key")} onChange={e => setForm({ ...form, secret: e.target.value })} /></label>
+      <div className="form-grid">
+        <label>{translate("system.api.base.address")}<AntInput type="url" placeholder={translate("system.https.yourserviceaddress.v1")} value={form.base_url} disabled={busy} onChange={e => setForm({ ...form, base_url: e.target.value })} /></label>
+        <label>{translate("system.model.name")}<AntInput value={form.model} maxLength={100} disabled={busy} onChange={e => setForm({ ...form, model: e.target.value })} /></label>
+      </div>
+      <div className="form-grid">
+        <label>API Key<AntInput type="password" autoComplete="new-password" value={form.secret} disabled={busy} placeholder={form.has_secret ? translate("system.saved.leave.blank.to.retain.the.original.key") : translate("system.please.enter.api.key")} onChange={e => setForm({ ...form, secret: e.target.value })} /></label>
+        <label>{translate("system.maximum.number.of.requests.per.person.per.day")}<FormField value={form.daily_limit} type="number" min="1" max="10000" label={translate("system.maximum.number.of.requests.per.person.per.day")}><AntInput type="number" min="1" max="10000" value={form.daily_limit} disabled={busy} onChange={e => setForm({ ...form, daily_limit: Number(e.target.value) })} /></FormField></label>
+      </div>
       <AntCheckbox  checked={!!form.clear_secret} disabled={busy} onChange={e => setForm({ ...form, clear_secret: e.target.checked })}>{translate("system.clear.saved.keys.please.close.the.assistant.at.the.same.time")}</AntCheckbox>
-      <label>{translate("system.maximum.number.of.requests.per.person.per.day")}<FormField value={form.daily_limit} type="number" min="1" max="10000" label={translate("system.maximum.number.of.requests.per.person.per.day")}><AntInput type="number" min="1" max="10000" value={form.daily_limit} disabled={busy} onChange={e => setForm({ ...form, daily_limit: Number(e.target.value) })} /></FormField></label>
       <AntCheckbox  checked={form.writes} disabled={busy} onChange={e => setForm({ ...form, writes: e.target.checked })}>{translate("system.allow.write.operations.to.be.generated.and.confirmed")}</AntCheckbox>
-      <p>{translate("system.the.data.required.for.query.header.first.5.rows.and.pictures")}</p>
-      <div className="ai-buttons"><AntButton type="primary" htmlType="button" className="btn primary" disabled={busy} onClick={() => run(false)}>{translate("system.save.ai.settings")}</AntButton><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => run(true)}>{translate("system.save.and.test.connection")}</AntButton></div>
+      <p className="ai-hint">{translate("system.the.data.required.for.query.header.first.5.rows.and.pictures")}</p>
+      <div className="ai-buttons"><AntButton type="primary" htmlType="button" className="btn btn-primary" disabled={busy} onClick={() => run(false)}>{translate("system.save.ai.settings")}</AntButton><AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => run(true)}>{translate("system.save.and.test.connection")}</AntButton></div>
     </div>}
     <AntButton type="default" htmlType="button" className="btn" disabled={busy} onClick={() => api('/settings/ai/audit').then(setAudit).catch(e => setError(localizeError(e.message)))}>{translate("system.view.recent.operation.history")}</AntButton>
     {audit && <div className="ai-table"><table><thead><tr><th>{translate("system.time")}</th><th>{translate("system.operator")}</th><th>{translate("system.operation")}</th><th>{translate("system.status.details")}</th></tr></thead><tbody>{audit.map(row => <tr key={row.id}><td>{row.created_at}</td><td>{row.username}</td><td>{row.tool}</td><td>{row.status}<details><summary>{translate("system.details")}</summary><pre>{row.detail}</pre></details></td></tr>)}</tbody></table></div>}

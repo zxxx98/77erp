@@ -4531,41 +4531,59 @@ table {
 .settings-modal > form { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .settings-layout { display: flex; flex: 1; min-height: 0; }
 .settings-nav {
-  width: 220px;
+  width: 232px;
   flex-shrink: 0;
-  padding: 20px 12px;
+  padding: 14px 10px;
   background: #f7f8fa;
   border-right: 1px solid #e9ecf1;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .settings-nav button {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
   width: 100%;
-  padding: 14px 12px;
-  margin-bottom: 6px;
+  padding: 10px 12px;
+  margin-bottom: 0;
   border: 0;
   border-radius: 8px;
   text-align: left;
   background: transparent;
   color: #647084;
 }
+.settings-nav button > svg { flex-shrink: 0; }
+.settings-nav button > div { flex: 1; min-width: 0; }
 .settings-nav button:hover { background: #edf1f7; }
 .settings-nav button[aria-pressed="true"] { color: #2563eb; background: #e8efff; }
-.settings-nav strong { display: block; font-size: 14px; font-weight: 600; }
-.settings-nav small { display: block; margin-top: 5px; font-size: 11px; color: #647084; }
+.settings-nav strong { display: block; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.settings-nav small { display: block; margin-top: 2px; font-size: 11px; line-height: 1.35; color: #647084; }
 .settings-content { flex: 1; min-width: 0; overflow: auto; padding: 28px; }
+.settings-content :where(label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio, .operation-panel label)) > :is(.erp-form-field.ant-form-item, .dropdown, .select-field, .ant-input, .ant-input-affix-wrapper, .ant-select, input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  margin-top: 6px;
+}
+:where(.settings-content label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > input:not(:where([type="checkbox"], [type="radio"]))) {
+  min-height: 36px;
+}
+.mobile-device :where(.settings-content label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > input:not(:where([type="checkbox"], [type="radio"]))) {
+  min-height: 44px;
+}
 .settings-section { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
 .settings-section[hidden] { display: none; }
 .settings-section h3 { font-size: 17px; color: #253858; }
-.settings-section-heading p { margin-top: 8px; color: #647084; font-size: 13px; }
+.settings-section-heading p { margin-top: 8px; color: #647084; font-size: 13px; line-height: 1.6; }
+.settings-block { display: grid; gap: 16px; min-width: 0; }
+.settings-section > :where(.currency-settings, .unit-manager, .warehouse-manager) { border-top: 1px solid #e9ecf1; padding-top: 24px; }
 .unit-manager { display: grid; gap: 16px; }
 :where(.unit-manager > .btn) { justify-self: start; }
-.unit-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
-.unit-row { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
-:where(.unit-row label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { flex: 1; min-width: 0; }
-:where(.unit-row > .btn) { flex-shrink: 0; height: 44px; }
+.unit-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; align-items: start; }
+.unit-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+:where(.unit-row label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { flex: 1; min-width: 0; line-height: 18px; }
+:where(.unit-row > .btn) { flex-shrink: 0; height: 36px; margin-top: 24px; }
+.mobile-device :where(.unit-row > .btn) { height: 44px; }
 .currency-settings { display: grid; gap: 16px; }
 .currency-rate-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .currency-rate-actions small { color: #647084; font-size: 12px; }
@@ -4586,11 +4604,12 @@ table {
 .settings-danger .info-box { background: transparent; border: 0; padding: 12px 0; }
 .settings-modal .modal-footer { flex-shrink: 0; }
 .settings-footer-note { margin-right: auto; font-size: 12px; color: #647084; }
-@media (max-width: 700px) {
+@media (max-width: 760px) {
   .settings-modal { height: 95dvh; }
   .settings-layout { flex-direction: column; }
-  .settings-nav { width: 100%; display: flex; padding: 8px; border-right: 0; border-bottom: 1px solid #e9ecf1; }
-  .settings-nav button { flex: 1; justify-content: center; padding: 12px 6px; margin: 0; gap: 6px; }
+  .settings-nav { width: 100%; display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px; padding: 8px 12px; border-right: 0; border-bottom: 1px solid #e9ecf1; overflow-x: auto; overscroll-behavior-x: contain; flex-shrink: 0; }
+  .settings-nav button { flex: 0 0 auto; width: auto; justify-content: center; padding: 10px 12px; margin: 0; gap: 6px; white-space: nowrap; }
+  .settings-nav button > div { flex: 0 0 auto; }
   .settings-nav strong { font-size: 12px; }
   .settings-nav small { display: none; }
   .settings-nav svg { width: 16px; flex-shrink: 0; }
@@ -4646,13 +4665,17 @@ table {
 .image-viewer-close:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
 
 .warehouse-select { width: 160px; max-width: 160px; min-width: 90px; }
+:where(.warehouse-manager > .btn) { justify-self: start; }
+:where(.settings-content .warehouse-manager label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { margin: 0; }
 .warehouse-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 0; }
+.warehouse-row:not(:last-child) { border-bottom: 1px solid #f1f4f8; }
 :where(.warehouse-row > input) { min-width: 0; margin: 0; }
 .warehouse-row-actions { display: grid; grid-template-columns: 88px 96px; align-items: center; gap: 8px; }
-.warehouse-reuse { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
-.warehouse-reuse legend { font-size: 13px; }
-:where(.warehouse-reuse label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-.warehouse-reuse p { margin-bottom: 0; font-size: 12px; }
+.warehouse-reuse { margin: 0; padding: 14px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.warehouse-reuse legend { font-size: 13px; font-weight: 500; padding: 0 4px; }
+:where(.warehouse-reuse label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)),
+:where(.warehouse-reuse > :is(.ant-radio-wrapper, .adm-radio)) { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.warehouse-reuse p { margin: 8px 0 0; font-size: 12px; color: #647084; }
 .product-sync { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin: 0; }
 .product-sync legend { font-weight: 600; }
 .product-sync p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0 0 10px; }
