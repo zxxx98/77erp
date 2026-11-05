@@ -10,12 +10,14 @@ import { saveExactQuantity } from './exact-quantity.js';
 import { reopenProductionQuantities } from './production-rounding.js';
 import { validateProcessGraph, processProgress, productionRouteProgress } from '../shared/process-routes.js';
 import { validateOperationPrice } from '../shared/payroll.js';
+import { postProcessingLimit, postProcessingUnit, productionOutputCompleted } from '../shared/post-processing.js';
 import { productionTypes } from '../shared/product-production-type.js';
 import { captureAdditionalMaterials, operationReportView, consumeAdditionalMaterials } from './additional-operation-materials.js';
 
 export const processRouteTables = ['process_routes'];
 export const productionOperationTables = ['production_routes', 'production_operation_reports'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
+const routeKinds = ['production', 'post_processing'];
 const id = value => Number.isSafeInteger(value) && value > 0;
 const actor = req => req.user.name || req.user.username;
 const parseGraph = value => { try { const graph = JSON.parse(value); validateProcessGraph(graph); return graph; } catch (error) { fail(error.message); } };
@@ -45,6 +47,10 @@ export function migrateProcessRoutes(db) {
     db.exec('ALTER TABLE production_operation_reports ADD COLUMN acceptance_id INTEGER REFERENCES quality_acceptances(id)');
   if (!db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'multiplier'))
     db.exec('ALTER TABLE production_operation_reports ADD COLUMN multiplier REAL NOT NULL DEFAULT 1 CHECK(multiplier>0)');
+  if (!db.prepare('PRAGMA table_info(process_routes)').all().some(c => c.name === 'route_kind'))
+    db.exec("ALTER TABLE process_routes ADD COLUMN route_kind TEXT NOT NULL DEFAULT 'production' CHECK(route_kind IN ('production','post_processing'))");
+  if (!db.prepare('PRAGMA table_info(production_routes)').all().some(c => c.name === 'product_coefficient'))
+    db.exec('ALTER TABLE production_routes ADD COLUMN product_coefficient REAL CHECK(product_coefficient>0)');
   if (!db.prepare('PRAGMA table_info(production_routes)').all().some(c => c.name === 'additional_quantity'))
     db.exec('ALTER TABLE production_routes ADD COLUMN additional_quantity REAL CHECK(additional_quantity>0)');
   if (!db.prepare('PRAGMA table_info(production_routes)').all().some(c => c.name === 'additional_materials'))
@@ -59,15 +65,17 @@ export function migrateProcessRoutes(db) {
   const advance = `UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT COALESCE(MAX(version),0) FROM process_routes))+1 WHERE key='process_route_version';
     UPDATE process_routes SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='process_route_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS process_route_version_insert AFTER INSERT ON process_routes BEGIN ${advance} END;
-    CREATE TRIGGER IF NOT EXISTS process_route_version_update AFTER UPDATE OF name,note,enabled,graph,updated_at ON process_routes BEGIN ${advance} END;`);
+    DROP TRIGGER IF EXISTS process_route_version_update;
+    CREATE TRIGGER process_route_version_update AFTER UPDATE OF name,note,enabled,graph,updated_at,route_kind ON process_routes BEGIN ${advance} END;`);
 }
 
 export function routeBinding(db, warehouseId, value, previous = null) {
   if (value === undefined) return previous;
   if (value === null) return null;
   if (!id(value)) fail('请选择有效工艺路线。');
-  const route = db.prepare('SELECT enabled FROM process_routes WHERE id=? AND warehouse_id=?').get(value, warehouseId);
+  const route = db.prepare('SELECT enabled,route_kind FROM process_routes WHERE id=? AND warehouse_id=?').get(value, warehouseId);
   if (!route) fail('工艺路线不存在或不属于当前仓库。');
+  if (route.route_kind !== 'production') fail('物料和BOM只能绑定生产工艺。');
   if (!route.enabled && value !== previous) fail('请选择已启用的工艺路线。');
   return value;
 }
@@ -96,15 +104,17 @@ const ROUTE_SORTS = {
 };
 
 export function listProcessRoutes(db, warehouseId, query = {}) {
-  const { q = '', status = 'all', sort = 'custom', production_type = 'all', offset = '0', limit = '30' } = query;
+  const { q = '', status = 'all', sort = 'custom', production_type = 'all', route_kind = 'all', offset = '0', limit = '30' } = query;
   if (typeof q !== 'string' || q.length > 100 || !['all', 'enabled', 'disabled'].includes(status) ||
       typeof sort !== 'string' || !Object.hasOwn(ROUTE_SORTS, sort) ||
+      !['all', ...routeKinds].includes(route_kind) ||
       !['all', 'unset', '', ...productionTypes].includes(production_type) ||
       typeof offset !== 'string' || !/^\d+$/.test(offset) || !Number.isSafeInteger(Number(offset)) ||
       typeof limit !== 'string' || !/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 100)
     fail('工艺路线筛选或分页参数无效。');
   const linkedProductSql = '(p.default_route_id=process_routes.id OR EXISTS (SELECT 1 FROM boms b WHERE b.warehouse_id=process_routes.warehouse_id AND b.product_id=p.id AND b.route_override_id=process_routes.id))';
   const clauses = ['warehouse_id=?'], params = [warehouseId];
+  if (route_kind !== 'all') { clauses.push('route_kind=?'); params.push(route_kind); }
   if (status !== 'all') { clauses.push('enabled=?'); params.push(status === 'enabled' ? 1 : 0); }
   if (productionTypes.includes(production_type)) {
     clauses.push(`EXISTS (SELECT 1 FROM products p WHERE p.warehouse_id=process_routes.warehouse_id AND ${linkedProductSql} AND p.production_type=?)`);
@@ -146,8 +156,14 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     const old = req.params.id ? get(req.warehouse.id, req.params.id) : null, body = req.body;
     if (old && body.version !== old.version) fail('工艺路线已变化，请重新读取后核对。当前填写内容已保留。', 409);
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 100 || typeof body.note !== 'string' || body.note.length > 1000 || ![0,1].includes(body.enabled)) fail('路线名称、说明或启用状态无效。');
+    const kind = body.route_kind === undefined ? old?.route_kind ?? 'production' : body.route_kind;
+    if (!routeKinds.includes(kind)) fail('请选择有效的工艺类型。');
+    if (old && old.route_kind !== kind && (old.products.length || old.boms.length ||
+        db.prepare('SELECT 1 FROM production_routes WHERE route_id=? LIMIT 1').get(old.id)))
+      fail('工艺已被引用，不能变更工艺类型。', 409);
     validateProcessGraph(body.graph);
-    body.graph = {...body.graph,nodes:body.graph.nodes.map(({acceptance_revision_id,acceptance_template_name,...node})=>{
+    const { product_coefficient, ...graph } = body.graph;
+    body.graph = {...graph,nodes:graph.nodes.map(({acceptance_revision_id,acceptance_template_name,product_coefficient,...node})=>{
       if(node.acceptance_template_id) {
         const template=db.prepare('SELECT enabled,published_revision FROM quality_templates WHERE id=? AND warehouse_id=?').get(node.acceptance_template_id,req.warehouse.id);
         if(!template?.enabled || !template.published_revision) fail('请选择当前仓库已启用且已发布的验收模板。');
@@ -156,10 +172,10 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     })};
     const at = new Date().toISOString();
     let routeId = old?.id;
-    if (old) db.prepare('UPDATE process_routes SET name=?,note=?,enabled=?,graph=?,updated_by_name=?,updated_at=? WHERE id=?')
-      .run(body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), at, routeId);
-    else routeId = Number(db.prepare('INSERT INTO process_routes(warehouse_id,name,note,enabled,graph,created_by_name,updated_by_name,created_at,updated_at,sort_order) VALUES (?,?,?,?,?,?,?,?,?,' + nextTopOrder('process_routes') + ')')
-      .run(req.warehouse.id, body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), actor(req), at, at, req.warehouse.id).lastInsertRowid);
+    if (old) db.prepare('UPDATE process_routes SET name=?,note=?,enabled=?,graph=?,updated_by_name=?,updated_at=?,route_kind=? WHERE id=?')
+      .run(body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), at, kind, routeId);
+    else routeId = Number(db.prepare('INSERT INTO process_routes(warehouse_id,name,note,enabled,graph,created_by_name,updated_by_name,created_at,updated_at,route_kind,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,' + nextTopOrder('process_routes') + ')')
+      .run(req.warehouse.id, body.name.trim(), body.note, body.enabled, JSON.stringify(body.graph), actor(req), actor(req), at, at, kind, req.warehouse.id).lastInsertRowid);
     return get(req.warehouse.id, routeId);
   };
   app.get('/api/process-routes', route(req => listProcessRoutes(db, req.warehouse.id, req.query)));
@@ -206,6 +222,7 @@ export function captureAdditionalOperations(db, order, operations = []) {
     seen.add(key);
     const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(input.route_id, order.warehouse_id);
     if (!route?.enabled) fail('请选择当前仓库已启用的附加工序。');
+    if (route.route_kind !== 'production') fail('请选择生产工艺作为附加工序。');
     if (route.version !== input.route_version) fail('附加工序的工艺路线已变化，请重新选择后保存。', 409);
     const node = parseGraph(route.graph).nodes.find(node => node.id === input.node_id);
     if (!node) fail('所选附加工序不存在。');
@@ -217,6 +234,27 @@ export function captureAdditionalOperations(db, order, operations = []) {
   });
 }
 
+export function capturePostProcessingOperations(db, order, operations = []) {
+  if (!Array.isArray(operations) || operations.length > 50) fail('后处理工序最多 50 道。');
+  const seen = new Set();
+  for (const [index, input] of operations.entries()) {
+    if (!input || !id(input.route_id) || !id(input.route_version) || typeof input.node_id !== 'string' || !validQuantity(input.product_coefficient, true))
+      fail('请选择有效后处理工序并填写正数成品系数，最多 4 位小数。');
+    const key = JSON.stringify([input.route_id, input.node_id]);
+    if (seen.has(key)) fail('同一道后处理工序不能重复添加。');
+    seen.add(key);
+    const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(input.route_id, order.warehouse_id);
+    if (!route?.enabled || route.route_kind !== 'post_processing') fail('请选择当前仓库已启用的后处理工艺。');
+    if (route.version !== input.route_version) fail('后处理工艺已变化，请重新选择后保存。', 409);
+    const node = parseGraph(route.graph).nodes.find(node => node.id === input.node_id);
+    if (!node) fail('所选后处理工序不存在。');
+    const graph = { nodes: [node], edges: [] };
+    captureAcceptanceVersions(db, graph, order.warehouse_id);
+    db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph,product_coefficient) VALUES (?,?,?,?,?,?,?)')
+      .run(order.id, `@post:${index + 1}`, route.id, route.version, route.name, JSON.stringify(graph), input.product_coefficient);
+  }
+}
+
 export function captureProductionRoutes(db, order) {
   const layers = order.stage_workflow ? db.prepare('SELECT path,bom_id,product_id FROM production_stages WHERE production_id=?').all(order.id)
     : [{ path: '', bom_id: order.bom_id, product_id: order.product_id }];
@@ -225,6 +263,7 @@ export function captureProductionRoutes(db, order) {
     if (!binding?.route_id) continue;
     const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(binding.route_id, order.warehouse_id);
     if (!route?.enabled) fail('生产物料关联的工艺路线已停用，请先重新配置。', 409);
+    if (route.route_kind !== 'production') fail('物料和BOM只能绑定生产工艺。');
     const graph=parseGraph(route.graph);
     captureAcceptanceVersions(db, graph, order.warehouse_id);
     db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph) VALUES (?,?,?,?,?,?)').run(order.id, layer.path, route.id, route.version, route.name, JSON.stringify(graph));
@@ -232,13 +271,20 @@ export function captureProductionRoutes(db, order) {
 }
 
 export function readProductionRoutes(db, order) {
+  order.output_completed = productionOutputCompleted(order);
+  order.output_completion_confirmed = Boolean(order.output_completion_confirmed);
   order.operation_routes = db.prepare('SELECT * FROM production_routes WHERE production_id=? ORDER BY id').all(order.id).map(row => {
     const graph = parseGraph(row.graph), all = db.prepare('SELECT * FROM production_operation_reports WHERE route_snapshot_id=? ORDER BY id').all(row.id);
     const additional_materials = JSON.parse(row.additional_materials).map(material => {
       const item = order.items?.find(item => item.product_id === material.product_id) || db.prepare('SELECT * FROM production_items WHERE production_id=? AND product_id=?').get(order.id, material.product_id);
       return { ...material, name: item.name, barcode: item.barcode, unit: item.unit, unit_round_up: item.unit_round_up };
     });
-    return { ...row, graph, additional_materials, operations: productionRouteProgress({ ...row, graph }, all), reports: all.slice(-100).reverse().map(report => operationReportView(report, order)), report_count: all.length };
+    const post = row.product_coefficient == null ? {} : {
+      post_processing_limit: postProcessingLimit(order.status === 'void' ? 0 : exactQuantity(order, 'completed_quantity'), row.product_coefficient, order.output_completed),
+      unit: postProcessingUnit,
+    };
+    const route = { ...row, ...post, graph, additional_materials };
+    return { ...route, operations: productionRouteProgress(route, all), reports: all.slice(-100).reverse().map(report => operationReportView(report, order)), report_count: all.length };
   });
   for (const group of productionPools(order)) {
     if (group.length < 2) continue;
@@ -311,12 +357,19 @@ function operationInput(db, req, order, path, quantity, output) {
   const node = route.operations.find(n => n.id === req.body.operation_node_id);
   if (!node || node.is_output !== output) fail(output ? '请从最终产出工序登记产量和实际耗料。' : '最终工序请使用产出登记入口。');
   if (node.acceptance_template_id && !hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
-  const layer = order.stages?.find(s => s.path === path) || order;
-  const product = db.prepare('SELECT active,unit,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(layer.product_id,order.warehouse_id);
-  if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
+  const post = route.product_coefficient != null;
+  if (post && !id(quantity)) fail('后处理报工次数必须为正整数。');
   parseExactQuantity(quantity, true);
-  if (!validExactQuantity(exactAdd(exactQuantity(node, 'completed_quantity'), quantity), true)) fail('工序累计数量超出范围。');
-  if (node.available_quantity !== null && exactCompare(quantity, exactQuantity(node, 'available_quantity')) > 0) fail(route.additional_quantity != null ? '本次数量超过附加工序剩余可登记数量。' : '前置工序可用数量不足，请先核对前序报工。', 409);
+  if (!post) {
+    const layer = order.stages?.find(s => s.path === path) || order;
+    const product = db.prepare('SELECT active,unit,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(layer.product_id,order.warehouse_id);
+    if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
+    if (!validExactQuantity(exactAdd(exactQuantity(node, 'completed_quantity'), quantity), true)) fail('工序累计数量超出范围。');
+  }
+  if (node.available_quantity !== null && exactCompare(quantity, exactQuantity(node, 'available_quantity')) > 0) {
+    if (post) fail('本次报工超过后处理剩余可登记次数。', 409);
+    fail(route.additional_quantity != null ? '本次数量超过附加工序剩余可登记数量。' : '前置工序可用数量不足，请先核对前序报工。', 409);
+  }
   if (typeof req.body.note !== 'string' && req.body.note !== undefined || (req.body.note?.length ?? 0) > 500) fail('工序说明最多 500 字。');
   if (db.prepare('SELECT COUNT(*) n FROM production_operation_reports WHERE production_id=?').get(order.id).n >= 10000) fail('每张生产单最多登记 10000 条工序记录。');
   const materialItems = route.additional_quantity != null ? consumeAdditionalMaterials(db, req, order, route) : [];
@@ -336,17 +389,21 @@ function insertReport(db, req, order, input, quantity, kind = null, batchId = nu
 export function recordOperationOutput(db, req, order, path, quantity, kind, batchId) {
   const input = operationInput(db, req, order, path, quantity, true);
   insertReport(db, req, order, input, quantity, kind, batchId);
-  if (req.body.finish_order !== false) assertOperationsFinished(db, order.id);
 }
 export function voidOperationOutput(db, kind, batchId, owner, at, reason) {
   const report = db.prepare("SELECT production_id FROM production_operation_reports WHERE output_kind=? AND output_batch_id=? AND status='active'").get(kind,batchId);
   if (report) db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE output_kind=? AND output_batch_id=? AND status='active'").run(reason, owner, at, nextOperationSequence(db, report.production_id), kind, batchId);
 }
 export function assertOperationsFinished(db, productionId) {
-  const order = { id: productionId, stages: db.prepare('SELECT * FROM production_stages WHERE production_id=?').all(productionId),
+  const order = { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(productionId), stages: db.prepare('SELECT * FROM production_stages WHERE production_id=?').all(productionId),
     items: db.prepare('SELECT * FROM production_items WHERE production_id=?').all(productionId),
     nodes: db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(productionId) }; readProductionRoutes(db, order);
   for (const route of order.operation_routes) {
+    if (route.product_coefficient != null) {
+      if (!order.output_completed) fail('成品生产尚未完成，请登记达到计划或确认成品生产完成。', 409);
+      if (route.operations[0].completed_quantity !== route.post_processing_limit) fail('后处理工序尚未完成，请登记完成后再结束生产。', 409);
+      continue;
+    }
     if (route.additional_quantity != null) {
       if (exactCompare(exactQuantity(route.operations[0], 'completed_quantity'), route.additional_quantity) !== 0) fail('附加工序尚未完成，请登记完成后再结束生产。', 409);
       continue;
@@ -378,8 +435,9 @@ export function installProductionOperations(app, db, { route, current, version }
     const order = current(req); version(req, order);
     if (order.status !== 'in_progress') fail('仅生产中可以登记工序。', 409);
     if (typeof req.body.path !== 'string') fail('请选择生产层。');
-    const additional = order.operation_routes.find(r => r.path === req.body.path)?.additional_quantity != null;
-    const allocations = req.body.auto_overflow === true && !additional
+    const target = order.operation_routes.find(r => r.path === req.body.path);
+    const independent = target?.additional_quantity != null || target?.product_coefficient != null;
+    const allocations = req.body.auto_overflow === true && !independent
       ? operationAllocation(order, req.body.path, req.body.operation_node_id, req.body.quantity)
       : [{ path: req.body.path, node_id: req.body.operation_node_id, quantity: req.body.quantity }];
     for (const allocation of allocations) {
@@ -417,7 +475,6 @@ export function installProductionOperations(app, db, { route, current, version }
 }
 
 export function validateProcessRouteBackup(data) {
-  const validQuantity = validExactQuantity;
   const routes = new Map(data.process_routes.map(row => [row.id, row])), orders = new Map(data.production_orders.map(row => [row.id, row]));
   const warehouses = new Set(data.warehouses.map(row => row.id)), snapshots = new Map();
   const text = (value, max, required = false) => typeof value === 'string' && value.length <= max && (!required || !!value.trim());
@@ -431,31 +488,49 @@ export function validateProcessRouteBackup(data) {
   };
   const names = new Set();
   for (const row of routes.values()) {
-    if (!warehouses.has(row.warehouse_id) || !text(row.name, 100, true) || !text(row.note, 1000) || ![0,1].includes(row.enabled) || !id(row.version) ||
+    if (!routeKinds.includes(row.route_kind) || !warehouses.has(row.warehouse_id) || !text(row.name, 100, true) || !text(row.note, 1000) || ![0,1].includes(row.enabled) || !id(row.version) ||
         !text(row.created_by_name, 100, true) || !text(row.updated_by_name, 100, true) || !Number.isFinite(Date.parse(row.created_at)) || !Number.isFinite(Date.parse(row.updated_at)) || names.has(`${row.warehouse_id}:${row.name}`)) fail('备份工艺路线无效。');
     names.add(`${row.warehouse_id}:${row.name}`); checkTemplates(parseGraph(row.graph),row.warehouse_id);
   }
   for (const [table, column] of [['products','default_route_id'], ['boms','route_override_id']]) for (const row of data[table]) {
-    if (!association(row[column]) || row[column] !== null && routes.get(row[column])?.warehouse_id !== row.warehouse_id) fail('备份工艺路线绑定跨仓或无效。');
+    if (!association(row[column]) || row[column] !== null && (routes.get(row[column])?.warehouse_id !== row.warehouse_id || routes.get(row[column]).route_kind !== 'production')) fail('备份工艺路线绑定跨仓或无效。');
   }
-  const keys = new Set();
+  const keys = new Set(), postBindings = new Set(), postOrders = new Set();
   for (const row of data.production_routes) {
     const order = orders.get(row.production_id), key = `${row.production_id}:${row.path}`;
-    if (!order || routes.get(row.route_id)?.warehouse_id !== order.warehouse_id || !id(row.route_version) || !text(row.route_name, 100, true) || typeof row.path !== 'string' || keys.has(key) ||
-        (row.additional_quantity !== null ? !validQuantity(row.additional_quantity, true) || !/^@extra:[1-9]\d*$/.test(row.path) || parseGraph(row.graph).nodes.length !== 1 || order.unit_round_up && !Number.isInteger(row.additional_quantity)
-          : (order.stage_workflow ? !data.production_stages.some(s => s.production_id === order.id && s.path === row.path) : row.path !== ''))) fail('备份生产工艺快照无效。');
-    checkTemplates(parseGraph(row.graph),order.warehouse_id,true);
+    const source = routes.get(row.route_id), graph = parseGraph(row.graph), post = row.product_coefficient !== null;
+    if (!order || source?.warehouse_id !== order.warehouse_id || source.route_kind !== (post ? 'post_processing' : 'production') ||
+        !id(row.route_version) || !text(row.route_name, 100, true) || typeof row.path !== 'string' || keys.has(key))
+      fail('备份生产工艺快照无效。');
+    if (post) {
+      const binding = JSON.stringify([order.id, row.route_id, graph.nodes[0].id]);
+      if (!validQuantity(row.product_coefficient, true) || row.additional_quantity !== null ||
+          !/^@post:(?:[1-9]|[1-4][0-9]|50)$/.test(row.path) || graph.nodes.length !== 1 || postBindings.has(binding))
+        fail('备份后处理工序快照无效。');
+      postBindings.add(binding);
+      postOrders.add(order.id);
+    } else if (row.additional_quantity !== null
+      ? !validExactQuantity(row.additional_quantity, true) || !/^@extra:[1-9]\d*$/.test(row.path) || graph.nodes.length !== 1 || order.unit_round_up && !Number.isInteger(row.additional_quantity)
+      : order.stage_workflow ? !data.production_stages.some(s => s.production_id === order.id && s.path === row.path) : row.path !== '') fail('备份生产工艺快照无效。');
+    checkTemplates(graph,order.warehouse_id,true);
     const materials = JSON.parse(row.additional_materials);
     if (!Array.isArray(materials) || materials.length > 100 || row.additional_quantity == null && materials.length || new Set(materials.map(item => item?.product_id)).size !== materials.length || materials.some(item => {
       const source = data.production_items.find(source => source.production_id === order.id && source.product_id === item?.product_id);
-      return !source || Object.keys(item).length !== 2 || !validQuantity(item.quantity, true) || source.unit_round_up && !Number.isInteger(item.quantity);
+      return !source || Object.keys(item).length !== 2 || !validExactQuantity(item.quantity, true) || source.unit_round_up && !Number.isInteger(item.quantity);
     })) fail('备份附加工序材料计划无效。');
-    keys.add(key); snapshots.set(row.id, { ...row, graph: parseGraph(row.graph), reports: [] });
+    keys.add(key); snapshots.set(row.id, { ...row, graph, reports: [] });
+  }
+  for (const order of orders.values()) {
+    if (![0,1].includes(order.output_completion_confirmed) ||
+        order.output_completion_confirmed && (!postOrders.has(order.id) || order.status === 'void' ||
+          exactCompare(exactQuantity(order, 'completed_quantity'), 0) <= 0 ||
+          exactCompare(exactQuantity(order, 'completed_quantity'), order.planned_quantity) >= 0))
+      fail('备份成品生产完成确认状态无效。');
   }
   const outputs = new Set(), acceptanceOwners = new Map();
   for (const row of data.production_operation_reports) {
     const snapshot = snapshots.get(row.route_snapshot_id), order = orders.get(row.production_id);
-    if (!snapshot || snapshot.production_id !== row.production_id || !order || !validQuantity(row.quantity, true) || !validQuantity(row.multiplier, true) || !['active','void'].includes(row.status) ||
+    if (!snapshot || snapshot.production_id !== row.production_id || !order || !validExactQuantity(row.quantity, true) || !validExactQuantity(row.multiplier, true) || !['active','void'].includes(row.status) ||
         !association(row.worker_id) || !association(row.registered_by) || !text(row.worker_name,100,true) || !text(row.registered_by_name,100,true) || !text(row.note,500) ||
         !Number.isFinite(Date.parse(row.created_at)) || !id(row.created_sequence) || !text(row.void_reason,500) || !text(row.voided_by_name,100) ||
         (row.status === 'active' ? row.voided_sequence !== null || row.voided_at !== null || row.void_reason !== '' || row.voided_by_name !== '' : !id(row.voided_sequence) || row.voided_sequence <= row.created_sequence || !row.void_reason.trim() || !row.voided_by_name.trim() || !Number.isFinite(Date.parse(row.voided_at)) || row.voided_at < row.created_at)) fail('备份工序登记无效。');
@@ -464,7 +539,7 @@ export function validateProcessRouteBackup(data) {
     const materialItems = JSON.parse(row.material_items), configured = JSON.parse(snapshot.additional_materials);
     if (!Array.isArray(materialItems) || materialItems.length !== configured.length || new Set(materialItems.map(item => item?.product_id)).size !== materialItems.length || materialItems.some(item => {
       const source = data.production_items.find(source => source.production_id === order.id && source.product_id === item?.product_id);
-      return !source || !configured.some(plan => plan.product_id === item.product_id) || ![4,5].includes(Object.keys(item).length) || !validQuantity(item.quantity) ||
+      return !source || !configured.some(plan => plan.product_id === item.product_id) || ![4,5].includes(Object.keys(item).length) || !validExactQuantity(item.quantity) ||
         !Number.isSafeInteger(item.cost_cents) || item.cost_cents < 0 || item.quantity === 0 && item.cost_cents !== 0 || !text(item.variance_reason, 500);
     })) fail('备份附加工序材料耗用无效。');
     if(!association(row.acceptance_id)) fail('备份工序验收单编号无效。');
@@ -475,9 +550,9 @@ export function validateProcessRouteBackup(data) {
       acceptanceOwners.set(row.acceptance_id,acceptanceOwner);
       if(!acceptance || acceptance.warehouse_id!==order.warehouse_id || acceptance.template_id!==node.acceptance_template_id || acceptance.revision_id!==node.acceptance_revision_id || acceptance.created_by_name!==row.registered_by_name) fail('备份工序验收单关联无效。');
     } else if(row.acceptance_id!==null) fail('未绑定模板的工序不能关联验收单。');
-    const layer = order.stage_workflow && snapshot.additional_quantity == null ? data.production_stages.find(s => s.production_id === order.id && s.path === snapshot.path) : order;
-
-    if (row.node_id === output && snapshot.additional_quantity == null) {
+    if (snapshot.product_coefficient !== null && (!id(row.quantity) || row.quantity_fraction !== ''))
+      fail('备份后处理报工次数必须为正整数。');
+    if (row.node_id === output && snapshot.additional_quantity == null && snapshot.product_coefficient == null) {
       const kind = order.stage_workflow ? 'stage' : 'batch', batch = (kind === 'stage' ? data.production_stage_batches : data.production_batches).find(b => b.id === row.output_batch_id);
       const key = `${kind}:${row.output_batch_id}`;
       if (row.output_kind !== kind || !batch || batch.production_id !== order.id || (kind === 'stage' && batch.path !== snapshot.path) || exactCompare(exactQuantity(batch,'completed_quantity'),exactQuantity(row)) !== 0 || batch.status !== row.status || outputs.has(key)) fail('备份最终工序与产出批次不一致。');
@@ -516,7 +591,15 @@ export function validateProcessRouteBackup(data) {
   }
   for (const snapshot of replaySnapshots) {
     const order = orders.get(snapshot.production_id), operations = processProgress(snapshot.graph, snapshot.reports);
-    if (operations.some(n => !validQuantity(exactQuantity(n,'completed_quantity')))) fail('备份工序累计数量无效。');
+    if (snapshot.product_coefficient !== null) {
+      const completed = productionOutputCompleted(order), quantity = order.status === 'void' ? 0 : exactQuantity(order, 'completed_quantity');
+      const limit = postProcessingLimit(quantity, snapshot.product_coefficient, completed);
+      const reported = operations[0].completed_quantity;
+      if (!Number.isSafeInteger(reported) || reported > limit || order.status === 'completed' && (!completed || reported !== limit))
+        fail('备份后处理次数超过上限或与生产完成状态不一致。');
+      continue;
+    }
+    if (operations.some(n => !validExactQuantity(exactQuantity(n,'completed_quantity')))) fail('备份工序累计数量无效。');
     if (snapshot.additional_quantity != null) {
       if (order.status === 'completed' && operations[0].completed_quantity !== snapshot.additional_quantity || order.status === 'void' && operations[0].completed_quantity !== 0)
         fail('备份已结束生产单附加工序数量无效。');

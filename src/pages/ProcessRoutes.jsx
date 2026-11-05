@@ -21,11 +21,12 @@ export function ProcessRoutes({ data }) {
   useLocale();
   const action = useBusiness();
   const [q, setQ] = useState(''), [productionType, setProductionType] = useState('成品'), [status, setStatus] = useState('all'), [sort, setSort] = useState('custom'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
+  const [routeKind, setRouteKind] = useState('production');
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [selected, setSelected] = useState('');
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph'), [connecting, setConnecting] = useState(null), [message, setMessage] = useState('');
   const queryData = useMemo(() => ({ ...data, routeRevision: revision }), [data, revision]);
   const templates = useQuery(editor ? '/process-routes/acceptance-templates' : null, data);
-  const list = useQuery(queryPath('/process-routes', { q, production_type: productionType, status, sort, offset }), queryData, 150);
+  const list = useQuery(queryPath('/process-routes', { q, route_kind: routeKind, production_type: routeKind === 'production' ? productionType : 'all', status, sort, offset }), queryData, 150);
   const sortable = useSortableList({
     items: list.result?.routes,
     enabled: sort === 'custom' && !action.busy,
@@ -49,7 +50,7 @@ export function ProcessRoutes({ data }) {
   const apply = route => { setEditor(route); setBaseline(JSON.stringify(route)); setSelected(route.graph.nodes[0]?.id || ''); setConnecting(null); action.setError(''); setMessage(''); };
   const open = (route, copy = false) => action.run(async () => {
     const result = await api(`/process-routes/${route.id}`, { warehouseId: data.warehouse_id });
-    apply(copy ? { name: `${result.name} (${t('route.copy')})`.slice(0, 100), note: result.note, enabled: 1, graph: result.graph } : result);
+    apply(copy ? { name: `${result.name} (${t('route.copy')})`.slice(0, 100), note: result.note, enabled: 1, route_kind: result.route_kind, graph: result.graph } : result);
   });
   const back = () => { if (!action.busy && (!dirty || window.confirm(t('route.unsaved')))) { setEditor(null); action.setError(''); } };
   const update = changes => { setEditor(previous => ({ ...previous, ...changes })); action.setError(''); };
@@ -63,17 +64,22 @@ export function ProcessRoutes({ data }) {
     setSelected(nodeId);
   };
   const notices = <>{action.error && <p className="form-error" role="alert">{action.error}</p>}{message && <p className="bom-success" role="status">{message}</p>}</>;
-  if (!editor) return <div className="bom-page process-page"><PageHeading title={t('route.title')} description={t('route.listHint')}><Button kind="primary" icon={Plus} onClick={() => apply({ name: '', note: '', enabled: 1, graph: { nodes: [{ id: crypto.randomUUID(), name: t('route.newNode'), note: '', x: 24, y: 24 }], edges: [] } })}>{t('route.new')}</Button></PageHeading>
+  if (!editor) return <div className="bom-page process-page"><PageHeading title={t('route.title')} description={t('route.listHint')}><Button kind="primary" icon={Plus} onClick={() => apply({ name: '', note: '', enabled: 1, route_kind: routeKind === 'post_processing' ? routeKind : 'production', graph: { nodes: [{ id: crypto.randomUUID(), name: t('route.newNode'), note: '', x: 24, y: 24 }], edges: [] } })}>{t('route.new')}</Button></PageHeading>
     {notices}
     <section className="panel bom-section">
       <div className="bom-list-filters process-list-filters">
         <Input type="search" aria-label={t('route.search')} placeholder={t('route.searchPlaceholder')} value={q} onChange={event => { setQ(event.target.value); setOffset(0); }} />
         <div className="process-filter-right">
-          <Select aria-label={t('route.productionType')} value={productionType} onChange={next => { setProductionType(next); setOffset(0); }}>
+          <Select aria-label={t('route.kind')} value={routeKind} onChange={next => { setRouteKind(next); setOffset(0); }}>
+            <option value="all">{t('route.allKinds')}</option>
+            <option value="production">{t('route.productionKind')}</option>
+            <option value="post_processing">{t('route.postProcessingKind')}</option>
+          </Select>
+          {routeKind === 'production' && <Select aria-label={t('route.productionType')} value={productionType} onChange={next => { setProductionType(next); setOffset(0); }}>
             <option value="all">{t('route.allProductionTypes')}</option>
             {productionTypes.map(type => <option key={type} value={type}>{translateText(type)}</option>)}
             <option value="unset">{t('route.unsetProductionType')}</option>
-          </Select>
+          </Select>}
           <Select aria-label={t('route.all')} value={status} onChange={next => { setStatus(next); setOffset(0); }}>
             <option value="all">{t('route.all')}</option>
             <option value="enabled">{t('route.enabled')}</option>
@@ -98,6 +104,7 @@ export function ProcessRoutes({ data }) {
             <div className="process-route-card-title">
               {sort === 'custom' && <SortHandle sortable={sortable} id={route.id} label={t('route.dragToSort')} />}
               <h2>{route.name}</h2>
+              <Badge tone={route.route_kind === 'post_processing' ? 'orange' : 'gray'}>{t(route.route_kind === 'post_processing' ? 'route.postProcessingKind' : 'route.productionKind')}</Badge>
               <Badge tone={route.enabled ? 'green' : 'gray'}>{t(route.enabled ? 'route.enabled' : 'route.disabled')}</Badge>
               <span className="process-meta-pill">{t('route.version', { version: route.version })}</span>
             </div>
@@ -147,6 +154,10 @@ export function ProcessRoutes({ data }) {
     <section className="panel bom-section process-route-fields">
       <div className="process-route-fields-grid">
         <label>{t('route.name')}<Input aria-label={t('route.name')} maxLength={100} value={editor.name} disabled={action.busy} onChange={event => update({ name: event.target.value })} /></label>
+        <label>{t('route.kind')}<Select aria-label={t('route.kind')} value={editor.route_kind || 'production'} disabled={action.busy || !!(editor.products?.length || editor.boms?.length)} onChange={route_kind => update({ route_kind })}>
+          <option value="production">{t('route.productionKind')}</option>
+          <option value="post_processing">{t('route.postProcessingKind')}</option>
+        </Select></label>
         <label>{t('route.note')}<Input.TextArea rows={2} aria-label={t('route.note')} maxLength={1000} value={editor.note} disabled={action.busy} onChange={event => update({ note: event.target.value })} /></label>
       </div>
       {editor.id && (editor.products?.length > 0 || editor.boms?.length > 0) && <div className="process-uses-box">
@@ -219,6 +230,6 @@ export function ProcessRoutes({ data }) {
             <Button kind="danger" icon={Trash2} disabled={action.busy || graph.nodes.length <= 1} onClick={() => { if (!window.confirm(t('route.removeConfirm'))) return; update({ graph: { nodes: graph.nodes.filter(n => n.id !== node.id), edges: graph.edges.filter(e => e.from !== node.id && e.to !== node.id) } }); setSelected(graph.nodes.find(n => n.id !== node.id)?.id || ''); }}>{t('route.remove')}</Button>
           </div>
         </aside>}
-      </div></section>{notices}<div className="bom-editor-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button>{editor.id && <Button disabled={action.busy} onClick={() => { if (!dirty || window.confirm(t('route.reloading'))) open(editor); }}>{t('route.reload')}</Button>}<Button kind="primary" busy={action.busy} disabled={!editor.name.trim()} onClick={() => action.run(async () => { validateProcessGraph(editor.graph); await action.send(editor.id ? `/process-routes/${editor.id}` : '/process-routes', { name: editor.name, note: editor.note, enabled: editor.enabled, graph: editor.graph, ...(editor.id ? { version: editor.version } : {}) }, { warehouseId: data.warehouse_id }); setEditor(null); setRevision(n => n + 1); setMessage(t('route.saved')); })}>{t('route.save')}</Button></div>
+      </div></section>{notices}<div className="bom-editor-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button>{editor.id && <Button disabled={action.busy} onClick={() => { if (!dirty || window.confirm(t('route.reloading'))) open(editor); }}>{t('route.reload')}</Button>}<Button kind="primary" busy={action.busy} disabled={!editor.name.trim()} onClick={() => action.run(async () => { validateProcessGraph(editor.graph); await action.send(editor.id ? `/process-routes/${editor.id}` : '/process-routes', { name: editor.name, note: editor.note, enabled: editor.enabled, route_kind: editor.route_kind, graph: editor.graph, ...(editor.id ? { version: editor.version } : {}) }, { warehouseId: data.warehouse_id }); setEditor(null); setRevision(n => n + 1); setMessage(t('route.saved')); })}>{t('route.save')}</Button></div>
   </div>;
 }

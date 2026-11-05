@@ -1,7 +1,9 @@
 import { processRouteMessages } from './process-route-messages.js';
+import { postProcessingMessages } from './post-processing-messages.js';
 import { createValidationTranslator } from './error-translation-runtime.js';
 // System validation text only; never include stored business values in this catalog.
 export const validationMessages = {
+  ...postProcessingMessages,
   ADDITIONAL_MATERIALS_INVALID: ['请核对附加工序材料明细，材料不能重复且最多 100 种。', 'Check additional operation materials: no duplicates and at most 100 materials.', 'Kiểm tra nguyên liệu công đoạn bổ sung: không trùng và tối đa 100 loại.'],
   ADDITIONAL_MATERIAL_PLAN_INVALID: ['附加工序计划用料需为正数，最多 4 位小数。', 'Planned material quantities must be positive with at most 4 decimal places.', 'Lượng nguyên liệu kế hoạch phải dương, tối đa 4 chữ số thập phân.'],
   ADDITIONAL_MATERIAL_UNAVAILABLE: ['附加工序材料需属于当前仓库且已启用。', 'Additional operation materials must be active in the current warehouse.', 'Nguyên liệu công đoạn bổ sung phải đang bật trong kho hiện tại.'],

@@ -203,7 +203,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 50);
+  assert.equal(backup.version, 51);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -300,6 +300,7 @@ const routeRoles = new Map(Object.entries({
   'post /api/production-orders/:id/complete': 'production', 'post /api/production-orders/:id/void': 'production',
   'post /api/production-orders/:id/delete': 'production',
   'post /api/production-orders/:id/finish': 'production', 'post /api/production-orders/:id/batches/:batchId/void': 'production',
+  'post /api/production-orders/:id/output-completion': 'production',
   'post /api/production-orders/:id/start': 'production', 'post /api/production-orders/:id/material-requests': 'production',
   'post /api/production-orders/:id/assign': 'production',
   'post /api/production-orders/:id/stages/enable': 'production',

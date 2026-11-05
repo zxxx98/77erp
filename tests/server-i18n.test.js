@@ -55,6 +55,18 @@ test('browser-safe shared validation catalog covers BOM, production, quality, ne
   for (const values of Object.values(validationMessages)) assert.ok(!/[\u3400-\u9fff]/.test(values[1] + values[2]));
 });
 
+test('post-processing completion and correction errors are localized', () => {
+  for (const source of [
+    '后处理工序尚未完成，请登记完成后再结束生产。',
+    '成品生产已确认完成，请先撤销确认再登记成品。',
+    '调整后已登记后处理次数将超过可登记上限，请先作废相应后处理记录。',
+    '后处理报工次数必须为正整数。',
+  ]) {
+    assert.ok(validationErrorInfo(source), source);
+    for (const locale of ['en', 'vi']) assert.doesNotMatch(localizeServerText(source, locale), /[\u3400-\u9fff]/);
+  }
+});
+
 test('production PDF localizes system labels while preserving business text and language isolation', async () => {
   const { default: PDFDocument } = await import('pdfkit');
   const { renderProductionPdf } = await import('../server/production-pdf.js');

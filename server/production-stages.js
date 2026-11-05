@@ -2,7 +2,8 @@ import { validateStageReceipts, migrateStageReceipts, stageEventTime, stageRecei
 import { operationAllocation } from '../shared/operation-overflow.js';
 import { stagePoolPaths, productionPoolOrder, pooledProductionStages, productionPoolPathMap } from '../shared/production-pools.js';
 import { productionRegistrationGroup } from './production-access.js';
-import { recordOperationOutput, voidOperationOutput } from './process-routes.js';
+import { assertOutputOpen, reopenAfterRootOutputVoid } from './post-processing.js';
+import { assertOperationsFinished, recordOperationOutput, voidOperationOutput } from './process-routes.js';
 import { deriveProductionStages, stageDisplayStandardQuantity, productionStageItems, stageInputCanBeZero } from '../shared/production-stages.js';
 import { addQuantity, materialQuantity, validQuantity, validStoredQuantity, quantityUnits, QUANTITY_SCALE } from '../shared/quantity.js';
 import { allocate } from './commerce.js';
@@ -175,6 +176,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     const o=stageOrder(req); version(req,o);units(o);
     if(o.status!=='in_progress')fail('请先开始生产并由仓库批准领料后登记。',409);
     const s=o.stages.find(s=>s.path===req.body.path);if(!s)fail('生产层不存在。',404);
+    if(s.path==='')assertOutputOpen(o);
     if(!validExactQuantity(parseExactQuantity(req.body.completed_quantity,true),true)||req.body.note!==undefined&&(typeof req.body.note!=='string'||req.body.note.length>500)||typeof req.body.finish_order!=='boolean')fail('请核对本批产量、备注及继续生产选项。');
     if(s.path!==''&&(req.body.finish_order||req.body.scraps?.length))fail('半成品层只能登记继续，不登记废料或结束整单。');
     if(!Array.isArray(req.body.items)||req.body.items.length!==s.items.length||new Set(req.body.items.map(i=>i?.path)).size!==s.items.length)fail('请核对全部直属投入，路径不能重复或增删。');
@@ -229,7 +231,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
       db.prepare('UPDATE production_stage_batches SET root_batch_id=? WHERE id=?').run(rootId,id);createProductionReceipt(db,req,o,rootId);updateBatchTotals(db,o,'draft',owner,at);
     }else db.prepare('UPDATE production_orders SET updated_by_name=?,updated_at=? WHERE id=?').run(owner,at,o.id);
     recordOperationOutput(db,req,o,s.path,q,'stage',id);
-    if(req.body.finish_order){const fresh=current(req);assertNoPendingMaterials(db,fresh);assertStagesFinished(fresh);finalizeProductionQuantities(db,req,fresh);db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?").run(owner,at,o.id);}
+    if(req.body.finish_order){const fresh=current(req);assertNoPendingMaterials(db,fresh);assertOperationsFinished(db,o.id);assertStagesFinished(fresh);finalizeProductionQuantities(db,req,fresh);db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?").run(owner,at,o.id);}
     return current(req);
   };
   app.post('/api/production-orders/:id/stages/complete',route(req=>{
@@ -257,6 +259,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if(db.prepare("SELECT 1 FROM production_stage_receipts WHERE source_batch_id=? AND status!='void'").get(b.id))fail('此批次有半成品入库申请，请先取消或作废入库单。',409);
     const dependents=db.prepare(`SELECT DISTINCT b.path,b.batch_number FROM production_stage_allocations a JOIN production_stage_inputs i ON i.id=a.input_id JOIN production_stage_batches b ON b.id=i.batch_id WHERE a.source_batch_id=? AND b.status='active'`).all(b.id);
     if(dependents.length)fail(`此批次已被上层使用，请先作废上层批次：${dependents.map(d=>`［${d.path||'根层'}］第 ${d.batch_number} 批`).join('、')}。`,409);
+    if(b.root_batch_id)reopenAfterRootOutputVoid(db,o,o.batches.find(root=>root.id===b.root_batch_id));
     reopenProductionQuantities(db,req,o);
     const at=stageEventTime(db,o.id),owner=actor(req),why=req.body.reason.trim();
     if(b.root_batch_id){const root=o.batches.find(r=>r.id===b.root_batch_id),before=stockBefore(o);units(o,false);reverseBatch(req,o,root);voidProductionReceipt(db,root.id,owner,at,why);db.prepare("UPDATE production_batches SET status='void',voided_by_name=?,voided_at=?,void_reason=? WHERE id=?").run(owner,at,why,root.id);notifyStockChanges(db,req,before,{production_id:o.id,number:o.number,batch_id:root.id});}

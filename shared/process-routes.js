@@ -59,7 +59,8 @@ export function processProgress(graph, reports) {
 // Order-only operations have their own quantity and never register product output.
 export function productionRouteProgress(route, reports) {
   const operations = processProgress(route.graph, reports);
-  return route.additional_quantity == null ? operations : operations.map(node => ({ ...node,
-    is_output: false, ...quantityFields(exactMax(0, exactSubtract(route.additional_quantity, exactQuantity(node, 'completed_quantity'))), 'available_quantity'),
+  const limit = route.post_processing_limit ?? route.additional_quantity;
+  return limit == null ? operations : operations.map(node => ({ ...node,
+    is_output: false, ...quantityFields(exactMax(0, exactSubtract(limit, exactQuantity(node, 'completed_quantity'))), 'available_quantity'),
   }));
 }

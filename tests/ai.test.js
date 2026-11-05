@@ -1380,6 +1380,51 @@ test('AI reads process routes and operation snapshots without granting route wri
   await f.permissions(['ai']);await f.chat(f.staff);assert.ok(!f.calls.at(-1).body.tools.some(tool=>tool.function.name==='get_process_route'));
 });
 
+test('AI distinguishes post-processing templates and explains output-based limits without write tools', async t => {
+  const f = await fixture(t, ':memory:', false);
+  await f.permissions(['ai', 'bom', 'production']);
+  await f.chat(f.staff);
+  const offered = f.calls.at(-1).body.tools;
+  const search = offered.find(tool => tool.function.name === 'search_process_routes').function;
+  assert.deepEqual(search.parameters.properties.route_kind?.enum, ['all', 'production', 'post_processing']);
+  const graph = { nodes: [{ id: 'pack', name: '打包', note: '', x: 24, y: 24, unit_price: 2, currency: 'CNY' }], edges: [] };
+  const created = await f.request(f.admin, '/process-routes', { request_id: randomUUID(), name: 'AI后处理打包', route_kind: 'post_processing', note: '', enabled: 1, graph });
+  assert.equal(created.status, 200, JSON.stringify(created.data));
+  f.use('search_process_routes', { route_kind: 'post_processing' });
+  assert.equal((await f.chat(f.staff)).status, 200);
+  let result = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.equal(result.routes.length, 1);
+  assert.equal(result.routes[0].route_kind, 'post_processing');
+  f.use('get_process_route', { route_id: created.data.id });
+  await f.chat(f.staff);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.equal(result.route_kind, 'post_processing');
+  const prompt = f.calls.at(-1).body.messages[0].content;
+  assert.match(prompt, /后处理.*向下取整.*向上取整/);
+  assert.match(prompt, /后处理.*全部完成.*结束生产/);
+  assert.ok(!offered.some(tool => /^(?:preview|save|report|void).*post_processing/.test(tool.function.name)));
+  const product = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  const raw = f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const bom = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI后处理配方', product_id: product.id, base_quantity: 1, base_unit: product.unit, enabled: 1, note: '', items: [{ product_id: raw.id, quantity: 1, unit: raw.unit, note: '' }] });
+  assert.equal(bom.status, 200, JSON.stringify(bom.data));
+  const order = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), bom_id: bom.data.id, bom_version: bom.data.version, planned_quantity: 110, note: '', post_processing_operations: [{ route_id: created.data.id, route_version: created.data.version, node_id: 'pack', product_coefficient: 20 }] });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+  f.use('get_production_order', { production_id: order.data.id });
+  assert.equal((await f.chat(f.staff)).status, 200);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  const post = result.operation_routes.find(route => route.product_coefficient != null);
+  assert.equal(post.product_coefficient, 20);
+  assert.equal(post.post_processing_limit, 0);
+  assert.equal(post.unit, '次');
+  assert.equal(post.operations[0].is_output, false);
+  assert.equal(result.output_completed, false);
+  assert.ok(!JSON.stringify(result).includes('cost_cents'));
+  f.use('search_process_routes', { route_kind: 'unknown' });
+  await f.chat(f.staff);
+  result = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.match(result.error, /工艺路线查询无效/);
+});
+
 test('AI edits every ProductForm property with a rolled back preview, sync details and price history', async t => {
   const f = await fixture(t);
   await f.permissions(['ai', 'products']);

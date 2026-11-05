@@ -4,6 +4,9 @@ import { ProductPicker } from '../features/ProductPicker.jsx';
 import { ProductionSupply } from '../features/ProductionSupply.jsx';
 import { ProductionAssignments } from '../features/ProductionAssignments.jsx';
 import { AdditionalOperations } from '../features/AdditionalOperations.jsx';
+import { PostProcessingPlan } from '../features/PostProcessingPlan.jsx';
+import { PostProcessingFinishNotice } from '../features/PostProcessingFinishNotice.jsx';
+import { postProcessingFinishState } from '../production-registration.js';
 import { productionAssignments, productionAssignmentNames } from '../../shared/production-assignment.js';
 import { ProductionOperations, OperationWorkerSelect } from '../features/ProductionOperations.jsx';
 import { ProductionProcessOverview } from '../features/ProcessOverview.jsx';
@@ -179,7 +182,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
       body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity, supply_choices: [] } });
-    setEditor(previous => ({ kind: 'new', note: previous?.note || '', additional_operations: previous?.additional_operations || [], planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
+    setEditor(previous => ({ kind: 'new', note: previous?.note || '', additional_operations: previous?.additional_operations || [],
+      post_processing_operations: previous?.post_processing_operations || [], planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
   };
   const supplyStale = editor?.kind === 'new' && editor.plan && (Number(editor.planned_quantity) !== editor.plan.production_quantity || JSON.stringify(editor.supply_choices) !== JSON.stringify(editor.plan.prepared_choices || []));
   const supplyRequest = (draft, signal) => {
@@ -301,7 +305,17 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     await send(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason }, { warehouseId: data.warehouse_id });
     await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"), true);
   });
+  const finishState = postProcessingFinishState(detail);
+  const canConfirmOutput = detail?.status === 'in_progress' && detail.operation_routes?.some(route => route.product_coefficient != null)
+    && (detail.output_completion_confirmed || !detail.output_completed && exactCompare(exactQuantity(detail, 'completed_quantity'), 0) > 0);
+  const changeOutputCompletion = completed => action.run(async () => {
+    if (!window.confirm(pt(completed ? 'production.confirmOutputCompletionPrompt' : 'production.revokeOutputCompletionPrompt'))) return;
+    setMoreOpen(false);
+    const updated = await send(`/production-orders/${detail.id}/output-completion`, { completed, version: detail.version }, { warehouseId: data.warehouse_id });
+    await saved(updated, pt(completed ? 'production.outputCompletionConfirmed' : 'production.outputCompletionRevoked'));
+  });
   const finishOrder = () => action.run(async () => {
+    if (finishState.blocked) return;
     setMoreOpen(false);
     if (!window.confirm(pt("production.endThisProductionOrderPendingBatchesStillRequire"))) return;
     await saved(await send(`/production-orders/${detail.id}/finish`, { version: detail.version }, { warehouseId: data.warehouse_id }), pt("production.productionEndedPendingReceiptsStillRequireWarehouseApproval"));
@@ -328,10 +342,17 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           body.supply_choices = prepared.supply_choices || []; body.bom_id = prepared.plan.bom_id; body.bom_version = prepared.plan.version; body.structure_token = prepared.plan.structure_token;
           body.additional_operations = (editor.additional_operations || []).map(row => ({ route_id: row.route_id, route_version: row.route_version, node_id: row.node_id, quantity: parseQuantity(row.quantity, true),
             materials: (row.materials || []).map(item => ({ product_id: item.product_id, quantity: parseQuantity(item.quantity, true) })) }));
+          body.post_processing_operations = (editor.post_processing_operations || []).map(row => {
+            let product_coefficient;
+            try { product_coefficient = parseQuantity(row.product_coefficient, true); }
+            catch { throw new Error(pt('production.productCoefficientInvalid')); }
+            return { route_id: row.route_id, route_version: row.route_version, node_id: row.node_id, product_coefficient };
+          });
         }
         else body.version = detail.version;
         await saved(await send(path, body, options), pt("production.productionDraftSavedStockUnchanged"));
       } else if (editor.kind === 'complete') {
+        if (detail.output_completion_confirmed || finishOrder && finishState.blocked) return;
         const body = { version: detail.version, ...(editor.operation_node_id ? { operation_node_id: editor.operation_node_id, worker_id: editor.worker_id } : {}), completed_quantity: parseExactQuantity(editor.completed_quantity, true), finish_order: finishOrder, note: editor.note,
           items: editor.items.map(row => ({ product_id: row.product_id, quantity: parseExactQuantity(row.quantity), variance_reason: row.variance_reason })),
           scraps: editor.scraps.map(row => ({ product_id: row.product_id, quantity: parseExactQuantity(row.quantity), disposition: row.disposition })) };
@@ -457,6 +478,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         </section>}
         {editor.kind === 'new' && source && <ProductionSupply supplies={source.supplies || []} choices={editor.supply_choices || []} onChange={supply_choices => update({ supply_choices })} onCalculate={recalculateSupply} stale={supplyStale} disabled={action.busy} />}
         {editor.kind === 'new' && source && <AdditionalOperations rows={editor.additional_operations || []} onChange={additional_operations => update({ additional_operations })} data={listData} unit={unit} disabled={action.busy} />}
+        {editor.kind === 'new' && source && <PostProcessingPlan rows={editor.post_processing_operations || []} onChange={post_processing_operations => update({ post_processing_operations })}
+          data={listData} unit={unit} plannedQuantity={editor.planned_quantity} disabled={action.busy} />}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}
@@ -475,10 +498,12 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           {!scrapRows.length && <p className="bom-hint">{pt("production.noScrapOutputConfiguredForThisOrder")}</p>}
         </section>}
         {notices}
+        {management && editor.kind === 'complete' && <PostProcessingFinishNotice state={finishState} />}
+        {editor.kind === 'complete' && detail.output_completion_confirmed && <p className="bom-hint">{pt('production.outputRegistrationLocked')}</p>}
         <div className="bom-editor-actions"><Button type="button" disabled={action.busy} onClick={back}>{pt("production.cancel")}</Button>
           {detail && <Button type="button" disabled={action.busy} onClick={() => { if (!dirty || window.confirm(pt("production.reloadingWillDiscardCurrentEntriesContinue"))) open(detail.id); }}>{pt("production.reloadProductionOrder")}</Button>}
-          {management && editor.kind === 'complete' && <Button type="submit" value="finish" disabled={action.busy}>{pt("production.registerBatchAndEndProduction")}</Button>}
-          <Button type="submit" kind="primary" icon={planning ? Save : editor.kind === 'complete' ? Check : XCircle} busy={action.busy} disabled={!source || !!quantityError}>
+          {management && editor.kind === 'complete' && <Button type="submit" value="finish" disabled={action.busy || finishState.blocked || detail.output_completion_confirmed}>{pt("production.registerBatchAndEndProduction")}</Button>}
+          <Button type="submit" kind="primary" icon={planning ? Save : editor.kind === 'complete' ? Check : XCircle} busy={action.busy} disabled={!source || !!quantityError || editor.kind === 'complete' && detail.output_completion_confirmed}>
             {planning ? pt("production.saveProductionDraft") : editor.kind === 'complete' ? pt("production.registerBatchAndContinue") : pt("production.confirmVoid")}</Button>
         </div>
       </AntForm>
@@ -505,9 +530,13 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         <div className="production-more-controls">
           {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
           {management && detail.status === 'in_progress' && <>
-            <Button disabled={action.busy || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>
+            <Button disabled={action.busy || finishState.blocked || !detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>
+            <PostProcessingFinishNotice state={finishState} />
             {(!detail.batch_count || detail.material_documents?.some(doc => doc.status === 'pending')) && <p className="bom-hint">{pt('production.finishRequirements')}</p>}
           </>}
+          {management && canConfirmOutput && <Button disabled={action.busy} onClick={() => changeOutputCompletion(!detail.output_completion_confirmed)}>
+            {pt(detail.output_completion_confirmed ? 'production.revokeOutputCompletion' : 'production.confirmOutputCompletion')}
+          </Button>}
           <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
           {management && detail.status !== 'void' && !!detail.operation_routes?.length && (
             <Button disabled={action.busy} onClick={() => { setMoreOpen(false); setSyncPriceConfirm(true); }}>
@@ -550,6 +579,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       </div>
       <progress className="production-progress-bar" aria-label={pt('production.outputProgress')} max={Number(detail.planned_quantity) || 1} value={Math.min(Number(detail.planned_quantity), Number(detail.completed_quantity || 0))} />
       <div className="production-progress-caption"><span>{pt('production.plannedOutput2')} {count(detail.planned_quantity)} {detail.unit}</span><span>{pt('production.remainingPlan')} {count(Math.max(0, quantityUnits(detail.planned_quantity) - quantityUnits(detail.completed_quantity ?? 0)) / QUANTITY_SCALE)} {detail.unit}</span></div>
+      {detail.output_completion_confirmed && <p className="bom-hint">{pt('production.outputRegistrationLocked')}</p>}
     </section>
     <ProductionDetailTabs key={detail.id} active={detailTab} onChange={setDetailTab} items={[
       { key: 'overview', label: pt('production.overviewTab'), children: <>
@@ -560,7 +590,10 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.status !== 'void' && detail.material_documents?.some(doc => doc.status === 'pending') && <div className="production-task"><span>{pt('production.materialRequestPending')}</span><Button onClick={() => setDetailTab('materials')}>{pt('production.viewMaterialRequest')}</Button></div>}
       {detail.status !== 'void' && detail.pending_receipt_quantity > 0 && <div className="production-task"><span>{pt('production.receiptPendingHint', { quantity: count(detail.pending_receipt_quantity), unit: detail.unit })}</span><Button onClick={() => setDetailTab('records')}>{pt('production.viewPendingReceipts')}</Button></div>}
       {detail.status === 'completed' && detail.material_workflow === 1 && detail.items.some(item => item.available_quantity > 0) && <div className="production-task"><span>{pt('production.unusedMaterialsRemainVerifyAndRequestAReturn')}</span><Button onClick={() => setDetailTab('materials')}>{pt('production.materialsTab')}</Button></div>}
-      {management && detail.status === 'in_progress' && detail.batch_count > 0 && !detail.material_documents?.some(doc => doc.status === 'pending') && <div className="production-task"><span>{pt('production.finishWhenReady')}</span><Button disabled={action.busy} onClick={finishOrder}>{pt('production.endProduction')}</Button></div>}
+      {management && detail.status === 'in_progress' && (finishState.blocked || detail.batch_count > 0 && !detail.material_documents?.some(doc => doc.status === 'pending')) && <>
+        <div className="production-task"><span>{pt('production.finishWhenReady')}</span><Button disabled={action.busy || finishState.blocked} onClick={finishOrder}>{pt('production.endProduction')}</Button></div>
+        <PostProcessingFinishNotice state={finishState} />
+      </>}
     </section>
     <section className="panel bom-section">
       <div className="production-assignment-panel">

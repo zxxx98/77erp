@@ -13,7 +13,7 @@ import { api } from '../api.js';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
-import { registrationDefaults, registrationTargets } from '../production-registration.js';
+import { outputRegistrationLocked, registrationDefaults, registrationTargets } from '../production-registration.js';
 import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, formatExactQuantity } from '../../shared/exact-quantity.js';
 import { validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
 import { MaterialVariance } from './MaterialVariance.jsx';
@@ -50,6 +50,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   const [message, setMessage] = useState(''), [expanded, setExpanded] = useState(false);
   const target = targets.find(row => row.id === selectedId);
   const registerable = order.status === 'in_progress' || !order.material_workflow && order.status === 'draft';
+  const outputLocked = outputRegistrationLocked(order, target);
   const dirty = !!quantity || !!note || Object.keys(overrides.items).length > 0 || Object.keys(overrides.scraps).length > 0;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
   useEffect(() => {
@@ -70,8 +71,9 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   if (target && quantity.trim()) {
     try {
       outputQuantity = parseQuantity(quantity, true);
+      if (target.postProcessing && !Number.isInteger(outputQuantity)) throw new Error(t('production.postProcessingInteger'));
       if (target.layer.unit_round_up && !Number.isInteger(outputQuantity)) throw new Error(t('registration.wholeQuantity'));
-      allocations = target.node && !target.additional ? operationAllocation(order, target.path, target.node.id, outputQuantity) : [];
+      allocations = target.node && !target.additional && !target.postProcessing ? operationAllocation(order, target.path, target.node.id, outputQuantity) : [];
       defaults = registrationDefaults(order, target, outputQuantity);
       if (target.output && allocations.length) defaults.items = allocations.flatMap(part => registrationDefaults(order, { ...target, path: part.path, layer: part.layer }, part.quantity).items);
     } catch (error) { defaultsError = error.message; }
@@ -94,13 +96,14 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       if (!target) throw new Error(t('registration.chooseOperation'));
       if(!operationAcceptanceAllowed(target.node,can)) return;
       if (!registerable) throw new Error(t('registration.closed'));
+      if (outputLocked) throw new Error(t('production.outputRegistrationLocked'));
       if (defaultsError) { if (target.output) setExpanded(true); throw new Error(defaultsError); }
       const value = parseQuantity(quantity, true);
       if (!allocations.length && target.node?.available_quantity != null && exactCompare(value, exactQuantity(target.node, 'available_quantity')) > 0) throw new Error(t(target.additional ? 'production.additionalExceedsAvailable' : 'registration.exceedsAvailable'));
       let suffix, body;
       const operation = target.node ? { operation_node_id: target.node.id, worker_id: workerId } : {};
       if (!target.output) {
-        suffix = '/operations/report'; body = { path: target.path, ...operation, quantity: value, note, auto_overflow: !target.additional };
+        suffix = '/operations/report'; body = { path: target.path, ...operation, quantity: value, note, auto_overflow: !target.additional && !target.postProcessing };
         if (target.additional) body.material_items = materialItems.map(row => ({ product_id: row.product_id, quantity: parseQuantity(row.quantity), variance_reason: row.variance_reason }));
       } else {
         const actuals = items.map(row => {
@@ -132,7 +135,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   };
   const choices = rows => <div className="registration-operations" role="group" aria-label={t('registration.chooseOperation')}>
     {rows.map(row => <div key={row.id} className="registration-option-row"><Radio className="registration-operation" checked={selectedId === row.id} name={`registration-${order.id}`}
-      disabled={action.busy || !registerable} onChange={() => select(row)}>
+      disabled={action.busy || !registerable || outputRegistrationLocked(order, row)} onChange={() => select(row)}>
       <span className="registration-option-content"><OperationName target={row} /><span className={`registration-option-quantity${row.node?.available_quantity > 0 ? ' is-available' : ''}`}>{row.node?.available_quantity != null
         ? t('registration.available', { quantity: count(row.node.available_quantity), unit: row.unit })
         : t('registration.completed', { quantity: count(row.node?.completed_quantity ?? row.layer.completed_quantity ?? 0), unit: row.unit })}</span></span>
@@ -164,12 +167,13 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
             {target && <span className="bom-hint registration-selected-target">{target.name}</span>}
           </div>
           <label className="registration-quantity-label">{t('registration.quantity')}{target && `（${target.unit}）`}
-            <Input aria-label={t('registration.quantity')} inputMode="text" value={quantity} placeholder={t('registration.enterQuantity')}
-              disabled={action.busy || !target || !registerable} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
+            <Input aria-label={t('registration.quantity')} inputMode={target?.postProcessing ? 'numeric' : 'text'} value={quantity} placeholder={t('registration.enterQuantity')}
+              disabled={action.busy || !target || !registerable || outputLocked} onChange={event => { setQuantity(event.target.value); setMessage(''); action.setError(''); }} />
           </label>
           <div className="registration-context-box">
             <p className="bom-hint registration-meta-line">{target?.node?.available_quantity != null && `${t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })} · `}{t('registration.worker', { name: workerId === user.id ? t('route.self') : `#${workerId}` })}</p>
-            <p className="bom-hint">{t('production.fractionRegistrationHint')}</p>
+            <p className="bom-hint">{t(target?.postProcessing ? 'production.postProcessingInteger' : 'production.fractionRegistrationHint')}</p>
+            {outputLocked && <p className="bom-warning">{t('production.outputRegistrationLocked')}</p>}
             {target?.output && <p className="bom-hint">{t('registration.standardUsage')}{!target.path && ` ${t('registration.pendingReceipt')}`}</p>}
             {target?.layer.pool_paths && <p className="bom-hint">{t('production.poolHint')}</p>}
           </div>
@@ -205,7 +209,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
         <summary><span>{t('registration.more')}</span><ChevronDown className="registration-details-chevron" size={16} aria-hidden="true" /></summary>
         <div className="registration-details-body">
           <div className="registration-details-meta">
-            {target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.additional ? t('production.additionalOperations') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
+            {target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.postProcessing ? t('production.postProcessing') : target.additional ? t('production.additionalOperations') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
             {can('production') && target?.node && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
           </div>
           {target?.node?.note && <p className="production-note registration-operation-note">{target.node.note}</p>}
@@ -246,7 +250,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
           clear(); setMessage(''); await onSaved(latest, false);
         }))}>{t('production.reloadProductionOrder')}</Button></div></details>
-        <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable}>{t('registration.submit')}</Button>
+        <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable || outputLocked}>{t('registration.submit')}</Button>
       </div>
     </form>
   </div>;

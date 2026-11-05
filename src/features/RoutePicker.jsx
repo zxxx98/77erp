@@ -11,7 +11,7 @@ export function RoutePicker({ value, onChange, warehouseId, inherit = false, inh
   useLocale();
   const [q, setQ] = useState(''), [preview, setPreview] = useState(false);
   const data = useMemo(() => ({ warehouse_id: warehouseId }), [warehouseId]);
-  const list = useQuery(queryPath('/process-routes', { q, limit: 100 }), data, 150);
+  const list = useQuery(queryPath('/process-routes', { q, route_kind: 'production', limit: 100 }), data, 150);
   const effectiveId = value ?? (inherit ? inheritedValue : null);
   const current = useQuery(effectiveId ? `/process-routes/${effectiveId}` : null, data);
   const options = (list.result?.routes || []).filter(route => route.enabled || route.id === value);

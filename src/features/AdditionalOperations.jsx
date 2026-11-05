@@ -1,17 +1,16 @@
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { Button, Modal, QueryStatus } from '../components/common.jsx';
+import { Button } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { FormField } from '../ui/FormField.jsx';
-import { useQuery, queryPath } from '../queries.js';
 import { t } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { ProductPicker } from './ProductPicker.jsx';
+import { IndependentOperationPicker } from './IndependentOperationPicker.jsx';
 
 export function AdditionalOperations({ rows, onChange, data, unit, disabled }) {
   useLocale();
-  const [picker, setPicker] = useState(false), [search, setSearch] = useState(''), [offset, setOffset] = useState(0), [selected, setSelected] = useState(null);
-  const query = useQuery(queryPath('/process-routes', { q: search, status: 'enabled', offset, limit: 10 }), data, 150);
+  const [picker, setPicker] = useState(false);
   return <section className="panel bom-section additional-operations">
     <h2>{t('production.additionalOperations')}</h2>
     <p className="bom-hint">{t('production.additionalOperationsHint')}</p>
@@ -37,23 +36,8 @@ export function AdditionalOperations({ rows, onChange, data, unit, disabled }) {
         onChange(rows.map((item, i) => i === index ? { ...item, materials: [...(item.materials || []), { product_id: product.id, name: product.name, barcode: product.barcode, unit: product.unit, quantity: '' }] } : item));
       }} />
     </section>)}
-    <Button type="button" icon={Plus} disabled={disabled || rows.length >= 50} onClick={() => { setSearch(''); setOffset(0); setSelected(null); setPicker(true); }}>{t('production.addAdditionalOperation')}</Button>
-    {picker && <Modal title={t('production.addAdditionalOperation')} onClose={() => setPicker(false)}>
-      <div className="form-body">
-        <Input type="search" aria-label={t('route.search')} placeholder={t('route.search')} value={search} onChange={event => { setSearch(event.target.value); setOffset(0); setSelected(null); }} />
-        <QueryStatus query={query} />
-        {!selected ? <>
-          {query.result?.routes.map(route => <Button key={route.id} onClick={() => setSelected(route)}>{route.name}</Button>)}
-          {query.result?.routes.length === 0 && <p className="bom-hint">{t('production.noAdditionalOperations')}</p>}
-          <div className="bom-actions"><Button disabled={!offset || query.loading} onClick={() => setOffset(n => n - 10)}>{t('route.previous')}</Button><Button disabled={!query.result?.has_more || query.loading} onClick={() => setOffset(n => n + 10)}>{t('route.next')}</Button></div>
-        </> : <>
-          <strong>{selected.name}</strong>
-          {selected.graph.nodes.map(node => <Button key={node.id} disabled={rows.some(row => row.route_id === selected.id && row.node_id === node.id)} onClick={() => {
-            onChange([...rows, { route_id: selected.id, route_version: selected.version, node_id: node.id, quantity: '', name: node.name, route_name: selected.name, materials: [] }]); setPicker(false);
-          }}>{node.name}</Button>)}
-          <Button onClick={() => setSelected(null)}>{t('route.back')}</Button>
-        </>}
-      </div>
-    </Modal>}
+    <Button type="button" icon={Plus} disabled={disabled || rows.length >= 50} onClick={() => setPicker(true)}>{t('production.addAdditionalOperation')}</Button>
+    {picker && <IndependentOperationPicker data={data} routeKind="production" title={t('production.addAdditionalOperation')} emptyMessage={t('production.noAdditionalOperations')}
+      rows={rows} onSelect={row => onChange([...rows, { ...row, quantity: '', materials: [] }])} onClose={() => setPicker(false)} />}
   </section>;
 }

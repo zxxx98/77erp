@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { registrationTargets, registrationDefaults } from '../src/production-registration.js';
+import * as registration from '../src/production-registration.js';
+const { registrationTargets, registrationDefaults } = registration;
 
 test('operation names expand through route, BOM and layer without mixing identical snapshot nodes', () => {
   const stage = (path, bom_name) => ({ path, name: '同名半成品', unit: '件', bom_name, items: [] });
@@ -93,4 +94,34 @@ test('additional operations remain selectable beside unrouted output and default
   assert.deepEqual(registrationDefaults(order, extra, 2), { items: [], scraps: [], material_items: [] });
   extra.route.additional_materials = [{ product_id: 2, quantity: 1, unit_round_up: 0 }, { product_id: 3, quantity: 2, unit_round_up: 1 }];
   assert.deepEqual(registrationDefaults(order, extra, 1).material_items.map(item => item.quantity), ['1/3', '2/3']);
+});
+
+const postRoute = (path, name, limit, done) => ({ path, route_name: '包装工艺', product_coefficient: 20, post_processing_limit: limit, unit: '次',
+  operations: [{ id: 'a', name, completed_quantity: done, available_quantity: limit - done, is_output: false }] });
+
+test('post-processing targets use the live limit, count in 次, and consume no default materials', () => {
+  const order = { product_name: '成品', unit: '件', planned_quantity: 110, items: [],
+    operation_routes: [postRoute('@post:1', '包装', 5, 3), postRoute('@post:2', '贴标', 5, 0)] };
+  const [output, packing, labeling] = registrationTargets(order);
+  assert.equal(output.output, true);
+  assert.equal(packing.unit, '次');
+  assert.equal(packing.postProcessing, true);
+  assert.equal(packing.layer.planned_quantity, 5);
+  assert.equal(packing.layer.completed_quantity, 3);
+  assert.equal(packing.layer.unit_round_up, true);
+  assert.equal(packing.output, false);
+  assert.notEqual(packing.id, labeling.id);
+  assert.deepEqual(registrationDefaults(order, packing, 2), { items: [], scraps: [] });
+});
+
+test('finish requires completed output and reports every outstanding post-processing operation', () => {
+  const order = { output_completed: false, operation_routes: [postRoute('@post:1', '包装', 5, 3), postRoute('@post:2', '贴标', 5, 0)] };
+  assert.deepEqual(registration.postProcessingFinishState(order), {
+    waitingForOutput: true, gaps: [{ path: '@post:1', name: '包装', remaining: 2 }, { path: '@post:2', name: '贴标', remaining: 5 }], blocked: true,
+  });
+  order.output_completed = true;
+  assert.equal(registration.postProcessingFinishState(order).blocked, true);
+  order.operation_routes = [postRoute('@post:1', '包装', 6, 6), postRoute('@post:2', '贴标', 6, 6)];
+  assert.equal(registration.postProcessingFinishState(order).blocked, false);
+  assert.equal(registration.postProcessingFinishState({ output_completed: false }).blocked, false);
 });

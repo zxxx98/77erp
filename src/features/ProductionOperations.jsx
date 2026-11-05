@@ -14,6 +14,8 @@ import { useLocale } from '../i18n/react.jsx';
 import { parseExactQuantity as parseQuantity, exactQuantity, formatExactQuantity } from '../../shared/exact-quantity.js';
 import { ProcessGraph } from './ProcessGraph.jsx';
 import { mobileDevice } from '../device.js';
+import { postProcessingUnit } from '../../shared/post-processing.js';
+import { outputRegistrationLocked } from '../production-registration.js';
 const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 
 export function OperationWorkerSelect({ order, warehouseId, value, onChange, disabled }) {
@@ -33,13 +35,15 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
   const { can, user } = usePermissions(), action = useBusiness();
   const acceptance=useOperationAcceptance();
   const route = order.operation_routes.find(r => r.path === path), layer = order.stages?.find(s => s.path === path);
-  const unit = layer?.unit || order.unit;
+  const postProcessing = route.product_coefficient != null, independent = postProcessing || route.additional_quantity != null;
+  const unit = postProcessing ? route.unit || postProcessingUnit : layer?.unit || order.unit;
+  const availableLabel = independent ? 'production.additionalRemaining' : 'route.available';
   const [workerId, setWorkerId] = useState(user.id), [form, setForm] = useState(null), [voiding, setVoiding] = useState(null), [selected, setSelected] = useState('');
   const [offset, setOffset] = useState(0), [acceptanceDetail,setAcceptanceDetail]=useState(null);
   const [syncPriceConfirm, setSyncPriceConfirm] = useState(false);
   const historyData = useMemo(() => ({ warehouse_id: data.warehouse_id, version: order.version }), [data.warehouse_id, order.version]);
   const historyQuery = useQuery(`/production-orders/${order.id}/operations/reports?${new URLSearchParams({ snapshot_id: String(route.id), offset: String(offset) })}`, historyData);
-  const [view, setView] = useState(mobileDevice || route.additional_quantity != null ? 'list' : 'graph');
+  const [view, setView] = useState(mobileDevice || independent ? 'list' : 'graph');
   const dirty = !!form && (!!form.quantity || !!form.note) || !!voiding?.reason;
   const guard = useRef({}); guard.current = { dirty, busy: action.busy };
   useEffect(() => { onActivity?.({ form, voiding, busy: action.busy }); }, [form, voiding, action.busy, onActivity]);
@@ -83,12 +87,12 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             <span className="process-meta-pill">{t('route.version', { version: route.route_version })}</span>
             <span className="process-meta-pill">{t('route.operations')} {route.operations.length}</span>
           </div>
-          <p className="bom-hint">{t(route.additional_quantity != null ? 'production.additionalOperationsHint' : 'route.reportHint')}</p>
+          <p className="bom-hint">{t(postProcessing ? 'production.postProcessingReportHint' : independent ? 'production.additionalOperationsHint' : 'route.reportHint')}</p>
         </div>
         {!onRegister && canRegister && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={workerId} onChange={setWorkerId} disabled={action.busy} />}
       </div>
       {!form && !voiding && <>
-        {route.additional_quantity == null && <div className="process-editor-toolbar process-progress-toolbar">
+        {!independent && <div className="process-editor-toolbar process-progress-toolbar">
           <div className="process-view-segmented" role="group" aria-label={t('route.operations')}>
             <Button aria-pressed={view === 'graph'} onClick={() => setView('graph')}>{t('route.graph')}</Button>
             <Button aria-pressed={view === 'list'} onClick={() => setView('list')}>{t('route.list')}</Button>
@@ -106,17 +110,18 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                   <span className="process-step-badge">#{stepIndex}</span>
                   <h3>{node.name}</h3>
                 </div>
-                {route.additional_quantity != null ? <Badge tone="orange">{t('production.additionalOperations')}</Badge> : node.is_output ? <Badge tone="blue">{t('route.output')}</Badge> : isStart ? <Badge tone="green">{t('route.start')}</Badge> : null}
+                {independent ? <Badge tone="orange">{t(postProcessing ? 'production.postProcessing' : 'production.additionalOperations')}</Badge> : node.is_output ? <Badge tone="blue">{t('route.output')}</Badge> : isStart ? <Badge tone="green">{t('route.start')}</Badge> : null}
               </div>
               {node.acceptance_template_id && <Badge tone="orange">{t('route.acceptanceRequired')}</Badge>}
               {node.note && <p className="process-operation-note">{node.note}</p>}
-              <p className="bom-hint">{route.additional_quantity != null ? `${t('production.additionalQuantity')}: ${count(route.additional_quantity)} ${unit}` : `${t('route.predecessors')}: ${node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}`}</p>
+              {postProcessing ? <p className="bom-hint">{t('production.productCoefficient')} {count(route.product_coefficient)} {order.unit} · {t(order.output_completed ? 'production.postProcessingFinal' : 'production.postProcessingAvailable')} {count(route.post_processing_limit)} {unit}</p>
+                : <p className="bom-hint">{independent ? `${t('production.additionalQuantity')}: ${count(route.additional_quantity)} ${unit}` : `${t('route.predecessors')}: ${node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}`}</p>}
               <dl className="process-operation-stats">
                 <div className="process-stat-box"><dt>{t('route.completed')}</dt><dd>{count(exactQuantity(node, 'completed_quantity'))} {unit}</dd></div>
-                {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t(route.additional_quantity != null ? 'production.additionalRemaining' : 'route.available')}</dt><dd>{count(exactQuantity(node, 'available_quantity'))} {unit}</dd></div>}
+                {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t(availableLabel)}</dt><dd>{count(exactQuantity(node, 'available_quantity'))} {unit}</dd></div>}
               </dl>
               {canRegister && <div className="process-operation-card-action">
-                <Button kind="primary" disabled={action.busy || node.available_quantity === 0} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { if(!operationAcceptanceAllowed(node,can)) return; return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
+                <Button kind="primary" disabled={action.busy || node.available_quantity === 0 || outputRegistrationLocked(order, { path, output: node.is_output })} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { if(!operationAcceptanceAllowed(node,can)) return; return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
               </div>}
             </article>;
           })}
@@ -124,6 +129,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
       </>}
       {form && <form className="process-report-form" onSubmit={event => { event.preventDefault(); action.run(async () => {
         const quantity = parseQuantity(form.quantity, true);
+        if (postProcessing && !Number.isInteger(quantity)) throw new Error(t('production.postProcessingInteger'));
         if (!window.confirm(t('route.confirmReport'))) return;
         const result = await send('/operations/report', { path, operation_node_id: form.node_id, quantity, note: form.note, worker_id: workerId });
         setForm(null); await onSaved(result, t('route.reported'));
@@ -132,11 +138,11 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
           <h2>{activeNode?.name}</h2>
           {activeNode && <dl className="process-operation-stats">
             <div className="process-stat-box"><dt>{t('route.completed')}</dt><dd>{count(exactQuantity(activeNode, 'completed_quantity'))} {unit}</dd></div>
-            {activeNode.available_quantity !== null && <div className="process-stat-box is-available"><dt>{t(route.additional_quantity != null ? 'production.additionalRemaining' : 'route.available')}</dt><dd>{count(exactQuantity(activeNode, 'available_quantity'))} {unit}</dd></div>}
+            {activeNode.available_quantity !== null && <div className="process-stat-box is-available"><dt>{t(availableLabel)}</dt><dd>{count(exactQuantity(activeNode, 'available_quantity'))} {unit}</dd></div>}
           </dl>}
         </div>
         <div className="process-report-quantity-row">
-          <label>{t('route.quantity')}（{unit}）<Input autoFocus aria-label={t('route.quantity')} inputMode="text" value={form.quantity} disabled={action.busy} onChange={event => { setForm({ ...form, quantity: event.target.value }); action.setError(''); }} /></label>
+          <label>{t('route.quantity')}（{unit}）<Input autoFocus aria-label={t('route.quantity')} inputMode={postProcessing ? 'numeric' : 'text'} value={form.quantity} disabled={action.busy} onChange={event => { setForm({ ...form, quantity: event.target.value }); action.setError(''); }} /></label>
           {activeNode?.available_quantity > 0 && <Button disabled={action.busy} onClick={() => { setForm({ ...form, quantity: String(exactQuantity(activeNode, 'available_quantity')) }); action.setError(''); }}>{t('route.fillAvailable')} ({count(exactQuantity(activeNode, 'available_quantity'))})</Button>}
         </div>
         <label>{t('route.batchNote')}<Input.TextArea rows={3} aria-label={t('route.batchNote')} maxLength={500} value={form.note} disabled={action.busy} onChange={event => setForm({ ...form, note: event.target.value })} /></label>

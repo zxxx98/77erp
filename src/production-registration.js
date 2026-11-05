@@ -6,6 +6,21 @@ import { t } from './i18n/index.js';
 import { scrapExpectedQuantity } from '../shared/scrap.js';
 import { additionalMaterialDefaults } from '../shared/additional-operations.js';
 import { quantityInput } from '../shared/exact-quantity.js';
+import { postProcessingUnit } from '../shared/post-processing.js';
+
+export function postProcessingFinishState(order) {
+  const routes = order?.operation_routes?.filter(route => route.product_coefficient != null) || [];
+  const waitingForOutput = routes.length > 0 && !order.output_completed;
+  const gaps = routes.flatMap(route => {
+    const node = route.operations[0];
+    return node.available_quantity > 0 ? [{ path: route.path, name: node.name, remaining: node.available_quantity }] : [];
+  });
+  return { waitingForOutput, gaps, blocked: waitingForOutput || gaps.length > 0 };
+}
+
+export function outputRegistrationLocked(order, target) {
+  return !!order.output_completion_confirmed && !!target?.output && target.path === '';
+}
 
 // A route snapshot and BOM path identify the operation, never its display name.
 export function registrationTargets(order) {
@@ -51,13 +66,19 @@ export function registrationTargets(order) {
       showPath: boms(row) > 1, showStep: paths(row) > 1,
     };
   });
-  return [...regularTargets, ...(order.operation_routes || []).filter(route => route.additional_quantity != null).map(route => ({
-    id: JSON.stringify([route.path, route.operations[0].id]), path: route.path,
-    layer: { ...order, path: route.path, name: route.operations[0].name, planned_quantity: route.additional_quantity, completed_quantity: route.operations[0].completed_quantity },
-    node: route.operations[0], route, ancestors: [], name: route.operations[0].name,
-    routeName: route.route_name, bomName: '', step: 1, unit: order.unit, output: false, additional: true,
-    context: `${t('production.additionalOperations')} · ${route.route_name}`, showPath: false, showStep: false,
-  }))];
+  const independentTargets = (order.operation_routes || []).filter(route => route.additional_quantity != null || route.product_coefficient != null).map(route => {
+    const node = route.operations[0], postProcessing = route.product_coefficient != null;
+    const unit = postProcessing ? route.unit || postProcessingUnit : order.unit;
+    const planned_quantity = postProcessing ? route.post_processing_limit : route.additional_quantity;
+    return {
+      id: JSON.stringify([route.path, node.id]), path: route.path,
+      layer: { ...order, path: route.path, name: node.name, unit, planned_quantity, completed_quantity: node.completed_quantity, ...(postProcessing ? { unit_round_up: true } : {}) },
+      node, route, ancestors: [], name: node.name, routeName: route.route_name, bomName: '', step: 1,
+      unit, output: false, additional: !postProcessing, postProcessing,
+      context: `${t(postProcessing ? 'production.postProcessing' : 'production.additionalOperations')} · ${route.route_name}`, showPath: false, showStep: false,
+    };
+  });
+  return [...regularTargets, ...independentTargets];
 }
 
 // Defaults follow the existing full registration forms, including rounding and scrap rules.

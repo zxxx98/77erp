@@ -438,7 +438,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 50,
+    version: 51,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -447,11 +447,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 51) {
+      for (const route of data.process_routes || []) route.route_kind = 'production';
+      for (const route of data.production_routes || []) route.product_coefficient = null;
+      for (const order of data.production_orders || []) order.output_completion_confirmed = 0;
+    }
     if (value.version < 50) data.production_stage_receipts = [];
     if (value.version < 48) {
       for (const route of data.production_routes || []) { route.additional_quantity = null; route.additional_materials = '[]'; }

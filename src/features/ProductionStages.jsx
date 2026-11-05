@@ -16,6 +16,8 @@ import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, exact
 import { stageExactStandardQuantity, stageDisplayStandardQuantity, stageStandardQuantity, stageInputCanBeZero, stageInputDefaults } from '../../shared/production-stages.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import { ScrapOutputs } from './ScrapOutputs.jsx';
+import { PostProcessingFinishNotice } from './PostProcessingFinishNotice.jsx';
+import { outputRegistrationLocked, postProcessingFinishState } from '../production-registration.js';
 import './production-stages.css';
 
 const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
@@ -45,6 +47,8 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const displayStages = useMemo(() => pooledProductionStages(order), [order]);
   const byPath = useMemo(() => new Map([...order.stages, ...displayStages].map(stage => [stage.path, stage])), [order.stages, displayStages]);
   const stage = form ? byPath.get(form.path) : null;
+  const finishState = postProcessingFinishState(order);
+  const outputLocked = outputRegistrationLocked(order, { path: stage?.path, output: true });
   const pathLabel = value => {
     if (value?.pool_paths) return `${pt('production.sharedSemiFinished')} · ${value.name}`;
     const parts = [], seen = new Set();
@@ -73,6 +77,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const defaults = (target, quantity) => stageInputDefaults(target.items, quantity);
   const begin = (target, operation = null, workerId = undefined) => action.run(async () => {
     if (!operation && order.operation_routes?.some(route => route.path === target.path)) { setOperationPath(target.path); return; }
+    if (outputRegistrationLocked(order, { path: target.path, output: true })) return;
     const quantity = operation?.available_quantity != null ? exactQuantity(operation, 'available_quantity') : (Math.max(0, target.planned_quantity - target.completed_quantity) || 1);
     const next = { path: target.path, ...(operation ? { operation_node_id: operation.id, worker_id: workerId } : {}), completed_quantity: String(quantity), items: defaults(target, quantity), note: '',
       scraps: target.path ? [] : order.scraps.map(row => ({ product_id: row.product_id, quantity: '0', disposition: 'stock' })) };
@@ -84,6 +89,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const submit = event => {
     event.preventDefault();
     const finish = management && stage.path === '' && event.nativeEvent.submitter?.value === 'finish';
+    if (outputLocked || finish && finishState.blocked) return;
     action.run(async () => {
       const quantity = parseQuantity(form.completed_quantity, true);
       const items = form.items.map(row => {
@@ -154,10 +160,13 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       {scrapRows.length > 0 && <section className="panel bom-section"><ScrapOutputs rows={scrapRows} materials={stage.items} complete disabled={locked}
         onChange={(id, changes) => patch({ scraps: form.scraps.map(row => row.product_id === id ? { ...row, ...changes } : row) })} /></section>}
       <section className="panel bom-section"><label>{pt("production.batchNote")}<Input.TextArea aria-label={pt("production.batchNote")} maxLength={500} rows={2} value={form.note} disabled={locked} onChange={event => patch({ note: event.target.value })} /></label></section>
-      {notices}<div className="bom-editor-actions"><Button disabled={locked} onClick={back}>{pt("production.cancel")}</Button>
+      {notices}
+      {stage.path === '' && management && <PostProcessingFinishNotice state={finishState} />}
+      {outputLocked && <p className="bom-hint">{pt('production.outputRegistrationLocked')}</p>}
+      <div className="bom-editor-actions"><Button disabled={locked} onClick={back}>{pt("production.cancel")}</Button>
         <Button disabled={locked} onClick={() => leave(() => action.run(async () => onSaved(await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id }), pt("production.productionOrderReloadedSelectALevelAndVerify"))))}>{pt("production.reloadProductionOrder")}</Button>
-        <Button type="submit" kind="primary" value="continue" busy={locked}>{stage.path ? pt("production.registerSemiFinishedBatch") : pt("production.registerBatchAndContinue")}</Button>
-        {stage.path === '' && management && <Button type="submit" value="finish" disabled={locked}>{pt("production.registerBatchAndEndProduction")}</Button>}
+        <Button type="submit" kind="primary" value="continue" busy={locked} disabled={outputLocked}>{stage.path ? pt("production.registerSemiFinishedBatch") : pt("production.registerBatchAndContinue")}</Button>
+        {stage.path === '' && management && <Button type="submit" value="finish" disabled={locked || finishState.blocked || outputLocked}>{pt("production.registerBatchAndEndProduction")}</Button>}
       </div>
     </form> : history ? <section className="panel bom-section">
       <h2>{byPath.get(history.path)?.name}</h2><QueryStatus query={historyQuery} />
@@ -209,7 +218,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
             {input.standard_quantity != null && <p>{pt("production.variance")} {count(addQuantity(input.actual_quantity, -input.standard_quantity))} {input.unit}</p>}
           </div>)}
         </details><div className="bom-actions">
-          {canRegister && <Button kind="primary" disabled={locked} aria-label={pt("production.register4", { v0: item.name })} onClick={() => onRegister ? onRegister(JSON.stringify([item.path, null])) : begin(item)}>{pt("production.register")}</Button>}
+          {canRegister && <Button kind="primary" disabled={locked || outputRegistrationLocked(order, { path: item.path, output: true })} aria-label={pt("production.register4", { v0: item.name })} onClick={() => onRegister ? onRegister(JSON.stringify([item.path, null])) : begin(item)}>{pt("production.register")}</Button>}
           {order.operation_routes?.some(route => route.path === item.path) && <Button disabled={locked} onClick={() => setOperationPath(item.path)}>{pt('route.viewProgress')}</Button>}
           <Button disabled={locked} aria-label={pt("production.viewBatches", { v0: item.name })} onClick={() => { setHistory({ path: item.path, offset: 0 }); action.setError(''); }}>{pt("production.batchRecords")}</Button>
           {item.path !== scope && item.items.some(input => input.usage_mode === 'explode') && <Button disabled={locked} icon={ChevronRight} aria-label={pt("production.viewChildLevel", { v0: item.name })} onClick={() => { setScope(item.path); setSearch(''); }}>{pt("production.viewChildLevel2")}</Button>}

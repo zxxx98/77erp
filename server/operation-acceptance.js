@@ -112,7 +112,7 @@ export function saveOperationAcceptance(db,req,order,input) {
   const id=Math.max(last,db.prepare('SELECT COALESCE(MAX(id),0) id FROM quality_acceptances').get().id)+1;
   const number=`QA-${now.slice(0,10).replaceAll('-','')}-${randomBytes(6).toString('hex').toUpperCase()}`;
   const title=`${order.number} · ${input.node.name}`.slice(0,100);
-  const note=`工序验收合格；${input.route.additional_quantity != null ? '附加工序' : `生产层：${input.route.path||'根层'}`}；本次登记数量：${req.body.quantity??req.body.completed_quantity} ${layer.unit}；作业员工：${input.worker.name||input.worker.username}`;
+  const note=`工序验收合格；${input.route.product_coefficient != null ? '后处理工序' : input.route.additional_quantity != null ? '附加工序' : `生产层：${input.route.path||'根层'}`}；本次登记数量：${req.body.quantity??req.body.completed_quantity} ${input.route.unit ?? layer.unit}；作业员工：${input.worker.name||input.worker.username}`;
   db.prepare(`INSERT INTO quality_acceptances(id,warehouse_id,number,name,note,template_id,revision_id,file_id,result,created_by_name,created_at,bindings,checks_acknowledged)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)`).run(id,order.warehouse_id,number,title,note,prepared.revision.template_id,prepared.revision.id,fid,JSON.stringify(prepared.result),name,now,JSON.stringify(bindings));
   prepared.id=id;

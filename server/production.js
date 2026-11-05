@@ -1,7 +1,8 @@
 import { createOperationAcceptanceService, assertOperationAcceptancePermission } from './operation-acceptance.js';
 import { positionAuthorization } from './positions.js';
 import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
-import { productionOperationTables, captureProductionRoutes, captureAdditionalOperations, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
+import { assertOutputOpen, assertPostProcessingLimits, reopenAfterRootOutputVoid } from './post-processing.js';
+import { productionOperationTables, captureProductionRoutes, captureAdditionalOperations, capturePostProcessingOperations, readProductionRoutes, installProductionOperations, recordOperationOutput, voidOperationOutput, assertOperationsFinished, deleteProductionOperations } from './process-routes.js';
 import { requestLanguage } from './i18n.js';
 import { productionRegistrationGroup, isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
 import { rebuildTable } from './table-migration.js';
@@ -139,6 +140,8 @@ export function migrateProduction(db) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN unit_round_up INTEGER NOT NULL DEFAULT 0 CHECK(unit_round_up IN (0,1))`);
   if (!db.prepare('PRAGMA table_info(production_orders)').all().some(c => c.name === 'quantity_decimals'))
     db.exec('ALTER TABLE production_orders ADD COLUMN quantity_decimals INTEGER NOT NULL DEFAULT 6 CHECK(quantity_decimals IN (4,6))');
+  if (!db.prepare('PRAGMA table_info(production_orders)').all().some(c => c.name === 'output_completion_confirmed'))
+    db.exec('ALTER TABLE production_orders ADD COLUMN output_completion_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(output_completion_confirmed IN (0,1))');
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='production_version';
     UPDATE production_orders SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='production_version') WHERE id=NEW.id;`;
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
@@ -447,8 +450,10 @@ export function installProduction(app, db, options = {}) {
       if (req.body.stage_schema_version !== 1) fail('新多层生产单使用分层生产，请刷新页面后建单。', 409);
       saveProductionStages(db, { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), nodes: plan.nodes });
     }
-    captureProductionRoutes(db, db.prepare('SELECT * FROM production_orders WHERE id=?').get(id));
-    captureAdditionalOperations(db, db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), req.body.additional_operations);
+    const order = db.prepare('SELECT * FROM production_orders WHERE id=?').get(id);
+    captureProductionRoutes(db, order);
+    captureAdditionalOperations(db, order, req.body.additional_operations);
+    capturePostProcessingOperations(db, order, req.body.post_processing_operations);
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id/assign', route(req => {
@@ -509,6 +514,7 @@ export function installProduction(app, db, options = {}) {
   app.post('/api/production-orders/:id/complete', route(req => {
     const order = current(req); checkOpen(req, order); units(order);
     if (order.stage_workflow) fail('分层生产请按指定层登记，不能通过旧登记入口完成。',409);
+    assertOutputOpen(order);
     if (req.body.finish_order !== false) assertNoPendingMaterials(db, order);
     validateProductionCompletion(req.body, order.items);
     req.body.completed_quantity = parseExactQuantity(req.body.completed_quantity, true);
@@ -553,8 +559,24 @@ export function installProduction(app, db, options = {}) {
     recordOperationOutput(db, req, order, '', req.body.completed_quantity, 'batch', batchId);
     createProductionReceipt(db, req, order, batchId);
     updateBatchTotals(db, order, req.body.finish_order === false ? 'draft' : 'completed', owner, at);
-    if (req.body.finish_order !== false) finalizeProductionQuantities(db, req, current(req));
+    if (req.body.finish_order !== false) {
+      assertOperationsFinished(db, order.id);
+      finalizeProductionQuantities(db, req, current(req));
+    }
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number, batch_id: batchId });
+    return current(req);
+  }, true));
+  app.post('/api/production-orders/:id/output-completion', route(req => {
+    const order = current(req); checkOpen(req, order);
+    if (typeof req.body.completed !== 'boolean') fail('请选择确认或撤销成品生产完成。');
+    if (!order.operation_routes.some(route => route.product_coefficient != null)) fail('此生产单未绑定后处理工序。', 409);
+    if (req.body.completed === order.output_completion_confirmed) return order;
+    const quantity = exactQuantity(order, 'completed_quantity');
+    if (req.body.completed && (exactCompare(quantity, 0) <= 0 || order.output_completed))
+      fail('仅已登记有效产出但未达到计划的生产单可以确认成品生产完成。', 409);
+    assertPostProcessingLimits(order, quantity, req.body.completed);
+    db.prepare('UPDATE production_orders SET output_completion_confirmed=?,updated_by_name=?,updated_at=? WHERE id=?')
+      .run(Number(req.body.completed), actor(req), new Date().toISOString(), order.id);
     return current(req);
   }, true));
   app.post('/api/production-orders/:id/finish', route(req => {
@@ -577,6 +599,7 @@ export function installProduction(app, db, options = {}) {
     if (!isId(batchId) || !batch) fail('完工批次不存在或不属于此生产单。', 404);
     if (batch.status !== 'active') fail('此完工批次已经作废。', 409);
     const why = reason(req); units(order, false);
+    reopenAfterRootOutputVoid(db, order, batch);
     reopenProductionQuantities(db, req, order);
     const before = stockBefore(order), at = new Date().toISOString(), owner = actor(req);
     reverseBatch(req, order, batch);
@@ -613,7 +636,7 @@ export function installProduction(app, db, options = {}) {
         }
       } else reverseBatch(req, order, order); // Historical one-shot orders retain their original ledger.
     }
-    db.prepare("UPDATE production_orders SET status='void',void_reason=?,voided_by_name=?,voided_at=?,updated_by_name=?,updated_at=? WHERE id=?")
+    db.prepare("UPDATE production_orders SET status='void',output_completion_confirmed=0,void_reason=?,voided_by_name=?,voided_at=?,updated_by_name=?,updated_at=? WHERE id=?")
       .run(why, owner, at, owner, at, order.id);
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number });
     return current(req);

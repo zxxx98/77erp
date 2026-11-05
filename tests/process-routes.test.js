@@ -223,7 +223,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 50);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 51);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);
@@ -716,4 +716,117 @@ test('custom route order puts new routes first, persists drags and keeps other r
   const other = f.ok(await f.request('/warehouses', { name: '路线分仓' })).id;
   assert.equal((await f.command('/process-routes/reorder', { ids: [a, b] }, { warehouseId: other })).status, 409);
   assert.deepEqual(await ids(), [created, a, b, d, c, e]);
+});
+
+test('post-processing counts cumulative root output and gates both production finish paths', async t => {
+  const f = await fixture(t, { routed: false });
+  const route = f.ok(await f.command('/process-routes', { name: '包装工艺', note: '', enabled: 1,
+    route_kind: 'post_processing', graph: { nodes: [{ ...node('pack'), unit_price: 2, currency: 'CNY' }, node('label')], edges: [{ from: 'pack', to: 'label' }] } }));
+  assert.equal(route.route_kind, 'post_processing');
+  assert.deepEqual(f.ok(await f.request('/process-routes?route_kind=post_processing')).routes.map(r => r.id), [route.id]);
+  const binding = (node_id, product_coefficient) => ({ route_id: route.id, route_version: route.version, node_id, product_coefficient });
+  let o = await f.start(await f.create({ planned_quantity: 110, post_processing_operations: [binding('pack', 20), binding('label', 30)] }));
+  const output = (quantity, extra) => f.complete(o, quantity, '', { operation_node_id: undefined, ...extra });
+  const report = (quantity, index = 0, extra) => f.report(o, ['pack', 'label'][index], quantity, o.operation_routes[index].path, extra);
+  const finish = () => f.command(`/production-orders/${o.id}/finish`, {version:o.version});
+  const limits = () => o.operation_routes.map(r => r.post_processing_limit);
+  assert.deepEqual(limits(), [0, 0]);
+  for (const [quantity, expected] of [[19,0],[1,1],[19,1],[61,5],[1,5]]) {
+    o = f.ok(await output(quantity));
+    assert.equal(limits()[0], expected);
+  }
+  assert.equal((await report(1.5)).status, 400);
+  o = f.ok(await report(5));
+  assert.equal((await report(1)).status, 409);
+  assert.equal((await finish()).status, 409);
+  assert.equal((await output(9, {finish_order:true})).status, 409);
+  assert.equal((await output(9, {finish_order:undefined})).status, 409);
+  assert.equal((await f.get(o.id)).completed_quantity, 101);
+  o = f.ok(await output(9));
+  assert.equal(o.output_completed, true);
+  assert.deepEqual(limits(), [6, 4]);
+  o = f.ok(await report(1));
+  assert.equal((await finish()).status, 409);
+  assert.equal((await f.command(`/production-orders/${o.id}/batches/${o.batches.at(-1).id}/void`, {version:o.version,reason:'回退'})).status, 409);
+  o = f.ok(await report(4, 1, {auto_overflow:true}));
+  o = f.ok(await finish());
+  assert.equal(o.status, 'completed');
+  assert.equal(o.completed_quantity, 110);
+  assert.equal(o.operation_routes[0].unit, '次');
+  const stats = f.ok(await f.request(`/payroll/production-order?production_id=${o.id}`));
+  const paid = stats.workers[0].operations.find(report => report.operation_name === 'pack');
+  assert.deepEqual([paid.unit, paid.quantity, paid.amount_cents], ['次',6,1200]);
+  const backup = f.ok(await f.request('/backup'));
+  f.ok(await f.request('/backup/preview', {backup}));
+  for (const coefficient of [25, 20.00001, '20']) {
+    const invalid = structuredClone(backup);
+    invalid.data.production_routes.find(r => r.product_coefficient === 20).product_coefficient = coefficient;
+    assert.equal((await f.request('/backup/preview', {backup:invalid})).status, 400);
+  }
+  const preview = f.ok(await f.request('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
+  assert.deepEqual((await f.get(o.id)).operation_routes.map(r => [r.product_coefficient,r.post_processing_limit,r.operations[0].completed_quantity]), [[20,6,6],[30,4,4]]);
+});
+
+test('short production confirmation releases the final count and protects reopening', async t => {
+  const f = await fixture(t, { routed: false, multi: true });
+  const route = f.ok(await f.command('/process-routes', { name: '贴标工艺', note: '', enabled: 1,
+    route_kind: 'post_processing', graph: { nodes: [node('label')], edges: [] } }));
+  let o = await f.start(await f.create({ post_processing_operations: [{ route_id: route.id, route_version: route.version, node_id: 'label', product_coefficient: 3 }] }));
+  const output = (quantity, path, extra) => f.complete(o, quantity, path, {operation_node_id:undefined,...extra});
+  o = f.ok(await output(5,'1'));
+  assert.equal(o.operation_routes[0].post_processing_limit,0);
+  assert.equal((await output(5,'',{finish_order:true})).status,409);
+  o = f.ok(await output(5,''));
+  const completionPath = `/production-orders/${o.id}/output-completion`;
+  const confirm = {version:o.version,completed:true,request_id:randomUUID()};
+  const pos = f.ok(await f.command('/positions', {name:'后处理登记员',permissions:['production_register'],access_mode:'production_only'}));
+  f.ok(await f.command('/users', {username:'post-worker',employee_no:'post-worker',password:'Worker-test-123',position_id:pos.id}));
+  const login = await f.request('/auth/login', {username:'post-worker',password:'Worker-test-123'}, {cookie:'no-session'});
+  assert.equal((await f.command(completionPath, confirm, {cookie:login.cookie})).status,403);
+  o = f.ok(await f.command(completionPath, confirm));
+  assert.deepEqual(f.ok(await f.command(completionPath, confirm)),o);
+  assert.equal(o.output_completion_confirmed,true);
+  assert.equal(o.operation_routes[0].post_processing_limit,2);
+  assert.equal((await output(1,'')).status,409);
+  o = f.ok(await f.report(o,'label',2,o.operation_routes[0].path));
+  const reopen = () => f.command(completionPath,{version:o.version,completed:false});
+  assert.equal((await reopen()).status,409);
+  const rootBatch = f.ok(await f.request(`/production-orders/${o.id}/stages/batches?path=`)).batches[0];
+  assert.equal((await f.command(`/production-orders/${o.id}/stages/batches/${rootBatch.id}/void`,{version:o.version,reason:'回退'})).status,409);
+  const report = o.operation_routes[0].reports[0];
+  o = f.ok(await f.command(`/production-orders/${o.id}/operations/${report.id}/void`,{version:o.version,reason:'回退'}));
+  o = f.ok(await reopen());
+  assert.equal(o.output_completed,false);
+  assert.equal(o.operation_routes[0].post_processing_limit,1);
+});
+
+test('post-processing templates are scoped to order bindings and v50 backups restore ordinary routes', async t => {
+  const f = await fixture(t);
+  const legacyOrder = await f.create();
+  const legacy = f.ok(await f.request('/backup'));
+  legacy.version = 50;
+  for (const row of legacy.data.process_routes) delete row.route_kind;
+  for (const row of legacy.data.production_routes) delete row.product_coefficient;
+  for (const row of legacy.data.production_orders) delete row.output_completion_confirmed;
+  const preview = f.ok(await f.request('/backup/preview',{backup:legacy}));
+  f.ok(await f.command('/backup/restore',{backup:legacy,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
+  assert.equal(f.ok(await f.request(`/process-routes/${f.route.id}`)).route_kind,'production');
+  const restored = await f.get(legacyOrder.id);
+  assert.equal(restored.output_completion_confirmed,false);
+  assert.equal(restored.operation_routes[0].product_coefficient,null);
+  const bom = f.ok(await f.request(`/boms/${f.root.id}`));
+
+  const route = f.ok(await f.command('/process-routes', {name:'包装档案',note:'',enabled:1,route_kind:'post_processing',
+    graph:{nodes:[node('pack')],edges:[]}}));
+  assert.equal((await f.request('/products',{name:'错误绑定',barcode:randomUUID(),category:'生产',unit:'件',cost:1,price:2,threshold:0,default_route_id:route.id})).status,400);
+  assert.equal((await f.command('/boms',{name:'错误覆盖',product_id:f.half,base_quantity:1,base_unit:'件',note:'',enabled:1,
+    route_override_id:route.id,items:[{product_id:f.raw,quantity:1,unit:'件',note:''}]})).status,400);
+  const binding = {route_id:route.id,route_version:route.version,node_id:'pack',product_coefficient:1};
+  const create = post_processing_operations => f.command('/production-orders',{bom_id:f.root.id,bom_version:bom.version,planned_quantity:10,note:'',post_processing_operations});
+  for (const coefficient of [0, -1, 0.00001, '0.1']) assert.equal((await create([{...binding,product_coefficient:coefficient}])).status,400);
+  assert.equal((await create([binding,binding])).status,400);
+  assert.equal((await create([{...binding,route_version:route.version-1}])).status,409);
+  const order = f.ok(await create([{...binding,product_coefficient:0.0001}]));
+  assert.equal(order.operation_routes.find(r=>r.product_coefficient != null).product_coefficient,0.0001);
 });
