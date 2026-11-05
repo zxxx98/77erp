@@ -75,6 +75,8 @@ export default {
 
   "production.listHint": ["查看进度、处理待办与登记产量。", "Track progress, handle pending tasks and register output.", "Theo dõi tiến độ, xử lý việc chờ và ghi nhận sản lượng."],
   "production.changeFinishedProduct": ["更换成品", "Change finished product", "Đổi thành phẩm"],
+  "production.calculationAndUsageHelp": ["计算与分数说明", "Calculation and fraction help", "Hướng dẫn tính hao hụt và phân số"],
+  "production.bomsCount": ["份配方", " recipes", " công thức"],
   "production.shortageOnly": ["只看缺料", "Shortages only", "Chỉ xem thiếu"],
   "production.moreActions": ["更多操作", "More actions", "Thao tác khác"],
   "production.nextSteps": ["当前待办", "Next steps", "Việc cần làm"],

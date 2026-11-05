@@ -36,6 +36,9 @@
 .bom-material .dropdown { width: 100%; min-width: 0; }
 .bom-material > .bom-disclosure { grid-column: 1 / -1; }
 .bom-material > .bom-usage-preview { grid-column: 1 / -1; margin: 0; align-self: start; }
+.bom-material > .bom-remove-btn { justify-self: end; }
+.bom-help-disclosure { margin: 10px 0; }
+.bom-help-disclosure > .bom-hint { padding: 0 12px; }
 .bom-warning, .bom-shortage { color: #b45309; }
 .bom-warning { font-size: 12px; display: block; margin-top: 5px; }
 .bom-error { padding: 0 2px 14px; }
