@@ -7,7 +7,7 @@ import { moveInventory } from '../server/commerce.js';
 import { productionMaterialAnalysis } from '../shared/production.js';
 import { parseBomQuantity } from '../shared/bom.js';
 import { migrateBom } from '../server/bom.js';
-import { migrateProduction } from '../server/production.js';
+import { migrateProduction, nextProductionOrderNumber } from '../server/production.js';
 import { deleteProductionStages } from '../server/production-stages.js';
 
 async function fixture(t) {
@@ -119,7 +119,8 @@ test('production drafts preserve exact BOM snapshots, rescale batches and never 
   const body = { ...f.plan(), request_id: randomUUID() };
   const order = f.ok(await f.request('/production-orders', body));
   assert.deepEqual((await f.request('/production-orders', body)).data, order);
-  assert.match(order.number, /^SC\d{8}-[a-f0-9]{12}$/);
+  const expectedDate = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  assert.equal(order.number, `${expectedDate}001`);
   assert.equal(order.status, 'draft'); assert.equal(order.bom_version, f.bom.version);
   assert.deepEqual(order.items.map(row => row.planned_quantity), [15, 1]);
   assert.ok(order.items.every(row => row.actual_quantity === null && row.cost_cents === null));
@@ -1084,4 +1085,40 @@ test('multilevel orders retain supported root waste rules and do not infer alloc
   assert.equal(order.total_cost_cents, 600); assert.deepEqual(order.scraps.map(row => row.expected_quantity), [0.5, 0.4]);
   const backup = f.ok(await f.request('/backup'));
   f.ok(await f.request('/backup/preview', { backup }));
+});
+
+test('production order numbering uses date plus 3-digit sequence starting from 001 and increments sequentially', async t => {
+  const f = await fixture(t);
+  const datePrefix = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+
+  // First order of today
+  const order1 = await f.create();
+  assert.equal(order1.number, `${datePrefix}001`);
+
+  // Second order of today
+  const order2 = await f.create();
+  assert.equal(order2.number, `${datePrefix}002`);
+
+  // Third order of today
+  const order3 = await f.create();
+  assert.equal(order3.number, `${datePrefix}003`);
+
+  // Direct helper test with arbitrary dates, sequence padding, and rollover past 999
+  const arbitraryDate = '2026-11-03T12:00:00.000Z';
+  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '20261103001');
+
+  // Insert mock order on 20261103 to test sequence continuation
+  f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
+    VALUES ('20261103001',1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u','${arbitraryDate}','${arbitraryDate}')`).run();
+  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '20261103002');
+
+  // Test sequence > 999
+  f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
+    VALUES ('20261103999',1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u','${arbitraryDate}','${arbitraryDate}')`).run();
+  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '202611031000');
+
+  // Test gap safety: if 202611031000 already exists, next is 1001
+  f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
+    VALUES ('202611031000',1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u','${arbitraryDate}','${arbitraryDate}')`).run();
+  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '202611031001');
 });
