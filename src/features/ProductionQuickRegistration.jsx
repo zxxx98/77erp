@@ -130,7 +130,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
         clear();
         const notice = t(drawer ? 'registration.savedDrawer' : 'registration.saved', { name: target.name, quantity: count(value), unit: target.unit });
         setMessage(notice);
-        await onSaved(result, target.output, notice);
+        await onSaved(result, notice);
       } catch (error) { if (target.output) setExpanded(true); throw error; }
     });
   };
@@ -150,7 +150,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   </>;
   const reload = <details className="production-disclosure registration-tools-disclosure" open={!!action.error}><summary><span>{t('production.registrationTools')}</span><ChevronDown className="registration-details-chevron" size={14} aria-hidden="true" /></summary><div className="registration-tools-body"><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
     const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
-    clear(); setMessage(''); await onSaved(latest, false);
+    clear(); setMessage(''); await onSaved(latest);
   }))}>{t('production.reloadProductionOrder')}</Button></div></details>;
   const form = <form onSubmit={submit} className="registration-form">
     <div className={drawer ? 'form-body registration-drawer-body' : undefined}>

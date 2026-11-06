@@ -14,9 +14,11 @@ export function useDataUpdates(data, userId) {
   useEffect(() => {
     if (!revision || !warehouseId) return;
     const controller = new AbortController();
-    let checking = false;
+    let checking = false, changed = false;
+    let lastCheckedAt = Date.now();
     const inspect = async () => {
-      if (checking || document.visibilityState !== 'visible' || !navigator.onLine) return;
+      if (checking || changed || document.visibilityState !== 'visible' || !navigator.onLine || Date.now() - lastCheckedAt < 30000) return;
+      lastCheckedAt = Date.now();
       checking = true;
       try {
         const result = await api('/updates', { warehouseId, signal: controller.signal });
@@ -25,12 +27,17 @@ export function useDataUpdates(data, userId) {
           window.dispatchEvent(new Event('erp:unauthorized'));
           return;
         }
-        setCheck({ revision, changed: result.revision !== revision });
+        changed = result.revision !== revision;
+        setCheck({ revision, warehouseId, userId, changed });
       } catch (error) {
-        // A deleted warehouse can be recovered by the existing explicit refresh.
-        if (!controller.signal.aborted && error.status === 400 && error.message.startsWith(translate("system.warehouse.does.not.exist")))
-          setCheck({ revision, changed: true });
-      } finally { checking = false; }
+        if (!controller.signal.aborted && error.status === 400 && error.code === 'WAREHOUSE_NOT_FOUND') {
+          changed = true;
+          setCheck({ revision, warehouseId, userId, changed });
+        }
+      } finally {
+        checking = false;
+        if (changed) clearInterval(timer);
+      }
     };
     const timer = setInterval(inspect, 30000);
     window.addEventListener('focus', inspect);
@@ -43,7 +50,7 @@ export function useDataUpdates(data, userId) {
       document.removeEventListener('visibilitychange', inspect);
     };
   }, [revision, warehouseId, userId]);
-  return !!check && check.revision === revision && check.changed;
+  return !!check && check.revision === revision && check.warehouseId === warehouseId && check.userId === userId && check.changed;
 }
 
 export function DataUpdateNotice({ onRefresh, busy, disabled }) {

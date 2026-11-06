@@ -183,6 +183,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
   const page = await context.newPage(), fixtureData = await fixture(page), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   try {
+    await page.clock.install();
     await page.goto(fixtureData.link);
     if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
     await page.getByRole('button', { name: '选择工序', exact: true }).click();
@@ -193,10 +194,16 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
     await expect(quantity).toHaveAttribute('inputmode', 'text');
     for (let batch = 0; batch < 3; batch++) {
       await quantity.fill('1/3');
+      const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workspace');
       await page.getByRole('button', { name: '提交登记', exact: true }).click();
+      expect((await refreshed).ok()).toBe(true);
       await expect(quantity).toHaveValue('');
       const order = await fixtureData.get();
       expect(order.operation_routes.find(route => route.path === '1').reports).toHaveLength(batch + 1);
+      const checked = page.waitForResponse(response => new URL(response.url()).pathname === '/api/updates');
+      await page.clock.fastForward(30000);
+      expect((await checked).ok()).toBe(true);
+      await expect(page.getByRole('status', { name: '数据更新提示' })).toHaveCount(0);
     }
     const order = await fixtureData.get(), route = order.operation_routes.find(route => route.path === '1');
     expect(route.operations[0].completed_quantity).toBe(1);

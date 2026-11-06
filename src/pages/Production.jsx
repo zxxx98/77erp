@@ -263,11 +263,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     window.addEventListener('hashchange', readLink);
     return () => { controller?.abort(); window.removeEventListener('hashchange', readLink); };
   }, [data.warehouse_id]);
-  const saved = async (order, text, stockChanged = false) => {
+  const saved = async (order, text) => {
     setMoreOpen(false);
     if (detail?.id !== order.id) setDetailTab('overview');
     setDetail(order); setEditor(null); setMessage(text); setRevision(n => n + 1);
-    if (stockChanged) await onChanged?.();
+    await onChanged?.();
   };
   const remove = order => {
     setMoreOpen(false);
@@ -278,6 +278,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       setDetail(null); setEditor(null);
       if (list.result?.orders.length === 1 && offset > 0) setOffset(n => Math.max(0, n - 30));
       setRevision(n => n + 1); setMessage(pt("production.productionOrderDeleted"));
+      await onChanged?.();
     });
   };
   const batchDefaults = (quantity, order = detail) => {
@@ -311,7 +312,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     items: detail.items.map(item => ({ ...item, quantity: type === 'in' ? String(exactQuantity(item, 'available_quantity')) : '0' })) });
   const cancelMaterialRequest = (doc, reason) => action.run(async () => {
     await send(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason }, { warehouseId: data.warehouse_id });
-    await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"), true);
+    await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"));
   });
   const finishState = postProcessingFinishState(detail);
   const hasPostMaterialUsage = detail?.items.some(item => item.post_processing_consumed_quantity > 0);
@@ -366,18 +367,18 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         validateProductionCompletion(body, detail.items.filter(item => !item.is_post_processing_only));
         validateScrapActuals(body.scraps, detail.scraps || []);
         if (!window.confirm(pt("production.registerThisBatchOfAndRecordScrapThen", { v0: count(body.completed_quantity), v1: detail.unit, v2: detail.product_name, v3: detail.material_workflow ? pt("production.recordUsageFromTheIssuedBalance") : pt("production.deductStockByThisBatchSActualUsage"), v4: finishOrder ? pt("production.endTheProductionOrder") : pt("production.continueProduction") }))) return;
-        await saved(await send(`/production-orders/${detail.id}/complete`, body, options), pt("production.batchRegisteredProductsAndReceivedScrapAwaitWarehouse", { v0: detail.material_workflow ? pt("production.actualUsageRecorded") : pt("production.actualUsageDeductedFromStock"), v1: finishOrder ? pt("production.productionEnded") : pt("production.productionOrderRemainsOpen") }), true);
+        await saved(await send(`/production-orders/${detail.id}/complete`, body, options), pt("production.batchRegisteredProductsAndReceivedScrapAwaitWarehouse", { v0: detail.material_workflow ? pt("production.actualUsageRecorded") : pt("production.actualUsageDeductedFromStock"), v1: finishOrder ? pt("production.productionEnded") : pt("production.productionOrderRemainsOpen") }));
       } else {
         if (!editor.reason.trim()) throw new Error(pt("production.enterAReasonForVoiding"));
         if (editor.kind === 'void_batch') {
           const batch = detail.batches.find(value => value.id === editor.batchId);
           if (!window.confirm(pt("production.voidThisBatchTheProductionOrderWillReopen", { v0: batchReceived(batch) ? pt("production.receivedProductsAndScrapInThisBatchWill") : pt("production.thePendingReceiptWillAlsoBeVoidedNo"), v1: detail.material_workflow ? pt("production.usageAndOriginalCostsReturnToThisOrder") : pt("production.materialsReturnAtThisBatchSOriginalQuantities") }))) return;
-          await saved(await send(`/production-orders/${detail.id}/batches/${editor.batchId}/void`, { version: detail.version, reason: editor.reason }, options), pt("production.batchAndRelatedReceiptVoidedOriginalUsageAnd"), true);
+          await saved(await send(`/production-orders/${detail.id}/batches/${editor.batchId}/void`, { version: detail.version, reason: editor.reason }, options), pt("production.batchAndRelatedReceiptVoidedOriginalUsageAnd"));
           return;
         }
         if (!window.confirm(detail.material_workflow ? pt("production.voidThisProductionOrderFirstVoidAllRegistered") : detail.completed_at ? pt("production.voidThisProductionOrderPendingReceiptsWillBe") : pt("production.voidThisProductionDraft"))) return;
         await saved(await send(`/production-orders/${detail.id}/void`, { version: detail.version, reason: editor.reason }, options),
-          detail.completed_at ? pt("production.productionOrderVoidedStockAndOriginalCostsReversed") : pt("production.productionDraftVoidedStockUnchanged"), !!detail.completed_at);
+          detail.completed_at ? pt("production.productionOrderVoidedStockAndOriginalCostsReversed") : pt("production.productionDraftVoidedStockUnchanged"));
       }
     });
   };
@@ -388,10 +389,10 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
     {registrationDrawer && <ProductionQuickRegistration key={`${detail.id}:${registrationDrawer.session}`} presentation="drawer" order={detail} data={listData}
       initialTargetId={registrationDrawer.targetId} onActivity={setRegistrationActivity} onBack={() => setRegistrationDrawer(null)}
-      onSaved={async (order, stockChanged, notice) => {
+      onSaved={async (order, notice) => {
         setDetail(order); setRevision(value => value + 1);
         if (notice) { setRegistrationDrawer(null); setMessage(notice); }
-        if (stockChanged) await onChanged?.();
+        await onChanged?.();
       }} />}
   </>;
 
@@ -399,14 +400,14 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
 
   if (editor?.kind === 'quick_registration') return <div className="bom-page production-page">
     <ProductionQuickRegistration key={`${detail.id}:${editor.session}`} order={detail} data={listData} initialTargetId={editor.targetId} onActivity={setStageActivity} onBack={back}
-      onSaved={async (order, stockChanged) => { setDetail(order); setRevision(value => value + 1); if (stockChanged) await onChanged?.(); }} />{notices}
+      onSaved={async order => { setDetail(order); setRevision(value => value + 1); await onChanged?.(); }} />{notices}
   </div>;
 
-  if (editor?.kind === 'operations') return <div className="bom-page production-page"><ProductionOperations order={detail} path={editor.path || ''} data={listData} canRegister={detail.status === 'in_progress'} onRegister={beginCompletion} onActivity={setStageActivity} onSaved={(order, text) => saved(order, text, true)} onBack={back} />{notices}</div>;
+  if (editor?.kind === 'operations') return <div className="bom-page production-page"><ProductionOperations order={detail} path={editor.path || ''} data={listData} canRegister={detail.status === 'in_progress'} onRegister={beginCompletion} onActivity={setStageActivity} onSaved={saved} onBack={back} />{notices}</div>;
 
   if (editor?.kind === 'stages') return <div className="bom-page production-page">
     <ProductionStages key={`${detail.id}:${editor.session}`} order={detail} data={listData} canRegister={detail.status === 'in_progress'} canVoid={management && can('corrections')} canReceive={can('purchase')} management={management}
-      busy={action.busy} initialHistoryPath={editor.historyPath} onRegister={beginCompletion} onActivity={setStageActivity} onSaved={(order, text) => saved(order, text, true)} onBack={back} />{notices}
+      busy={action.busy} initialHistoryPath={editor.historyPath} onRegister={beginCompletion} onActivity={setStageActivity} onSaved={saved} onBack={back} />{notices}
   </div>;
 
   if (editor?.kind === 'material_request') {
@@ -417,7 +418,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         const items = editor.items.map(row => ({ product_id: row.product_id,
           quantity: parseExactQuantity(row.quantity) })).filter(row => exactCompare(row.quantity, 0) > 0);
         if (!items.length) throw new Error(pt("production.enterAQuantityForAtLeastOneMaterial", { v0: label }));
-        await saved(await send(`/production-orders/${detail.id}/${editor.initial ? 'start' : 'material-requests'}`, { version: detail.version, type: editor.type, items, note: editor.note }, { warehouseId: data.warehouse_id }), pt("production.requestSubmittedAwaitingWarehouseConfirmation", { v0: label, v1: returning ? pt("production.receipt2") : pt("production.issue") }), true);
+        await saved(await send(`/production-orders/${detail.id}/${editor.initial ? 'start' : 'material-requests'}`, { version: detail.version, type: editor.type, items, note: editor.note }, { warehouseId: data.warehouse_id }), pt("production.requestSubmittedAwaitingWarehouseConfirmation", { v0: label, v1: returning ? pt("production.receipt2") : pt("production.issue") }));
       });
     };
     return <div className="bom-page production-page">{heading(pt("production.request", { v0: label }), `${detail.number} · ${detail.product_name}`, pt("production.backToOrderDetails"))}

@@ -37,7 +37,7 @@ export function ProductionStageReceipts({ order, data, onSaved, busy, onApprove 
       {doc.status!=='void'&&(doc.status==='pending'||can('corrections')&&can('purchase'))&&<Button disabled={locked} onClick={()=>setVoiding({id:doc.stage_receipt_id,reason:'',confirmed:doc.status==='confirmed'})}>{t(doc.status==='pending'?'production.stageReceiptCancel':'production.stageReceiptVoid')}</Button>}
       {voiding?.id===doc.stage_receipt_id&&<form onSubmit={event=>{event.preventDefault();action.run(async()=>{
         if(!window.confirm(t(voiding.confirmed?'production.stageReceiptVoidConfirm':'production.stageReceiptCancelConfirm')))return;
-        const result=await send(`stage-receipts/${voiding.id}/void`,{reason:voiding.reason});setVoiding(null);await onSaved(result,t('production.stageReceiptVoided'),voiding.confirmed);
+        const result=await send(`stage-receipts/${voiding.id}/void`,{reason:voiding.reason});setVoiding(null);await onSaved(result,t('production.stageReceiptVoided'));
       });}}><label>{t('production.voidReason')}<Input.TextArea aria-label={t('production.stageReceiptVoidReason')} value={voiding.reason} disabled={locked} maxLength={500} onChange={event=>setVoiding({...voiding,reason:event.target.value})} /></label>
         <div className="bom-actions"><Button disabled={locked} onClick={()=>setVoiding(null)}>{t('production.cancel')}</Button><Button kind="danger" type="submit" disabled={locked||!voiding.reason.trim()}>{t('production.stageReceiptVoidSave')}</Button></div>
       </form>}
