@@ -4,5 +4,6 @@ export function validQuantity(value: unknown, positive?: boolean, decimals?: num
 export function quantityUnits(value: number): number;
 export function addQuantity(left: number, right: number): number;
 export function parseQuantity(value: string | number, positive?: boolean): number;
+export function parseQuantityFraction(value: string, positive?: boolean, stored?: boolean): string;
 export function materialQuantity(value: number, product?: { unit_round_up?: number | boolean }): number;
 export function validStoredQuantity(value: unknown, positive?: boolean): boolean;

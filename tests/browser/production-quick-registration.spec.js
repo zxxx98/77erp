@@ -167,18 +167,18 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
     const quantity = page.getByLabel('本次数量', { exact: true });
     await page.locator('.registration-details summary').click();
     for (let batch = 0; batch < 3; batch++) {
-      await quantity.fill('1/3');
-      await expect(page.getByLabel('钢材实际耗料', { exact: true })).toHaveValue('1/9');
+      await quantity.fill('0.5/3');
+      await expect(page.getByLabel('钢材实际耗料', { exact: true })).toHaveValue('1/18');
       await page.getByRole('button', { name: '提交登记', exact: true }).click();
       await expect(quantity).toHaveValue('');
     }
     const order = await fixtureData.get();
-    expect(order.stages.find(stage => stage.path === '1').available_quantity).toBe(1);
-    expect(order.items[0].consumed_quantity_fraction).toBe('1/3');
+    expect(order.stages.find(stage => stage.path === '1').available_quantity).toBe(0.5);
+    expect(order.items[0].consumed_quantity_fraction).toBe('1/6');
   } finally { await fixtureData.close(); await context.close(); }
 });
 
-for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fractional operation reports retain exact thirds`, async ({ browser }) => {
+for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fractional operation reports retain decimal numerators exactly`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage(), fixtureData = await fixture(page), errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -192,8 +192,14 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
     await expect(page.getByText('数量可填小数或分数', { exact: false })).toBeVisible();
     const quantity = page.getByLabel('本次数量', { exact: true });
     await expect(quantity).toHaveAttribute('inputmode', 'text');
+    for (const invalid of ['1/10000', '1/2.5', '1.23456/3']) {
+      await quantity.fill(invalid);
+      await page.getByRole('button', { name: '提交登记', exact: true }).click();
+      await expect(page.getByRole('alert')).toContainText('分母需为 1–9999 的整数');
+      expect((await fixtureData.get()).operation_routes.find(route => route.path === '1').reports).toHaveLength(0);
+    }
     for (let batch = 0; batch < 3; batch++) {
-      await quantity.fill('1/3');
+      await quantity.fill('0.5/3');
       const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/workspace');
       await page.getByRole('button', { name: '提交登记', exact: true }).click();
       expect((await refreshed).ok()).toBe(true);
@@ -206,9 +212,9 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
       await expect(page.getByRole('status', { name: '数据更新提示' })).toHaveCount(0);
     }
     const order = await fixtureData.get(), route = order.operation_routes.find(route => route.path === '1');
-    expect(route.operations[0].completed_quantity).toBe(1);
-    expect(route.operations[1].available_quantity).toBe(1);
-    expect(route.reports.every(report => report.quantity_fraction === '1/3')).toBe(true);
+    expect(route.operations[0].completed_quantity).toBe(0.5);
+    expect(route.operations[1].available_quantity).toBe(0.5);
+    expect(route.reports.every(report => report.quantity_fraction === '0.5/3')).toBe(true);
     expect(errors).toEqual([]);
   } finally { await fixtureData.close(); await context.close(); }
 });

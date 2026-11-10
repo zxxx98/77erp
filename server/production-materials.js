@@ -160,15 +160,16 @@ export function assertNoPendingMaterials(db, order) {
   if (order.material_workflow && hasPendingMaterials(db, order.id)) fail('请先确认或取消待批准的生产材料单。', 409);
 }
 
-function normalizeItems(order, items, actual = false) {
+function normalizeItems(order, items, actual = false, stored = false) {
   if (!Array.isArray(items) || !items.length || items.length > order.items.length || new Set(items.map(row => row?.product_id)).size !== items.length)
     fail('请核对材料明细，材料不能重复。');
   return items.map(row => {
     const item = order.items.find(item => item.product_id === row?.product_id);
-    if (!item || !validExactQuantity(parseExactQuantity(row.quantity, true), true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
+    const parsed = stored ? exactQuantity(row) : parseExactQuantity(row.quantity, true);
+    if (!item || !validExactQuantity(parsed, true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
 
     if (actual && item.unit_round_up && typeof row.quantity === 'number' && !Number.isInteger(row.quantity)) fail('本次实发数量须符合材料整单位规则。');
-    const quantity = typeof row.quantity === 'number' ? materialQuantity(row.quantity, item) : parseExactQuantity(row.quantity, true);
+    const quantity = typeof parsed === 'number' ? materialQuantity(parsed, item) : parsed;
     if (!validExactQuantity(quantity, true)) fail('材料数量超出范围。');
     return { product_id: item.product_id, quantity };
   });
@@ -263,7 +264,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
     } else {
       if (!order.material_workflow || order.status === 'void' || doc.type === 'out' && (doc.kind === 'initial' ? !['awaiting_materials', 'in_progress'].includes(order.status) : order.status !== 'in_progress')) fail('生产单状态不允许确认此材料单。', 409);
       const requested = doc.type === 'out'
-        ? normalizeItems(order, req.body.items === undefined ? doc.items.filter(row => row.pending_quantity > 0).map(row => ({ product_id: row.product_id, quantity: exactQuantity(row, 'pending_quantity') })) : req.body.items, true)
+        ? normalizeItems(order, req.body.items === undefined ? doc.items.filter(row => row.pending_quantity > 0).map(row => ({ product_id: row.product_id, quantity: exactQuantity(row, 'pending_quantity') })) : req.body.items, true, req.body.items === undefined)
         : doc.items;
       if (doc.type === 'in' && req.body.items !== undefined) fail('退料单需整单确认。');
       const rows = requested.map(row => {

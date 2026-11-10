@@ -9,7 +9,7 @@ import { ProductionApprovalDialog } from './ProductionApprovalDialog.jsx';
 import { Select } from '../Dropdown.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { addQuantity, validQuantity } from '../../shared/quantity.js';
-import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, exactSubtract, formatExactQuantity } from '../../shared/exact-quantity.js';
+import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, exactSubtract, formatExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 import { useBusiness } from '../business-api.js';
 import { queryPath, useQuery } from '../queries.js';
 import { count, dateTime, money, currencySymbol } from '../app/format.js';
@@ -34,7 +34,7 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
     try {
       setError('');
       const items = doc.type === 'out' ? doc.items.map(item => ({ product_id: item.product_id,
-        quantity: parseQuantity(quantities[`${doc.id}:${item.product_id}`] ?? String(exactQuantity(item, 'pending_quantity'))) })).filter(item => exactCompare(item.quantity, 0) > 0) : undefined;
+        quantity: parseQuantity(quantities[`${doc.id}:${item.product_id}`] ?? quantityInput(exactQuantity(item, 'pending_quantity'))) })).filter(item => exactCompare(item.quantity, 0) > 0) : undefined;
       if (items && !items.length) throw new Error(pt('production.enterIssueQuantity'));
       if (items?.some(row => doc.items.find(item => item.product_id === row.product_id).unit_round_up && typeof row.quantity === 'number' && !Number.isInteger(row.quantity))) throw new Error(pt('production.issuedMaterialMustBeWhole'));
       onConfirm(doc, items);
@@ -65,7 +65,7 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
       </div>}
       {doc.status === 'pending' && doc.type === 'out' && onConfirm && <label className="material-issue-input">{pt('production.currentIssue')}
         <Input aria-label={pt('production.currentIssueFor', { name: item.name })} inputMode="text" disabled={busy}
-          value={quantities[`${doc.id}:${item.product_id}`] ?? String(exactQuantity(item, 'pending_quantity'))}
+          value={quantities[`${doc.id}:${item.product_id}`] ?? quantityInput(exactQuantity(item, 'pending_quantity'))}
           onChange={event => { setError(''); setQuantities(previous => ({ ...previous, [`${doc.id}:${item.product_id}`]: event.target.value })); }} />
         {issueExcess(doc, item) > 0 && <small role="status">{pt('production.currentOverIssueHint', { quantity: count(issueExcess(doc, item)), unit: item.unit })}</small>}
       </label>}

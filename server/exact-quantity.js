@@ -29,7 +29,7 @@ export function validateExactQuantityBackup(data) {
       if (!(field in row) || key === 'quantity' && ['production_bom_nodes', 'production_scraps'].includes(table)) continue;
       const fraction = row[field];
       if (typeof fraction !== 'string' || fraction.length > 4096 || row[key] === null && fraction !== '' ||
-          row[key] !== null && (!validExactQuantity(exactQuantity(row, key)) || (fraction ? !/^\d+\/\d+$/.test(fraction) || exactNumber(fraction) !== row[key] : !validStoredQuantity(row[key]))))
+          row[key] !== null && (!validExactQuantity(exactQuantity(row, key)) || (fraction ? !/^\d+(?:\.\d{1,4})?\/\d+$/.test(fraction) || exactNumber(fraction) !== row[key] : !validStoredQuantity(row[key]))))
         throw new Error('备份数量与精确分数不一致。');
     }
   }

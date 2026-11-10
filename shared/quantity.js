@@ -1,6 +1,21 @@
 // Keep legacy arithmetic in millionths; new quantities use at most four decimals.
 export const QUANTITY_SCALE = 1000000;
 export const MAX_QUANTITY = 99999999;
+
+// Input limits do not apply to ratios produced by exact arithmetic. Stored
+// integer fractions also retain the previous denominator limit for backups.
+export function parseQuantityFraction(value, positive = false, stored = false) {
+  const match = typeof value === 'string' && value.length <= 60 && value.match(/^\s*(\d+)(?:\.(\d{1,4}))?\s*\/\s*(\d+)\s*$/);
+  const error = () => new Error(`分数的分子最多 4 位小数且不超过 ${MAX_QUANTITY}，分母需为 1–9999 的整数。`);
+  if (!match) throw error();
+  const digits = match[2] || '';
+  const numerator = BigInt(match[1] + digits), scale = 10n ** BigInt(digits.length);
+  const denominator = BigInt(match[3]);
+  if (numerator > BigInt(MAX_QUANTITY) * scale || positive && numerator === 0n || denominator < 1n ||
+      denominator > BigInt(stored && !match[2] ? MAX_QUANTITY : 9999)) throw error();
+  const decimal = digits.replace(/0+$/, '');
+  return `${BigInt(match[1])}${decimal ? `.${decimal}` : ''}/${denominator}`;
+}
 export function validQuantity(value, positive = false, decimals = 4) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_QUANTITY || (positive && value === 0)) return false;
   const scaled = value * 10 ** decimals;

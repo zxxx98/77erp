@@ -140,7 +140,7 @@ export function validateStageReceipts(data) {
     if(!Array.isArray(parts)||parts.length!==source.length||new Set(parts.map(c=>c.product_id)).size!==parts.length||
       parts.some(c=>!source.some(s=>s.product_id===c.product_id)||!validExactQuantity(exactQuantity(c))||!money(c.cost_cents)||
         Object.keys(c).some(k=>!['product_id','quantity','quantity_fraction','cost_cents'].includes(k))||
-        typeof c.quantity_fraction!=='string'||c.quantity_fraction.length>4096||c.quantity_fraction!==''&&(!/^\d+\/\d+$/.test(c.quantity_fraction)||exactNumber(c.quantity_fraction)!==c.quantity))||
+        typeof c.quantity_fraction!=='string'||c.quantity_fraction.length>4096||c.quantity_fraction!==''&&(!/^\d+(?:\.\d{1,4})?\/\d+$/.test(c.quantity_fraction)||exactNumber(c.quantity_fraction)!==c.quantity))||
       parts.reduce((n,c)=>n+c.cost_cents,0)!==r.total_cost_cents)fail('备份半成品入库成本组成无效。');
   }
 }

@@ -12,7 +12,7 @@ import { useBusiness } from '../business-api.js';
 import { useQuery } from '../queries.js';
 import { api } from '../api.js';
 import { addQuantity } from '../../shared/quantity.js';
-import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, exactNumber, formatExactQuantity } from '../../shared/exact-quantity.js';
+import { parseExactQuantity as parseQuantity, exactQuantity, exactCompare, exactNumber, formatExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 import { stageExactStandardQuantity, stageDisplayStandardQuantity, stageStandardQuantity, stageInputCanBeZero, stageInputDefaults } from '../../shared/production-stages.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import { ScrapOutputs } from './ScrapOutputs.jsx';
@@ -79,7 +79,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     if (!operation && order.operation_routes?.some(route => route.path === target.path)) { setOperationPath(target.path); return; }
     if (outputRegistrationLocked(order, { path: target.path, output: true })) return;
     const quantity = operation?.available_quantity != null ? exactQuantity(operation, 'available_quantity') : (Math.max(0, target.planned_quantity - target.completed_quantity) || 1);
-    const next = { path: target.path, ...(operation ? { operation_node_id: operation.id, worker_id: workerId } : {}), completed_quantity: String(quantity), items: defaults(target, quantity), note: '',
+    const next = { path: target.path, ...(operation ? { operation_node_id: operation.id, worker_id: workerId } : {}), completed_quantity: quantityInput(quantity), items: defaults(target, quantity), note: '',
       scraps: target.path ? [] : order.scraps.map(row => ({ product_id: row.product_id, quantity: '0', disposition: 'stock' })) };
     setOperationPath(null); setForm(next); setBaseline(JSON.stringify(next)); setHistory(null);
   });

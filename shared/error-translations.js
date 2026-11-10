@@ -3617,6 +3617,11 @@ export const validationMessages = {
     "The numerator and denominator of the material dosage fraction must be integers in the range 1–{p0}, such as 1/40.",
     "Tử số và mẫu số của phần liều lượng vật liệu phải là số nguyên trong khoảng 1–{p0}, chẳng hạn như 1/40."
   ],
+  "VALIDATION_QUANTITY_FRACTION_INPUT": [
+    "分数的分子最多 4 位小数且不超过 {p0}，分母需为 1–9999 的整数。",
+    "The numerator supports up to 4 decimal places and must not exceed {p0}; the denominator must be an integer from 1 to 9999.",
+    "Tử số có tối đa 4 chữ số thập phân và không vượt quá {p0}; mẫu số phải là số nguyên từ 1 đến 9999."
+  ],
   "VALIDATION_BOM_F37B4853DD": [
     "材料用量需为正数且最多 4 位小数。",
     "Material amounts need to be positive numbers with up to 4 decimal places.",

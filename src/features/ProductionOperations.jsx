@@ -11,7 +11,7 @@ import { Input } from '../ui/controls.jsx';
 import { Select } from '../Dropdown.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
-import { parseExactQuantity as parseQuantity, exactQuantity, formatExactQuantity } from '../../shared/exact-quantity.js';
+import { parseExactQuantity as parseQuantity, exactQuantity, formatExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 import { ProcessGraph } from './ProcessGraph.jsx';
 import { mobileDevice } from '../device.js';
 import { postProcessingUnit } from '../../shared/post-processing.js';
@@ -155,7 +155,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
         </div>
         <div className="process-report-quantity-row">
           <label>{t('route.quantity')}（{unit}）<Input autoFocus aria-label={t('route.quantity')} inputMode={postProcessing ? 'numeric' : 'text'} value={form.quantity} disabled={action.busy} onChange={event => { setForm({ ...form, quantity: event.target.value }); action.setError(''); }} /></label>
-          {activeNode?.available_quantity > 0 && <Button disabled={action.busy} onClick={() => { setForm({ ...form, quantity: String(exactQuantity(activeNode, 'available_quantity')) }); action.setError(''); }}>{t('route.fillAvailable')} ({count(exactQuantity(activeNode, 'available_quantity'))})</Button>}
+          {activeNode?.available_quantity > 0 && <Button disabled={action.busy} onClick={() => { setForm({ ...form, quantity: quantityInput(exactQuantity(activeNode, 'available_quantity')) }); action.setError(''); }}>{t('route.fillAvailable')} ({count(exactQuantity(activeNode, 'available_quantity'))})</Button>}
         </div>
         {postProcessing && <PostProcessingMaterialPreview materials={activeNode?.materials} items={order.items} runs={postRunCount(form.quantity)} />}
         <label>{t('route.batchNote')}<Input.TextArea rows={3} aria-label={t('route.batchNote')} maxLength={500} value={form.note} disabled={action.busy} onChange={event => setForm({ ...form, note: event.target.value })} /></label>

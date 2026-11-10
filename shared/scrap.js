@@ -6,7 +6,7 @@ export const SCRAP_MAX_ITEMS = 100;
 
 // A rule belongs to a BOM, never to the stock item. Input ratios are explicit
 // percentages of one material in the same unit; no implicit unit conversion.
-export function validateScrapRules(scraps, productId, materials) {
+export function validateScrapRules(scraps, productId, materials, stored = false) {
   if (!Array.isArray(scraps) || scraps.length > SCRAP_MAX_ITEMS) throw new Error('废料产出最多 100 种。');
   const seen = new Set();
   for (const row of scraps) {
@@ -17,7 +17,7 @@ export function validateScrapRules(scraps, productId, materials) {
     if (typeof row.unit !== 'string' || !row.unit.trim() || row.unit.length > 100 ||
         typeof row.note !== 'string' || row.note.length > 200) throw new Error('废料单位或备注无效。');
     if (!['output', 'input_ratio'].includes(row.method)) throw new Error('废料计算方式无效。');
-    validateBomQuantity(row.quantity, row.quantity_fraction ?? '');
+    validateBomQuantity(row.quantity, row.quantity_fraction ?? '', stored);
     if (row.method === 'input_ratio') {
       const source = materials.find(item => item.product_id === row.source_product_id);
       if (!source || source.unit !== row.unit || row.quantity > 100 || (row.quantity_fraction ?? '') !== '')

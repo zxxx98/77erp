@@ -27,7 +27,7 @@ function incrementUsage(value) {
   const parsed = parseBomQuantity(value);
   if (!parsed.quantity_fraction) return parseQuantity(addQuantity(parsed.quantity, 1), true);
   const [numerator, denominator] = parsed.quantity_fraction.split('/').map(Number);
-  const next = `${numerator + denominator}/${denominator}`;
+  const next = `${addQuantity(numerator, denominator)}/${denominator}`;
   parseBomQuantity(next);
   return next;
 }

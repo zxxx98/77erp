@@ -40,7 +40,7 @@ export default {
   "production.stageReceiptCancelConfirm": ["取消申请并恢复本单半成品可用余额？", "Cancel the request and restore the available semi-finished balance?", "Hủy yêu cầu và khôi phục số dư bán thành phẩm khả dụng?"],
   "production.stageReceiptVoided": ["半成品入库单已作废，本单余额已恢复。", "Semi-finished receipt voided. Order balance restored.", "Đã hủy phiếu nhập bán thành phẩm và khôi phục số dư lệnh."],
 
-  'production.fractionRegistrationHint': ['数量可填小数或分数（如 1/3）。过程中保留精确分数，整单完结时按物料规则统一向上取整。', 'Enter decimals or fractions (such as 1/3). Quantities remain exact during production and round up once per material when the order finishes.', 'Nhập số thập phân hoặc phân số (ví dụ 1/3). Giữ phân số chính xác trong sản xuất và làm tròn lên theo vật tư khi kết thúc lệnh.'],
+  'production.fractionRegistrationHint': ['数量可填小数或分数（如 1.5/3）。分子最多 4 位小数，分母为 1–9999 的整数。过程中保留精确分数，整单完结时按物料规则统一向上取整。', 'Enter decimals or fractions (such as 1.5/3). Numerators support up to 4 decimal places; denominators must be integers from 1 to 9999. Quantities remain exact during production and round up once per material when the order finishes.', 'Nhập số thập phân hoặc phân số (ví dụ 1.5/3). Tử số có tối đa 4 chữ số thập phân; mẫu số là số nguyên từ 1 đến 9999. Giữ phân số chính xác trong sản xuất và làm tròn lên theo vật tư khi kết thúc lệnh.'],
   'production.settledOutput': ['完结结算产量', 'Settled output', 'Sản lượng quyết toán'],
   'production.roundingAdjustment': ['完结取整差额', 'Final rounding adjustment', 'Chênh lệch làm tròn cuối lệnh'],
   'production.postProcessing': ['后处理工序', 'Post-processing operations', 'Công đoạn hậu xử lý'],
@@ -586,9 +586,9 @@ export default {
     "Hao hụt tiêu chuẩn từ 0% đến dưới 100%. Kiểm tra lượng ròng nếu định mức đã gồm hao hụt để tránh tính trùng. Phế liệu tính riêng, không cộng vào đầu vào."
   ],
   "production.usageSupportsDecimalsOrFractionsEG1": [
-    "用量支持小数或分数，如 1/40 表示每 40 件成品分摊 1 份材料（基准产量为 1 时）。分数按原比例测算，不自动按整箱取整；实际耗料在生产完工时核对。",
-    "Usage supports decimals or fractions, e.g. 1/40 means one unit of material per 40 products when base output is 1. Fractions retain their ratio without rounding to full boxes. Verify actual usage on completion.",
-    "Định mức hỗ trợ số thập phân hoặc phân số, ví dụ 1/40 là một phần nguyên liệu cho 40 thành phẩm khi sản lượng cơ sở là 1. Phân số giữ nguyên tỷ lệ, không làm tròn theo thùng. Kiểm tra tiêu hao thực tế khi hoàn thành."
+    "用量支持小数或分数，如 1/40 表示每 40 件成品分摊 1 份材料（基准产量为 1 时）。分子最多 4 位小数，分母为 1–9999 的整数，例如 1.5/40。分数按原比例测算，不自动按整箱取整；实际耗料在生产完工时核对。",
+    "Usage supports decimals or fractions, e.g. 1/40 means one unit of material per 40 products when base output is 1. Numerators support up to 4 decimal places; denominators must be integers from 1 to 9999, e.g. 1.5/40. Fractions retain their ratio without rounding to full boxes. Verify actual usage on completion.",
+    "Định mức hỗ trợ số thập phân hoặc phân số, ví dụ 1/40 là một phần nguyên liệu cho 40 thành phẩm khi sản lượng cơ sở là 1. Tử số có tối đa 4 chữ số thập phân; mẫu số là số nguyên từ 1 đến 9999, ví dụ 1.5/40. Phân số giữ nguyên tỷ lệ, không làm tròn theo thùng. Kiểm tra tiêu hao thực tế khi hoàn thành."
   ],
   "production.aProductCannotBeItsOwnMaterial": [
     "成品不能作为自身的材料。",

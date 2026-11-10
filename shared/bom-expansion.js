@@ -1,5 +1,6 @@
 import { validateBom, validateBomQuantity, validateBomLossRate, validateBomLossMethod } from './bom.js';
 import { MAX_QUANTITY, QUANTITY_SCALE, quantityUnits, validStoredQuantity } from './quantity.js';
+import { exactRatio } from './exact-quantity.js';
 
 export const BOM_MAX_DEPTH = 10;
 export const BOM_MAX_NODES = 2000;
@@ -30,7 +31,7 @@ export function supplyFraction(value) {
 }
 
 function itemRatio(node) {
-  const net = node.quantity_fraction ? node.quantity_fraction.split('/').map(BigInt) : decimal(node.quantity);
+  const net = node.quantity_fraction ? exactRatio(node.quantity_fraction) : decimal(node.quantity);
   const base = decimal(node.bom_base_quantity), scale = BigInt(100 * QUANTITY_SCALE), rate = BigInt(quantityUnits(node.loss_rate));
   return multiply(multiply(net, [base[1], base[0]]), node.loss_method === 'external' ? [scale + rate, scale] : [scale, scale - rate]);
 }
@@ -85,7 +86,7 @@ export function buildBomNodes(root, loadBom, { availability = true, scrapRules =
     const label = `${bom.product?.name || bom.product_id}［${bom.name} #${bom.id}］`;
     if (stack.includes(bom.id)) fail(`BOM循环引用：${[...pathNames, label].join(' → ')}`);
     if (stack.length >= BOM_MAX_DEPTH) fail(`BOM最多支持 ${BOM_MAX_DEPTH} 层。`);
-    validateBom(bom);
+    validateBom(bom, true);
     stack.push(bom.id); pathNames.push(label);
     const location = () => pathNames.join(' → ');
     if (availability) {
@@ -179,7 +180,7 @@ export function validateSnapshotNodes(order, nodes) {
       }
       unique.push(row);
     }
-    validateBom({ ...bom, items: unique });
+    validateBom({ ...bom, items: unique }, true);
     const signature = JSON.stringify([header(first), unique.map(row => [row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.note])]);
     if (recipes.has(bom.id) && recipes.get(bom.id) !== signature) fail('同一生产配方的重复引用内容不一致。');
     recipes.set(bom.id, signature);

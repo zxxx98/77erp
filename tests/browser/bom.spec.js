@@ -226,16 +226,24 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await page.getByRole('button', { name: '按条码添加', exact: true }).click();
     const carton = page.getByLabel('包装纸箱用量', { exact: true });
     await expect(carton).toHaveAttribute('inputmode', 'text');
-    await carton.fill('1/40');
+    await carton.fill('1.5/60');
     await expect(page.getByText('折合约 0.025 个，按原分数测算。', { exact: false })).toBeVisible();
     await search.fill('CARTON');
     await page.getByRole('button', { name: '按条码添加', exact: true }).click();
-    await expect(carton).toHaveValue('41/40');
+    await expect(carton).toHaveValue('61.5/60');
     await carton.fill('1/0');
     await page.getByRole('button', { name: '保存BOM', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('分子、分母');
+    await expect(page.getByRole('alert')).toContainText('分母需为 1–9999 的整数');
     await expect(carton).toHaveValue('1/0');
-    await carton.fill('1/40');
+    for (const invalid of ['1/10000', '1/2.5', '1.23456/40']) {
+      await carton.fill(invalid);
+      await page.getByRole('button', { name: '保存BOM', exact: true }).click();
+      await expect(page.getByRole('alert')).toContainText('分母需为 1–9999 的整数');
+      await expect(carton).toHaveValue(invalid);
+    }
+    await carton.fill('0.0001/9999');
+    await expect(page.locator('.bom-usage-preview').first()).toContainText('折合约 0.0001');
+    await carton.fill('1.5/60');
     await search.fill('EXTRA');
     await page.getByRole('button', { name: '按条码添加', exact: true }).click();
     await page.getByLabel('分摊辅料用量', { exact: true }).fill('1/3');
@@ -244,25 +252,25 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await page.getByRole('button', { name: '保存BOM', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('BOM已保存');
     await page.getByRole('button', { name: '编辑', exact: true }).click();
-    await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1/40');
+    await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1.5/60');
     await expect(page.getByLabel('分摊辅料用量', { exact: true })).toHaveValue('1/3');
     // Merely opening a saved fractional recipe must not mark it as changed.
     await page.getByRole('button', { name: '返回BOM', exact: true }).click();
     await page.getByRole('button', { name: '更多操作', exact: true }).click();
       await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
-    await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1/40');
+    await expect(page.getByLabel('包装纸箱用量', { exact: true })).toHaveValue('1.5/60');
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '取消', exact: true }).click();
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
     await page.getByLabel('生产数量', { exact: true }).fill('40');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     const rows = page.locator('.bom-result-table tbody tr');
-    await expect(rows.first().locator('td').nth(1)).toHaveText('1/40 个标准损耗率 0%');
+    await expect(rows.first().locator('td').nth(1)).toHaveText('1.5/60 个标准损耗率 0%');
     await expect(rows.first().locator('td').nth(2)).toHaveText('1 个');
     const downloaded = page.waitForEvent('download');
     await page.getByRole('button', { name: '导出备料表', exact: true }).click();
     const csv = parseCSV(await readFile(await (await downloaded).path(), 'utf8'));
-    expect(csv[5][4]).toBe('1/40（约 0.025）');
+    expect(csv[5][4]).toBe('1.5/60（约 0.025）');
     await page.getByLabel('生产数量', { exact: true }).fill('3');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await expect(rows.nth(1).locator('td').nth(2)).toHaveText('1 米');

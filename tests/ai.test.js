@@ -170,7 +170,7 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} BOM tools
   const parent = f.db.prepare('SELECT * FROM products WHERE id=1').get(), material = f.db.prepare('SELECT * FROM products WHERE id=2').get();
   const saved = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI用料表', product_id: parent.id, loss_method: lossMethod,
     base_quantity: 10, base_unit: parent.unit, note: '', enabled: 1,
-    items: [{ product_id: material.id, quantity: 0.025, quantity_fraction: '1/40', loss_rate: 20, unit: material.unit, note: '实际配方' }],
+    items: [{ product_id: material.id, quantity: 0.025, quantity_fraction: '1.5/60', loss_rate: 20, unit: material.unit, note: '实际配方' }],
     scraps: [{ product_id: 3, method: 'output', source_product_id: null, quantity: 2, unit: f.db.prepare('SELECT unit FROM products WHERE id=3').get().unit, note: '回收' }] });
   assert.equal(saved.status, 200);
   const id = saved.data.id;
@@ -189,14 +189,14 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} BOM tools
   f.use('get_bom', { bom_id: id }); await f.chat(f.staff);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].quantity, 2); assert.equal(result.scraps[0].method, 'output');
-  assert.equal(result.loss_method, lossMethod); assert.equal(result.items[0].loss_rate, 20); assert.equal(result.items[0].quantity, 0.025); assert.equal(result.items[0].quantity_fraction, '1/40'); assert.equal(result.items[0].product.id, material.id);
+  assert.equal(result.loss_method, lossMethod); assert.equal(result.items[0].loss_rate, 20); assert.equal(result.items[0].quantity, 0.025); assert.equal(result.items[0].quantity_fraction, '1.5/60'); assert.equal(result.items[0].product.id, material.id);
   assert.ok(!JSON.stringify(result).includes('inventory_value_cents'));
   f.use('calculate_bom', { bom_id: id, production_quantity: 2 });
   const calculation = await f.chat(f.staff);
   assert.equal(calculation.status, 200); assert.deepEqual(calculation.data.actions, []);
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].planned_quantity, 0.4);
-  assert.equal(result.loss_method, lossMethod); assert.equal(result.rows[0].required, lossMethod === 'internal' ? 0.0063 : 0.006); assert.equal(result.rows[0].quantity_fraction, '1/40'); assert.equal(result.rows[0].stock, material.stock);
+  assert.equal(result.loss_method, lossMethod); assert.equal(result.rows[0].required, lossMethod === 'internal' ? 0.0063 : 0.006); assert.equal(result.rows[0].quantity_fraction, '1.5/60'); assert.equal(result.rows[0].stock, material.stock);
   assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /展示用量时优先使用原分数/);
   assert.ok(!JSON.stringify(result).includes('cost'));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);

@@ -7,7 +7,7 @@ import { usePermissions } from '../permissions.jsx';
 import { t } from '../i18n/index.js';
 import { productionMessage } from '../i18n/production-errors.js';
 import { pooledProductionStages } from '../../shared/production-pools.js';
-import { exactQuantity, formatExactQuantity, parseExactQuantity } from '../../shared/exact-quantity.js';
+import { exactQuantity, formatExactQuantity, parseExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 import { ProductionReceiptList } from './ProductionReceipts.jsx';
 
 export function ProductionStageReceipts({ order, data, onSaved, busy, onApprove }) {
@@ -27,7 +27,7 @@ export function ProductionStageReceipts({ order, data, onSaved, busy, onApprove 
       </Select></label>
       {selected&&<><p>{t('production.availableInOrder')} {formatExactQuantity(exactQuantity(selected,'available_quantity'))} {selected.unit}</p>
         <label>{t('production.stageReceiptQuantity')}<Input aria-label={t('production.stageReceiptQuantity')} inputMode="text" value={quantity} disabled={locked} onChange={event=>setQuantity(event.target.value)} /></label>
-        <div className="bom-actions"><Button disabled={locked} onClick={()=>setQuantity(String(exactQuantity(selected,'available_quantity')))}>{t('production.stageReceiptAll')}</Button>
+        <div className="bom-actions"><Button disabled={locked} onClick={()=>setQuantity(quantityInput(exactQuantity(selected,'available_quantity')))}>{t('production.stageReceiptAll')}</Button>
           <Button type="submit" kind="primary" disabled={locked||!quantity}>{t('production.stageReceiptSubmit')}</Button></div></>}
       {!stages.length&&<p className="bom-hint">{t('production.stageReceiptEmpty')}</p>}
     </form>}

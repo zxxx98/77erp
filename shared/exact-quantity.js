@@ -1,4 +1,4 @@
-import { MAX_QUANTITY, parseQuantity, validQuantity } from './quantity.js';
+import { MAX_QUANTITY, parseQuantity, parseQuantityFraction, validQuantity } from './quantity.js';
 
 function greatestCommonDivisor(left, right) {
   left = left < 0n ? -left : left;
@@ -9,10 +9,11 @@ function greatestCommonDivisor(left, right) {
 export function exactRatio(value) {
   const raw = String(value).trim();
   if (raw.length > 4096) throw new Error('数量分数超出计算范围。');
-  const fraction = raw.match(/^(-?\d+)\s*\/\s*(\d+)$/);
+  const fraction = raw.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*(\d+)$/);
   let numerator, denominator;
   if (fraction) {
-    numerator = BigInt(fraction[1]); denominator = BigInt(fraction[2]);
+    const [top, scale] = exactRatio(fraction[1]);
+    numerator = top; denominator = BigInt(fraction[2]) * scale;
   } else {
     const decimal = raw.match(/^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i);
     if (!decimal) throw new Error('数量需为小数或分数，例如 1/3。');
@@ -92,10 +93,7 @@ export function validExactQuantity(value, positive = false) {
 
 export function parseExactQuantity(value, positive = false) {
   if (typeof value !== 'string' || !value.includes('/')) return parseQuantity(value, positive);
-  const match = value.length <= 60 && value.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
-  if (!match || ![match[1], match[2]].every(part => Number.isSafeInteger(Number(part)) && Number(part) <= MAX_QUANTITY) || Number(match[2]) === 0 || !validExactQuantity(value, positive))
-    throw new Error(`数量需为小数或分数，分子、分母上限为 ${MAX_QUANTITY}，分母不能为零。`);
-  return `${BigInt(match[1])}/${BigInt(match[2])}`;
+  return parseQuantityFraction(value, positive);
 }
 
 export function exactBomQuantity(quantity, output, base, fraction = '', lossRate = 0, lossMethod = 'internal') {
@@ -109,8 +107,20 @@ export function formatExactQuantity(value, locale) {
 }
 
 export function quantityInput(value) {
-  if (typeof value === 'string' || validQuantity(value)) return String(value);
+  if (validQuantity(value)) return String(value);
+  if (typeof value === 'string') {
+    if (!value.includes('/')) return value;
+    try { return parseQuantityFraction(value); } catch { /* Try an equivalent input ratio. */ }
+  }
   const [numerator, denominator] = exactRatio(value);
+  // Move factors of 2 and 5 into a decimal numerator when a calculated
+  // fraction can be expressed under the input limits (1/15000 -> 0.0002/3).
+  const divisor = greatestCommonDivisor(denominator, 10000n);
+  const inputDenominator = denominator / divisor, scaled = numerator * (10000n / divisor);
+  if (scaled >= 0n && scaled <= BigInt(MAX_QUANTITY) * 10000n && inputDenominator <= 9999n) {
+    const digits = (scaled % 10000n).toString().padStart(4, '0').replace(/0+$/, '');
+    return `${scaled / 10000n}${digits ? `.${digits}` : ''}/${inputDenominator}`;
+  }
   return `${numerator}/${denominator}`;
 }
 

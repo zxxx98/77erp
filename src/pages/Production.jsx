@@ -286,7 +286,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     const items = order.items.filter(item => !item.is_post_processing_only).map(item => ({ product_id: item.product_id,
       quantity: quantityInput(productionActualDefault(item, quantity, order)), variance_reason: '' }));
     const scraps = (order.scraps || []).map(row => ({ product_id: row.product_id,
-      quantity: String(scrapExpectedQuantity(row, quantity, order.base_quantity, items.map(item => ({ ...item, quantity: item.quantity })))), disposition: 'stock' }));
+      quantity: quantityInput(scrapExpectedQuantity(row, quantity, order.base_quantity, items.map(item => ({ ...item, quantity: item.quantity })))), disposition: 'stock' }));
     return { items, scraps };
   };
   const beginCompletion = (targetId) => {
@@ -309,7 +309,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const startProduction = () => begin({ kind: 'material_request', initial: true, type: 'out', note: '',
     items: detail.items.map(item => ({ product_id: item.product_id, quantity: String(item.total_planned_quantity ?? item.planned_quantity) })) });
   const requestMaterials = type => begin({ kind: 'material_request', type, note: '',
-    items: detail.items.map(item => ({ ...item, quantity: type === 'in' ? String(exactQuantity(item, 'available_quantity')) : '0' })) });
+    items: detail.items.map(item => ({ ...item, quantity: type === 'in' ? quantityInput(exactQuantity(item, 'available_quantity')) : '0' })) });
   const cancelMaterialRequest = (doc, reason) => action.run(async () => {
     await send(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason }, { warehouseId: data.warehouse_id });
     await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"));

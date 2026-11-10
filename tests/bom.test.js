@@ -290,10 +290,12 @@ test('referenced goods cannot be deleted, unit or lifecycle changes require revi
 });
 
 test('BOM fractions retain exact ratios through scaling and reject invalid or inconsistent quantities', async t => {
-  for (const raw of ['1/0', '0/40', '-1/40', '1/-40', '1/2/3', '1.5/40', '1/100000000', '100000000/1', '1+2', '=1/40'])
+  for (const raw of ['1/0', '0/40', '-1/40', '1/-40', '1/2/3', '1.23456/40', '1/2.5', '1/10000', '1/100000000', '100000000/1', '1+2', '=1/40'])
     assert.throws(() => parseBomQuantity(raw), undefined, raw);
   assert.deepEqual(parseBomQuantity(' 01 / 040 '), { quantity: 0.025, quantity_fraction: '1/40' });
   assert.deepEqual(parseBomQuantity('0.025'), { quantity: 0.025, quantity_fraction: '' });
+  assert.deepEqual(parseBomQuantity(' 01.5000 / 040 '), { quantity: 0.0375, quantity_fraction: '1.5/40' });
+  assert.deepEqual(parseBomQuantity('0.0001/9999'), { quantity: 0.0001, quantity_fraction: '0.0001/9999' });
   const third = parseBomQuantity('1/3');
   assert.equal(bomRequiredQuantity(third.quantity, 3, 1, third.quantity_fraction), 1);
   assert.equal(bomRequiredQuantity(third.quantity, 1, 1, third.quantity_fraction), 0.3334);
@@ -313,6 +315,30 @@ test('BOM fractions retain exact ratios through scaling and reject invalid or in
     assert.equal(response.status, 400, String(quantity_fraction));
   }
   assert.equal((await f.request(`/boms/${bom.id}`)).data.items[0].quantity_fraction, '1/40');
+});
+
+test('decimal numerator recipes and scrap rules calculate exactly and survive backup restore', async t => {
+  const f = await fixture(t), scrapId = await f.product('DECIMAL-SCRAP');
+  const bom = await f.create({ items: [{ product_id: f.material, ...parseBomQuantity('1.2345/7'), unit: '个', note: '' }],
+    scraps: [{ product_id: scrapId, method: 'output', source_product_id: null, ...parseBomQuantity('0.0001/9999'), unit: '个', note: '' }] });
+  const result = await f.request(`/boms/${bom.id}/calculate`, { production_quantity: 7 });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.rows[0].required, 1.2345);
+  assert.equal(result.data.rows[0].quantity_fraction, '1.2345/7');
+  assert.equal(bom.scraps[0].quantity_fraction, '0.0001/9999');
+  for (const fraction of ['1/10000', '1/2.5', '1.23456/7', '0/7']) {
+    const response = await f.command(`/boms/${bom.id}`, f.definition({ version: bom.version,
+      items: [{ product_id: f.material, quantity: 0.0001, quantity_fraction: fraction, unit: '个', note: '' }] }));
+    assert.equal(response.status, 400, fraction);
+    assert.match(response.data.error, /分子最多 4 位小数/);
+  }
+  const backup = (await f.request('/backup')).data;
+  const preview = (await f.request('/backup/preview', { backup })).data;
+  const restoredBackup = await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' });
+  assert.equal(restoredBackup.status, 200, JSON.stringify(restoredBackup.data));
+  const restored = (await f.request(`/boms/${bom.id}`)).data;
+  assert.equal(restored.items[0].quantity_fraction, '1.2345/7');
+  assert.equal(restored.scraps[0].quantity_fraction, '0.0001/9999');
 });
 
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {

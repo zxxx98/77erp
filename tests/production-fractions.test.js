@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
-import { exactQuantity, exactCompare } from '../shared/exact-quantity.js';
+import { exactQuantity, exactCompare, quantityInput } from '../shared/exact-quantity.js';
 
 async function fixture(context, layered = false, { wholeUnits = false, rawValue = 1000 } = {}) {
   const { app, db } = createApp(':memory:');
@@ -62,6 +62,30 @@ test('three one-third consumptions exhaust one issued unit exactly and survive b
   const forged = structuredClone(backup);
   forged.data.production_batch_items[0].actual_quantity_fraction = '1/2';
   await fixtureData.request('/backup/preview', { backup: forged }, 400);
+});
+
+test('decimal numerator inputs survive material requests, production receipts and backup restore', async context => {
+  const f = await fixture(context);
+  let order = f.order;
+  for (const quantity of ['1/10000', '1/2.5', '1.23456/7']) {
+    await f.request(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'out', items: [{ product_id: f.raw, quantity }] }, 400);
+    await f.request(`/production-orders/${order.id}/complete`, { version: order.version, completed_quantity: 1, items: [{ product_id: f.raw, quantity }], scraps: [], finish_order: false }, 400);
+  }
+  order = await f.request(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'out', items: [{ product_id: f.raw, quantity: '0.0001/9999' }] });
+  const supplement = order.material_documents.at(-1);
+  assert.equal(supplement.items[0].quantity_fraction, '0.0001/9999');
+  await f.request(`/production-material-documents/${supplement.id}/confirm`, { version: supplement.version });
+  order = await f.complete(await f.get(), '1.5/7', '0.5/7');
+  assert.equal(order.batches[0].completed_quantity_fraction, '1.5/7');
+  assert.equal(order.batches[0].items[0].actual_quantity_fraction, '0.5/7');
+  await f.receive(order.receipt_documents[0]);
+  assert.equal(exactCompare(exactQuantity(f.stock(f.root), 'stock'), '3/14'), 0);
+  const backup = await f.request('/backup');
+  const preview = await f.request('/backup/preview', { backup });
+  await f.request('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' });
+  order = await f.get();
+  assert.equal(order.batches[0].completed_quantity_fraction, '1.5/7');
+  assert.equal(order.batches[0].items[0].actual_quantity_fraction, '0.5/7');
 });
 
 test('fraction receipts remain exact until finish; final rounding and reopening conserve inventory and costs', async context => {
@@ -149,7 +173,7 @@ test('fractional material requests, issues and returns preserve warehouse balanc
   order = await fixtureData.get();
   order = await fixtureData.request(`/production-orders/${order.id}/finish`, { version: order.version });
   const available = exactQuantity(order.items[0], 'available_quantity');
-  order = await fixtureData.request(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'in', items: [{ product_id: fixtureData.raw, quantity: available }] });
+  order = await fixtureData.request(`/production-orders/${order.id}/material-requests`, { version: order.version, type: 'in', items: [{ product_id: fixtureData.raw, quantity: quantityInput(available) }] });
   const returned = order.material_documents.at(-1);
   await fixtureData.request(`/production-material-documents/${returned.id}/confirm`, { version: returned.version });
   order = await fixtureData.get();
@@ -161,7 +185,7 @@ test('fractional material requests, issues and returns preserve warehouse balanc
 test('invalid fractions and insufficient final rounding fail atomically', async context => {
   const fixtureData = await fixture(context);
   let order = fixtureData.order;
-  for (const quantity of ['1/0', '-1/3', '0/3', '100000000/1']) {
+  for (const quantity of ['1/0', '-1/3', '0/3', '100000000/1', '1/10000', '1/2.5', '1.23456/3']) {
     await fixtureData.request(`/production-orders/${order.id}/complete`, { version: order.version, completed_quantity: quantity, items: [{product_id: fixtureData.raw, quantity: '1/3'}], scraps: [], finish_order: false }, 400);
     assert.equal((await fixtureData.get()).batches.length, 0);
   }

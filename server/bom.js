@@ -237,9 +237,9 @@ export function validateBomBackup(data) {
   for (const bom of data.boms) {
     validateBomLossMethod(bom.loss_method);
     const items = grouped.get(bom.id) || [];
-    validateBom({ ...bom, items });
+    validateBom({ ...bom, items }, true);
     const scraps = scrapGroups.get(bom.id) || [];
-    validateScrapRules(scraps, bom.product_id, items);
+    validateScrapRules(scraps, bom.product_id, items, true);
     if (new Set(scraps.map(row => row.position)).size !== scraps.length || scraps.some(row =>
         typeof row.quantity_fraction !== 'string' || !Number.isSafeInteger(row.position) || row.position < 0 || row.position >= 100 || products.get(row.product_id)?.warehouse_id !== bom.warehouse_id))
       fail('备份 BOM 废料排序或仓库关联无效。');

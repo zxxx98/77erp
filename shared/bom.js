@@ -1,4 +1,5 @@
-import { MAX_QUANTITY, QUANTITY_SCALE, quantityUnits, parseQuantity, validStoredQuantity } from './quantity.js';
+import { MAX_QUANTITY, QUANTITY_SCALE, quantityUnits, parseQuantity, parseQuantityFraction, validStoredQuantity } from './quantity.js';
+import { exactRatio } from './exact-quantity.js';
 
 export const BOM_MAX_ITEMS = 100;
 export const bomLossMethodLabels = { internal: '内扣法', external: '外包法' };
@@ -13,34 +14,28 @@ export function validateBomLossRate(value) {
 const text = (value, max, required = false) => typeof value === 'string' && value.length <= max && (!required || !!value.trim());
 const id = value => Number.isSafeInteger(value) && value > 0;
 
-function fractionParts(value) {
-  const match = typeof value === 'string' && value.length <= 60 && value.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
-  if (!match || ![match[1], match[2]].every(part => Number.isSafeInteger(Number(part)) && Number(part) > 0 && Number(part) <= MAX_QUANTITY))
-    throw new Error(`材料用量分数的分子、分母需为 1–${MAX_QUANTITY} 的整数，例如 1/40。`);
-  return [BigInt(match[1]), BigInt(match[2])];
-}
-
 const ceilDivide = (numerator, denominator) => (numerator + denominator - 1n) / denominator;
 
-export function parseBomQuantity(value) {
+export function parseBomQuantity(value, stored = false) {
   if (typeof value !== 'string' || !value.includes('/')) return { quantity: parseQuantity(value, true), quantity_fraction: '' };
-  const [numerator, denominator] = fractionParts(value);
+  const fraction = parseQuantityFraction(value, true, stored);
+  const [numerator, denominator] = exactRatio(fraction);
   return { quantity: Number(ceilDivide(numerator * 10000n, denominator)) / 10000,
-    quantity_fraction: `${numerator}/${denominator}` };
+    quantity_fraction: fraction };
 }
 
-export function validateBomQuantity(quantity, fraction = '') {
+export function validateBomQuantity(quantity, fraction = '', stored = true) {
   if (!validStoredQuantity(quantity, true)) throw new Error('材料用量需为正数且最多 4 位小数。');
   if (fraction !== '') {
-    const parsed = parseBomQuantity(fraction);
-    const [numerator, denominator] = fractionParts(fraction);
+    const parsed = parseBomQuantity(fraction, stored);
+    const [numerator, denominator] = exactRatio(fraction);
     const legacyQuantity = Number(ceilDivide(numerator * BigInt(QUANTITY_SCALE), denominator)) / QUANTITY_SCALE;
     if (!parsed.quantity_fraction || parsed.quantity_fraction !== fraction || (parsed.quantity !== quantity && legacyQuantity !== quantity))
       throw new Error('材料用量与分数不一致，请重新填写用量。');
   }
 }
 
-export function validateBom(value) {
+export function validateBom(value, stored = false) {
   if (!value || !id(value.product_id)) throw new Error('请选择成品物料。');
   if (!text(value.name, 100, true)) throw new Error('请填写 1–100 字的BOM名称。');
   if (!validStoredQuantity(value.base_quantity, true)) throw new Error('基准产量需为正数，最多 4 位小数。');
@@ -53,7 +48,7 @@ export function validateBom(value) {
   for (const item of value.items) {
     if (!item || !id(item.product_id) || !validStoredQuantity(item.quantity, true) || !text(item.unit, 100, true) || !text(item.note, 200))
       throw new Error('材料、用量、单位或备注无效，用量需为正数且最多 4 位小数。');
-    validateBomQuantity(item.quantity, item.quantity_fraction);
+    validateBomQuantity(item.quantity, item.quantity_fraction, stored);
     validateBomLossRate(item.loss_rate === undefined ? 0 : item.loss_rate);
     const mode = item.usage_mode === undefined ? 'stock' : item.usage_mode;
     if (!['stock', 'explode'].includes(mode) || (mode === 'explode' ? !id(item.child_bom_id) : item.child_bom_id != null))
@@ -73,7 +68,7 @@ export function bomRequiredQuantity(quantity, productionQuantity, baseQuantity, 
   validateBomQuantity(quantity, fraction);
   validateBomLossRate(lossRate);
   validateBomLossMethod(lossMethod);
-  const [numerator, denominator] = fraction ? fractionParts(fraction) : [BigInt(quantityUnits(quantity)), BigInt(QUANTITY_SCALE)];
+  const [numerator, denominator] = fraction ? exactRatio(fraction) : [BigInt(quantityUnits(quantity)), BigInt(QUANTITY_SCALE)];
   const percentScale = BigInt(100 * QUANTITY_SCALE);
   const rate = BigInt(quantityUnits(lossRate));
   const multiplier = lossMethod === 'external' ? percentScale + rate : percentScale;

@@ -733,7 +733,7 @@ export function validateProductionBackup(data, postPlans = new Map()) {
       fail('备份生产单字段、状态或关联无效。');
     numbers.add(order.number);
     const scraps = scrapGroups.get(order.id) || [];
-    validateScrapRules(scraps, order.product_id, recipeRows);
+    validateScrapRules(scraps, order.product_id, recipeRows, true);
     if (expanded) validateExpansionScraps(scraps, nodes);
     if (new Set(scraps.map(row => row.position)).size !== scraps.length) fail('备份生产废料排序重复。');
     for (const row of scraps) {
