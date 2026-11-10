@@ -1,5 +1,5 @@
 import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
-import { saveOperationAcceptance, acceptancePermissionMessage } from './operation-acceptance.js';
+import { saveOperationAcceptance, acceptancePermissionMessage, validateOperationRegistrationBackup } from './operation-acceptance.js';
 import { operationAllocation } from '../shared/operation-overflow.js';
 import { productionPools, stagePoolPaths, productionPoolOrder } from '../shared/production-pools.js';
 import { isProductionAssignee } from '../shared/production-assignment.js';
@@ -15,11 +15,11 @@ import { productionTypes } from '../shared/product-production-type.js';
 import { normalizePostMaterials, planPostMaterials, postMaterialPlanByProduct, totalPlannedMaterials, savePostMaterialItems, consumePostMaterials, readPostMaterialReport, postMaterialUsage, sumPostMaterialCosts, validatePostMaterialGraph, validatePostMaterialReport, stripLegacyPostMaterials } from './post-processing-materials.js';
 
 export const processRouteTables = ['process_routes'];
-export const productionOperationTables = ['production_routes', 'production_operation_reports'];
+export const productionOperationTables = ['production_routes', 'production_operation_reports', 'production_operation_registrations'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const routeKinds = ['production', 'post_processing'];
 const id = value => Number.isSafeInteger(value) && value > 0;
-const actor = req => req.user.name || req.user.username;
+const actor = req => req.operationRegistrar?.registered_by_name || req.user.name || req.user.username;
 const parseGraph = value => { try { const graph = JSON.parse(value); validateProcessGraph(graph); return graph; } catch (error) { fail(error.message); } };
 
 export function migrateProcessRoutes(db) {
@@ -71,6 +71,14 @@ export function migrateProcessRoutes(db) {
       throw error;
     }
   }
+  db.exec(`CREATE TABLE IF NOT EXISTS production_operation_registrations (
+    id INTEGER PRIMARY KEY, production_id INTEGER NOT NULL REFERENCES production_orders(id),
+    path TEXT NOT NULL, node_id TEXT NOT NULL, endpoint TEXT NOT NULL, body TEXT NOT NULL,
+    registered_by INTEGER, registered_by_name TEXT NOT NULL, worker_id INTEGER, worker_name TEXT NOT NULL,
+    production_group_id INTEGER, production_group_name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','void')),
+    acceptance_id INTEGER REFERENCES quality_acceptances(id), resolved_by_name TEXT NOT NULL DEFAULT '', resolved_at TEXT);
+    CREATE INDEX IF NOT EXISTS operation_registrations_order ON production_operation_registrations(production_id,status,id);`);
   db.exec('CREATE INDEX IF NOT EXISTS operation_reports_acceptance ON production_operation_reports(acceptance_id,status)');
   for (const [table, column] of [['products', 'default_route_id'], ['boms', 'route_override_id']])
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
@@ -104,7 +112,7 @@ export function clearProcessRoutes(db, warehouseId) {
   }
 }
 export function deleteProductionOperations(db, productionId) {
-  for (const table of ['production_operation_reports', 'production_routes']) {
+  for (const table of ['production_operation_registrations', 'production_operation_reports', 'production_routes']) {
     if (productionId === undefined) db.exec(`DELETE FROM ${table}`);
     else db.prepare(`DELETE FROM ${table} WHERE production_id=?`).run(productionId);
   }
@@ -340,6 +348,7 @@ export function syncProductionOperationPrices(db, req, order) {
 }
 
 function operationWorker(db, req, order) {
+  if (req.operationRegistrar) return {id:req.operationRegistrar.worker_id,name:req.operationRegistrar.worker_name};
   const workerId = req.body.worker_id ?? req.user.id;
   if (!id(workerId)) fail('请选择有效作业员工。');
   const worker = db.prepare('SELECT id,name,username,active,production_group_id FROM users WHERE id=?').get(workerId);
@@ -352,7 +361,7 @@ function operationInput(db, req, order, path, quantity, output) {
   if (req.body.operation_schema_version !== 1) fail('此单使用工序登记，请刷新页面后按工序操作。', 409);
   const node = route.operations.find(n => n.id === req.body.operation_node_id);
   if (!node || node.is_output !== output) fail(output ? '请从最终产出工序登记产量和实际耗料。' : '最终工序请使用产出登记入口。');
-  if (node.acceptance_template_id && !hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
+  if (node.acceptance_template_id && !req.validatingRegistration && !hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
   const post = route.product_coefficient != null;
   if (post && !id(quantity)) fail('后处理报工次数必须为正整数。');
   parseExactQuantity(quantity, true);
@@ -379,7 +388,7 @@ function insertReport(db, req, order, input, quantity, kind = null, batchId = nu
   sumPostMaterialCosts(materials);
   const acceptanceId=saveOperationAcceptance(db,req,order,input);
   const reportId = Number(db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier,post_materials) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(order.id, input.route.id, input.node.id, exactNumber(quantity), input.worker.id, input.worker.name || input.worker.username, req.user.id, actor(req), req.body.note?.trim() || '', new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,input.node.multiplier ?? 1,JSON.stringify(materials)).lastInsertRowid);
+    .run(order.id, input.route.id, input.node.id, exactNumber(quantity), input.worker.id, input.worker.name || input.worker.username, req.operationRegistrar ? req.operationRegistrar.registered_by : req.user.id, actor(req), req.body.note?.trim() || '', req.operationRegistrar?.created_at || new Date().toISOString(), kind, batchId, nextOperationSequence(db, order.id),acceptanceId,input.node.multiplier ?? 1,JSON.stringify(materials)).lastInsertRowid);
   saveExactQuantity(db, 'production_operation_reports', reportId, 'quantity', quantity);
 }
 export function recordOperationOutput(db, req, order, path, quantity, kind, batchId) {
@@ -391,6 +400,7 @@ export function voidOperationOutput(db, kind, batchId, owner, at, reason) {
   if (report) db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE output_kind=? AND output_batch_id=? AND status='active'").run(reason, owner, at, nextOperationSequence(db, report.production_id), kind, batchId);
 }
 export function assertOperationsFinished(db, productionId) {
+  if (db.prepare("SELECT 1 FROM production_operation_registrations WHERE production_id=? AND status='pending' LIMIT 1").get(productionId)) fail('仍有登记正在验收，请先完成验收或取消登记。',409);
   const order = { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(productionId), stages: db.prepare('SELECT * FROM production_stages WHERE production_id=?').all(productionId),
     items: db.prepare('SELECT * FROM production_items WHERE production_id=?').all(productionId),
     nodes: db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(productionId) }; readProductionRoutes(db, order);
@@ -441,7 +451,7 @@ export function installProductionOperations(app, db, { route, current, version }
     }
     db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(), actor(req), order.id);
     return current(req);
-  }, true));
+  }, true, undefined, 'operations/report'));
   app.post('/api/production-orders/:id/operations/:reportId/void', route(req => {
     const order = current(req); version(req, order);
     if (!hasPermission(req.user, 'production') || !hasPermission(req.user, 'corrections')) fail('需要生产管理和单据纠正权限。', 403);
@@ -468,6 +478,7 @@ export function installProductionOperations(app, db, { route, current, version }
 }
 
 export function validateProcessRouteBackup(data) {
+  validateOperationRegistrationBackup(data);
   const routes = new Map(data.process_routes.map(row => [row.id, row])), orders = new Map(data.production_orders.map(row => [row.id, row]));
   const warehouses = new Set(data.warehouses.map(row => row.id)), snapshots = new Map();
   const products = new Map(data.products.map(row => [row.id, row])), items = new Map();
@@ -546,7 +557,8 @@ export function validateProcessRouteBackup(data) {
       const acceptanceOwner=JSON.stringify([order.id,node.id,row.registered_by_name,row.worker_name]);
       if(acceptanceOwners.has(row.acceptance_id) && acceptanceOwners.get(row.acceptance_id)!==acceptanceOwner) fail('验收单不能关联不同生产单、工序或作业员工。');
       acceptanceOwners.set(row.acceptance_id,acceptanceOwner);
-      if(!acceptance || acceptance.warehouse_id!==order.warehouse_id || acceptance.template_id!==node.acceptance_template_id || acceptance.revision_id!==node.acceptance_revision_id || acceptance.created_by_name!==row.registered_by_name) fail('备份工序验收单关联无效。');
+      const registration=(data.production_operation_registrations||[]).find(r=>r.status==='approved'&&r.acceptance_id===row.acceptance_id&&r.production_id===order.id);
+      if(!acceptance || acceptance.warehouse_id!==order.warehouse_id || acceptance.template_id!==node.acceptance_template_id || acceptance.revision_id!==node.acceptance_revision_id || acceptance.created_by_name!==(registration?.resolved_by_name??row.registered_by_name)) fail('备份工序验收单关联无效。');
     } else if(row.acceptance_id!==null) fail('未绑定模板的工序不能关联验收单。');
     if (snapshot.product_coefficient !== null && (!id(row.quantity) || row.quantity_fraction !== ''))
       fail('备份后处理报工次数必须为正整数。');

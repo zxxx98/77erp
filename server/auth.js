@@ -262,7 +262,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
     const groupProductionRoute = (read && (path === '/production-orders' || /^\/production-orders\/\d+(?:\/pdf|\/stages\/batches|\/operation-workers|\/operations\/(?:reports|acceptance-template|acceptances\/\d+))?$/.test(path))) ||
-      (post && /^\/production-orders\/\d+\/(?:(?:stages\/)?complete|operations\/report)$/.test(path));
+      (post && /^\/production-orders\/\d+\/(?:(?:stages\/)?complete|operations\/report|operations\/registrations\/\d+\/(?:approve|cancel))$/.test(path));
     if (usesProductionWorkspace(req.user)) {
       if (read && ['/workspace','/style','/updates'].includes(path) || groupProductionRoute && hasPermission(req.user,'production_register')) return next();
       return res.status(403).json({error:'此岗位仅允许查看本组生产单并登记。'});

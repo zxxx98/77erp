@@ -149,7 +149,7 @@ for (const staged of [false, true]) test('post reports share the issued pool, re
   assert.deepEqual(stock(), warehouse);
   order = await f.mutate(order, '/finish', {});
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 53);
+  assert.equal(backup.version, 54);
   const tampered = structuredClone(backup);
   const row = tampered.data.production_operation_reports.find(row => row.id === first.id);
   const materials = JSON.parse(row.post_materials);

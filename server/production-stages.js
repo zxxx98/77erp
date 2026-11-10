@@ -17,7 +17,7 @@ import { finalizeProductionQuantities, reopenProductionQuantities } from './prod
 export { deriveProductionStages };
 export const productionStageTables = ['production_stages','production_stage_batches','production_stage_inputs','production_stage_allocations','production_stage_components','production_stage_allocation_components','production_stage_receipts'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), {status}); };
-const actor = req => req.user.name || req.user.username;
+const actor = req => req.operationRegistrar?.registered_by_name || req.user.name || req.user.username;
 const sum = exactSum;
 
 export function migrateProductionStages(db) {
@@ -194,9 +194,9 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     const q=parseExactQuantity(req.body.completed_quantity,true),ledger=stageLedger(db,o.id),count=ledger.batches.filter(b=>b.path===s.path).length,pools=productionPoolPathMap(o);
     if(count>=1000||ledger.batches.length>=10000)fail('层级批次达到上限（每层 1000 批、整单 10000 批，含作废），请拆分生产单。');
     if(!validExactQuantity(exactAdd(exactQuantity(s, 'completed_quantity'),q),true))fail('累计产量超出范围。');
-    const registrationGroup=productionRegistrationGroup(req.user,o);
+    const registrationGroup=req.operationRegistrar ? {id:req.operationRegistrar.production_group_id,name:req.operationRegistrar.production_group_name} : productionRegistrationGroup(req.user,o);
     const at=stageEventTime(db,o.id),owner=actor(req),components=new Map(),pool=new Map(o.items.map(i=>[i.product_id,{...quantityFields(exactQuantity(i,'available_quantity')),cost_cents:i.available_cost_cents}]));
-    const id=Number(db.prepare(`INSERT INTO production_stage_batches(production_id,stage_id,path,batch_number,completed_quantity,total_cost_cents,note,created_by,created_by_name,production_group_id,production_group_name,created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`).run(o.id,s.id,s.path,count+1,exactNumber(q),(req.body.note||'').trim(),req.user.id,owner,registrationGroup.id,registrationGroup.name,at).lastInsertRowid);
+    const id=Number(db.prepare(`INSERT INTO production_stage_batches(production_id,stage_id,path,batch_number,completed_quantity,total_cost_cents,note,created_by,created_by_name,production_group_id,production_group_name,created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`).run(o.id,s.id,s.path,count+1,exactNumber(q),(req.body.note||'').trim(),req.operationRegistrar ? req.operationRegistrar.registered_by : req.user.id,owner,registrationGroup.id,registrationGroup.name,at).lastInsertRowid);
     saveExactQuantity(db, 'production_stage_batches', id, 'completed_quantity', q);
     const merge=c=>{const prev=components.get(c.product_id)||{product_id:c.product_id,quantity:0,cost_cents:0};Object.assign(prev, quantityFields(exactAdd(exactQuantity(prev),exactQuantity(c))));prev.cost_cents+=c.cost_cents;if(!validExactQuantity(exactQuantity(prev))||!Number.isSafeInteger(prev.cost_cents))fail('原料组成累计超出范围。');components.set(c.product_id,prev);};
     let total=0;
@@ -224,7 +224,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     db.prepare('UPDATE production_stage_batches SET total_cost_cents=? WHERE id=?').run(total,id);
     if(s.path===''){
       validateScrapActuals(req.body.scraps??[],o.scraps);const number=(o.batches.at(-1)?.batch_number??0)+1;
-      const rootId=Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required,created_by,production_group_id,production_group_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)`).run(o.id,number,exactNumber(q),total,(req.body.note||'').trim(),owner,at,req.user.id,registrationGroup.id,registrationGroup.name).lastInsertRowid);
+      const rootId=Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required,created_by,production_group_id,production_group_name) VALUES (?,?,?,?,?,?,?,1,?,?,?)`).run(o.id,number,exactNumber(q),total,(req.body.note||'').trim(),owner,at,req.operationRegistrar ? req.operationRegistrar.registered_by : req.user.id,registrationGroup.id,registrationGroup.name).lastInsertRowid);
       saveExactQuantity(db,'production_batches',rootId,'completed_quantity',q);
       for(const item of o.items){const c=components.get(item.product_id)||{quantity:0,cost_cents:0};db.prepare('INSERT INTO production_batch_items(batch_id,product_id,actual_quantity,cost_cents,variance_reason) VALUES (?,?,?,?,?)').run(rootId,item.product_id,c.quantity,c.cost_cents,actuals.filter(a=>a.product_id===item.product_id&&a.usage_mode==='stock').map(a=>a.variance_reason).filter(Boolean).join('；'));saveExactQuantity(db,'production_batch_items',db.prepare('SELECT id FROM production_batch_items WHERE batch_id=? AND product_id=?').get(rootId,item.product_id).id,'actual_quantity',exactQuantity(c));}
       for(const rule of o.scraps) {
@@ -255,7 +255,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
         items: actual.items, scraps: req.body.scraps } });
     }
     return current(req);
-  },true));
+  },true,undefined,'stages/complete'));
   app.post('/api/production-orders/:id/stages/batches/:batchId/void',route(req=>{
     const o=stageOrder(req);version(req,o);if(o.status==='void')fail('生产单已经作废。',409);
     const b=stageBatch(o,req.params.batchId);if(b.status!=='active')fail('层级批次已经作废。',409);

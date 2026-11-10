@@ -1,5 +1,6 @@
+import { ProductionAcceptanceRegistrations } from './ProductionAcceptanceRegistrations.jsx';
 import { WorkbookResults } from '../pages/quality-shared.jsx';
-import { useOperationAcceptance, operationAcceptanceAllowed } from './OperationAcceptance.jsx';
+import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useBusiness } from '../business-api.js';
@@ -64,7 +65,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
   const send = async (suffix, body) => action.send(`/production-orders/${order.id}${suffix}`, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...await acceptance.enrich(`/production-orders/${order.id}${suffix}`,body,{warehouseId:data.warehouse_id}) }, { warehouseId: data.warehouse_id });
   const back = () => leave(() => { if (form || voiding) { setForm(null); setVoiding(null); } else onBack(); });
   const activeNode = form ? route.operations.find(n => n.id === form.node_id) : null;
-  return <div className="production-stages process-page">{acceptance.dialog}
+  return <div className="production-stages process-page">{acceptance.dialog}<ProductionAcceptanceRegistrations order={order} data={data} onSaved={onSaved} path={path}/>
     {syncPriceConfirm && <Modal title={t('route.syncPrices')} subtitle={order.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>
       <div className="form-body">
         <div className="production-warning-box" role="alert">
@@ -133,7 +134,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                 {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t(availableLabel)}</dt><dd>{count(exactQuantity(node, 'available_quantity'))} {unit}</dd></div>}
               </dl>
               {canRegister && <div className="process-operation-card-action">
-                <Button kind="primary" disabled={action.busy || node.available_quantity === 0 || outputRegistrationLocked(order, { path, output: node.is_output })} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { if(!operationAcceptanceAllowed(node,can)) return; return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
+                <Button kind="primary" disabled={action.busy || node.available_quantity === 0 || outputRegistrationLocked(order, { path, output: node.is_output })} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
               </div>}
             </article>;
           })}
@@ -144,7 +145,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
         if (postProcessing && !Number.isInteger(quantity)) throw new Error(t('production.postProcessingInteger'));
         if (!window.confirm(t('route.confirmReport'))) return;
         const result = await send('/operations/report', { path, operation_node_id: form.node_id, quantity, note: form.note, worker_id: workerId });
-        setForm(null); await onSaved(result, t('route.reported'));
+        setForm(null); await onSaved(result, t(result.registration_status==='pending'?'route.pendingSaved':'route.reported'));
       }); }}>
         <div className="process-report-context">
           <h2>{activeNode?.name}</h2>

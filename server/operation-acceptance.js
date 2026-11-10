@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { parseProductionQuantity } from '../shared/exact-quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { createOnlineWorkbook } from '../shared/quality-online.js';
 import { parseAcceptance } from '../shared/quality-acceptance.js';
@@ -96,7 +97,7 @@ export function createOperationAcceptanceService(db, options) {
 // Called inside the production transaction. The generated file is only retained
 // after the acceptance, report and (for final operations) output all commit.
 export function saveOperationAcceptance(db,req,order,input) {
-  if(!input.node.acceptance_template_id) return null;
+  if(!input.node.acceptance_template_id || req.validatingRegistration) return null;
   if (!hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
   const prepared=req.operationAcceptance;
   if(!prepared || prepared.revision.id !== input.node.acceptance_revision_id) fail('请先完成本工序验收单。');
@@ -117,4 +118,32 @@ export function saveOperationAcceptance(db,req,order,input) {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)`).run(id,order.warehouse_id,number,title,note,prepared.revision.template_id,prepared.revision.id,fid,JSON.stringify(prepared.result),name,now,JSON.stringify(bindings));
   prepared.id=id;
   return id;
+}
+
+export function validateOperationRegistrationBackup(data) {
+  const ids=new Set();
+  const text=(v,max,required=false)=>typeof v==='string'&&v.length<=max&&(!required||!!v.trim());
+  const identity=v=>v===null||Number.isSafeInteger(v)&&v>0;
+  for(const row of data.production_operation_registrations||[]) {
+    const order=data.production_orders.find(o=>o.id===row.production_id);
+    const route=data.production_routes.find(r=>r.production_id===row.production_id&&r.path===row.path);
+    let body,node;
+    try {body=JSON.parse(row.body);node=JSON.parse(route.graph).nodes.find(n=>n.id===row.node_id);} catch {fail('备份验收登记内容无效。');}
+    if(!Number.isSafeInteger(row.id)||row.id<1||ids.has(row.id)||!order||!node?.acceptance_revision_id||
+      !['operations/report','complete','stages/complete'].includes(row.endpoint)||!['pending','approved','void'].includes(row.status)||
+      !body||Array.isArray(body)||body.operation_node_id!==row.node_id||(body.path??'')!==row.path||body.operation_acceptance!==undefined||
+      !identity(row.registered_by)||!identity(row.worker_id)||!identity(row.production_group_id)||!text(row.production_group_name,100)||!text(row.registered_by_name,100,true)||!text(row.worker_name,100,true)||
+      !text(row.created_at,100,true)||!Number.isFinite(Date.parse(row.created_at))||!text(row.resolved_by_name,100)||
+      (row.status==='pending' ? row.resolved_at!==null||row.resolved_by_name!==''||row.acceptance_id!==null||order.status!=='draft'
+        : !text(row.resolved_at,100,true)||!Number.isFinite(Date.parse(row.resolved_at))||!row.resolved_by_name.trim())) fail('备份验收登记记录无效。');
+    ids.add(row.id);
+    const quantity=body.quantity??body.completed_quantity;
+    // Exact fractions are accepted by the normal registration validator on approval.
+    try {parseProductionQuantity(quantity,true);} catch {fail('备份验收登记数量无效。');}
+    if(row.status==='approved') {
+      const acceptance=data.quality_acceptances.find(a=>a.id===row.acceptance_id);
+      if(!acceptance||acceptance.warehouse_id!==order.warehouse_id||acceptance.revision_id!==node.acceptance_revision_id||
+        !data.production_operation_reports.some(r=>r.production_id===order.id&&r.node_id===row.node_id&&r.acceptance_id===row.acceptance_id)) fail('备份验收登记关联无效。');
+    } else if(row.acceptance_id!==null) fail('未通过的登记不能关联验收单。');
+  }
 }

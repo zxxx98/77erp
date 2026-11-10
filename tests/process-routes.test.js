@@ -224,7 +224,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 53);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 54);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);
@@ -345,7 +345,7 @@ test('operation acceptance validates binding, fixes revisions and enforces a sep
   let order=await f.start(await f.create({production_group_id:group.id}));
   assert.equal(order.operation_routes[0].operations[0].acceptance_revision_id,f.revisionId);
   const templatePath=`/production-orders/${order.id}/operations/acceptance-template?path=&node_id=cut`;
-  for(const response of [await f.request(templatePath,undefined,options),await f.report(order,'cut',1,'',{},options),await f.complete(order,1,'',{},options)]){
+  for(const response of [await f.request(templatePath,undefined,options)]){
     assert.equal(response.status,403);assert.equal(response.data.error,'该工序需要验收，请通知验收员');
   }
   assert.equal(f.objects.size,1);
@@ -353,7 +353,6 @@ test('operation acceptance validates binding, fixes revisions and enforces a sep
   f.ok(await f.request(templatePath,undefined,options));
   assert.equal((await f.request('/quality/templates',undefined,options)).status,403);
   assert.equal((await f.request(`/production-orders/${order.id}/operations/acceptances/9999`,undefined,options)).status,404);
-  assert.equal((await f.report(order,'cut',1,'',{},options)).status,400);
   assert.equal((await f.report(order,'cut',1,'',{operation_acceptance:{...f.acceptance,passed:false}},options)).status,400);
   assert.equal((await f.report(order,'cut',1,'',{operation_acceptance:{...f.acceptance,values:{B1:''}}},options)).status,400);
   assert.equal((await f.report(order,'cut',1,'',{operation_acceptance:{...f.acceptance,values:{A1:'绕过标题',B1:'1'}}},options)).status,400);
@@ -663,7 +662,7 @@ test('production rejects retired additional operations and exposes no dedicated 
   order = f.ok(await f.report(order,'cut',1));
   assert.equal(Object.hasOwn(order.operation_routes[0].reports[0],'material_items'),false);
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version,53);
+  assert.equal(backup.version,54);
   assert.equal(Object.hasOwn(backup.data.production_routes[0],'additional_quantity'),false);
   assert.equal(Object.hasOwn(backup.data.production_operation_reports[0],'material_items'),false);
 });
@@ -681,4 +680,134 @@ test('removal drops unused SQLite columns while retaining ordinary operation rep
   assert.equal(f.db.prepare('PRAGMA table_info(production_routes)').all().some(c => c.name.startsWith('additional_')),false);
   assert.equal(f.db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'material_items'),false);
   assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(),[]);
+});
+
+test('registration without acceptance permission stays pending until a separate inspector approves it exactly once',async t=>{
+  const f=await acceptanceFixture(t);
+  const group=f.ok(await f.command('/production-groups',{name:'先登记后验收组'}));
+  const position=f.ok(await f.command('/positions',{name:'普通报工员',access_mode:'production_only',permissions:['production_register']}));
+  const worker=f.ok(await f.command('/users',{username:'reporter',employee_no:'reporter',password:'Worker-test-123',name:'原登记员',role:'employee',position_id:position.id,production_group_id:group.id}));
+  const login=await f.request('/auth/login',{username:'reporter',password:'Worker-test-123'},{cookie:'no-session'}),options={cookie:login.cookie};
+  let order=await f.start(await f.create({production_group_id:group.id}));
+  const original=order,request_id=randomUUID();
+  order=f.ok(await f.report(order,'cut',2,'',{request_id},options));
+  assert.deepEqual(f.ok(await f.report(original,'cut',2,'',{request_id},options)),order);
+  assert.equal(order.registration_status,'pending');
+  const pending=order.operation_registrations[0];
+  assert.equal(pending.status,'pending');assert.equal(pending.quantity,2);
+  assert.equal(order.operation_routes[0].operations[0].completed_quantity,0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_operation_reports').get().n,0);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n,0);
+  assert.equal(f.objects.size,1);
+  assert.equal((await f.report(order,'weld',1,'',{},options)).status,409);
+  const approve=`/production-orders/${order.id}/operations/registrations/${pending.id}/approve`;
+  const body={version:order.version,operation_acceptance:f.acceptance,request_id:randomUUID()};
+  assert.equal((await f.command(approve,body,options)).status,403);
+  const warehouse=f.ok(await f.command('/warehouses',{name:'验收隔离仓'}));
+  assert.equal((await f.command(approve,body,{warehouseId:warehouse.id})).status,404);
+  assert.equal((await f.command(approve,{...body,operation_acceptance:{...f.acceptance,values:{B1:''}}})).status,400);
+  assert.equal(f.objects.size,1);
+  const before=order;
+  order=f.ok(await f.command(approve,body));
+  assert.deepEqual(f.ok(await f.command(approve,body)),order);
+  assert.equal(order.operation_registrations[0].status,'approved');
+  assert.equal(order.operation_registrations[0].resolved_by_name,'routeadmin');
+  const report=order.operation_routes[0].reports[0];
+  assert.equal(report.registered_by,worker.id);assert.equal(report.worker_id,worker.id);assert.equal(report.registered_by_name,'原登记员');
+  assert.equal(report.created_at,pending.created_at);
+  assert.equal(order.operation_routes[0].operations[0].completed_quantity,2);
+  assert.equal(f.db.prepare('SELECT created_by_name FROM quality_acceptances WHERE id=?').get(report.acceptance_id).created_by_name,'routeadmin');
+  assert.equal((await f.command(approve,{...body,version:order.version,request_id:randomUUID()})).status,409);
+  assert.equal((await f.report(before,'cut',1,'',{},options)).status,409);
+  // Normal output is also deferred: neither materials nor a warehouse receipt move until acceptance passes.
+  order=f.ok(await f.report(order,'weld',2,'',{operation_acceptance:f.acceptance}));
+  order=f.ok(await f.complete(order,1,'',{},options));
+  const output=order.operation_registrations[0];
+  assert.equal(output.status,'pending');assert.equal(order.completed_quantity,null);assert.equal(order.receipt_documents.length,0);
+  assert.equal(order.items[0].available_quantity,20);
+  const backup=f.ok(await f.request('/backup'));
+  const preview=f.ok(await f.command('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
+  order=await f.get(order.id);assert.equal(order.operation_registrations[0].id,output.id);
+  order=f.ok(await f.command(`/production-orders/${order.id}/operations/registrations/${output.id}/approve`,{version:order.version,operation_acceptance:f.acceptance}));
+  assert.equal(order.completed_quantity,1);assert.equal(order.receipt_documents.length,1);assert.equal(order.items[0].available_quantity,18);
+  assert.equal(order.batches[0].created_by,worker.id);assert.equal(order.batches[0].created_by_name,'原登记员');
+  const saved=f.ok(await f.request('/backup'));f.ok(await f.command('/backup/preview',{backup:saved}));
+});
+
+test('pending registrations can be cancelled without production side effects and block order completion',async t=>{
+  const f=await acceptanceFixture(t);let order=await f.start(await f.create());
+  order=f.ok(await f.report(order,'cut',2));const pending=order.operation_registrations[0];
+  assert.equal((await f.command(`/production-orders/${order.id}/finish`,{version:order.version})).status,409);
+  assert.equal((await f.command(`/production-orders/${order.id}/void`,{version:order.version,reason:'取消生产'})).status,409);
+  order=f.ok(await f.command(`/production-orders/${order.id}/operations/registrations/${pending.id}/cancel`,{version:order.version}));
+  assert.equal(order.operation_registrations[0].status,'void');assert.equal(f.objects.size,1);
+  assert.equal((await f.command(`/production-orders/${order.id}/operations/registrations/${pending.id}/approve`,{version:order.version,operation_acceptance:f.acceptance})).status,409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_operation_reports').get().n,0);
+});
+
+test('pending acceptance covers child and root stage output without consuming materials early',async t=>{
+  const f=await acceptanceFixture(t,{multi:true});let order=await f.start(await f.create());
+  const approve=async()=>{
+    const row=order.operation_registrations.find(r=>r.status==='pending');
+    order=f.ok(await f.command(`/production-orders/${order.id}/operations/registrations/${row.id}/approve`,{version:order.version,operation_acceptance:f.acceptance}));
+  };
+  for(const path of ['1','']) {
+    for(const node of ['cut','weld']) {order=f.ok(await f.report(order,node,1,path));await approve();}
+    const before=order;
+    order=f.ok(await f.complete(order,1,path));
+    assert.equal(order.operation_registrations.find(r=>r.status==='pending').quantity,1);
+    assert.equal(order.stages.find(s=>s.path===path).completed_quantity,0);
+    assert.deepEqual(order.stages.find(s=>s.path===path).items.map(i=>i.consumed_quantity),before.stages.find(s=>s.path===path).items.map(i=>i.consumed_quantity));
+    await approve();
+    assert.equal(order.stages.find(s=>s.path===path).completed_quantity,1);
+  }
+  assert.equal(order.completed_quantity,1);assert.equal(order.receipt_documents.length,1);
+  const backup=f.ok(await f.request('/backup'));f.ok(await f.command('/backup/preview',{backup}));
+});
+
+test('approval revalidates current balances and rolls back acceptance files on conflict',async t=>{
+  const f=await acceptanceFixture(t);let order=await f.start(await f.create());
+  for(const node of ['cut','weld']) order=f.ok(await f.report(order,node,2,'',{operation_acceptance:f.acceptance}));
+  order=f.ok(await f.complete(order,2));
+  const first=order.operation_registrations[0];
+  order=f.ok(await f.complete(order,2));
+  const second=order.operation_registrations.find(r=>r.id!==first.id),stale=order.version;
+  order=f.ok(await f.command(`/production-orders/${order.id}/operations/registrations/${first.id}/approve`,{version:order.version,operation_acceptance:f.acceptance}));
+  const count=f.objects.size;
+  const endpoint=`/production-orders/${order.id}/operations/registrations/${second.id}/approve`;
+  assert.equal((await f.command(endpoint,{version:stale,operation_acceptance:f.acceptance})).status,409);
+  assert.equal((await f.command(endpoint,{version:order.version,operation_acceptance:f.acceptance})).status,409);
+  assert.equal(f.objects.size,count);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n,1);
+  assert.equal((await f.get(order.id)).operation_registrations.find(r=>r.id===second.id).status,'pending');
+});
+
+test('post-processing reports with templates stay pending without changing product output',async t=>{
+  const f=await acceptanceFixture(t,{routed:false});
+  const route=f.ok(await f.command('/process-routes',{name:'包装验收',note:'',enabled:1,route_kind:'post_processing',graph:{nodes:[{...node('pack','包装'),acceptance_template_id:f.templateId}],edges:[]}}));
+  let order=await f.start(await f.create({post_processing_operations:[{route_id:route.id,route_version:route.version,node_id:'pack',product_coefficient:5}]}));
+  order=f.ok(await f.complete(order,10,'',{operation_node_id:undefined}));
+  const stock=order.items[0].available_quantity;
+  order=f.ok(await f.report(order,'pack',1,'@post:1'));
+  assert.equal(order.completed_quantity,10);assert.equal(order.operation_routes[0].operations[0].completed_quantity,0);
+  assert.equal(order.items[0].available_quantity,stock);
+  const row=order.operation_registrations[0];
+  order=f.ok(await f.command(`/production-orders/${order.id}/operations/registrations/${row.id}/approve`,{version:order.version,operation_acceptance:f.acceptance}));
+  assert.equal(order.operation_routes[0].operations[0].completed_quantity,1);
+  assert.equal(order.completed_quantity,10);assert.equal(order.batches.length,1);
+  f.ok(await f.command('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+});
+
+test('revoking acceptance permission during pending approval leaves the registration and storage unchanged',async t=>{
+  const f=await acceptanceFixture(t);let order=await f.start(await f.create());
+  order=f.ok(await f.report(order,'cut',1));
+  const row=order.operation_registrations[0];
+  const position=f.ok(await f.command('/positions',{name:'撤销验收资格',permissions:['production']}));
+  const put=f.storage.put,count=f.objects.size;
+  f.storage.put=async(...args)=>{await put(...args);f.db.prepare("UPDATE users SET role='employee',position_id=? WHERE username='routeadmin'").run(position.id);};
+  const response=await f.command(`/production-orders/${order.id}/operations/registrations/${row.id}/approve`,{version:order.version,operation_acceptance:f.acceptance});
+  assert.equal(response.status,403);assert.match(response.data.error,/工序验收权限/);
+  assert.equal(f.objects.size,count);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,0);
+  assert.equal(f.db.prepare('SELECT status FROM production_operation_registrations WHERE id=?').get(row.id).status,'pending');
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_operation_reports').get().n,0);
 });

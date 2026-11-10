@@ -1,4 +1,5 @@
-import { useOperationAcceptance, operationAcceptanceAllowed } from './OperationAcceptance.jsx';
+import { ProductionAcceptanceRegistrations } from './ProductionAcceptanceRegistrations.jsx';
+import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { stageInputCanBeZero } from '../../shared/production-stages.js';
 import { operationAllocation } from '../../shared/operation-overflow.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -65,7 +66,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   useEffect(() => () => onActivity?.(null), [onActivity]);
   const leave = fn => { if (!action.busy && (!dirty || window.confirm(t('route.unsaved')))) { action.setError(''); fn(); } };
   const clear = () => { setQuantity(''); setNote(''); setOverrides({ items: {}, scraps: {} }); setExpanded(false); };
-  const select = row => { if(!operationAcceptanceAllowed(row.node,can))return; setSelectedId(row.id); clear(); setMessage(''); action.setError(''); setPicker(false); };
+  const select = row => { setSelectedId(row.id); clear(); setMessage(''); action.setError(''); setPicker(false); };
 
   let defaults = { items: [], scraps: [] }, defaultsError = '', allocations = [];
   const sourceFor = row => order.stage_workflow ? order.stages.flatMap(stage=>stage.items).find(item => item.path === row.path) : target.layer.items.find(item => item.product_id === row.product_id);
@@ -95,7 +96,6 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     event.preventDefault();
     action.run(async () => {
       if (!target) throw new Error(t('registration.chooseOperation'));
-      if(!operationAcceptanceAllowed(target.node,can)) return;
       if (!registerable) throw new Error(t('registration.closed'));
       if (outputLocked) throw new Error(t('production.outputRegistrationLocked'));
       if (defaultsError) { if (target.output) setExpanded(true); throw new Error(defaultsError); }
@@ -128,7 +128,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...await acceptance.enrich(`/production-orders/${order.id}${suffix}`,body,{warehouseId:data.warehouse_id}),
         }, { warehouseId: data.warehouse_id });
         clear();
-        const notice = t(drawer ? 'registration.savedDrawer' : 'registration.saved', { name: target.name, quantity: count(value), unit: target.unit });
+        const notice = result.registration_status==='pending' ? t('route.pendingSaved') : t(drawer ? 'registration.savedDrawer' : 'registration.saved', { name: target.name, quantity: count(value), unit: target.unit });
         setMessage(notice);
         await onSaved(result, notice);
       } catch (error) { if (target.output) setExpanded(true); throw error; }
@@ -245,13 +245,13 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     </form>;
   if (drawer) return <Modal presentation="drawer" className="production-registration-drawer" title={t('production.productionRegistration')}
     subtitle={`${order.number} · ${order.product_name}`} onClose={() => leave(onBack)}>
-    {form}{acceptance.dialog}
+    {form}<ProductionAcceptanceRegistrations order={order} data={data} onSaved={async(result,notice)=>{setMessage(notice);await onSaved(result,notice);}}/>{acceptance.dialog}
   </Modal>;
   return <div className="production-quick-registration">
     {acceptance.dialog}
     <PageHeading title={t('production.productionRegistration')} description={`${order.number} · ${order.product_name}`}>
       <Button icon={ArrowLeft} disabled={action.busy} onClick={() => leave(onBack)}>{t('production.backToOrderDetails')}</Button>
     </PageHeading>
-    {form}
+    {form}<ProductionAcceptanceRegistrations order={order} data={data} onSaved={async(result,notice)=>{setMessage(notice);await onSaved(result,notice);}}/>
   </div>;
 }

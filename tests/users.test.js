@@ -203,7 +203,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 53);
+  assert.equal(backup.version, 54);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -286,6 +286,8 @@ const routeRoles = new Map(Object.entries({
   'post /api/process-routes': 'bom', 'post /api/process-routes/:id': 'bom', 'post /api/process-routes/:id/status': 'bom', 'post /api/process-routes/reorder': 'bom',
   'post /api/process-routes/:id/delete': 'bom',
   'get /api/production-orders/:id/operation-workers': 'production', 'get /api/production-orders/:id/operations/reports': 'production',
+  'post /api/production-orders/:id/operations/registrations/:registrationId/approve': 'production',
+  'post /api/production-orders/:id/operations/registrations/:registrationId/cancel': 'production',
   'post /api/production-orders/:id/operations/report': 'production', 'post /api/production-orders/:id/operations/:reportId/void': 'production',
   'post /api/production-orders/:id/sync-operation-prices': 'production',
   'get /api/boms': 'bom', 'get /api/boms/:id': 'bom', 'post /api/boms': 'bom',

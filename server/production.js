@@ -1,4 +1,4 @@
-import { createOperationAcceptanceService, assertOperationAcceptancePermission } from './operation-acceptance.js';
+import { createOperationAcceptanceService, assertOperationAcceptancePermission, operationAcceptanceNode } from './operation-acceptance.js';
 import { positionAuthorization } from './positions.js';
 import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
 import { assertOutputOpen, assertPostProcessingLimits, reopenAfterRootOutputVoid } from './post-processing.js';
@@ -33,7 +33,7 @@ export const productionTables = ['production_quantity_rounding', 'production_ord
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const isId = id => Number.isSafeInteger(id) && id > 0;
 const pattern = value => `%${value.replace(/[\\%_]/g, c => `\\${c}`)}%`;
-const actor = req => req.user.name || req.user.username;
+const actor = req => req.operationRegistrar?.registered_by_name || req.user.name || req.user.username;
 const publicProduct = p => ({ id: p.id, name: p.name, barcode: p.barcode, unit: p.unit, stock: p.stock, stock_fraction: p.stock_fraction, active: p.active });
 function snapshot(db, fn) {
   if (db.isTransaction) return fn();
@@ -244,6 +244,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     order.material_documents = materialDocuments(db, id, warehouseId);
     readProductionStages(db, order);
     readProductionRoutes(db, order);
+    order.operation_registrations = db.prepare("SELECT * FROM production_operation_registrations WHERE production_id=? ORDER BY (status='pending') DESC,id DESC LIMIT 100").all(order.id).map(({body,...row})=>{const input=JSON.parse(body);return {...row,quantity:input.quantity??input.completed_quantity,note:input.note||''};});
     order.quantity_rounding = productionRounding(db, order.id);
     if (order.material_workflow) order.items = materialBalances(order, readPostMaterialUsage(db, order.id), postMaterialPlanByProduct(order.operation_routes));
     order.post_processing_material_cost_cents = sumPostMaterialCosts(order.items.map(item => ({ cost_cents: item.post_processing_consumed_cost_cents ?? 0 })));
@@ -285,68 +286,89 @@ function prepareProduction(db, req) {
 
 export function installProduction(app, db, options = {}) {
   const acceptances=createOperationAcceptanceService(db,options);
-  const route = (fn, write = false, authorize) => async (req, res) => {
-    let prepared=null;
-    try {
-      // Every production operation rechecks current access before idempotent replay.
-      const path = req.path.toLowerCase().replace(/\/+$/, '');
-      if (path.startsWith('/api/production-orders')) {
-        const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches|\/operation-workers|\/operations\/(?:reports|acceptance-template|acceptances\/\d+))?)?$/.test(path);
-        const operationReport = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/report$/.test(path);
-        const register = operationReport || req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
-        if (!hasPermission(req.user, 'production')) {
-          if (!isGroupProductionWorker(req.user) || (!read && !register)) fail('需要生产管理权限。', 403);
-          if (req.params.id) {
-            const order = db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
-            if (!order) fail('生产单不存在或不属于当前仓库。', 404);
-            assertProductionOrderAccess(req.user, order);
+  const registrationHandlers=new Map();
+  const route = (fn, write = false, authorize, registrationType) => {
+    if(registrationType) registrationHandlers.set(registrationType,fn);
+    return async (req, res) => {
+      let prepared=null;
+      try {
+        // Every production operation rechecks current access before idempotent replay.
+        const path = req.path.toLowerCase().replace(/\/+$/, '');
+        if (path.startsWith('/api/production-orders')) {
+          const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches|\/operation-workers|\/operations\/(?:reports|acceptance-template|acceptances\/\d+))?)?$/.test(path);
+          const operationReport = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/report$/.test(path);
+          const acceptanceAction = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/registrations\/\d+\/(?:approve|cancel)$/.test(path);
+          const register = operationReport || req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
+          if (!hasPermission(req.user, 'production')) {
+            if (!isGroupProductionWorker(req.user) || (!read && !register && !acceptanceAction)) fail('需要生产管理权限。', 403);
+            if (req.params.id) {
+              const order = db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
+              if (!order) fail('生产单不存在或不属于当前仓库。', 404);
+              assertProductionOrderAccess(req.user, order);
+            }
+            if (register && !operationReport && req.body.finish_order !== false) fail('生产登记必须保留生产单，不能结束生产。', 403);
           }
-          if (register && !operationReport && req.body.finish_order !== false) fail('生产登记必须保留生产单，不能结束生产。', 403);
         }
-      }
-      if (write && req.params.id && path.startsWith('/api/production-orders/')) {
-        const stored = db.prepare('SELECT stage_workflow,warehouse_id FROM production_orders WHERE id=?').get(Number(req.params.id));
-        if (stored?.warehouse_id === req.warehouse.id && stored.stage_workflow && req.body.stage_schema_version !== 1) fail('此生产单使用分层生产，请刷新页面后操作。', 409);
-      }
-      if (authorize) authorize(req);
-      const registration = write && /\/(?:operations\/report|(?:stages\/)?complete)$/.test(path);
-      const supplied = value => value !== undefined && (!Array.isArray(value) || value.length !== 0);
-      if (write && path.startsWith('/api/production-orders') && supplied(req.body.additional_operations)) fail('附加工序功能已移除。');
-      if (registration && supplied(req.body.material_items)) fail('工序报工不支持独立材料耗用。');
-      if(registration) {
-        assertOperationAcceptancePermission(db,req);
-        const previous=operationRequest(db,req);
-        if(!previous.previous) {
-          const order=db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id);
-          if(!order) fail('生产单不存在或不属于当前仓库。',404);
-          assertProductionOrderAccess(req.user,order);
-          if(order.version!==req.body.version) fail('生产单已变化，请刷新后核对。',409);
-          prepared=await acceptances.prepare(req);
-          req.operationAcceptance=prepared;
-          // Storage I/O must happen outside the SQLite transaction. Recheck the
-          // session and assignment after it, before the normal transaction checks.
-          if(options.sessionUser) {
-            const fresh=options.sessionUser(req);
-            if(!fresh) fail('登录已失效，请重新登录。',401);
-            req.user=fresh;
+        if (write && req.params.id && path.startsWith('/api/production-orders/')) {
+          const stored = db.prepare('SELECT stage_workflow,warehouse_id FROM production_orders WHERE id=?').get(Number(req.params.id));
+          if (stored?.warehouse_id === req.warehouse.id && stored.stage_workflow && req.body.stage_schema_version !== 1) fail('此生产单使用分层生产，请刷新页面后操作。', 409);
+        }
+        if (authorize) authorize(req);
+        const registration = write && /\/(?:operations\/report|(?:stages\/)?complete)$/.test(path);
+        const supplied = value => value !== undefined && (!Array.isArray(value) || value.length !== 0);
+        if (write && path.startsWith('/api/production-orders') && supplied(req.body.additional_operations)) fail('附加工序功能已移除。');
+        if (registration && supplied(req.body.material_items)) fail('工序报工不支持独立材料耗用。');
+        const deferred = registration && operationAcceptanceNode(db,req)?.acceptance_template_id && req.body.operation_acceptance === undefined;
+        if(registration) {
+          if(!deferred) assertOperationAcceptancePermission(db,req);
+          const previous=operationRequest(db,req);
+          if(!previous.previous) {
+            const order=db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id);
+            if(!order) fail('生产单不存在或不属于当前仓库。',404);
+            assertProductionOrderAccess(req.user,order);
+            if(order.version!==req.body.version) fail('生产单已变化，请刷新后核对。',409);
+            prepared=deferred ? null : await acceptances.prepare(req);
+            req.operationAcceptance=prepared;
+            // Storage I/O must happen outside the SQLite transaction. Recheck the
+            // session and assignment after it, before the normal transaction checks.
+            if(options.sessionUser) {
+              const fresh=options.sessionUser(req);
+              if(!fresh) fail('登录已失效，请重新登录。',401);
+              req.user=fresh;
+            }
+            assertProductionOrderAccess(req.user,db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id)||{});
+            if(!deferred) assertOperationAcceptancePermission(db,req);
+            if(!hasPermission(req.user,'production') && !path.endsWith('/operations/report') && req.body.finish_order!==false) fail('生产登记必须保留生产单，不能结束生产。',403);
+            if(!hasPermission(req.user,'production') && req.body.worker_id != null && req.body.worker_id!==req.user.id) fail('仅可登记本人作业。',403);
           }
-          assertProductionOrderAccess(req.user,db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id)||{});
-          assertOperationAcceptancePermission(db,req);
-          if(!hasPermission(req.user,'production') && !path.endsWith('/operations/report') && req.body.finish_order!==false) fail('生产登记必须保留生产单，不能结束生产。',403);
-          if(!hasPermission(req.user,'production') && req.body.worker_id != null && req.body.worker_id!==req.user.id) fail('仅可登记本人作业。',403);
         }
+        if (/\/operations\/registrations\/\d+\/approve$/.test(path)) {
+          if(!hasPermission(req.user,'operation_accept')) fail('需要工序验收权限。',403);
+          if(!operationRequest(db,req).previous) {
+            const order=current(req); version(req,order);
+            const row=registrationRow(req);
+            if(row.status!=='pending') fail('此登记已经处理，请刷新后核对。',409);
+            const inspection={...req,body:{...JSON.parse(row.body),operation_acceptance:req.body.operation_acceptance}};
+            prepared=await acceptances.prepare(inspection);
+            req.operationAcceptance=prepared;
+            if(options.sessionUser) {const fresh=options.sessionUser(req);if(!fresh) fail('登录已失效，请重新登录。',401);req.user=fresh;}
+            assertProductionOrderAccess(req.user,db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id)||{});
+            if(!hasPermission(req.user,'operation_accept')) fail('需要工序验收权限。',403);
+            if(!hasPermission(req.user,'production')&&row.endpoint!=='operations/report'&&JSON.parse(row.body).finish_order!==false) fail('生产登记必须保留生产单，不能结束生产。',403);
+          }
+        }
+        if (write) db.exec('BEGIN IMMEDIATE');
+        const request = write ? operationRequest(db, req) : null;
+        const result = request?.previous || (deferred ? queueRegistration(req,fn,path) : write ? fn(req) : await fn(req));
+        if (write) { if (!request.previous) saveOperationRequest(db, request, result); db.exec('COMMIT'); }
+        res.json(isGroupProductionWorker(req.user) ? productionWorkerProjection(result) : hasPermission(req.user, 'finance') ? result : productionWithoutCosts(result));
+      } catch (error) {
+        if (write && db.isTransaction) db.exec('ROLLBACK');
+        res.status(error.status || 400).json({ error: error.message });
+      } finally {
+        if(prepared && (!prepared.id || !db.prepare('SELECT 1 FROM quality_acceptances WHERE id=? AND file_id IN (SELECT id FROM quality_template_files WHERE object_key=?)').get(prepared.id,prepared.key))) await prepared.cleanup();
       }
-      if (write) db.exec('BEGIN IMMEDIATE');
-      const request = write ? operationRequest(db, req) : null;
-      const result = request?.previous || (write ? fn(req) : await fn(req));
-      if (write) { if (!request.previous) saveOperationRequest(db, request, result); db.exec('COMMIT'); }
-      res.json(isGroupProductionWorker(req.user) ? productionWorkerProjection(result) : hasPermission(req.user, 'finance') ? result : productionWithoutCosts(result));
-    } catch (error) {
-      if (write && db.isTransaction) db.exec('ROLLBACK');
-      res.status(error.status || 400).json({ error: error.message });
-    } finally {
-      if(prepared && (!prepared.id || !db.prepare('SELECT 1 FROM quality_acceptances WHERE id=? AND file_id IN (SELECT id FROM quality_template_files WHERE object_key=?)').get(prepared.id,prepared.key))) await prepared.cleanup();
-    }
+    };
   };
   const productionGroup = id => {
     if (id === undefined || id === null) return null;
@@ -399,6 +421,46 @@ export function installProduction(app, db, options = {}) {
       if (active && !row.product.active) fail(`${row.name}已停用，请先核对物料。`);
     }
   };
+  const registrationRow=req=>{
+    current(req);
+    const row=db.prepare('SELECT * FROM production_operation_registrations WHERE id=? AND production_id=?').get(Number(req.params.registrationId),Number(req.params.id));
+    if(!row) fail('登记记录不存在。',404);
+    return row;
+  };
+  const queueRegistration=(req,fn,path)=>{
+    if(db.prepare("SELECT COUNT(*) n FROM production_operation_registrations WHERE production_id=? AND status='pending'").get(Number(req.params.id)).n>=100) fail('每张生产单最多保留 100 条验收中的登记，请先完成验收。');
+    // Run the existing business validation in a savepoint, including exact material
+    // and allocation checks. No production, stock or payroll writes survive it.
+    db.exec('SAVEPOINT validate_registration');
+    try {fn({...req,body:structuredClone(req.body),validatingRegistration:true});}
+    finally {db.exec('ROLLBACK TO validate_registration; RELEASE validate_registration');}
+    const worker=db.prepare('SELECT id,name,username FROM users WHERE id=?').get(req.body.worker_id??req.user.id);
+    const body={...req.body,worker_id:worker.id};
+    const group=productionRegistrationGroup(req.user,current(req));
+    db.prepare(`INSERT INTO production_operation_registrations(production_id,path,node_id,endpoint,body,registered_by,registered_by_name,worker_id,worker_name,created_at,production_group_id,production_group_name)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(Number(req.params.id),body.path??'',body.operation_node_id,path.split('/').slice(4).join('/'),JSON.stringify(body),req.user.id,actor(req),worker.id,worker.name||worker.username,new Date().toISOString(),group.id,group.name);
+    db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(),actor(req),Number(req.params.id));
+    return {...current(req),registration_status:'pending'};
+  };
+  app.post('/api/production-orders/:id/operations/registrations/:registrationId/approve',route(req=>{
+    const order=current(req);version(req,order);
+    const row=registrationRow(req);
+    if(row.status!=='pending'||!req.operationAcceptance) fail('此登记已经处理，请刷新后核对。',409);
+    const fn=registrationHandlers.get(row.endpoint);
+    if(!fn) fail('登记类型无效。');
+    db.prepare("UPDATE production_operation_registrations SET status='approved',resolved_by_name=?,resolved_at=? WHERE id=?").run(actor(req),new Date().toISOString(),row.id);
+    fn({...req,operationRegistrar:row,body:{...JSON.parse(row.body),version:order.version}});
+    db.prepare('UPDATE production_operation_registrations SET acceptance_id=? WHERE id=?').run(req.operationAcceptance.id,row.id);
+    return current(req);
+  },true));
+  app.post('/api/production-orders/:id/operations/registrations/:registrationId/cancel',route(req=>{
+    const order=current(req);version(req,order);const row=registrationRow(req);
+    if(row.registered_by!==req.user.id&&!hasPermission(req.user,'production')&&!hasPermission(req.user,'operation_accept')) fail('仅登记人或有权限的人员可以取消登记。',403);
+    if(row.status!=='pending') fail('仅验收中的登记可以取消。',409);
+    db.prepare("UPDATE production_operation_registrations SET status='void',resolved_by_name=?,resolved_at=? WHERE id=?").run(actor(req),new Date().toISOString(),row.id);
+    db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(),actor(req),order.id);
+    return current(req);
+  },true,req=>{const row=registrationRow(req);if(row.registered_by!==req.user.id&&!hasPermission(req.user,'production')&&!hasPermission(req.user,'operation_accept')) fail('无权取消此登记。',403);}));
   app.get('/api/production-orders/:id/operations/acceptances/:acceptanceId', route(req=>{current(req);return acceptances.detail(req);}));
   app.get('/api/production-orders/:id/operations/acceptance-template', route(req => { current(req); return acceptances.template(req); }));
   installProductionOperations(app, db, { route, current, version });
@@ -532,8 +594,8 @@ export function installProduction(app, db, options = {}) {
     const batchId = Number(db.prepare(`INSERT INTO production_batches(production_id,batch_number,completed_quantity,total_cost_cents,note,created_by_name,created_at,receipt_required)
       VALUES (?,?,?,0,?,?,?,1)`).run(order.id, batchNumber, exactNumber(req.body.completed_quantity), (req.body.note ?? '').trim(), owner, at).lastInsertRowid);
     saveExactQuantity(db, 'production_batches', batchId, 'completed_quantity', req.body.completed_quantity);
-    const registrationGroup = productionRegistrationGroup(req.user, order);
-    db.prepare('UPDATE production_batches SET created_by=?,production_group_id=?,production_group_name=? WHERE id=?').run(req.user.id, registrationGroup.id, registrationGroup.name, batchId);
+    const registrationGroup = req.operationRegistrar ? {id:req.operationRegistrar.production_group_id,name:req.operationRegistrar.production_group_name} : productionRegistrationGroup(req.user, order);
+    db.prepare('UPDATE production_batches SET created_by=?,production_group_id=?,production_group_name=? WHERE id=?').run(req.operationRegistrar ? req.operationRegistrar.registered_by : req.user.id, registrationGroup.id, registrationGroup.name, batchId);
     const actuals = new Map(req.body.items.map(item => [item.product_id, item]));
     let total = 0;
     for (const item of order.items) {
@@ -570,7 +632,7 @@ export function installProduction(app, db, options = {}) {
     }
     notifyStockChanges(db, req, before, { production_id: order.id, number: order.number, batch_id: batchId });
     return current(req);
-  }, true));
+  }, true, undefined, 'complete'));
   app.post('/api/production-orders/:id/output-completion', route(req => {
     const order = current(req); checkOpen(req, order);
     if (typeof req.body.completed !== 'boolean') fail('请选择确认或撤销成品生产完成。');
@@ -627,6 +689,7 @@ export function installProduction(app, db, options = {}) {
       if (order.stage_workflow && order.stages.some(s=>s.completed_quantity!==0)) fail('请先自上而下作废所有有效层级批次。',409);
       if (order.batch_count || order.items.some(item => item.available_quantity !== 0)) fail('请先作废所有有效批次，并通过仓库退回全部剩余材料，再作废生产单。', 409);
     }
+    if (db.prepare("SELECT 1 FROM production_operation_registrations WHERE production_id=? AND status='pending' LIMIT 1").get(order.id)) fail('请先完成验收或取消验收中的登记。',409);
     if (db.prepare("SELECT 1 FROM production_operation_reports WHERE production_id=? AND status='active' LIMIT 1").get(order.id)) fail('请先作废全部有效工序记录和产出批次。', 409);
     const why = reason(req), before = order.completed_at ? stockBefore(order) : [];
     const at = new Date().toISOString(), owner = actor(req);
@@ -655,6 +718,7 @@ export function installProduction(app, db, options = {}) {
   app.post('/api/production-orders/:id/delete', route(req => {
     const order = current(req); version(req, order);
     if (order.status !== 'void') fail('仅已作废的生产单可以删除，请先作废。', 409);
+    if(db.prepare('SELECT 1 FROM production_operation_registrations WHERE production_id=? LIMIT 1').get(order.id)) fail('此生产单已有关联验收登记，不能删除，请保留记录。',409);
     if(db.prepare('SELECT 1 FROM production_operation_reports WHERE production_id=? AND acceptance_id IS NOT NULL LIMIT 1').get(order.id)) fail('此生产单已关联工序验收单，不能删除，请保留作废记录。',409);
     deleteProductionOperations(db, order.id);
     deleteProductionStages(db, order.id);

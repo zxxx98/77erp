@@ -11,16 +11,7 @@ import { WorkbookResults } from '../pages/quality-shared.jsx';
 import { needsQualityReview } from '../../shared/quality-checks.js';
 import '../quality.css';
 
-export function operationAcceptanceAllowed(node,can) {
-  if(node?.acceptance_template_id && !can('operation_accept')) {
-    window.alert(t('route.acceptancePermission'));
-    return false;
-  }
-  return true;
-}
-
-// All registration forms use the same entry and submit the same server-validated
-// cell values. Nothing is persisted until the enclosing production request commits.
+// Inspectors use the frozen template to release an existing pending registration.
 export function useOperationAcceptance() {
   useLocale();
   const { can }=usePermissions();
@@ -29,8 +20,8 @@ export function useOperationAcceptance() {
   useEffect(()=>()=>{pending.current?.reject(new Error(t('route.acceptanceCancelled')));pending.current=null;},[]);
   const close=()=>{if(busy)return;pending.current?.reject(new Error(t('route.acceptanceCancelled')));pending.current=null;setDraft(null);};
   const enrich=async(endpoint,body,options={})=>{
-    if(!body.operation_node_id || !/\/(?:operations\/report|(?:stages\/)?complete)$/.test(endpoint))return body;
-    const orderEndpoint=endpoint.replace(/\/(?:operations\/report|(?:stages\/)?complete)$/,'');
+    if(!body.operation_node_id || !/\/operations\/registrations\/\d+\/approve$/.test(endpoint))return body;
+    const orderEndpoint=endpoint.replace(/\/operations\/registrations\/\d+\/approve$/,'');
     const query=new URLSearchParams({path:body.path??'',node_id:body.operation_node_id});
     const data=await api(`${orderEndpoint}/operations/acceptance-template?${query}`,{warehouseId:options.warehouseId});
     if(!data.required)return body;

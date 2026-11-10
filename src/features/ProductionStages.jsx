@@ -104,7 +104,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       if (!window.confirm(pt("production.register2", { v0: stage.name, v1: count(quantity), v2: stage.unit, v3: stage.path ? pt("production.thisSemiFinishedBatchStaysWithinTheOrder") : pt("production.thisProductBatchAwaitsWarehouseReceiptApproval"), v4: finish ? pt("production.alsoEndTheProductionOrder") : '' }))) return;
       const result = await send('/stages/complete', { path: stage.path, ...(form.operation_node_id ? { operation_node_id: form.operation_node_id, worker_id: form.worker_id } : {}), completed_quantity: quantity, items, scraps, note: form.note, finish_order: finish });
       setForm(null); setBaseline('');
-      await onSaved(result, stage.path ? pt("production.semiFinishedBatchRegisteredForParentUseWarehouse") : pt("production.productBatchRegisteredAwaitingWarehouseApproval", { v0: finish ? pt("production.productionEnded") : '' }));
+      await onSaved(result, result.registration_status==='pending' ? pt('route.pendingSaved') : stage.path ? pt("production.semiFinishedBatchRegisteredForParentUseWarehouse") : pt("production.productBatchRegisteredAwaitingWarehouseApproval", { v0: finish ? pt("production.productionEnded") : '' }));
     });
   };
   let standardError = '';

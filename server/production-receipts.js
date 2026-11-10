@@ -63,7 +63,7 @@ export function createProductionReceipt(db, req, order, batchId) {
   const batch = db.prepare('SELECT * FROM production_batches WHERE id=?').get(batchId), at = batch.created_at;
   const number = `SCRK${at.slice(0,10).replaceAll('-','')}-${randomUUID().replaceAll('-','').slice(0,12)}`;
   const id = Number(db.prepare(`INSERT INTO production_receipts(number,warehouse_id,production_id,production_number,batch_id,batch_number,product_name,unit,quantity,total_cost_cents,created_by_name,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, batchId, batch.batch_number, order.product_name, order.unit, batch.completed_quantity, batch.total_cost_cents, actor(req), at, at).lastInsertRowid);
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, batchId, batch.batch_number, order.product_name, order.unit, batch.completed_quantity, batch.total_cost_cents, batch.created_by_name, at, at).lastInsertRowid);
   saveExactQuantity(db, 'production_receipts', id, 'quantity', exactQuantity(batch, 'completed_quantity'));
   const rows = [{product_id: order.product_id, name: order.product_name, barcode: order.barcode, unit: order.unit, unit_round_up: order.unit_round_up, ...quantityFields(exactQuantity(batch, 'completed_quantity')), cost_cents: batch.total_cost_cents, kind:'product'}];
   for (const row of db.prepare("SELECT * FROM production_batch_scraps WHERE batch_id=? AND actual_quantity>0 AND disposition='stock'").all(batchId)) {
