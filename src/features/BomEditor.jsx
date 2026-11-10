@@ -261,7 +261,7 @@ export function BomEditor({
             return;
           }
           setChangingProduct(false);
-          update({ product, product_id: product.id, base_unit: product.unit, name: editor.name || `${product.name}BOM`.slice(0, 100) });
+          update({ product, product_id: product.id, base_unit: product.unit, ...(!editor.route_override_id ? { route_price_table_id: null } : {}), name: editor.name || `${product.name}BOM`.slice(0, 100) });
         }} />}
         <label className="bom-note">
           {pt("production.note")}
@@ -282,7 +282,9 @@ export function BomEditor({
           inherit
           inheritedValue={editor.product?.default_route_id}
           value={editor.route_override_id}
-          onChange={value => update({ route_override_id: value })}
+          onChange={value => update({ route_override_id: value, route_price_table_id: null })}
+          priceTableId={editor.route_price_table_id}
+          onPriceTableChange={value => update({ route_price_table_id: value })}
           disabled={action.busy}
         />
         {(dirty || !editor.id) && <p className="bom-hint">{pt('overview.saveFirst')}</p>}

@@ -8,7 +8,7 @@ import { validQuantity, addQuantity } from '../shared/quantity.js';
 import { exactQuantity, exactAdd, exactCompare, exactNumber, parseProductionQuantity as parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
 import { saveExactQuantity } from './exact-quantity.js';
 import { reopenProductionQuantities } from './production-rounding.js';
-import { validateProcessGraph, processProgress, productionRouteProgress } from '../shared/process-routes.js';
+import { validateProcessGraph, processProgress, productionRouteProgress, processGraphWithPrices, processPriceTables } from '../shared/process-routes.js';
 import { validateOperationPrice } from '../shared/payroll.js';
 import { postProcessingLimit, postProcessingUnit, productionOutputCompleted } from '../shared/post-processing.js';
 import { productionTypes } from '../shared/product-production-type.js';
@@ -83,6 +83,8 @@ export function migrateProcessRoutes(db) {
   for (const [table, column] of [['products', 'default_route_id'], ['boms', 'route_override_id']])
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} INTEGER REFERENCES process_routes(id)`);
+  if (!db.prepare('PRAGMA table_info(boms)').all().some(c => c.name === 'route_price_table_id'))
+    db.exec('ALTER TABLE boms ADD COLUMN route_price_table_id TEXT');
   migrateSortOrder(db, 'process_routes');
   const advance = `UPDATE app_metadata SET value=MAX(CAST(value AS INTEGER),(SELECT COALESCE(MAX(version),0) FROM process_routes))+1 WHERE key='process_route_version';
     UPDATE process_routes SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='process_route_version') WHERE id=NEW.id;`;
@@ -102,12 +104,20 @@ export function routeBinding(db, warehouseId, value, previous = null) {
   return value;
 }
 
+export function routePriceBinding(db, warehouseId, routeId, tableId) {
+  if (tableId == null) return null;
+  const route = routeId == null ? null : db.prepare('SELECT graph FROM process_routes WHERE id=? AND warehouse_id=?').get(routeId, warehouseId);
+  if (typeof tableId !== 'string' || !route) fail('请选择有效工艺路线及单价表。');
+  processGraphWithPrices(parseGraph(route.graph), tableId);
+  return tableId === 'default' ? null : tableId;
+}
+
 export function clearProcessRoutes(db, warehouseId) {
   if (warehouseId === undefined) {
-    db.exec('UPDATE products SET default_route_id=NULL; UPDATE boms SET route_override_id=NULL; DELETE FROM process_routes;');
+    db.exec('UPDATE products SET default_route_id=NULL; UPDATE boms SET route_override_id=NULL,route_price_table_id=NULL; DELETE FROM process_routes;');
   } else {
     db.prepare('UPDATE products SET default_route_id=NULL WHERE warehouse_id=?').run(warehouseId);
-    db.prepare('UPDATE boms SET route_override_id=NULL WHERE warehouse_id=?').run(warehouseId);
+    db.prepare('UPDATE boms SET route_override_id=NULL,route_price_table_id=NULL WHERE warehouse_id=?').run(warehouseId);
     db.prepare('DELETE FROM process_routes WHERE warehouse_id=?').run(warehouseId);
   }
 }
@@ -184,7 +194,16 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
         db.prepare('SELECT 1 FROM production_routes WHERE route_id=? LIMIT 1').get(old.id)))
       fail('工艺已被引用，不能变更工艺类型。', 409);
     validateProcessGraph(body.graph);
-    const { product_coefficient, ...graph } = body.graph;
+    const { product_coefficient, price_table_id, price_table_name, ...graph } = body.graph;
+    // Older clients preserve additional tables when saving unchanged topology.
+    if (graph.price_tables === undefined && old?.graph.price_tables) graph.price_tables = old.graph.price_tables;
+    if (kind === 'post_processing' && graph.price_tables?.length) fail('多单价表仅用于生产工艺。');
+    validateProcessGraph(graph);
+    if (old) {
+      const tableIds = new Set(processPriceTables(graph).map(table => table.id));
+      const bindings = db.prepare('SELECT b.route_price_table_id FROM boms b JOIN products p ON p.id=b.product_id WHERE COALESCE(b.route_override_id,p.default_route_id)=?').all(old.id);
+      if (bindings.some(row => row.route_price_table_id != null && !tableIds.has(row.route_price_table_id))) fail('单价表已被BOM引用，请先更换BOM关联的单价表。', 409);
+    }
     body.graph = {...graph,nodes:graph.nodes.map(({acceptance_revision_id,acceptance_template_name,product_coefficient,materials,...node})=>{
       if(node.acceptance_template_id) {
         const template=db.prepare('SELECT enabled,published_revision FROM quality_templates WHERE id=? AND warehouse_id=?').get(node.acceptance_template_id,req.warehouse.id);
@@ -261,12 +280,12 @@ export function captureProductionRoutes(db, order) {
   const layers = order.stage_workflow ? db.prepare('SELECT path,bom_id,product_id FROM production_stages WHERE production_id=?').all(order.id)
     : [{ path: '', bom_id: order.bom_id, product_id: order.product_id }];
   for (const layer of layers) {
-    const binding = db.prepare('SELECT COALESCE(b.route_override_id,p.default_route_id) route_id FROM boms b JOIN products p ON p.id=b.product_id WHERE b.id=?').get(layer.bom_id);
+    const binding = db.prepare('SELECT COALESCE(b.route_override_id,p.default_route_id) route_id,b.route_price_table_id FROM boms b JOIN products p ON p.id=b.product_id WHERE b.id=?').get(layer.bom_id);
     if (!binding?.route_id) continue;
     const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(binding.route_id, order.warehouse_id);
     if (!route?.enabled) fail('生产物料关联的工艺路线已停用，请先重新配置。', 409);
     if (route.route_kind !== 'production') fail('物料和BOM只能绑定生产工艺。');
-    const graph=parseGraph(route.graph);
+    const graph=processGraphWithPrices(parseGraph(route.graph), binding.route_price_table_id);
     captureAcceptanceVersions(db, graph, order.warehouse_id);
     db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph) VALUES (?,?,?,?,?,?)').run(order.id, layer.path, route.id, route.version, route.name, JSON.stringify(graph));
   }
@@ -307,8 +326,10 @@ export function syncProductionOperationPrices(db, req, order) {
   for (const pr of productionRoutes) {
     const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(pr.route_id, req.warehouse.id);
     if (!route) continue;
-    const sourceGraph = parseGraph(route.graph);
     const snapshotGraph = parseGraph(pr.graph);
+    const sourceGraph = processGraphWithPrices(parseGraph(route.graph), snapshotGraph.price_table_id);
+    const tableRenamed = snapshotGraph.price_table_id && snapshotGraph.price_table_name !== sourceGraph.price_table_name;
+    if (snapshotGraph.price_table_id) snapshotGraph.price_table_name = sourceGraph.price_table_name;
     let changed = false;
     for (const node of snapshotGraph.nodes || []) {
       const sourceNode = (sourceGraph.nodes || []).find(n => n.id === node.id)
@@ -337,7 +358,7 @@ export function syncProductionOperationPrices(db, req, order) {
         updatedCount++;
       }
     }
-    if (changed || route.name !== pr.route_name) {
+    if (changed || tableRenamed || route.name !== pr.route_name) {
       db.prepare('UPDATE production_routes SET route_name=?, graph=? WHERE id=?')
         .run(route.name, JSON.stringify(snapshotGraph), pr.id);
     }
@@ -501,11 +522,18 @@ export function validateProcessRouteBackup(data) {
         !text(row.created_by_name, 100, true) || !text(row.updated_by_name, 100, true) || !Number.isFinite(Date.parse(row.created_at)) || !Number.isFinite(Date.parse(row.updated_at)) || names.has(`${row.warehouse_id}:${row.name}`)) fail('备份工艺路线无效。');
     names.add(`${row.warehouse_id}:${row.name}`);
     const graph = parseGraph(row.graph);
+    if (row.route_kind === 'post_processing' && graph.price_tables?.length) fail('多单价表仅用于生产工艺。');
     checkTemplates(graph,row.warehouse_id);
     validatePostMaterialGraph(graph, row.route_kind === 'post_processing', products, row.warehouse_id);
   }
   for (const [table, column] of [['products','default_route_id'], ['boms','route_override_id']]) for (const row of data[table]) {
     if (!association(row[column]) || row[column] !== null && (routes.get(row[column])?.warehouse_id !== row.warehouse_id || routes.get(row[column]).route_kind !== 'production')) fail('备份工艺路线绑定跨仓或无效。');
+  }
+  for (const bom of data.boms) {
+    if (bom.route_price_table_id === null) continue;
+    const routeId = bom.route_override_id ?? products.get(bom.product_id)?.default_route_id;
+    if (typeof bom.route_price_table_id !== 'string' || !routes.has(routeId)) fail('请选择有效工艺路线及单价表。');
+    processGraphWithPrices(parseGraph(routes.get(routeId).graph), bom.route_price_table_id);
   }
   const keys = new Set(), postBindings = new Set(), postOrders = new Set();
   const postPlans = new Map();

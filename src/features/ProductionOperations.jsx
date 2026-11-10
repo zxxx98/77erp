@@ -91,6 +91,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
         <div className="process-progress-intro">
           <div className="process-progress-badges">
             <strong>{route.route_name}</strong>
+            {!postProcessing && <span className="process-meta-pill">{t('route.priceTable')} · {route.graph.price_table_name || t('route.defaultPriceTable')}</span>}
             <span className="process-meta-pill">{t('route.version', { version: route.route_version })}</span>
             <span className="process-meta-pill">{t('route.operations')} {route.operations.length}</span>
           </div>

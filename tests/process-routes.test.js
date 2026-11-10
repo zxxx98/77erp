@@ -12,6 +12,10 @@ import { validateProcessGraph, arrangeProcessGraph } from '../shared/process-rou
 const node = (id, name = id) => ({ id, name, note: '', x: 24, y: 24 });
 const serial = { nodes: [node('cut','下料'),node('weld','焊接'),node('out','检验')], edges: [{from:'cut',to:'weld'},{from:'weld',to:'out'}] };
 const parallel = { nodes: [node('cut'),node('part'),node('out')], edges: [{from:'cut',to:'out'},{from:'part',to:'out'}] };
+const modelPrices = { ...serial,
+  nodes: serial.nodes.map(n => ({ ...n, multiplier: 2, unit_price: 1, currency: 'CNY' })),
+  price_tables: [{ id: 'model-b', name: 'B型号', prices: { cut: { unit_price: 3, currency: 'USD' }, out: { unit_price: 0, currency: 'USD' } } }],
+};
 async function fixture(t, { multi = false, graph = serial, routed = true, repeated = false, qualityStorage } = {}) {
   const {app,db}=createApp(':memory:', {qualityStorage}); const server=app.listen(0,'127.0.0.1'); await new Promise(resolve=>server.once('listening',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();});
@@ -52,6 +56,107 @@ test('route graph rejects loops, disconnected outputs and malformed nodes and ar
   assert.throws(()=>validateProcessGraph({...serial,nodes:[...serial.nodes,node('cut')]}),/编号/);
   assert.throws(()=>validateProcessGraph({...serial,edges:[{from:'none',to:'cut'}]}),/不存在/);
   assert.equal(new Set(arrangeProcessGraph(parallel).nodes.map(n=>`${n.x},${n.y}`)).size,3);
+});
+
+test('BOM-selected model prices drive wages and snapshots; syncing follows the original table', async t => {
+  const f = await fixture(t, { graph: modelPrices });
+  let defaultOrder = await f.start(await f.create());
+  const saveBom = async tableId => Object.assign(f.root, f.ok(await f.command(`/boms/${f.root.id}`, { ...f.root, route_price_table_id: tableId })));
+  await saveBom('model-b');
+  let modelOrder = await f.start(await f.create());
+  const selected = modelOrder.operation_routes[0].graph;
+  assert.equal(selected.price_table_id, 'model-b');
+  assert.equal(selected.price_table_name, 'B型号');
+  assert.equal(selected.price_tables, undefined);
+  assert.equal(selected.nodes.find(n => n.id === 'weld').unit_price, undefined);
+  assert.equal(selected.nodes.find(n => n.id === 'out').unit_price, 0);
+  assert.equal(defaultOrder.operation_routes[0].graph.nodes[0].unit_price, 1);
+  const overview = f.ok(await f.request(`/boms/${f.root.id}/process-overview`));
+  assert.equal(overview.layers[0].route.graph.price_table_id, 'model-b');
+  defaultOrder = f.ok(await f.report(defaultOrder, 'cut', 2));
+  modelOrder = f.ok(await f.report(modelOrder, 'cut', 2));
+  const payroll = async order => f.ok(await f.request(`/payroll/production-order?production_id=${order.id}`));
+  assert.deepEqual((await payroll(defaultOrder)).currencies, [{ currency: 'CNY', amount_cents: 400 }]);
+  assert.deepEqual((await payroll(modelOrder)).currencies, [{ currency: 'USD', amount_cents: 1200 }]);
+  const changedGraph = structuredClone(modelPrices);
+  changedGraph.nodes[0].unit_price = 50;
+  changedGraph.price_tables[0].prices.cut.unit_price = 4;
+  changedGraph.price_tables[0].name = 'B型号新价';
+  f.ok(await f.command(`/process-routes/${f.route.id}`, { ...f.route, graph: changedGraph }));
+  await saveBom(null);
+  assert.deepEqual((await payroll(modelOrder)).currencies, [{ currency: 'USD', amount_cents: 1200 }]);
+  modelOrder = f.ok(await f.command(`/production-orders/${modelOrder.id}/sync-operation-prices`, { version: modelOrder.version }));
+  assert.equal(modelOrder.operation_routes[0].graph.price_table_name, 'B型号新价');
+  assert.deepEqual((await payroll(modelOrder)).currencies, [{ currency: 'USD', amount_cents: 1600 }]);
+  assert.deepEqual((await payroll(defaultOrder)).currencies, [{ currency: 'CNY', amount_cents: 400 }]);
+  const backup = f.ok(await f.request('/backup'));
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal((await f.get(modelOrder.id)).operation_routes[0].graph.price_table_id, 'model-b');
+  assert.deepEqual((await payroll(modelOrder)).currencies, [{ currency: 'USD', amount_cents: 1600 }]);
+});
+
+test('price table bindings validate routes, preserve older clients, and protect referenced tables', async t => {
+  const f = await fixture(t, { graph: modelPrices, multi: true });
+  const before = f.ok(await f.command('/production-orders/prepare', { bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 10 }));
+  const child = f.ok(await f.command(`/boms/${f.child.id}`, { ...f.child, route_price_table_id: 'model-b' }));
+  assert.equal((await f.command('/production-orders', { bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 10, note: '', structure_token: before.structure_token })).status, 409);
+  const order = await f.create();
+  assert.equal(order.operation_routes.find(r => r.path === '1').graph.nodes[0].unit_price, 3);
+  assert.equal(order.operation_routes.find(r => r.path === '').graph.nodes[0].unit_price, 1);
+  const preserved = f.ok(await f.command(`/boms/${child.id}`, { ...child, route_price_table_id: undefined }));
+  assert.equal(preserved.route_price_table_id, 'model-b');
+  for (const value of ['missing', 3, '', {}, []])
+    assert.equal((await f.command(`/boms/${child.id}`, { ...preserved, route_price_table_id: value })).status, 400);
+  const other = f.ok(await f.command('/process-routes', { name: '其他工艺', note: '', enabled: 1, graph: serial }));
+  assert.equal((await f.command(`/boms/${child.id}`, { ...preserved, route_override_id: other.id, route_price_table_id: 'model-b' })).status, 400);
+  const product = f.db.prepare('SELECT * FROM products WHERE id=?').get(f.half);
+  const blocked = await f.request(`/products/${f.half}`, { ...product, customer_part_numbers: [], default_route_id: other.id }, { method: 'PUT' });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.equal(f.db.prepare('SELECT default_route_id FROM products WHERE id=?').get(f.half).default_route_id, f.route.id);
+  const remove = await f.command(`/process-routes/${f.route.id}`, { ...f.route, graph: { ...modelPrices, price_tables: [] } });
+  assert.equal(remove.status, 409);
+  assert.match(remove.data.error, /BOM引用/);
+  const olderGraph = structuredClone(modelPrices); delete olderGraph.price_tables;
+  const saved = f.ok(await f.command(`/process-routes/${f.route.id}`, { ...f.route, graph: olderGraph }));
+  assert.deepEqual(saved.graph.price_tables, modelPrices.price_tables);
+  const backup = f.ok(await f.request('/backup'));
+  assert.equal(backup.data.boms.find(b => b.id === child.id).route_price_table_id, 'model-b');
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal(f.ok(await f.request(`/boms/${child.id}`)).route_price_table_id, 'model-b');
+  for (const mutate of [
+    b => b.data.boms.find(row => row.id === child.id).route_price_table_id = 'missing',
+    b => { const route = b.data.process_routes.find(row => row.id === f.route.id); const graph = JSON.parse(route.graph); graph.price_tables[0].prices.cut.unit_price = -1; route.graph = JSON.stringify(graph); },
+  ]) {
+    const bad = structuredClone(backup); mutate(bad);
+    assert.equal((await f.request('/backup/preview', { backup: bad })).status, 400);
+  }
+  const legacy = structuredClone(backup); legacy.version = 54;
+  for (const row of legacy.data.boms) delete row.route_price_table_id;
+  f.ok(await f.request('/backup/preview', { backup: legacy }));
+});
+
+test('model price tables reject invalid pricing and do not silently substitute deleted tables during sync', async t => {
+  const f = await fixture(t, { graph: modelPrices });
+  for (const mutate of [
+    graph => graph.price_tables.push(structuredClone(graph.price_tables[0])),
+    graph => graph.price_tables[0].prices.cut.unit_price = -1,
+    graph => graph.price_tables[0].prices.cut.currency = 'BAD',
+    graph => graph.price_tables[0].prices.unknown = { unit_price: 1, currency: 'CNY' },
+    graph => graph.price_tables[0].prices.cut.multiplier = 3,
+  ]) {
+    const graph = structuredClone(modelPrices); mutate(graph);
+    assert.equal((await f.command(`/process-routes/${f.route.id}`, { ...f.route, graph })).status, 400);
+  }
+  Object.assign(f.root, f.ok(await f.command(`/boms/${f.root.id}`, { ...f.root, route_price_table_id: 'model-b' })));
+  const order = await f.create();
+  f.ok(await f.command(`/boms/${f.root.id}`, { ...f.root, route_price_table_id: null }));
+  f.ok(await f.command(`/process-routes/${f.route.id}`, { ...f.route, graph: { ...modelPrices, price_tables: [] } }));
+  const sync = await f.command(`/production-orders/${order.id}/sync-operation-prices`, { version: order.version });
+  assert.equal(sync.status, 400);
+  assert.match(sync.data.error, /单价表不存在/);
+  assert.equal((await f.get(order.id)).operation_routes[0].graph.nodes[0].unit_price, 3);
 });
 
 test('route deletion checks versions, warehouse and permissions, and supports safe request replay', async t => {
@@ -224,7 +329,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 54);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 55);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);
@@ -662,7 +767,7 @@ test('production rejects retired additional operations and exposes no dedicated 
   order = f.ok(await f.report(order,'cut',1));
   assert.equal(Object.hasOwn(order.operation_routes[0].reports[0],'material_items'),false);
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version,54);
+  assert.equal(backup.version, 55);
   assert.equal(Object.hasOwn(backup.data.production_routes[0],'additional_quantity'),false);
   assert.equal(Object.hasOwn(backup.data.production_operation_reports[0],'material_items'),false);
 });

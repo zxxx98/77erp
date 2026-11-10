@@ -44,7 +44,7 @@ function snapshot(db, fn) {
 export function productionWithoutCosts(value) {
   if (Array.isArray(value)) return value.map(productionWithoutCosts);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-    .filter(([key]) => !/(?:^|_)(?:cost|price)(?:_|$)/.test(key)).map(([key, child]) => [key, productionWithoutCosts(child)]));
+    .filter(([key]) => ['price_table_id', 'price_table_name'].includes(key) || !/(?:^|_)(?:cost|price)(?:_|$)/.test(key)).map(([key, child]) => [key, productionWithoutCosts(child)]));
   return value;
 }
 

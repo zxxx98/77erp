@@ -1,5 +1,41 @@
 import { validateOperationPrice } from './payroll.js';
 import { exactQuantity, exactSum, exactSubtract, exactMin, exactMax, quantityFields } from './exact-quantity.js';
+
+export const DEFAULT_PRICE_TABLE = 'default';
+
+// Node prices remain the default table for compatibility with existing clients.
+// Additional tables share the topology, instructions, multiplier and acceptance rules.
+export function processPriceTables(graph) {
+  return [{ id: DEFAULT_PRICE_TABLE, name: '', prices: Object.fromEntries(graph.nodes.map(node =>
+    [node.id, { unit_price: node.unit_price ?? null, currency: node.currency ?? null }])) }, ...(graph.price_tables || [])];
+}
+
+export function validateProcessPriceTables(graph) {
+  if (graph.price_tables === undefined) return;
+  if (!Array.isArray(graph.price_tables) || graph.price_tables.length > 29) throw new Error('每条工艺路线最多配置 30 张单价表。');
+  const ids = new Set([DEFAULT_PRICE_TABLE]), names = new Set(), nodes = new Set(graph.nodes.map(node => node.id));
+  for (const table of graph.price_tables) {
+    if (!table || typeof table.id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(table.id) || ids.has(table.id) ||
+        typeof table.name !== 'string' || !table.name.trim() || table.name.length > 80 || names.has(table.name.trim()) ||
+        !table.prices || typeof table.prices !== 'object' || Array.isArray(table.prices))
+      throw new Error('单价表编号、名称或工序价格配置无效，名称不能重复。');
+    ids.add(table.id); names.add(table.name.trim());
+    for (const [nodeId, price] of Object.entries(table.prices)) {
+      if (!nodes.has(nodeId) || !price || typeof price !== 'object' || Array.isArray(price) ||
+          Object.keys(price).some(key => !['unit_price', 'currency'].includes(key))) throw new Error('单价表包含无效工序或价格字段。');
+      validateOperationPrice(price);
+    }
+  }
+}
+
+export function processGraphWithPrices(graph, tableId = null) {
+  const table = processPriceTables(graph).find(table => table.id === (tableId ?? DEFAULT_PRICE_TABLE));
+  if (!table) throw new Error('所选单价表不存在，请重新选择工艺路线单价表。');
+  const { price_tables, price_table_id, price_table_name, ...base } = graph;
+  if (table.id === DEFAULT_PRICE_TABLE) return base;
+  return { ...base, price_table_id: table.id, price_table_name: table.name,
+    nodes: graph.nodes.map(({ unit_price, currency, ...node }) => ({ ...node, ...(table.prices[node.id] || {}) })) };
+}
 // A route describes operations on one production layer, in that layer's output unit.
 // Cross-layer material ratios continue to be governed by the BOM.
 export function validateProcessGraph(graph) {
@@ -33,6 +69,9 @@ export function validateProcessGraph(graph) {
   if (order.length !== graph.nodes.length) fail('工艺路线存在循环，请检查前置工序。');
   const outputs = graph.nodes.filter(n => !outgoing.get(n.id).length);
   if (outputs.length !== 1) fail('工艺路线需要唯一的最终产出工序，请连接所有分支后汇合。');
+  validateProcessPriceTables(graph);
+  if (graph.price_table_id !== undefined && (typeof graph.price_table_id !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(graph.price_table_id) ||
+      typeof graph.price_table_name !== 'string' || !graph.price_table_name.trim() || graph.price_table_name.length > 80)) fail('生产工艺单价表快照无效。');
   return { incoming, outgoing, order, output: outputs[0].id };
 }
 

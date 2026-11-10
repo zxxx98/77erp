@@ -6,8 +6,9 @@ import { Input } from '../ui/controls.jsx';
 import { Select } from '../Dropdown.jsx';
 import { Button, QueryStatus } from '../components/common.jsx';
 import { ProcessGraph, ProcessFlowStrip } from './ProcessGraph.jsx';
+import { processPriceTables, processGraphWithPrices } from '../../shared/process-routes.js';
 
-export function RoutePicker({ value, onChange, warehouseId, inherit = false, inheritedValue = null, disabled = false }) {
+export function RoutePicker({ value, onChange, warehouseId, inherit = false, inheritedValue = null, priceTableId = null, onPriceTableChange, disabled = false }) {
   useLocale();
   const [q, setQ] = useState(''), [preview, setPreview] = useState(false);
   const data = useMemo(() => ({ warehouse_id: warehouseId }), [warehouseId]);
@@ -16,6 +17,9 @@ export function RoutePicker({ value, onChange, warehouseId, inherit = false, inh
   const current = useQuery(effectiveId ? `/process-routes/${effectiveId}` : null, data);
   const options = (list.result?.routes || []).filter(route => route.enabled || route.id === value);
   const chosen = current.result || options.find(route => route.id === effectiveId);
+  const tables = chosen ? processPriceTables(chosen.graph) : [];
+  const selectedTable = tables.find(table => table.id === (priceTableId ?? 'default'));
+  const graph = chosen && selectedTable ? processGraphWithPrices(chosen.graph, priceTableId) : chosen?.graph;
   return <div className="process-picker">
     <div className="process-picker-controls">
       <Select aria-label={t(inherit ? 'route.override' : 'route.default')} value={value ?? ''} disabled={disabled || !!list.error} onChange={next => { onChange(next === '' ? null : Number(next)); setPreview(false); }}>
@@ -27,19 +31,27 @@ export function RoutePicker({ value, onChange, warehouseId, inherit = false, inh
       {effectiveId && <Button disabled={disabled || !chosen} onClick={() => setPreview(!preview)}>{t(preview ? 'route.close' : 'route.view')}</Button>}
     </div>
     <QueryStatus query={list} />
+    {effectiveId && onPriceTableChange && <label>{t('route.priceTable')}
+      <Select aria-label={t('route.priceTable')} value={priceTableId ?? 'default'} disabled={disabled || current.loading || !chosen || !!current.error} onChange={next => onPriceTableChange(next === 'default' ? null : next)}>
+        {!selectedTable && <option value={priceTableId ?? 'default'}>{t('route.priceTableMissing')}</option>}
+        {tables.map(table => <option key={table.id} value={table.id}>{table.id === 'default' ? t('route.defaultPriceTable') : table.name}</option>)}
+      </Select>
+      <small className="bom-hint">{t('route.priceTableBomHint')}</small>
+    </label>}
+    {effectiveId && <QueryStatus query={current} />}
     {effectiveId && chosen && <div className="process-picker-summary">
       <div className="process-picker-summary-head">
         <strong>{chosen.name}</strong>
         {chosen.version && <span className="process-meta-pill">{t('route.version', { version: chosen.version })}</span>}
       </div>
-      <ProcessFlowStrip graph={chosen.graph} />
+      <ProcessFlowStrip graph={graph} />
     </div>}
     {preview && chosen && <div className="process-picker-preview">
       <div className="process-picker-preview-head">
         <strong>{chosen.name}</strong>
         <span className="bom-hint">{t('route.operations')} {chosen.graph?.nodes?.length || 0}</span>
       </div>
-      <ProcessGraph graph={chosen.graph} />
+      <ProcessGraph graph={graph} />
     </div>}
   </div>;
 }

@@ -15,10 +15,11 @@ const sourceLabel = source => t(source === 'snapshot' ? 'overview.fromSnapshot' 
 const noRouteLabel = production => t(production ? 'overview.noSnapshot' : 'overview.noRoute');
 
 function LayerHeading({ layer, production }) {
+  const routeLabel = layer.route ? `${layer.route.name} · ${layer.route.graph.price_table_name || t('route.defaultPriceTable')} · ${sourceLabel(layer.route_source)} · v${layer.route.version}` : noRouteLabel(production);
   return <>
     <strong className="overview-layer-name" title={layer.name}>{layer.name}</strong>
     <span className="overview-layer-recipe" title={`${layer.bom_name || ''} · ${layer.path || t('production.finalProduct')}`}>{layer.bom_name} · {layer.path || t('production.finalProduct')}</span>
-    <span className="overview-layer-route" title={layer.route?.name}>{layer.route ? `${layer.route.name} · ${sourceLabel(layer.route_source)} · v${layer.route.version}` : noRouteLabel(production)}</span>
+    <span className="overview-layer-route" title={routeLabel}>{routeLabel}</span>
     {(layer.enabled === 0 || layer.product_active === 0 || layer.route?.enabled === 0) && <span className="overview-inactive">{t('route.disabled')}</span>}
     {production && <span className="overview-layer-quantity">{t('production.completed')} <b>{count(layer.completed_quantity)}</b> / {count(layer.planned_quantity)} {layer.unit}</span>}
   </>;

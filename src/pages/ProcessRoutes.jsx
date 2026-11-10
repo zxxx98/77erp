@@ -12,7 +12,7 @@ import { useBusiness } from '../business-api.js';
 import { t, translateText } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { mobileDevice } from '../device.js';
-import { validateProcessGraph, arrangeProcessGraph } from '../../shared/process-routes.js';
+import { validateProcessGraph, arrangeProcessGraph, processPriceTables } from '../../shared/process-routes.js';
 import { ProcessGraph, ProcessFlowStrip, orderProcessNodes } from '../features/ProcessGraph.jsx';
 import { addProcessNode } from '../features/process-graph-editing.js';
 import { PostProcessingMaterialEditor, postProcessingMaterialPayload } from '../features/PostProcessingMaterialEditor.jsx';
@@ -23,6 +23,7 @@ export function ProcessRoutes({ data }) {
   const action = useBusiness();
   const [q, setQ] = useState(''), [productionType, setProductionType] = useState('成品'), [status, setStatus] = useState('all'), [sort, setSort] = useState('custom'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [routeKind, setRouteKind] = useState('production');
+  const [priceTableId, setPriceTableId] = useState('default');
   const [editor, setEditor] = useState(null), [baseline, setBaseline] = useState(''), [selected, setSelected] = useState('');
   const [view, setView] = useState(mobileDevice ? 'list' : 'graph'), [connecting, setConnecting] = useState(null), [message, setMessage] = useState('');
   const queryData = useMemo(() => ({ ...data, routeRevision: revision }), [data, revision]);
@@ -48,7 +49,7 @@ export function ProcessRoutes({ data }) {
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
-  const apply = route => { setEditor(route); setBaseline(JSON.stringify(route)); setSelected(route.graph.nodes[0]?.id || ''); setConnecting(null); action.setError(''); setMessage(''); };
+  const apply = route => { setEditor(route); setBaseline(JSON.stringify(route)); setSelected(route.graph.nodes[0]?.id || ''); setPriceTableId('default'); setConnecting(null); action.setError(''); setMessage(''); };
   const open = (route, copy = false) => action.run(async () => {
     const result = await api(`/process-routes/${route.id}`, { warehouseId: data.warehouse_id });
     apply(copy ? { name: `${result.name} (${t('route.copy')})`.slice(0, 100), note: result.note, enabled: 1, route_kind: result.route_kind, graph: result.graph } : result);
@@ -141,6 +142,13 @@ export function ProcessRoutes({ data }) {
     </section>
   </div>;
   const graph = editor.graph, orderedNodes = orderProcessNodes(graph), node = orderedNodes.find(n => n.id === selected) || graph.nodes.find(n => n.id === selected);
+  const priceTables = processPriceTables(graph), priceTable = priceTables.find(table => table.id === priceTableId) || priceTables[0];
+  const patchPrice = (nodeId, changes) => {
+    if (priceTable.id === 'default') update({ graph: { ...graph, nodes: graph.nodes.map(row => row.id === nodeId ? { ...row, ...changes } : row) } });
+    else update({ graph: { ...graph, price_tables: graph.price_tables.map(table => table.id === priceTable.id
+      ? { ...table, prices: { ...table.prices, [nodeId]: { ...table.prices[nodeId], ...changes } } } : table) } });
+  };
+  const activePrice = node ? priceTable.prices[node.id] || {} : {};
   const patchNode = changes => update({ graph: { ...graph, nodes: graph.nodes.map(n => n.id === selected ? { ...n, ...changes } : n) } });
   const save = () => action.run(async () => {
     const nodes = graph.nodes.map(({ materials, ...row }) => editor.route_kind === 'post_processing'
@@ -177,6 +185,35 @@ export function ProcessRoutes({ data }) {
         <p>{[...(editor.products || []).map(row => `${row.name} (#${row.id})`), ...(editor.boms || []).map(row => `BOM ${row.name} (#${row.id})`)].join('、')}</p>
       </div>}
     </section>
+    {editor.route_kind !== 'post_processing' && <section className="panel bom-section">
+      <h2>{t('route.priceTables')}</h2>
+      <p className="bom-hint">{t('route.priceTablesHint')}</p>
+      <div className="process-price-tools">
+        <label>{t('route.priceTable')}<Select aria-label={t('route.priceTable')} value={priceTable.id} disabled={action.busy} onChange={setPriceTableId}>
+          {priceTables.map(table => <option key={table.id} value={table.id}>{table.id === 'default' ? t('route.defaultPriceTable') : table.name}</option>)}
+        </Select></label>
+        {priceTable.id !== 'default' && <label>{t('route.priceTableName')}<Input aria-label={t('route.priceTableName')} maxLength={80} value={priceTable.name} disabled={action.busy} onChange={event => update({ graph: { ...graph, price_tables: graph.price_tables.map(table => table.id === priceTable.id ? { ...table, name: event.target.value } : table) } })} /></label>}
+        <Button icon={Plus} disabled={action.busy || priceTables.length >= 30} onClick={() => {
+          const id = crypto.randomUUID();
+          let number = priceTables.length + 1, name = t('route.newPriceTable', { number });
+          while (priceTables.some(table => table.name.trim() === name)) name = t('route.newPriceTable', { number: ++number });
+          update({ graph: { ...graph, price_tables: [...(graph.price_tables || []), { id, name, prices: structuredClone(priceTable.prices) }] } });
+          setPriceTableId(id);
+        }}>{t('route.addPriceTable')}</Button>
+        {priceTable.id !== 'default' && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => {
+          if (!window.confirm(t('route.deletePriceTableConfirm', { name: priceTable.name }))) return;
+          update({ graph: { ...graph, price_tables: graph.price_tables.filter(table => table.id !== priceTable.id) } }); setPriceTableId('default');
+        }}>{t('route.deletePriceTable')}</Button>}
+      </div>
+      <div className="process-price-rows">{orderedNodes.map(row => {
+        const price = priceTable.prices[row.id] || {};
+        return <div className="process-price-row" key={row.id}>
+          <strong>{row.step}. {row.name}</strong>
+          <label>{t('payroll.unitPrice')}<Input aria-label={`${row.name} ${t('payroll.unitPrice')}`} type="number" min="0" max="99999999" step="0.0001" value={price.unit_price ?? ''} placeholder={t('payroll.unpriced')} disabled={action.busy} onChange={event => patchPrice(row.id, { unit_price: event.target.value === '' ? null : Number(event.target.value), currency: price.currency || 'CNY' })} /></label>
+          <label>{t('payroll.currency')}<Select aria-label={`${row.name} ${t('payroll.currency')}`} value={price.currency || 'CNY'} disabled={action.busy} onChange={currency => patchPrice(row.id, { currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select></label>
+        </div>;
+      })}</div>
+    </section>}
     <section className="panel bom-section">
       <div className="process-editor-toolbar">
         <div className="process-view-segmented" role="group" aria-label={t('route.operations')}>
@@ -219,8 +256,9 @@ export function ProcessRoutes({ data }) {
           <label>{t('route.nodeNote')}<Input.TextArea rows={3} aria-label={t('route.nodeNote')} value={node.note} maxLength={500} disabled={action.busy} onChange={event => patchNode({ note: event.target.value })} /></label>
           <label>{t('route.multiplier')}<Input type="number" min="0.0001" max="99999999" step="0.0001" aria-label={t('route.multiplier')} value={node.multiplier ?? 1} disabled={action.busy} onChange={event => patchNode({ multiplier: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
           <p className="bom-hint">{t('route.multiplierHint')}</p>
-          <label>{t('payroll.unitPrice')}<Input type="number" min="0" max="99999999" step="0.0001" aria-label={t('payroll.unitPrice')} value={node.unit_price ?? ''} placeholder={t('payroll.unpriced')} disabled={action.busy} onChange={event => patchNode({ unit_price: event.target.value === '' ? null : Number(event.target.value), currency: node.currency || 'CNY' })} /></label>
-          <label>{t('payroll.currency')}<Select aria-label={t('payroll.currency')} value={node.currency || 'CNY'} disabled={action.busy} onChange={currency => patchNode({ currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select></label>
+          {editor.route_kind !== 'post_processing' && <p className="bom-hint">{t('route.priceTable')} · {priceTable.id === 'default' ? t('route.defaultPriceTable') : priceTable.name}</p>}
+          <label>{t('payroll.unitPrice')}<Input type="number" min="0" max="99999999" step="0.0001" aria-label={t('payroll.unitPrice')} value={activePrice.unit_price ?? ''} placeholder={t('payroll.unpriced')} disabled={action.busy} onChange={event => patchPrice(node.id, { unit_price: event.target.value === '' ? null : Number(event.target.value), currency: activePrice.currency || 'CNY' })} /></label>
+          <label>{t('payroll.currency')}<Select aria-label={t('payroll.currency')} value={activePrice.currency || 'CNY'} disabled={action.busy} onChange={currency => patchPrice(node.id, { currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select></label>
           <p className="bom-hint">{t('payroll.priceHint')}</p>
           <label>{t('route.acceptanceTemplate')}<Select aria-label={t('route.acceptanceTemplate')} value={node.acceptance_template_id ?? ''} disabled={action.busy || templates.loading} onChange={value => patchNode({acceptance_template_id:value ? Number(value) : null})}>
             <option value="">{t('route.noAcceptance')}</option>
@@ -241,7 +279,7 @@ export function ProcessRoutes({ data }) {
             })}
           </fieldset>}
           <div className="process-properties-footer">
-            <Button kind="danger" icon={Trash2} disabled={action.busy || graph.nodes.length <= 1} onClick={() => { if (!window.confirm(t('route.removeConfirm'))) return; update({ graph: { nodes: graph.nodes.filter(n => n.id !== node.id), edges: graph.edges.filter(e => e.from !== node.id && e.to !== node.id) } }); setSelected(graph.nodes.find(n => n.id !== node.id)?.id || ''); }}>{t('route.remove')}</Button>
+            <Button kind="danger" icon={Trash2} disabled={action.busy || graph.nodes.length <= 1} onClick={() => { if (!window.confirm(t('route.removeConfirm'))) return; update({ graph: { ...graph, nodes: graph.nodes.filter(n => n.id !== node.id), edges: graph.edges.filter(e => e.from !== node.id && e.to !== node.id), ...(graph.price_tables ? { price_tables: graph.price_tables.map(table => ({ ...table, prices: Object.fromEntries(Object.entries(table.prices).filter(([id]) => id !== node.id)) })) } : {}) } }); setSelected(graph.nodes.find(n => n.id !== node.id)?.id || ''); }}>{t('route.remove')}</Button>
           </div>
         </aside>}
       </div></section>{notices}<div className="bom-editor-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button>{editor.id && <Button disabled={action.busy} onClick={() => { if (!dirty || window.confirm(t('route.reloading'))) open(editor); }}>{t('route.reload')}</Button>}<Button kind="primary" busy={action.busy} disabled={!editor.name.trim()} onClick={save}>{t('route.save')}</Button></div>

@@ -502,6 +502,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       "UPDATE products SET name=?,barcode=?,category=?,unit=?,cost=?,price=?,threshold=?,category_id=?,image=?,specification=?,note=?,is_fixed_asset=?,unit_round_up=?,inspection_date=?,inspection_interval=?,inspection_unit=?,customer_part_numbers=?,production_type=? WHERE id=? AND version=?",
     ).run(...v, ...catalog.values, productId, existing.version);
     const defaultRouteId = routeBinding(db, req.warehouse.id, body.default_route_id, existing.default_route_id);
+    if (defaultRouteId !== existing.default_route_id && db.prepare('SELECT 1 FROM boms WHERE product_id=? AND route_override_id IS NULL AND route_price_table_id IS NOT NULL LIMIT 1').get(existing.id))
+      throw Object.assign(new Error('BOM已选择默认工艺的单价表，请先在BOM中改选默认单价表或固定工艺路线。'), { status: 409 });
     db.prepare('UPDATE products SET default_route_id=? WHERE id=?').run(defaultRouteId, existing.id);
     recordProductChange(db, existing, db.prepare('SELECT cost,price FROM products WHERE id=?').get(existing.id), req.user);
     syncProduct(db, existing.id, body.sync_warehouse_ids, req.user);

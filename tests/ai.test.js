@@ -1336,11 +1336,12 @@ test('AI basic queries require basic page permission even when the model forces 
 test('AI reads process routes and operation snapshots without granting route writes or exposing costs', async t => {
   const f = await fixture(t, ':memory:', false);
   const graph = { nodes: [{id:'cut',name:'切割',note:'按图切割',x:24,y:24,unit_price:0.125,currency:'VND'},{id:'out',name:'检验',note:'',x:244,y:24}], edges:[{from:'cut',to:'out'}] };
+  graph.price_tables = [{ id: 'model-b', name: 'B型号', prices: { cut: { unit_price: 0.25, currency: 'CNY' } } }];
   const route = (await f.request(f.admin,'/process-routes',{request_id:randomUUID(),name:'AI工艺路线',note:'',enabled:1,graph})).data;
   assert.ok(route.id);
   f.db.prepare("UPDATE products SET default_route_id=?,production_type='成品' WHERE id=1").run(route.id);
   const parent=f.db.prepare('SELECT * FROM products WHERE id=1').get(), raw=f.db.prepare('SELECT * FROM products WHERE id=2').get();
-  const bom=(await f.request(f.admin,'/boms',{request_id:randomUUID(),name:'工序配方',product_id:parent.id,base_quantity:1,base_unit:parent.unit,note:'',enabled:1,items:[{product_id:raw.id,quantity:1,unit:raw.unit,note:''}]})).data;
+  const bom=(await f.request(f.admin,'/boms',{request_id:randomUUID(),name:'工序配方',route_price_table_id:'model-b',product_id:parent.id,base_quantity:1,base_unit:parent.unit,note:'',enabled:1,items:[{product_id:raw.id,quantity:1,unit:raw.unit,note:''}]})).data;
   const order=(await f.request(f.admin,'/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:2,note:''})).data;
   const started=await f.request(f.admin,`/production-orders/${order.id}/start`,{request_id:randomUUID(),version:order.version});
   assert.equal(started.status,200);
@@ -1360,6 +1361,14 @@ test('AI reads process routes and operation snapshots without granting route wri
   f.use('get_process_route',{route_id:route.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.deepEqual(result.graph,graph);
   f.use('get_production_order',{production_id:order.id});await f.chat(f.staff);result=JSON.parse(f.calls.at(-1).body.messages.find(m=>m.role==='tool').content);assert.equal(result.operation_routes[0].operations[0].name,'切割');assert.ok(!JSON.stringify(result).includes('cost_cents'));
   assert.equal(result.operation_routes.length,1);
+  assert.equal(result.operation_routes[0].graph.price_table_id, 'model-b');
+  assert.equal(result.operation_routes[0].graph.price_table_name, 'B型号');
+  assert.equal(result.operation_routes[0].operations[0].unit_price, undefined);
+  assert.equal(result.operation_routes[0].operations[0].currency, 'CNY');
+  assert.match(f.calls.at(-1).body.messages[0].content, /route_price_table_id为空使用默认表/);
+  f.use('get_bom', { bom_id: bom.id }); await f.chat(f.staff);
+  const selectedBom = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.equal(selectedBom.route_price_table_id, 'model-b');
   assert.equal(result.items[0].total_planned_quantity,2);
   assert.equal(result.operation_routes[0].operations[0].completed_quantity,1);
   assert.equal(result.operation_routes[0].operations[1].available_quantity,1);

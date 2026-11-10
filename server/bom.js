@@ -1,11 +1,11 @@
 import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
 import { buildProductionSupply } from './production-supply.js';
-import { routeBinding } from './process-routes.js';
+import { routeBinding, routePriceBinding } from './process-routes.js';
 import { validQuantity } from '../shared/quantity.js';
 import { createHash } from 'node:crypto';
 import { rebuildTable } from './table-migration.js';
 import { buildBomNodes, calculateBomNodes } from '../shared/bom-expansion.js';
-import { validateProcessGraph } from '../shared/process-routes.js';
+import { validateProcessGraph, processGraphWithPrices } from '../shared/process-routes.js';
 import { validateBom, validateBomLossMethod, bomShortage } from '../shared/bom.js';
 import { validateScrapRules, scrapExpectedQuantity } from '../shared/scrap.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
@@ -150,7 +150,7 @@ export function bomProcessOverview(db, warehouseId, id) {
           validateProcessGraph(graph);
           routes.set(routeId, { ...saved, graph });
         }
-        route = routes.get(routeId);
+        route = { ...routes.get(routeId), graph: processGraphWithPrices(routes.get(routeId).graph, bom.route_price_table_id) };
       }
       return { path, parent_path: parentPath, name: bom.product.name, barcode: bom.product.barcode,
         bom_id: bom.id, bom_name: bom.name, unit: bom.base_unit, enabled: bom.enabled, product_active: bom.product.active,
@@ -188,7 +188,7 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
     const routeFingerprints = [...cache.values()].map(b => {
       const binding = db.prepare('SELECT COALESCE(b.route_override_id,p.default_route_id) id FROM boms b JOIN products p ON p.id=b.product_id WHERE b.id=?').get(b.id);
       const route = binding?.id ? db.prepare('SELECT id,version,enabled FROM process_routes WHERE id=?').get(binding.id) : null;
-      return [b.id, route];
+      return [b.id, b.route_price_table_id, route];
     });
     const fingerprints = [...cache.values()].sort((a, b) => a.id - b.id).map(b => [b.id, b.version, b.name, b.enabled, b.base_quantity, b.base_unit, b.loss_method,
       b.product.id, b.product.name, b.product.barcode, b.product.specification, b.product.active, b.product.unit, b.product.unit_round_up,
@@ -313,7 +313,11 @@ export function installBom(app, db) {
     } else id = Number(db.prepare('INSERT INTO boms(warehouse_id,product_id,name,base_quantity,base_unit,loss_method,note,enabled,created_by_name,updated_by_name,created_at,updated_at,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,' + nextTopOrder('boms') + ')')
       .run(req.warehouse.id, body.product_id, body.name.trim(), body.base_quantity, body.base_unit, body.loss_method, body.note.trim(), body.enabled, owner, owner, at, at, req.warehouse.id).lastInsertRowid);
     const routeId = routeBinding(db, req.warehouse.id, req.body.route_override_id, existing?.route_override_id ?? null);
-    db.prepare('UPDATE boms SET route_override_id=? WHERE id=?').run(routeId, id);
+    const effectiveRouteId = routeId ?? product.default_route_id;
+    const oldRouteId = existing?.route_override_id ?? existing?.product.default_route_id;
+    const priceTableId = routePriceBinding(db, req.warehouse.id, effectiveRouteId,
+      req.body.route_price_table_id === undefined ? (effectiveRouteId === oldRouteId ? existing?.route_price_table_id ?? null : null) : req.body.route_price_table_id);
+    db.prepare('UPDATE boms SET route_override_id=?,route_price_table_id=? WHERE id=?').run(routeId, priceTableId, id);
     const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,loss_rate,unit,note,position,usage_mode,child_bom_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
     body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.loss_rate, item.unit, item.note.trim(), index, item.usage_mode, item.child_bom_id));
     const insertScrap = db.prepare('INSERT INTO bom_scraps(bom_id,product_id,method,source_product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?,?,?)');

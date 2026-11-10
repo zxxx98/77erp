@@ -34,6 +34,50 @@ async function fixture(page,{worker=false,multi=false,repeated=false}={}) {
   return {base,db,post,route,draft,link,raw,half,output,child,root,get,close:async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}};
 }
 
+for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} maintains model price tables and selects one for a BOM`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices['iPhone 13']), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
+  const page = await context.newPage(), f = await fixture(page), errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    await page.goto(`${f.base}/#process-routes`);
+    if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '编辑路线', exact: true }).click();
+    await page.getByRole('spinbutton', { name: '下料 计件单价', exact: true }).fill('1');
+    await page.getByRole('button', { name: '新增单价表', exact: true }).click();
+    await page.getByRole('textbox', { name: '单价表名称（型号）', exact: true }).fill('B型号');
+    await expect(page.getByRole('spinbutton', { name: '下料 计件单价', exact: true })).toHaveValue('1');
+    await page.getByRole('spinbutton', { name: '下料 计件单价', exact: true }).fill('2.5');
+    await page.getByRole('combobox', { name: '下料 工资币种', exact: true }).click();
+    await page.getByRole('option', { name: 'USD', exact: true }).click();
+    await page.screenshot({ path: test.info().outputPath('model-price-tables.png'), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole('button', { name: '保存路线', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: '工艺路线已保存' })).toBeVisible();
+    const savedGraph = JSON.parse(f.db.prepare('SELECT graph FROM process_routes WHERE id=?').get(f.route.id).graph);
+    const tableId = savedGraph.price_tables[0].id;
+    expect(savedGraph.nodes[0].unit_price).toBe(1);
+    expect(savedGraph.price_tables[0].prices.cut).toEqual({ unit_price: 2.5, currency: 'USD' });
+    await page.goto(`${f.base}/#bom`);
+    await page.locator('.bom-list-item').filter({ hasText: '凳架配方' }).getByRole('button', { name: '编辑', exact: true }).click();
+    await page.getByRole('combobox', { name: '单价表', exact: true }).click();
+    await page.getByRole('option', { name: 'B型号', exact: true }).click();
+    await page.screenshot({ path: test.info().outputPath('bom-model-price-table.png'), fullPage: true });
+    await page.getByRole('button', { name: '保存BOM', exact: true }).click();
+    await expect.poll(() => f.db.prepare('SELECT route_price_table_id FROM boms WHERE id=?').get(f.root.id).route_price_table_id).toBe(tableId);
+    await page.reload();
+    await page.locator('.bom-list-item').filter({ hasText: '凳架配方' }).getByRole('button', { name: '编辑', exact: true }).click();
+    await expect(page.locator('.process-picker .dropdown').filter({ has: page.getByRole('combobox', { name: '单价表', exact: true }) })).toContainText('B型号');
+    const bom = f.db.prepare('SELECT version FROM boms WHERE id=?').get(f.root.id);
+    const plan = await f.post('/production-orders/prepare', { bom_id: f.root.id, bom_version: bom.version, planned_quantity: 2 });
+    const order = await f.post('/production-orders', { bom_id: f.root.id, bom_version: bom.version, planned_quantity: 2, structure_token: plan.structure_token, note: '' });
+    expect(order.operation_routes[0].graph.price_table_id).toBe(tableId);
+    expect(order.operation_routes[0].graph.nodes[0].unit_price).toBe(2.5);
+    expect((await f.get()).operation_routes[0].graph.nodes[0].unit_price).toBeUndefined();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await f.close(); await context.close(); }
+});
+
 for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} zooms and pans the process canvas and moves nodes at the current scale`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices['iPhone 13']), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage(), f = await fixture(page), errors = [];
@@ -327,7 +371,8 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} con
     // Leave exactly one item on the second page, then delete it.
     for (let index = 0; index < 30; index++) await f.post('/process-routes', { name: `分页路线 ${index}`, note: '', enabled: 1, graph });
     const finalRoute = f.db.prepare("SELECT * FROM process_routes WHERE name='分页路线 0'").get();
-    f.db.prepare("UPDATE process_routes SET updated_at='2000-01-01T00:00:00.000Z' WHERE id=?").run(finalRoute.id);
+    // The list defaults to custom order, so put this unreferenced row last explicitly.
+    f.db.prepare('UPDATE process_routes SET sort_order=(SELECT MAX(sort_order)+1 FROM process_routes) WHERE id=?').run(finalRoute.id);
     await page.reload();
     await showAllTypes();
     await page.getByRole('button', { name: '下一页', exact: true }).click();
@@ -350,7 +395,8 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     await page.goto(f.link);
     if (mode === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
     await expect(page.getByRole('heading', { name: '生产登记', exact: true })).toBeVisible();
-    await expect(page.getByRole('radio', { name: /检验/ })).toBeDisabled();
+    // Operations can be selected before capacity is available; submission checks the quantity.
+    await expect(page.getByRole('radio', { name: /检验/ })).toBeEnabled();
     const quantity = page.getByLabel('本次数量', { exact: true });
     await expect(quantity).toBeDisabled();
     await page.getByRole('radio', { name: /下料/ }).check();
@@ -365,10 +411,10 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     await page.getByRole('radio', { name: /检验/ }).check();
     await quantity.fill('5');
     await page.getByRole('button', { name: '提交登记', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('超过前序可用数量');
+    await expect(page.getByRole('alert')).toContainText('前置工序可用数量不足，请先核对前序报工。');
     expect((await f.get()).operation_routes[0].reports).toHaveLength(1);
     await quantity.fill('4');
-    await expect(page.locator('.registration-details')).not.toHaveAttribute('open', '');
+    await expect(page.locator('.registration-details')).toHaveAttribute('open', '');
     await page.getByRole('button', { name: '提交登记', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '已登记 检验：4 件' })).toBeVisible();
     order = await f.get();
