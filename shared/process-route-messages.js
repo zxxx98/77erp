@@ -6,7 +6,6 @@ export const processRouteMessages = {
   PRICE_TABLE_MISSING: ['所选单价表不存在，请重新选择工艺路线单价表。', 'The selected price table no longer exists. Select a route price table again.', 'Bảng đơn giá đã chọn không tồn tại. Hãy chọn lại bảng đơn giá.'],
   PRICE_TABLE_SNAPSHOT: ['生产工艺单价表快照无效。', 'Invalid production price table snapshot.', 'Bản chụp bảng đơn giá sản xuất không hợp lệ.'],
   PRICE_TABLE_SELECTION: ['请选择有效工艺路线及单价表。', 'Select a valid route and price table.', 'Chọn quy trình và bảng đơn giá hợp lệ.'],
-  PRICE_TABLE_KIND: ['多单价表仅用于生产工艺。', 'Multiple price tables are only supported for production routes.', 'Nhiều bảng đơn giá chỉ được hỗ trợ cho quy trình sản xuất.'],
   PRICE_TABLE_REFERENCED: ['单价表已被BOM引用，请先更换BOM关联的单价表。', 'This price table is used by a BOM. Change the BOM price table first.', 'Bảng đơn giá đang được BOM sử dụng. Hãy đổi bảng đơn giá trong BOM trước.'],
   PRICE_TABLE_PRODUCT_BINDING: ['BOM已选择默认工艺的单价表，请先在BOM中改选默认单价表或固定工艺路线。', 'A BOM uses a price table from this default route. Select the default price table or bind the BOM to a specific route first.', 'BOM sử dụng bảng đơn giá từ quy trình mặc định. Hãy chọn bảng mặc định hoặc gắn BOM với quy trình cụ thể trước.'],
   ACCEPTANCE_REGISTRATION_PENDING_FINISH: ['仍有登记正在验收，请先完成验收或取消登记。', 'Resolve or cancel pending registrations before finishing production.', 'Hoàn tất nghiệm thu hoặc hủy ghi nhận đang chờ trước khi kết thúc sản xuất.'],

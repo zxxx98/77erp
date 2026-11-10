@@ -26,7 +26,7 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
       const label = `${t('production.productCoefficient')} ${row.name}`;
       return <section key={`${row.route_id}:${row.node_id}`} className="post-processing-binding">
         <div className="production-material">
-          <div className="production-material-name"><strong>{row.name}</strong><small>{row.route_name}</small></div>
+          <div className="production-material-name"><strong>{row.name}</strong><small>{row.route_name}</small><small>{t('route.priceTable')} · {row.price_table_name || t('route.defaultPriceTable')}</small></div>
           {readOnly ? <span>{t('production.productCoefficient')} {row.product_coefficient} {unit}</span> : <label>{t('production.productCoefficient')}（{unit}）<FormField required value={row.product_coefficient} label={label}>
             <Input aria-label={label} inputMode="decimal" value={row.product_coefficient} disabled={disabled}
               onChange={event => onChange(rows.map((item, i) => i === index ? { ...item, product_coefficient: event.target.value } : item))} />

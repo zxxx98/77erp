@@ -185,9 +185,9 @@ export function ProcessRoutes({ data }) {
         <p>{[...(editor.products || []).map(row => `${row.name} (#${row.id})`), ...(editor.boms || []).map(row => `BOM ${row.name} (#${row.id})`)].join('、')}</p>
       </div>}
     </section>
-    {editor.route_kind !== 'post_processing' && <section className="panel bom-section">
+    <section className="panel bom-section">
       <h2>{t('route.priceTables')}</h2>
-      <p className="bom-hint">{t('route.priceTablesHint')}</p>
+      <p className="bom-hint">{t(editor.route_kind === 'post_processing' ? 'route.postPriceTablesHint' : 'route.priceTablesHint')}</p>
       <div className="process-price-tools">
         <label>{t('route.priceTable')}<Select aria-label={t('route.priceTable')} value={priceTable.id} disabled={action.busy} onChange={setPriceTableId}>
           {priceTables.map(table => <option key={table.id} value={table.id}>{table.id === 'default' ? t('route.defaultPriceTable') : table.name}</option>)}
@@ -213,7 +213,7 @@ export function ProcessRoutes({ data }) {
           <label>{t('payroll.currency')}<Select aria-label={`${row.name} ${t('payroll.currency')}`} value={price.currency || 'CNY'} disabled={action.busy} onChange={currency => patchPrice(row.id, { currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select></label>
         </div>;
       })}</div>
-    </section>}
+    </section>
     <section className="panel bom-section">
       <div className="process-editor-toolbar">
         <div className="process-view-segmented" role="group" aria-label={t('route.operations')}>
@@ -256,7 +256,7 @@ export function ProcessRoutes({ data }) {
           <label>{t('route.nodeNote')}<Input.TextArea rows={3} aria-label={t('route.nodeNote')} value={node.note} maxLength={500} disabled={action.busy} onChange={event => patchNode({ note: event.target.value })} /></label>
           <label>{t('route.multiplier')}<Input type="number" min="0.0001" max="99999999" step="0.0001" aria-label={t('route.multiplier')} value={node.multiplier ?? 1} disabled={action.busy} onChange={event => patchNode({ multiplier: event.target.value === '' ? '' : Number(event.target.value) })} /></label>
           <p className="bom-hint">{t('route.multiplierHint')}</p>
-          {editor.route_kind !== 'post_processing' && <p className="bom-hint">{t('route.priceTable')} · {priceTable.id === 'default' ? t('route.defaultPriceTable') : priceTable.name}</p>}
+          <p className="bom-hint">{t('route.priceTable')} · {priceTable.id === 'default' ? t('route.defaultPriceTable') : priceTable.name}</p>
           <label>{t('payroll.unitPrice')}<Input type="number" min="0" max="99999999" step="0.0001" aria-label={t('payroll.unitPrice')} value={activePrice.unit_price ?? ''} placeholder={t('payroll.unpriced')} disabled={action.busy} onChange={event => patchPrice(node.id, { unit_price: event.target.value === '' ? null : Number(event.target.value), currency: activePrice.currency || 'CNY' })} /></label>
           <label>{t('payroll.currency')}<Select aria-label={t('payroll.currency')} value={activePrice.currency || 'CNY'} disabled={action.busy} onChange={currency => patchPrice(node.id, { currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select></label>
           <p className="bom-hint">{t('payroll.priceHint')}</p>

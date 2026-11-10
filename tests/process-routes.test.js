@@ -633,6 +633,62 @@ test('custom route order puts new routes first, persists drags and keeps other r
   assert.deepEqual(await ids(), [created, a, b, d, c, e]);
 });
 
+test('post-processing price tables snapshot per binding and sync the original table without changing materials', async t => {
+  const f = await fixture(t, { routed: false });
+  let route = f.ok(await f.command('/process-routes', { name: '包装型号工艺', note: '', enabled: 1, route_kind: 'post_processing',
+    graph: { nodes: [{ ...node('pack'), unit_price: 2, currency: 'CNY', multiplier: 2, materials: [{ product_id: f.raw, quantity: 1 }] }, node('label')],
+      edges: [{ from: 'pack', to: 'label' }], price_tables: [{ id: 'model-b', name: 'B型号', prices: { pack: { unit_price: 3, currency: 'USD' } } }] } }));
+  const binding = (price_table_id, node_id = 'pack') => ({ route_id: route.id, route_version: route.version, node_id, price_table_id, product_coefficient: 2 });
+  const plan = f.ok(await f.command('/production-orders/prepare', { bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 10 }));
+  for (const invalid of ['missing', 3, {}, '']) {
+    assert.equal((await f.command('/production-orders', { bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 10, note: '', structure_token: plan.structure_token,
+      post_processing_operations: [binding(invalid)] })).status, 400);
+  }
+  assert.equal((await f.command('/production-orders', { bom_id: f.root.id, bom_version: f.root.version, planned_quantity: 10, note: '', structure_token: plan.structure_token,
+    post_processing_operations: [binding(null), binding('model-b')] })).status, 400);
+  let defaultOrder = await f.start(await f.create({ post_processing_operations: [binding(undefined)] }));
+  let modelOrder = await f.start(await f.create({ post_processing_operations: [binding('model-b'), binding('model-b', 'label')] }));
+  const snapshot = modelOrder.operation_routes[0];
+  assert.equal(snapshot.graph.price_table_id, 'model-b');
+  assert.equal(snapshot.graph.price_table_name, 'B型号');
+  assert.equal(snapshot.graph.price_tables, undefined);
+  assert.equal(snapshot.graph.nodes[0].unit_price, 3);
+  assert.equal(snapshot.product_coefficient, 2);
+  assert.equal(modelOrder.operation_routes[1].graph.nodes[0].unit_price, undefined);
+  const materials = structuredClone(snapshot.graph.nodes[0].materials);
+  const output = order => f.complete(order, 10, '', { operation_node_id: undefined });
+  defaultOrder = f.ok(await output(defaultOrder));
+  modelOrder = f.ok(await output(modelOrder));
+  defaultOrder = f.ok(await f.report(defaultOrder, 'pack', 2, defaultOrder.operation_routes[0].path));
+  modelOrder = f.ok(await f.report(modelOrder, 'pack', 2, snapshot.path));
+  const payroll = async order => f.ok(await f.request(`/payroll/production-order?production_id=${order.id}`)).currencies;
+  assert.deepEqual(await payroll(defaultOrder), [{ currency: 'CNY', amount_cents: 800 }]);
+  assert.deepEqual(await payroll(modelOrder), [{ currency: 'USD', amount_cents: 1200 }]);
+  const graph = structuredClone(route.graph);
+  graph.nodes[0].unit_price = 50;
+  graph.nodes[0].materials[0].quantity = 9;
+  graph.price_tables[0].name = 'B型号新价';
+  graph.price_tables[0].prices.pack.unit_price = 4;
+  route = f.ok(await f.command(`/process-routes/${route.id}`, { ...route, graph }));
+  assert.deepEqual(await payroll(modelOrder), [{ currency: 'USD', amount_cents: 1200 }]);
+  modelOrder = f.ok(await f.command(`/production-orders/${modelOrder.id}/sync-operation-prices`, { version: modelOrder.version }));
+  assert.equal(modelOrder.operation_routes[0].graph.price_table_name, 'B型号新价');
+  assert.deepEqual(modelOrder.operation_routes[0].graph.nodes[0].materials, materials);
+  assert.equal(modelOrder.operation_routes[0].product_coefficient, 2);
+  assert.deepEqual(await payroll(modelOrder), [{ currency: 'USD', amount_cents: 1600 }]);
+  assert.deepEqual(await payroll(defaultOrder), [{ currency: 'CNY', amount_cents: 800 }]);
+  const backup = f.ok(await f.request('/backup'));
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal((await f.get(modelOrder.id)).operation_routes[0].graph.price_table_id, 'model-b');
+  assert.deepEqual(await payroll(modelOrder), [{ currency: 'USD', amount_cents: 1600 }]);
+  route = f.ok(await f.request(`/process-routes/${route.id}`));
+  modelOrder = await f.get(modelOrder.id);
+  route = f.ok(await f.command(`/process-routes/${route.id}`, { ...route, graph: { ...graph, price_tables: [] } }));
+  assert.equal((await f.command(`/production-orders/${modelOrder.id}/sync-operation-prices`, { version: modelOrder.version })).status, 400);
+  assert.deepEqual(await payroll(modelOrder), [{ currency: 'USD', amount_cents: 1600 }]);
+});
+
 test('post-processing counts cumulative root output and gates both production finish paths', async t => {
   const f = await fixture(t, { routed: false });
   const route = f.ok(await f.command('/process-routes', { name: '包装工艺', note: '', enabled: 1,

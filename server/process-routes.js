@@ -197,7 +197,6 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     const { product_coefficient, price_table_id, price_table_name, ...graph } = body.graph;
     // Older clients preserve additional tables when saving unchanged topology.
     if (graph.price_tables === undefined && old?.graph.price_tables) graph.price_tables = old.graph.price_tables;
-    if (kind === 'post_processing' && graph.price_tables?.length) fail('多单价表仅用于生产工艺。');
     validateProcessGraph(graph);
     if (old) {
       const tableIds = new Set(processPriceTables(graph).map(table => table.id));
@@ -265,10 +264,11 @@ export function capturePostProcessingOperations(db, order, operations = []) {
     const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(input.route_id, order.warehouse_id);
     if (!route?.enabled || route.route_kind !== 'post_processing') fail('请选择当前仓库已启用的后处理工艺。');
     if (route.version !== input.route_version) fail('后处理工艺已变化，请重新选择后保存。', 409);
-    const node = parseGraph(route.graph).nodes.find(node => node.id === input.node_id);
+    const selectedGraph = processGraphWithPrices(parseGraph(route.graph), input.price_table_id);
+    const node = selectedGraph.nodes.find(node => node.id === input.node_id);
     if (!node) fail('所选后处理工序不存在。');
     const materials = normalizePostMaterials(db, order.warehouse_id, node.materials, true);
-    const graph = { nodes: [materials.length ? { ...node, materials } : node], edges: [] };
+    const graph = { ...selectedGraph, nodes: [materials.length ? { ...node, materials } : node], edges: [] };
     savePostMaterialItems(db, order, materials);
     captureAcceptanceVersions(db, graph, order.warehouse_id);
     db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph,product_coefficient) VALUES (?,?,?,?,?,?,?)')
@@ -522,7 +522,6 @@ export function validateProcessRouteBackup(data) {
         !text(row.created_by_name, 100, true) || !text(row.updated_by_name, 100, true) || !Number.isFinite(Date.parse(row.created_at)) || !Number.isFinite(Date.parse(row.updated_at)) || names.has(`${row.warehouse_id}:${row.name}`)) fail('备份工艺路线无效。');
     names.add(`${row.warehouse_id}:${row.name}`);
     const graph = parseGraph(row.graph);
-    if (row.route_kind === 'post_processing' && graph.price_tables?.length) fail('多单价表仅用于生产工艺。');
     checkTemplates(graph,row.warehouse_id);
     validatePostMaterialGraph(graph, row.route_kind === 'post_processing', products, row.warehouse_id);
   }

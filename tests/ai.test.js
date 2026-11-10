@@ -1405,7 +1405,8 @@ test('AI distinguishes post-processing templates and explains output-based limit
   assert.match(search.description, /每次用料/);
   const product = f.db.prepare('SELECT * FROM products WHERE id=1').get();
   const raw = f.db.prepare('SELECT * FROM products WHERE id=2').get();
-  const graph = { nodes: [{ id: 'pack', name: '打包', note: '', x: 24, y: 24, unit_price: 2, currency: 'CNY', materials: [{ product_id: raw.id, quantity: 2 }] }], edges: [] };
+  const graph = { nodes: [{ id: 'pack', name: '打包', note: '', x: 24, y: 24, unit_price: 2, currency: 'CNY', materials: [{ product_id: raw.id, quantity: 2 }] }], edges: [],
+    price_tables: [{ id: 'model-b', name: 'B型号', prices: { pack: { unit_price: 3, currency: 'USD' } } }] };
   const created = await f.request(f.admin, '/process-routes', { request_id: randomUUID(), name: 'AI后处理打包', route_kind: 'post_processing', note: '', enabled: 1, graph });
   assert.equal(created.status, 200, JSON.stringify(created.data));
   f.use('search_process_routes', { route_kind: 'post_processing' });
@@ -1419,15 +1420,18 @@ test('AI distinguishes post-processing templates and explains output-based limit
   assert.equal(result.route_kind, 'post_processing');
   assert.equal(result.graph.nodes[0].materials[0].name, raw.name);
   assert.equal(result.graph.nodes[0].materials[0].quantity, 2);
+  assert.equal(result.graph.price_tables[0].name, 'B型号');
   const prompt = f.calls.at(-1).body.messages[0].content;
   assert.match(prompt, /后处理.*向下取整.*向上取整/);
   assert.match(prompt, /后处理.*全部完成.*结束生产/);
   assert.match(prompt, /已领.*余额/);
   assert.match(prompt, /作废.*恢复.*材料/);
+  assert.match(prompt, /后处理工艺也支持graph.price_tables/);
+  assert.match(prompt, /post_processing_operations用price_table_id/);
   assert.ok(!offered.some(tool => /^(?:preview|save|report|void).*post_processing/.test(tool.function.name)));
   const bom = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI后处理配方', product_id: product.id, base_quantity: 1, base_unit: product.unit, enabled: 1, note: '', items: [{ product_id: raw.id, quantity: 1, unit: raw.unit, note: '' }] });
   assert.equal(bom.status, 200, JSON.stringify(bom.data));
-  const order = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), bom_id: bom.data.id, bom_version: bom.data.version, planned_quantity: 110, note: '', post_processing_operations: [{ route_id: created.data.id, route_version: created.data.version, node_id: 'pack', product_coefficient: 20 }] });
+  const order = await f.request(f.admin, '/production-orders', { request_id: randomUUID(), bom_id: bom.data.id, bom_version: bom.data.version, planned_quantity: 110, note: '', post_processing_operations: [{ route_id: created.data.id, route_version: created.data.version, node_id: 'pack', price_table_id: 'model-b', product_coefficient: 20 }] });
   assert.equal(order.status, 200, JSON.stringify(order.data));
   f.use('get_production_order', { production_id: order.data.id });
   assert.equal((await f.chat(f.staff)).status, 200);
@@ -1436,6 +1440,9 @@ test('AI distinguishes post-processing templates and explains output-based limit
   assert.equal(post.product_coefficient, 20);
   assert.equal(post.post_processing_limit, 0);
   assert.equal(post.unit, '次');
+  assert.equal(post.graph.price_table_id, 'model-b');
+  assert.equal(post.graph.price_table_name, 'B型号');
+  assert.ok(!JSON.stringify(result).includes('unit_price'));
   assert.equal(post.operations[0].is_output, false);
   assert.equal(post.post_processing_planned_runs, 6);
   assert.equal(post.post_processing_materials[0].planned_quantity, 12);
