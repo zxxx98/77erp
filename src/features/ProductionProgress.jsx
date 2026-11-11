@@ -6,6 +6,7 @@ import { useLocale } from '../i18n/react.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { addQuantity } from '../../shared/quantity.js';
 import { pooledProductionStages } from '../../shared/production-pools.js';
+import { OperationPrice } from './OperationPrice.jsx';
 
 const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 
@@ -59,7 +60,7 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
         {routed && <details className="production-disclosure" open={search.trim() ? true : undefined}>
           <summary>{t('production.operationsAndRegistration', { count: rows.length })}</summary>
           <div className="production-inline-operations">{rows.map(target => <div className="production-inline-operation" key={target.id}>
-            <div><strong>{target.name}</strong><small>{t('production.completed')} {count(target.node.completed_quantity)} {layer.unit}{target.node.available_quantity != null && ` · ${t(target.postProcessing ? 'production.postProcessingRemaining' : 'route.available')} ${count(target.node.available_quantity)} ${layer.unit}`}</small></div>
+            <div><strong>{target.name}</strong><OperationPrice node={target.node} unit={layer.unit} /><small>{t('production.completed')} {count(target.node.completed_quantity)} {layer.unit}{target.node.available_quantity != null && ` · ${t(target.postProcessing ? 'production.postProcessingRemaining' : 'route.available')} ${count(target.node.available_quantity)} ${layer.unit}`}</small></div>
             {registerable && <Button disabled={busy || target.node.available_quantity === 0 || outputRegistrationLocked(order, target)} onClick={() => onRegister(target.id)} aria-label={t('production.register4', { v0: target.name })}>{t('production.register')}</Button>}
           </div>)}</div>
           <Button disabled={busy} onClick={() => onOperations(layer.path)}>{t('production.operationHistory')}</Button>

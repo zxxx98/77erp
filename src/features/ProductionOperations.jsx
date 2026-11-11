@@ -14,6 +14,7 @@ import { t, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { parseExactQuantity as parseQuantity, exactQuantity, formatExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 import { ProcessGraph } from './ProcessGraph.jsx';
+import { OperationPrice } from './OperationPrice.jsx';
 import { mobileDevice } from '../device.js';
 import { postProcessingUnit } from '../../shared/post-processing.js';
 import { outputRegistrationLocked } from '../production-registration.js';
@@ -126,6 +127,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                 </div>
                 {postProcessing ? <Badge tone="orange">{t('production.postProcessing')}</Badge> : node.is_output ? <Badge tone="blue">{t('route.output')}</Badge> : isStart ? <Badge tone="green">{t('route.start')}</Badge> : null}
               </div>
+              <OperationPrice node={node} unit={unit} />
               {node.acceptance_template_id && <Badge tone="orange">{t('route.acceptanceRequired')}</Badge>}
               {node.note && <p className="process-operation-note">{node.note}</p>}
               {postProcessing ? <p className="bom-hint">{t('production.productCoefficient')} {count(route.product_coefficient)} {order.unit} · {t(order.output_completed ? 'production.postProcessingFinal' : 'production.postProcessingAvailable')} {count(route.post_processing_limit)} {unit}</p>
@@ -150,6 +152,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
       }); }}>
         <div className="process-report-context">
           <h2>{activeNode?.name}</h2>
+          <OperationPrice node={activeNode} unit={unit} />
           {activeNode && <dl className="process-operation-stats">
             <div className="process-stat-box"><dt>{t('route.completed')}</dt><dd>{count(exactQuantity(activeNode, 'completed_quantity'))} {unit}</dd></div>
             {activeNode.available_quantity !== null && <div className="process-stat-box is-available"><dt>{t(availableLabel)}</dt><dd>{count(exactQuantity(activeNode, 'available_quantity'))} {unit}</dd></div>}
@@ -188,6 +191,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             </div>
             <p className="process-history-people">{t('route.worker')}: {report.worker_name} · {t('route.recorder')}: {report.registered_by_name}</p>
             <p className="bom-hint">{t('route.multiplier')}: {count(report.multiplier)}</p>
+            <OperationPrice node={route.operations.find(node => node.id === report.node_id)} unit={unit} />
             <p className="bom-hint">{new Date(report.created_at).toLocaleString(getFormatLocale())}</p>
             {report.acceptance_id && <Button disabled={action.busy} onClick={()=>action.run(async()=>setAcceptanceDetail(await api(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`,{warehouseId:data.warehouse_id})))}>{t('route.acceptanceRecord')} #{report.acceptance_id}</Button>}
             {report.note && <p className="process-history-note">{report.note}</p>}

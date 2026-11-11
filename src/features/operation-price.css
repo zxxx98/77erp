@@ -1,0 +1,10 @@
+.operation-price {
+  display: block;
+  color: var(--muted, #647084);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.overview-node:has(.operation-price) { gap: 4px; padding-block: 8px; }
+.overview-node .operation-price { font-size: 11px; }

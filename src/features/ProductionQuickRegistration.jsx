@@ -8,6 +8,7 @@ import { Button, Modal, PageHeading } from '../components/common.jsx';
 import { Input, Radio } from '../ui/controls.jsx';
 import { OperationWorkerSelect } from './ProductionOperations.jsx';
 import { PostProcessingMaterialPreview } from './PostProcessingMaterialPreview.jsx';
+import { OperationPrice } from './OperationPrice.jsx';
 import { ScrapOutputs } from './ScrapOutputs.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { useBusiness } from '../business-api.js';
@@ -32,6 +33,7 @@ function OperationName({ target, compact = false }) {
       target.showPath && t('registration.layer', { path: target.path || t('production.finalProduct') }),
       target.showStep && t('registration.step', { step: target.step }),
     ].filter(Boolean).join(' · ')}</small>}
+    {!compact && <OperationPrice node={target.node} unit={target.unit} />}
   </span>;
 }
 
@@ -166,6 +168,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
             <div className="form-body">{pickerContent}</div>
           </Modal>)}
           {drawer && target && <div className="registration-drawer-context">
+            <OperationPrice node={target.node} unit={target.unit} />
             <p>{[target.bomName, target.routeName, !target.postProcessing && t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>
             <div className="registration-drawer-quantities">
               {target.node?.available_quantity != null && <strong>{t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })}</strong>}

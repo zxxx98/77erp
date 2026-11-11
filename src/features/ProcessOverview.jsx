@@ -8,6 +8,7 @@ import { t, getFormatLocale } from '../i18n/index.js';
 import { useQuery } from '../queries.js';
 import { layoutOverview, overviewScope, productionOverviewLayers } from '../../shared/process-overview.js';
 import { validateProcessGraph } from '../../shared/process-routes.js';
+import { OperationPrice } from './OperationPrice.jsx';
 import './process-overview.css';
 
 const count = value => value == null ? t('overview.unknown') : Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 6 });
@@ -48,6 +49,7 @@ function LayerList({ layers, production, collapsed, onSelect, counts, byPath, ..
           const node = nodes.get(id), op = progress.get(id), parents = meta.incoming.get(id);
           return <li key={id}><button type="button" aria-label={`${layer.name} · ${node.name}`} onClick={() => onSelect(layer.path, id)}>
             <strong>{node.name}</strong><span>{id === meta.output ? t('route.output') : t('route.intermediate')}</span>
+            {production && <OperationPrice node={node} unit={layer.unit} />}
             <small>{parents.length ? `${t('route.predecessors')}: ${parents.map(parentId => nodes.get(parentId).name).join(' / ')}` : t('route.noPredecessors')}</small>
             {op && <small>{t('route.completed')} {count(op.completed_quantity)} {layer.unit}</small>}
           </button></li>;
@@ -90,6 +92,7 @@ function OverviewCanvas({ layout, production, scale, onScaleChange, canvasRef, o
             aria-label={`${group.name} · ${node.name}`} onClick={() => onSelect(group.path, node.placeholder ? null : node.id)}>
             <span>{node.placeholder ? noRouteLabel(production) : node.output ? t('route.output') : t('route.operations')}</span>
             <strong title={node.name}>{node.name}</strong>
+            {production && !node.placeholder && <OperationPrice node={node} unit={group.unit} />}
             {node.progress ? <small>{t('route.completed')} {count(node.progress.completed_quantity)} {group.unit}</small> : <small title={node.note}>{node.note || group.unit}</small>}
           </button>)}
         </article>)}
@@ -152,6 +155,7 @@ export function ProcessOverview({ layers, production = false, onOpen, disabled =
     {selectedLayer && <aside className="overview-detail" aria-label={t('overview.detail')}>
       <div className="overview-detail-heading"><h3>{selectedLayer.name} · {selectedNode?.name || noRouteLabel(production)}</h3><Button onClick={() => setSelected(null)}>{t('route.close')}</Button></div>
       <p>{selectedLayer.bom_name} · {selectedLayer.path || t('production.finalProduct')}</p>
+      {production && <OperationPrice node={selectedNode} unit={selectedLayer.unit} />}
       {selectedNode && <><p>{selectedNode.note || t('overview.noInstructions')}</p><p>{t('route.predecessors')}: {selectedLayer.route.graph.edges.filter(edge => edge.to === selectedNode.id).map(edge => selectedLayer.route.graph.nodes.find(node => node.id === edge.from)?.name).join(' / ') || t('route.noPredecessors')}</p></>}
       {selectedProgress && <p>{t('route.completed')} {count(selectedProgress.completed_quantity)} {selectedLayer.unit}{selectedProgress.available_quantity != null && ` · ${t('route.available')} ${count(selectedProgress.available_quantity)} ${selectedLayer.unit}`}</p>}
       {onOpen && selectedLayer.route && <Button disabled={disabled} onClick={() => onOpen(selectedLayer.path)}>{t('route.viewProgress')}</Button>}

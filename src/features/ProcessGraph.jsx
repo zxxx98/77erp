@@ -5,6 +5,7 @@ import { useLocale } from '../i18n/react.jsx';
 import { ZoomViewport } from '../ui/ZoomViewport.jsx';
 import { ProcessGraphMenu } from './ProcessGraphMenu.jsx';
 import { useProcessGraphGestures } from './useProcessGraphGestures.js';
+import { OperationPrice } from './OperationPrice.jsx';
 import './process-routes.css';
 
 export function orderProcessNodes(graph) {
@@ -47,6 +48,7 @@ export function ProcessFlowStrip({ graph, operations = [], limit = 6 }) {
         <span className={`process-flow-pill${node.isOutput ? ' is-output' : node.isStart ? ' is-start' : ''}`}>
           <em className="process-flow-index">{node.step}</em>
           <strong className="process-flow-name">{node.name}</strong>
+          {op && <OperationPrice node={node} />}
           {op !== undefined && <small className="process-flow-qty">{op.completed_quantity}</small>}
           {node.isOutput && <i className="process-flow-tag">{t('route.output')}</i>}
         </span>
@@ -125,6 +127,7 @@ export function ProcessGraph({ graph, selected, connectingSource = null, onSelec
             </em>
           </div>
           <strong title={node.name}>{node.name}</strong>
+          {progress && <OperationPrice node={node} />}
           {progress ? <span className="process-node-metrics">
             <b>{t('route.completed')} {progress.completed_quantity}</b>
             {progress.available_quantity !== null && <b className={progress.available_quantity > 0 ? 'has-available' : ''}>{t('route.available')} {progress.available_quantity}</b>}
