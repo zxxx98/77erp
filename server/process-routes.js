@@ -437,6 +437,23 @@ export function assertOperationsFinished(db, productionId) {
 }
 
 export function installProductionOperations(app, db, { route, current, version }) {
+  app.get('/api/production-orders/:id/operation-prices', route(req => {
+    const order = current(req);
+    return { version: order.version, routes: order.operation_routes.map(snapshot => {
+      const layer = order.stages?.find(stage => stage.path === snapshot.path);
+      return {
+        id: snapshot.id, path: snapshot.path, route_name: snapshot.route_name,
+        product_name: layer?.name || order.product_name,
+        unit: snapshot.product_coefficient != null ? snapshot.unit || postProcessingUnit : layer?.unit || order.unit,
+        price_table_id: snapshot.graph.price_table_id ?? null,
+        price_table_name: snapshot.graph.price_table_name || '',
+        operations: snapshot.graph.nodes.map(node => ({
+          id: node.id, name: node.name, unit_price: node.unit_price ?? null,
+          currency: node.currency ?? null, multiplier: node.multiplier ?? 1,
+        })),
+      };
+    }) };
+  }));
   app.get('/api/production-orders/:id/operation-workers', route(req => {
     const order = current(req);
     const workers = hasPermission(req.user, 'production')

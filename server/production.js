@@ -294,13 +294,16 @@ export function installProduction(app, db, options = {}) {
       try {
         // Every production operation rechecks current access before idempotent replay.
         const path = req.path.toLowerCase().replace(/\/+$/, '');
+        const operationPrices = /^\/api\/production-orders\/\d+\/operation-prices$/.test(path) && ['GET','HEAD'].includes(req.method);
+        const syncPrices = /^\/api\/production-orders\/\d+\/sync-operation-prices$/.test(path) && req.method === 'POST';
+        if ((operationPrices || syncPrices) && !hasPermission(req.user, 'bom')) fail('需要工艺路线权限。', 403);
         if (path.startsWith('/api/production-orders')) {
           const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches|\/operation-workers|\/operations\/(?:reports|acceptance-template|acceptances\/\d+))?)?$/.test(path);
           const operationReport = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/report$/.test(path);
           const acceptanceAction = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/registrations\/\d+\/(?:approve|cancel)$/.test(path);
           const register = operationReport || req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
           if (!hasPermission(req.user, 'production')) {
-            if (!isGroupProductionWorker(req.user) || (!read && !register && !acceptanceAction)) fail('需要生产管理权限。', 403);
+            if (!isGroupProductionWorker(req.user) || (!read && !register && !acceptanceAction && !operationPrices && !syncPrices)) fail('需要生产管理权限。', 403);
             if (req.params.id) {
               const order = db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
               if (!order) fail('生产单不存在或不属于当前仓库。', 404);
@@ -361,7 +364,8 @@ export function installProduction(app, db, options = {}) {
         const request = write ? operationRequest(db, req) : null;
         const result = request?.previous || (deferred ? queueRegistration(req,fn,path) : write ? fn(req) : await fn(req));
         if (write) { if (!request.previous) saveOperationRequest(db, request, result); db.exec('COMMIT'); }
-        res.json(isGroupProductionWorker(req.user) ? productionWorkerProjection(result) : hasPermission(req.user, 'finance') ? result : productionWithoutCosts(result));
+        // This endpoint returns only the authorized operation price list, never inventory costs.
+        res.json(operationPrices ? result : isGroupProductionWorker(req.user) ? productionWorkerProjection(result) : hasPermission(req.user, 'finance') ? result : productionWithoutCosts(result));
       } catch (error) {
         if (write && db.isTransaction) db.exec('ROLLBACK');
         res.status(error.status || 400).json({ error: error.message });

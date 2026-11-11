@@ -1,5 +1,9 @@
 // System UI only. Stored template content, values and material identifiers are not translated.
 export default {
+  'production.operationPricesTab': ['工价列表', 'Operation Prices', 'Đơn giá công đoạn'],
+  'production.refreshOperationPrices': ['刷新工价', 'Refresh Operation Prices', 'Làm mới đơn giá'],
+  'production.operationPricesSnapshotHint': ['此处显示本生产单保存的工价，不会实时跟随单价表变动。刷新将按本单各工艺原绑定单价表的最新单价、币种及工序倍率更新，并重新核算本单历史报工工资。', 'These are the prices saved in this order; price table changes do not update them automatically. Refresh applies the latest prices, currencies and multipliers from each originally bound price table and recalculates historical wages for this order.', 'Đây là đơn giá đã lưu trong lệnh, không tự cập nhật khi bảng giá thay đổi. Làm mới áp dụng đơn giá, loại tiền và hệ số mới nhất từ từng bảng giá đã gắn ban đầu và tính lại lương ghi nhận trước đây của lệnh.'],
+  'production.noOperationPrices': ['本生产单没有关联工序。', 'This order has no linked operations.', 'Lệnh này chưa liên kết công đoạn.'],
   'production.fixedMaterialPerRun': ['每次用量 {{quantity}} {{unit}}', 'Per run {{quantity}} {{unit}}', 'Mỗi lần {{quantity}} {{unit}}'],
   'production.fixedMaterialPlanned': ['预计用量 {{quantity}} {{unit}}', 'Planned use {{quantity}} {{unit}}', 'Lượng dự kiến {{quantity}} {{unit}}'],
   'production.fixedMaterialPreview': ['本次固定耗料', 'Fixed consumption for this report', 'Vật tư cố định cho lần báo công này'],
@@ -7283,14 +7287,14 @@ export default {
     "Chú ý: Rủi ro khi đồng bộ đơn giá công đoạn"
   ],
   "production.syncOperationPricesWarning": [
-    "此操作将按工艺路线库中的当前单价和币种，更新本生产单全部工序的单价快照。若本生产单已有工序报工记录，这些历史报工也将按新单价重新核算计件工资，可能影响历史工资统计结果。",
-    "This will update the operation unit price and currency snapshots in this production order to match the current process routes. If reports already exist, historical reports will also be recalculated with the new prices, which may affect historical wage statistics.",
-    "Thao tác này sẽ cập nhật ảnh chụp nhanh đơn giá và loại tiền công đoạn trong lệnh sản xuất này theo quy trình hiện tại. Nếu đã có ghi nhận, sản lượng cũ cũng sẽ được tính lại theo đơn giá mới, có thể ảnh hưởng đến thống kê lương lịch sử."
+    "此操作将按本生产单原绑定单价表的最新单价、币种和工序倍率，更新本生产单全部工序的工价快照。若本生产单已有工序报工记录，这些历史报工也将按新单价重新核算计件工资，可能影响历史工资统计结果。",
+    "This will update the operation price snapshots in this production order to match the latest prices, currencies and multipliers in the originally bound price tables. If reports already exist, historical reports will also be recalculated with the new prices, which may affect historical wage statistics.",
+    "Thao tác này sẽ cập nhật ảnh chụp nhanh đơn giá, loại tiền và hệ số công đoạn trong lệnh theo bảng đơn giá đã gắn ban đầu. Nếu đã có ghi nhận, sản lượng cũ cũng sẽ được tính lại theo đơn giá mới, có thể ảnh hưởng đến thống kê lương lịch sử."
   ],
   "production.syncOperationPricesHint": [
-    "如需继续，请确认当前工艺路线中的工序单价与币种设置准确无误。",
-    "Please confirm that the unit prices and currencies in the current process routes are accurate before proceeding.",
-    "Vui lòng xác nhận đơn giá và loại tiền trong quy trình hiện tại là chính xác trước khi tiếp tục."
+    "如需继续，请确认本单原绑定单价表中的单价、币种及工序倍率设置准确无误。",
+    "Please confirm that the prices, currencies and multipliers in the originally bound price tables are accurate before proceeding.",
+    "Vui lòng xác nhận đơn giá, loại tiền và hệ số trong bảng giá đã gắn ban đầu là chính xác trước khi tiếp tục."
   ],
   "production.confirmSyncPrices": [
     "确认同步单价",

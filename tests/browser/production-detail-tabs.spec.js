@@ -42,7 +42,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production tabs p
     if (context) await page.evaluate(() => navigator.serviceWorker.ready);
     await page.getByRole('button', { name: `查看生产单 ${f.draft.number}`, exact: true }).click();
     await expect(tab('概览')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab')).toHaveCount(5);
+    await expect(page.getByRole('tab')).toHaveCount(6);
     await expect(page.getByRole('heading', { name: '配方结构快照', exact: true })).not.toBeVisible();
     await page.screenshot({ path: test.info().outputPath(`${mode}-overview.png`), fullPage: true });
     await tab('生产进度').click();

@@ -67,7 +67,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
   const back = () => leave(() => { if (form || voiding) { setForm(null); setVoiding(null); } else onBack(); });
   const activeNode = form ? route.operations.find(n => n.id === form.node_id) : null;
   return <div className="production-stages process-page">{acceptance.dialog}<ProductionAcceptanceRegistrations order={order} data={data} onSaved={onSaved} path={path}/>
-    {syncPriceConfirm && <Modal title={t('route.syncPrices')} subtitle={order.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>
+    {syncPriceConfirm && can('bom') && <Modal title={t('route.syncPrices')} subtitle={order.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>
       <div className="form-body">
         <div className="production-warning-box" role="alert">
           <strong>{t('route.syncPricesWarningTitle')}</strong>
@@ -171,7 +171,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
     {action.error && <p className="form-error" role="alert">{action.error}</p>}
     <div className="bom-actions process-reload-bar">
       <Button icon={RefreshCw} disabled={action.busy} onClick={() => leave(() => action.run(async () => onSaved(await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id }), t('route.reload'))))}>{t('route.reload')}</Button>
-      {can('production') && order.status !== 'void' && (
+      {can('bom') && order.status !== 'void' && (
         <Button disabled={action.busy} onClick={() => setSyncPriceConfirm(true)}>{t('route.syncPrices')}</Button>
       )}
     </div>

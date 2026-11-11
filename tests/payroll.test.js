@@ -272,3 +272,48 @@ test('payroll production order search and per-worker breakdown aggregate across 
     assert.equal((await f.request(bad)).status, 400);
   }
 });
+
+test('operation price list and refresh require route editing rights, preserve costs and enforce assignment scope', async t => {
+  const graph = { ...priced, nodes: priced.nodes.map((row, i) => i === 1 ? { ...row, unit_price: 0 } : row) };
+  const f = await fixture(t, { graph, multi: true });
+  const order = await f.create();
+  const pricePath = `/production-orders/${order.id}/operation-prices`;
+  const syncPath = `/production-orders/${order.id}/sync-operation-prices`;
+  const login = async (username, permissions) => {
+    const position = f.ok(await f.request('/positions', { name: username, access_mode: 'standard', permissions }));
+    const user = f.ok(await f.request('/users', { username, employee_no: username, password: 'Prices-test-123', role: 'employee', position_id: position.id }));
+    const result = await f.request('/auth/login', { username, password: 'Prices-test-123' }, { cookie: ' ' });
+    return { cookie: result.cookie, position, user };
+  };
+  const editor = await login('priceeditor', ['production', 'bom']);
+  const manager = await login('pricemanager', ['production', 'finance']);
+  const worker = await login('priceworker', ['production_register', 'bom']);
+  const get = (path, account, warehouseId = 1) => f.request(path, undefined, { cookie: account.cookie, warehouseId });
+  assert.equal((await get(pricePath, manager)).status, 403);
+  assert.equal((await f.command(syncPath, { version: order.version }, { cookie: manager.cookie })).status, 403);
+  const list = f.ok(await get(pricePath, editor));
+  assert.equal(list.routes.length, 2);
+  assert.equal(list.routes[0].unit, '件');
+  assert.deepEqual(list.routes[0].operations.map(row => row.unit_price), [2.5, 0, null]);
+  assert.equal(JSON.stringify(list).includes('cost'), false);
+  const ordinary = f.ok(await get(`/production-orders/${order.id}`, editor));
+  assert.equal(ordinary.total_cost_cents, undefined);
+  assert.equal(ordinary.operation_routes[0].graph.nodes[0].unit_price, undefined);
+  const warehouse = f.ok(await f.request('/warehouses', { name: '工价隔离仓' }));
+  assert.equal((await get(pricePath, editor, warehouse.id)).status, 404);
+  assert.equal((await get(pricePath, worker)).status, 404);
+  assert.equal((await f.command(syncPath, { version: order.version }, { cookie: worker.cookie })).status, 404);
+  const assigned = f.ok(await f.command(`/production-orders/${order.id}/assign`, { version: order.version, user_ids: [worker.user.id], group_ids: [] }));
+  assert.equal(f.ok(await get(pricePath, worker)).routes.length, 2);
+  assert.equal((await f.command(syncPath, { version: order.version }, { cookie: editor.cookie })).status, 409);
+  const body = { request_id: randomUUID(), schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: assigned.version };
+  const response = await f.request(syncPath, body, { cookie: worker.cookie });
+  assert.equal(response.status, 200, JSON.stringify(response.data));
+  f.db.prepare('UPDATE positions SET permissions=? WHERE id=?').run('["production_register"]', worker.position.id);
+  assert.equal((await get(pricePath, worker)).status, 403);
+  assert.equal((await f.request(syncPath, body, { cookie: worker.cookie })).status, 403, 'revoked edit rights also block replay');
+  const current = await f.get(order.id);
+  const voided = f.ok(await f.command(`/production-orders/${order.id}/void`, { version: current.version, reason: '工价只读测试' }));
+  assert.equal((await get(pricePath, editor)).status, 200);
+  assert.equal((await f.command(syncPath, { version: voided.version }, { cookie: editor.cookie })).status, 409);
+});

@@ -47,6 +47,7 @@ import './bom.css';
 import './production.css';
 import { ProductionProgress } from '../features/ProductionProgress.jsx';
 import { ProductionDetailTabs } from '../features/ProductionDetailTabs.jsx';
+import { ProductionOperationPrices } from '../features/ProductionOperationPrices.jsx';
 import { ProductionMaterialLedger } from '../features/ProductionMaterialLedger.jsx';
 import { money as formatMoney, currencySymbol } from '../app/format.js';
 
@@ -562,7 +563,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
             {pt(detail.output_completion_confirmed ? 'production.revokeOutputCompletion' : 'production.confirmOutputCompletion')}
           </Button>}
           <Button disabled={action.busy} onClick={() => open(detail.id)}>{pt("production.refreshOrderAndStock")}</Button>
-          {management && detail.status !== 'void' && !!detail.operation_routes?.length && (
+          {can('bom') && detail.status !== 'void' && !!detail.operation_routes?.length && (
             <Button disabled={action.busy} onClick={() => { setMoreOpen(false); setSyncPriceConfirm(true); }}>
               {pt('production.syncOperationPrices')}
             </Button>
@@ -577,7 +578,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         </div>
       </div>
     </Modal>}
-    {syncPriceConfirm && <Modal title={pt('production.syncOperationPrices')} subtitle={detail.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>
+    {syncPriceConfirm && can('bom') && <Modal title={pt('production.syncOperationPrices')} subtitle={detail.number} onClose={() => { if (!action.busy) setSyncPriceConfirm(false); }}>
       <div className="form-body">
         <div className="production-warning-box" role="alert">
           <strong>{pt('production.syncOperationPricesWarningTitle')}</strong>
@@ -663,6 +664,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       })}>{pt("production.enableLevelRegistration")}</Button>}
     </section>}
       </> },
+      ...(can('bom') ? [{ key: 'prices', label: pt('production.operationPricesTab'), children: <ProductionOperationPrices order={detail} warehouseId={data.warehouse_id} busy={action.busy} onRefresh={() => setSyncPriceConfirm(true)} /> }] : []),
       { key: 'materials', label: pt('production.materialsTab'), children: <>
     {detail.material_workflow === 1 && <section className="panel bom-section" aria-label={pt("production.productionMaterialIssuesAndReturns")}><h2>{pt("production.materialLedger")}</h2>
       {detail.status === 'awaiting_materials' && <p className="bom-warning">{pt("production.collectMaterialsFromTheWarehouseAfterIssueConfirmation")}</p>}

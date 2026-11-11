@@ -269,6 +269,8 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     }
     if (read && ['/payroll', '/payroll/members', '/payroll/production-orders', '/payroll/production-order'].includes(path) && hasPermission(req.user, 'finance')) return next();
     if (groupProductionRoute && hasPermission(req.user,'production_register')) return next();
+    if (hasPermission(req.user, 'bom') && hasPermission(req.user, 'production_register') &&
+        (read && /^\/production-orders\/\d+\/operation-prices$/.test(path) || post && /^\/production-orders\/\d+\/sync-operation-prices$/.test(path))) return next();
     if (read && path === '/production-groups' && hasPermission(req.user,'production')) return next();
     if (/^\/quality(?:\/|$)/.test(path) && hasPermission(req.user, 'quality')) return next();
     if (/^\/process-routes(?:\/|$)/.test(path) && (hasPermission(req.user, 'bom') || read && ['products','production'].some(key => hasPermission(req.user,key)))) return next();
