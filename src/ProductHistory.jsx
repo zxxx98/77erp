@@ -51,6 +51,7 @@ export function ProductHistory({ product, onViewOrder }) {
         {record.order_id && <div><AntButton type="text" htmlType="button" className="text-button" onClick={() => onViewOrder(record.order_id)}>{record.number}</AntButton>{record.partner && <span> · {record.partner}</span>}</div>}
         {record.kind === 'production' && <p>{record.number}</p>}
         {record.before_stock !== null && <p>{translate("warehouse.inventory.3")}{count(record.before_stock)} → {count(record.after_stock)} {product.unit}</p>}
+        {record.event === 'production_material_out' && <p>{translate("warehouse.stock.after.issue")}{record.after_stock === null ? translate("warehouse.stock.after.issue.unknown") : `${count(record.after_stock)} ${record.unit || product.unit}`}</p>}
         {record.event === 'price_change' && <>
           {record.before_cost !== record.after_cost && <p>{translate("warehouse.cost.price")}{currencySymbol()} {price(record.before_cost)} → {currencySymbol()} {price(record.after_cost)}</p>}
           {record.before_price !== record.after_price && <p>{translate("warehouse.price")}{currencySymbol()} {price(record.before_price)} → {currencySymbol()} {price(record.after_price)}</p>}

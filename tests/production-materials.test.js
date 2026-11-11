@@ -64,6 +64,9 @@ test('start requests whole-order materials; warehouse approval deducts once; reg
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM orders').get().n, 0);
   const history = f.ok(await f.request(`/products/${f.material}/history`)).records;
   assert.deepEqual(history.map(row => [row.event, row.delta]), [['production_material_out', -20]]);
+  assert.equal(history[0].after_stock, 80);
+  f.db.prepare('UPDATE products SET stock=75 WHERE id=?').run(f.material);
+  assert.equal(f.ok(await f.request(`/products/${f.material}/history`)).records[0].after_stock, 80);
 });
 
 test('new orders cannot register before approval; cancellation reopens start, version/retries prevent duplicate posting', async t => {
@@ -106,7 +109,12 @@ test('supplements, finished-order returns and batch reversal conserve the pool c
   assert.equal(f.stock(f.material).stock, 85);
   assert.equal(f.stock(f.material).inventory_value_cents + order.items[0].cost_cents, initial.inventory_value_cents);
   const backup = f.ok(await f.request('/backup')), preview = f.ok(await f.request('/backup/preview', { backup }));
+  assert.equal(backup.data.production_material_issue_items.find(row => row.product_id === f.material).after_stock, 80);
+  const legacyBackup = structuredClone(backup);
+  for (const row of legacyBackup.data.production_material_issue_items) delete row.after_stock;
+  f.ok(await f.request('/backup/preview', { backup: legacyBackup }));
   f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.ok(f.ok(await f.request(`/products/${f.material}/history`)).records.some(row => row.event === 'production_material_out' && row.after_stock === 80));
   const restored = await f.get(order.id); assert.equal(restored.items[0].available_quantity, 0); assert.equal(restored.material_documents.length, 3);
   assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
 });

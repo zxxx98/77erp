@@ -634,6 +634,8 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const p of data.products || []) if (p && !('active' in p)) p.active = 1;
     if (value.version < 8) for (const p of data.products || []) if (p && !('version' in p)) p.version = 1;
     if (value.version < 40) migrateMaterialIssueBackup(data);
+    for (const row of data.production_material_issue_items || []) if (!('after_stock' in row)) row.after_stock = null;
+    for (const row of data.production_operation_reports || []) if (!('split_from_id' in row)) row.split_from_id = null;
     if (value.version < 49) {
       data.production_quantity_rounding ??= [];
       for (const table of tables) for (const row of data[table] || []) for (const column of columns[table])

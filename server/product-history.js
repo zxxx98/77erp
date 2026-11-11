@@ -125,7 +125,7 @@ export function installProductHistory(app, db) {
       WHERE i.product_id=? AND d.warehouse_id=? AND d.status='confirmed' AND d.type='in' AND (? OR d.type='out' AND ? OR d.type='in' AND ?)
       UNION ALL
       SELECT 'production_material_out','material-issue:' || i.id,NULL,s.number,'out','production','confirmed',s.confirmed_at,'',d.production_number || ' · ' || d.note,s.confirmed_by_name,
-        i.quantity,-i.quantity,NULL,NULL,NULL,NULL,NULL,NULL,p.unit
+        i.quantity,-i.quantity,NULL,i.after_stock,NULL,NULL,NULL,NULL,p.unit
       FROM production_material_issue_items i JOIN production_material_issues s ON s.id=i.issue_id
       JOIN production_material_documents d ON d.id=s.document_id
       JOIN production_material_document_items p ON p.document_id=d.id AND p.product_id=i.product_id

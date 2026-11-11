@@ -5,7 +5,8 @@ import { productionPools, stagePoolPaths, productionPoolOrder } from '../shared/
 import { isProductionAssignee } from '../shared/production-assignment.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validQuantity, addQuantity } from '../shared/quantity.js';
-import { exactQuantity, exactAdd, exactCompare, exactNumber, parseProductionQuantity as parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
+import { exactQuantity, exactAdd, exactSubtract, exactMultiply, exactDivide, exactCompare, exactNumber, quantityFields, parseProductionQuantity as parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
+import { allocate } from './commerce.js';
 import { saveExactQuantity } from './exact-quantity.js';
 import { reopenProductionQuantities } from './production-rounding.js';
 import { validateProcessGraph, processProgress, productionRouteProgress, processGraphWithPrices, processPriceTables } from '../shared/process-routes.js';
@@ -47,6 +48,8 @@ export function migrateProcessRoutes(db) {
     db.exec('ALTER TABLE production_operation_reports ADD COLUMN acceptance_id INTEGER REFERENCES quality_acceptances(id)');
   if (!db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'multiplier'))
     db.exec('ALTER TABLE production_operation_reports ADD COLUMN multiplier REAL NOT NULL DEFAULT 1 CHECK(multiplier>0)');
+  if (!db.prepare('PRAGMA table_info(production_operation_reports)').all().some(c => c.name === 'split_from_id'))
+    db.exec('ALTER TABLE production_operation_reports ADD COLUMN split_from_id INTEGER REFERENCES production_operation_reports(id)');
   if (!db.prepare('PRAGMA table_info(process_routes)').all().some(c => c.name === 'route_kind'))
     db.exec("ALTER TABLE process_routes ADD COLUMN route_kind TEXT NOT NULL DEFAULT 'production' CHECK(route_kind IN ('production','post_processing'))");
   if (!db.prepare('PRAGMA table_info(production_routes)').all().some(c => c.name === 'product_coefficient'))
@@ -498,13 +501,39 @@ export function installProductionOperations(app, db, { route, current, version }
     if (!report || report.status !== 'active') fail('工序记录不存在或已作废。', 404);
     if (report.output_kind) fail('最终工序记录请通过对应产出批次作废。', 409);
     const snapshot = order.operation_routes.find(r => r.id === report.route_snapshot_id);
+    let quantity;
+    try { quantity = req.body.quantity === undefined ? exactQuantity(report) : parseExactQuantity(req.body.quantity, true); } catch { fail('请输入有效的作废数量。'); }
+    if (!validExactQuantity(quantity, true) || exactCompare(quantity, exactQuantity(report)) > 0) fail('作废数量不能超过记录的有效数量。');
+    if (snapshot.product_coefficient != null && !Number.isSafeInteger(quantity)) fail('后处理作废次数必须为正整数。');
+    const left = exactSubtract(exactQuantity(report), quantity);
     const paths = stagePoolPaths(order, snapshot.path), ids = new Set(order.operation_routes.filter(r => paths.includes(r.path)).map(r => r.id));
-    const remaining = processProgress(snapshot.graph, db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? AND id!=?').all(order.id, report.id).filter(r => ids.has(r.route_snapshot_id)));
+    const reports = db.prepare('SELECT * FROM production_operation_reports WHERE production_id=? AND id!=?').all(order.id, report.id).filter(r => ids.has(r.route_snapshot_id));
+    if (exactCompare(left, 0) > 0) reports.push({ ...report, ...quantityFields(left) });
+    const remaining = processProgress(snapshot.graph, reports);
     for (const node of remaining) for (const parent of node.predecessors)
       if (exactCompare(exactQuantity(node, 'completed_quantity'), exactQuantity(remaining.find(n => n.id === parent), 'completed_quantity')) > 0) fail('后序已有报工，请先作废依赖的后序记录。', 409);
     reopenProductionQuantities(db, req, order);
     const at = new Date().toISOString();
-    db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE id=?").run(req.body.reason.trim(), actor(req), at, nextOperationSequence(db, order.id), report.id);
+    const sequence = nextOperationSequence(db, order.id);
+    if (exactCompare(left, 0) === 0) {
+      db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE id=?").run(req.body.reason.trim(), actor(req), at, sequence, report.id);
+    } else {
+      const materials = JSON.parse(report.post_materials);
+      const removedMaterials = materials.map(material => {
+        const removed = exactNumber(exactMultiply(material.quantity, exactDivide(quantity, exactQuantity(report))));
+        return { ...material, quantity: removed, cost_cents: allocate(material.basis_cost_cents, removed, exactQuantity(material, 'basis_quantity')) };
+      });
+      const keptMaterials = materials.map((material, index) => {
+        const kept = exactNumber(exactSubtract(material.quantity, removedMaterials[index].quantity));
+        const cost = material.cost_cents - removedMaterials[index].cost_cents;
+        return { ...material, quantity: kept, ...quantityFields(kept, 'basis_quantity'), basis_cost_cents: cost, cost_cents: cost };
+      });
+      saveExactQuantity(db, 'production_operation_reports', report.id, 'quantity', left);
+      db.prepare('UPDATE production_operation_reports SET post_materials=? WHERE id=?').run(JSON.stringify(keptMaterials), report.id);
+      const result = db.prepare(`INSERT INTO production_operation_reports(production_id,route_snapshot_id,node_id,quantity,worker_id,worker_name,registered_by,registered_by_name,note,created_at,output_kind,output_batch_id,created_sequence,acceptance_id,multiplier,post_materials,status,void_reason,voided_by_name,voided_at,voided_sequence,split_from_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(report.production_id,report.route_snapshot_id,report.node_id,exactNumber(quantity),report.worker_id,report.worker_name,report.registered_by,report.registered_by_name,report.note,report.created_at,null,null,report.created_sequence,report.acceptance_id,report.multiplier,JSON.stringify(removedMaterials),'void',req.body.reason.trim(),actor(req),at,sequence,report.id);
+      saveExactQuantity(db, 'production_operation_reports', Number(result.lastInsertRowid), 'quantity', quantity);
+    }
     db.prepare("UPDATE production_orders SET status='draft',updated_at=?,updated_by_name=? WHERE id=?").run(at, actor(req), order.id);
     return current(req);
   }, true));
@@ -587,6 +616,7 @@ export function validateProcessRouteBackup(data) {
       fail('备份成品生产完成确认状态无效。');
   }
   const outputs = new Set(), acceptanceOwners = new Map();
+  const reportsById = new Map(data.production_operation_reports.map(row => [row.id, row]));
   for (const row of data.production_operation_reports) {
     const snapshot = snapshots.get(row.route_snapshot_id), order = orders.get(row.production_id);
     if (!snapshot || snapshot.production_id !== row.production_id || !order || !validExactQuantity(row.quantity, true) || !validExactQuantity(row.multiplier, true) || !['active','void'].includes(row.status) ||
@@ -595,6 +625,11 @@ export function validateProcessRouteBackup(data) {
         (row.status === 'active' ? row.voided_sequence !== null || row.voided_at !== null || row.void_reason !== '' || row.voided_by_name !== '' : !id(row.voided_sequence) || row.voided_sequence <= row.created_sequence || !row.void_reason.trim() || !row.voided_by_name.trim() || !Number.isFinite(Date.parse(row.voided_at)) || row.voided_at < row.created_at)) fail('备份工序登记无效。');
     const node = snapshot.graph.nodes.find(n => n.id === row.node_id), output = validateProcessGraph(snapshot.graph).output;
     if (!node) fail('备份工序登记节点无效。');
+    if (row.split_from_id !== null) {
+      const original = reportsById.get(row.split_from_id);
+      if (!original || original.split_from_id !== null || row.status !== 'void' || row.output_kind !== null ||
+          ['production_id','route_snapshot_id','node_id','created_sequence','created_at','worker_id','worker_name','registered_by','registered_by_name','note','acceptance_id','multiplier'].some(key => row[key] !== original[key])) fail('备份工序部分作废记录无效。');
+    }
     if(!association(row.acceptance_id)) fail('备份工序验收单编号无效。');
     if(node.acceptance_template_id) {
       const acceptance=data.quality_acceptances.find(a=>a.id===row.acceptance_id);
@@ -635,9 +670,17 @@ export function validateProcessRouteBackup(data) {
     const events = snapshot.reports.flatMap(report => [{ sequence: report.created_sequence, report, create: true }, ...(report.status === 'void' ? [{ sequence: report.voided_sequence, report, create: false }] : [])]).sort((a,b) => a.sequence - b.sequence);
     const used = sequences.get(snapshot.production_id) || new Set(); sequences.set(snapshot.production_id,used);
     const active = new Map();
-    for (const event of events) {
-      if (used.has(event.sequence)) fail('备份工序事件顺序无效。'); used.add(event.sequence);
-      if (event.create) active.set(event.report.id,{ ...event.report,status:'active' }); else active.delete(event.report.id);
+    for (let index = 0; index < events.length;) {
+      const sequence = events[index].sequence, group = [];
+      while (index < events.length && events[index].sequence === sequence) group.push(events[index++]);
+      if (used.has(sequence)) fail('备份工序事件顺序无效。'); used.add(sequence);
+      if (group.length > 1) {
+        const originals = group.filter(event => event.create && event.report.split_from_id === null);
+        if (originals.length !== 1 || group.some(event => !event.create || event.report !== originals[0].report && event.report.split_from_id !== originals[0].report.id)) fail('备份工序事件顺序无效。');
+      }
+      for (const event of group) {
+        if (event.create) active.set(event.report.id,{ ...event.report,status:'active' }); else active.delete(event.report.id);
+      }
       const progress = processProgress(snapshot.graph,[...active.values()]);
       for (const node of progress) for (const parent of node.predecessors)
         if (exactCompare(exactQuantity(node,'completed_quantity'),exactQuantity(progress.find(n => n.id === parent),'completed_quantity')) > 0) fail('备份工序事件顺序无效。');

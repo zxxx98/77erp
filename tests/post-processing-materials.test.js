@@ -214,6 +214,30 @@ test('separate post operations consume the same exact pool and void reopens fini
   assert.deepEqual(order.operation_routes.map(row => row.operations[0].available_quantity), [0, 1]);
 });
 
+test('partially voiding post-processing restores proportional materials and preserves costs in backup', async t => {
+  const f = await fixture(t), route = f.ok(await f.route([{ product_id: f.raw.id, quantity: 0.3333 }]));
+  let order = await f.mutate(await f.create(route, 100), '/start', {});
+  await f.issue(order.material_documents[0], [{ product_id: f.raw.id, quantity: 102 }]);
+  order = await f.complete(await f.get(order.id), 100);
+  order = f.ok(await f.report(order, f.reportBody(order, 5)));
+  const report = order.operation_routes[0].reports[0], before = order.items[0];
+  order = await f.mutate(order, `/operations/${report.id}/void`, { quantity: 2, reason: '纠正' });
+  const rows = order.operation_routes[0].reports;
+  const active = rows.find(row => row.status === 'active'), removed = rows.find(row => row.status === 'void');
+  assert.equal(active.quantity, 3); assert.equal(removed.quantity, 2);
+  assert.equal(active.post_processing_materials[0].quantity, 0.9999);
+  assert.equal(removed.post_processing_materials[0].quantity, 0.6666);
+  assert.equal(active.post_processing_material_cost_cents + removed.post_processing_material_cost_cents, report.post_processing_material_cost_cents);
+  assert.equal(order.items[0].available_cost_cents, before.available_cost_cents + removed.post_processing_material_cost_cents);
+  const backup = f.ok(await f.request('/backup')), preview = f.ok(await f.request('/backup/preview', { backup }));
+  await f.save('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' });
+  order = await f.get(order.id);
+  assert.equal(order.operation_routes[0].operations[0].completed_quantity, 3);
+  order = await f.mutate(order, `/operations/${report.id}/void`, { quantity: 1, reason: '再次纠正' });
+  assert.equal(order.operation_routes[0].operations[0].completed_quantity, 2);
+  f.ok(await f.request('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
+});
+
 test('v52 backups and on-disk orders keep old post reports material-free', async t => {
   const f = await fixture(t), route = f.ok(await f.route(undefined));
   let order = await f.mutate(await f.create(route, 20), '/start', {});

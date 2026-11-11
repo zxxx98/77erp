@@ -240,6 +240,42 @@ test('serial reports constrain later operations, remain separate from inventory,
   assert.equal(order.operation_routes[0].operations[0].completed_quantity,0);
 });
 
+test('partial operation void preserves downstream progress, payroll and backup history', async t => {
+  const f = await fixture(t, { graph: modelPrices }); let order = await f.start(await f.create());
+  order = f.ok(await f.report(order, 'cut', 6));
+  order = f.ok(await f.report(order, 'weld', 4));
+  assert.deepEqual(f.ok(await f.request(`/payroll/production-order?production_id=${order.id}`)).currencies, [{ currency: 'CNY', amount_cents: 2000 }]);
+  const report = order.operation_routes[0].reports.find(row => row.node_id === 'cut');
+  const path = `/production-orders/${order.id}/operations/${report.id}/void`;
+  for (const quantity of [0, 7, -1]) assert.equal((await f.command(path, { version: order.version, quantity, reason: '纠正' })).status, 400);
+  assert.equal((await f.command(path, { version: order.version, quantity: 3, reason: '纠正' })).status, 409);
+  order = f.ok(await f.command(path, { version: order.version, quantity: 2, reason: '纠正' }));
+  assert.equal(order.operation_routes[0].operations.find(row => row.id === 'cut').completed_quantity, 4);
+  assert.deepEqual(f.ok(await f.request(`/payroll/production-order?production_id=${order.id}`)).currencies, [{ currency: 'CNY', amount_cents: 1600 }]);
+  const rows = order.operation_routes[0].reports.filter(row => row.node_id === 'cut');
+  assert.deepEqual(rows.map(row => [row.status, row.quantity]).sort(), [['active', 4], ['void', 2]]);
+  const backup = f.ok(await f.request('/backup'));
+  f.ok(await f.command('/backup/preview', { backup }));
+  const original = backup.data.production_operation_reports.find(row => row.id === report.id);
+  assert.equal(original.quantity, 4);
+  const legacy = structuredClone(backup);
+  for (const row of legacy.data.production_operation_reports) if (row.split_from_id === null) delete row.split_from_id;
+  f.ok(await f.command('/backup/preview', { backup: legacy }));
+  assert.equal((await f.command(path, { version: order.version, quantity: 1, reason: '纠正' })).status, 409);
+});
+
+test('partial operation void retains exact fractional quantities and a replayable audit trail', async t => {
+  const f = await fixture(t); let order = await f.start(await f.create());
+  order = f.ok(await f.report(order, 'cut', '1/3'));
+  const report = order.operation_routes[0].reports[0];
+  const path = `/production-orders/${order.id}/operations/${report.id}/void`;
+  order = f.ok(await f.command(path, { version: order.version, quantity: '1/6', reason: '部分修正' }));
+  assert.equal(order.operation_routes[0].operations.find(row => row.id === 'cut').completed_quantity_fraction, '1/6');
+  order = f.ok(await f.command(path, { version: order.version, reason: '全部修正' }));
+  assert.equal(order.operation_routes[0].operations.find(row => row.id === 'cut').completed_quantity, 0);
+  f.ok(await f.command('/backup/preview', { backup: f.ok(await f.request('/backup')) }));
+});
+
 test('operation multiplier is configured on process route nodes, snapshotted onto reports, and survives backup', async t => {
   const f = await fixture(t, { graph: { ...serial, nodes: serial.nodes.map(n => n.id === 'cut' ? { ...n, multiplier: 2 } : n.id === 'out' ? { ...n, multiplier: 1.5 } : n) } });
   for (const multiplier of [0, -1, null, '2', 1.00001]) {

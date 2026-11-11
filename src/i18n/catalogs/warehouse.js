@@ -5084,6 +5084,8 @@ export default {
     "Inventory:",
     "Hàng tồn kho:"
   ],
+  "warehouse.stock.after.issue": ["发料后库存结余：", "Stock balance after issue: ", "Tồn kho sau khi cấp: "],
+  "warehouse.stock.after.issue.unknown": ["历史记录未保存", "Not saved for this historical record", "Không được lưu trong bản ghi cũ"],
   "warehouse.cost.price": [
     "成本价：",
     "Cost price:",

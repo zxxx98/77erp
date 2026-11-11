@@ -39,7 +39,7 @@ const dropImportTurns = messages => {
 };
 const object = properties => ({ type: 'object', properties, additionalProperties: false });
 const string = { type: 'string' }, integer = { type: 'integer' }, number = { type: 'number' };
-const tool = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description, parameters: { ...object(properties), required } } });
+const tool = (name, description, properties, required = Object.keys(properties)) => ({ type: 'function', function: { name, description: description + (name === 'get_production_order' ? '中间工序及后处理可部分作废，原记录quantity为剩余有效数量，独立void记录的split_from_id指向原记录且quantity为本次作废数量；后处理按作废次数恢复材料及成本，工资按有效余量计算。最终工序仍随产出批次整批作废。AI不执行工序作废。' : ''), parameters: { ...object(properties), required } } });
 const chartRef = { ...object({fieldId:string,propertyId:string}), required:['fieldId'] };
 const chartConfigSchema = { ...object({
   schemaVersion:{type:'integer',enum:[1]},kind:{type:'string',enum:['ordinary','material']},chartType:{type:'string',enum:['line','bar','pie','table']},

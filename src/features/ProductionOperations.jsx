@@ -166,7 +166,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
         <label>{t('route.batchNote')}<Input.TextArea rows={3} aria-label={t('route.batchNote')} maxLength={500} value={form.note} disabled={action.busy} onChange={event => setForm({ ...form, note: event.target.value })} /></label>
         <div className="bom-actions"><Button disabled={action.busy} onClick={back}>{t('route.cancel')}</Button><Button type="submit" kind="primary" busy={action.busy}>{t('route.report')}</Button></div>
       </form>}
-      {voiding && <form className="process-report-form" onSubmit={event => { event.preventDefault(); action.run(async () => { if (!voiding.reason.trim()) throw new Error(t('route.reason')); if (!window.confirm(t('route.confirmVoid'))) return; const result = await send(`/operations/${voiding.id}/void`, { reason: voiding.reason }); setVoiding(null); await onSaved(result, t('route.voided')); }); }}><label>{t('route.reason')}<Input.TextArea rows={3} aria-label={t('route.reason')} maxLength={500} value={voiding.reason} disabled={action.busy} onChange={event => setVoiding({ ...voiding, reason: event.target.value })} /></label><div className="bom-actions"><Button onClick={back} disabled={action.busy}>{t('route.cancel')}</Button><Button type="submit" kind="danger" busy={action.busy}>{t('route.confirmVoid')}</Button></div></form>}
+      {voiding && <form className="process-report-form" onSubmit={event => { event.preventDefault(); action.run(async () => { const quantity = parseQuantity(voiding.quantity, true); if (postProcessing && !Number.isInteger(quantity)) throw new Error(t('production.postProcessingInteger')); if (!voiding.reason.trim()) throw new Error(t('route.reason')); if (!window.confirm(t('route.confirmVoid'))) return; const result = await send(`/operations/${voiding.id}/void`, { quantity, reason: voiding.reason }); setVoiding(null); await onSaved(result, t('route.voided')); }); }}><label>{t('route.voidQuantity')} ({unit})<Input aria-label={t('route.voidQuantity')} value={voiding.quantity} disabled={action.busy} onChange={event => setVoiding({ ...voiding, quantity: event.target.value })} /></label><p className="bom-hint">{t('route.voidQuantityHint')}</p><label>{t('route.reason')}<Input.TextArea rows={3} aria-label={t('route.reason')} maxLength={500} value={voiding.reason} disabled={action.busy} onChange={event => setVoiding({ ...voiding, reason: event.target.value })} /></label><div className="bom-actions"><Button onClick={back} disabled={action.busy}>{t('route.cancel')}</Button><Button type="submit" kind="danger" busy={action.busy}>{t('route.confirmVoid')}</Button></div></form>}
     </section>
     {action.error && <p className="form-error" role="alert">{action.error}</p>}
     <div className="bom-actions process-reload-bar">
@@ -209,7 +209,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
             {report.output_kind && <p className="bom-hint">{t('route.outputVoidHint')}</p>}
           </div>
           {!report.output_kind && report.status === 'active' && order.status !== 'void' && can('production') && can('corrections') && <div className="process-history-action">
-            <Button disabled={action.busy} onClick={() => setVoiding({ id: report.id, reason: '' })}>{t('route.void')}</Button>
+            <Button disabled={action.busy} onClick={() => setVoiding({ id: report.id, quantity: quantityInput(exactQuantity(report)), reason: '' })}>{t('route.void')}</Button>
           </div>}
         </article>)}
       </div>

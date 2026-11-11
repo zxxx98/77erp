@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { allocate, moveInventory } from './commerce.js';
-import { validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
+import { MAX_QUANTITY, validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { notifyStockChanges } from './notifications.js';
 import { stageDirectBatches } from './production-stages.js';
@@ -47,6 +47,8 @@ export function migrateProductionMaterials(db) {
       UNIQUE(issue_id,product_id));
       CREATE INDEX IF NOT EXISTS production_material_issue_document ON production_material_issues(document_id,id);
       CREATE INDEX IF NOT EXISTS production_material_issue_product ON production_material_issue_items(product_id);`);
+    if (!db.prepare('PRAGMA table_info(production_material_issue_items)').all().some(column => column.name === 'after_stock'))
+      db.exec('ALTER TABLE production_material_issue_items ADD COLUMN after_stock REAL');
     // Existing posted documents become one immutable issue without moving inventory again.
     if (!hasIssues) db.exec(`INSERT INTO production_material_issues(id,document_id,number,total_cost_cents,confirmed_by_name,confirmed_at)
       SELECT id,id,'SCFL' || substr(number,5),total_cost_cents,confirmed_by_name,confirmed_at FROM production_material_documents WHERE type='out' AND status='confirmed';
@@ -291,7 +293,8 @@ export function installProductionMaterials(app, db, { route, current, version, u
           moveInventory(db, row.product_id, exactQuantity(row), cost);
           db.prepare('UPDATE production_material_document_items SET cost_cents=? WHERE id=?').run(cost, row.id);
         } else {
-          const lineId = Number(db.prepare('INSERT INTO production_material_issue_items(issue_id,product_id,quantity,cost_cents) VALUES (?,?,?,?)').run(issueId, row.product_id, row.quantity, cost).lastInsertRowid);
+          const afterStock = db.prepare('SELECT stock FROM products WHERE id=?').get(row.product_id).stock;
+          const lineId = Number(db.prepare('INSERT INTO production_material_issue_items(issue_id,product_id,quantity,cost_cents,after_stock) VALUES (?,?,?,?,?)').run(issueId, row.product_id, row.quantity, cost, afterStock).lastInsertRowid);
           saveExactQuantity(db, 'production_material_issue_items', lineId, 'quantity', exactQuantity(row));
         }
         total += cost; if (!Number.isSafeInteger(total)) fail('材料成本超出范围。');
@@ -365,7 +368,7 @@ export function validateProductionMaterialBackup(data) {
   for (const row of data.production_material_issue_items) {
     const issue = issues.get(row.issue_id), doc = issue && docs.get(issue.document_id), item = doc?.items.find(item => item.product_id === row.product_id);
     const key = `${row.issue_id}:${row.product_id}`;
-    if (!item || !validQuantity(row.quantity,true)  || !money(row.cost_cents) || issueKeys.has(key)) fail('备份生产发料明细无效。');
+    if (!item || !validQuantity(row.quantity,true) || (row.after_stock !== null && (typeof row.after_stock !== 'number' || !Number.isFinite(row.after_stock) || row.after_stock < 0 || row.after_stock > MAX_QUANTITY)) || !money(row.cost_cents) || issueKeys.has(key)) fail('备份生产发料明细无效。');
     issueKeys.add(key); issue.items.push(row);
   }
   for (const issue of issues.values()) if (!issue.items.length || issue.items.reduce((sum,row) => sum + BigInt(row.cost_cents),0n) !== BigInt(issue.total_cost_cents)) fail('备份生产发料成本合计无效。');

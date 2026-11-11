@@ -275,6 +275,8 @@ export default {
   'route.active': ['有效', 'Active', 'Có hiệu lực'],
   'route.voided': ['已作废', 'Voided', 'Đã hủy'],
   'route.void': ['作废工序记录', 'Void operation report', 'Hủy ghi nhận công đoạn'],
+  'route.voidQuantity': ['作废数量', 'Quantity to void', 'Số lượng hủy'],
+  'route.voidQuantityHint': ['可填写部分数量，未作废的数量仍然有效。', 'Enter a partial quantity; the remainder stays active.', 'Có thể hủy một phần; số còn lại vẫn có hiệu lực.'],
   'route.reason': ['作废原因', 'Reason for voiding', 'Lý do hủy'],
   'route.confirmVoid': ['确认作废工序记录', 'Confirm void report', 'Xác nhận hủy ghi nhận'],
   'route.outputVoidHint': ['最终工序随对应产出批次作废。', 'Void the related output batch to reverse this final operation.', 'Hủy lô đầu ra tương ứng để hủy công đoạn cuối này.'],

@@ -400,16 +400,16 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     const quantity = page.getByLabel('本次数量', { exact: true });
     await expect(quantity).toBeDisabled();
     await page.getByRole('radio', { name: /下料/ }).check();
-    await quantity.fill('4');
+    await quantity.fill('6');
     await page.getByRole('button', { name: '提交登记', exact: true }).dblclick();
-    await expect(page.getByRole('status').filter({ hasText: '已登记 下料：4 件' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: '已登记 下料：6 件' })).toBeVisible();
     await expect(quantity).toHaveValue('');
     await expect(page.getByRole('radio', { name: /下料/ })).toBeChecked();
     let order = await f.get();
     expect(order.completed_quantity).toBeNull(); expect(order.receipt_documents).toHaveLength(0);
     expect(order.items[0].available_quantity).toBe(20); expect(order.operation_routes[0].reports).toHaveLength(1);
     await page.getByRole('radio', { name: /检验/ }).check();
-    await quantity.fill('5');
+    await quantity.fill('7');
     await page.getByRole('button', { name: '提交登记', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('前置工序可用数量不足，请先核对前序报工。');
     expect((await f.get()).operation_routes[0].reports).toHaveLength(1);
@@ -439,6 +439,16 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     await page.getByText('工序进度与登记（2）', { exact: true }).click();
     await page.getByRole('button', { name: '查看工序记录', exact: true }).click();
     await expect(page.getByText('工序登记记录', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '作废工序记录', exact: true }).click();
+    await expect(page.getByLabel('作废数量', { exact: true })).toHaveValue('6');
+    await page.getByLabel('作废数量', { exact: true }).fill('1');
+    await page.getByLabel('作废原因', { exact: true }).fill('纠正部分数量');
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: '确认作废工序记录', exact: true }).click();
+    await expect.poll(async () => (await f.get()).operation_routes[0].operations.find(row => row.id === 'cut').completed_quantity).toBe(5);
+    await page.getByText('工序进度与登记（2）', { exact: true }).click();
+    await page.getByRole('button', { name: '查看工序记录', exact: true }).click();
+    await expect(page.locator('.process-history-void-reason')).toContainText('纠正部分数量');
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await f.close(); await context.close(); }
