@@ -71,6 +71,7 @@ test('desktop registration drawer preserves detail, guards drafts and closes aft
     await expect(drawer).toHaveCount(0);
     await expect(opener).toBeFocused();
     await expect(page.getByRole('status').filter({ hasText: '已登记' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: '已登记' })).toHaveClass(/registration-feedback-success/);
     expect((await f.get()).operation_routes.find(route => route.path === '1').reports).toHaveLength(1);
     await opener.click();
     await page.keyboard.press('Escape');
@@ -125,6 +126,7 @@ test('desktop registration drawer retains failed drafts and stays open after rel
     await f.post(`/production-orders/${order.id}/operations/report`, { version: order.version, path: '1', operation_node_id: 'n0', quantity: 1 });
     await drawer.getByRole('button', { name: '提交登记', exact: true }).click();
     await expect(drawer.getByRole('alert')).toBeVisible();
+    await expect(drawer.getByRole('alert')).toHaveClass(/registration-feedback-error/);
     await expect(quantity).toHaveValue('2');
     page.once('dialog', dialog => dialog.accept());
     await drawer.getByRole('button', { name: '重新读取生产单', exact: true }).click();
@@ -196,6 +198,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
       await quantity.fill(invalid);
       await page.getByRole('button', { name: '提交登记', exact: true }).click();
       await expect(page.getByRole('alert')).toContainText('分母需为 1–9999 的整数');
+      await expect(page.getByRole('alert')).toHaveClass(/registration-feedback-error/);
       expect((await fixtureData.get()).operation_routes.find(route => route.path === '1').reports).toHaveLength(0);
     }
     for (let batch = 0; batch < 3; batch++) {
@@ -204,6 +207,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
       await page.getByRole('button', { name: '提交登记', exact: true }).click();
       expect((await refreshed).ok()).toBe(true);
       await expect(quantity).toHaveValue('');
+      await expect(page.locator('.registration-feedback-success')).toBeVisible();
       const order = await fixtureData.get();
       expect(order.operation_routes.find(route => route.path === '1').reports).toHaveLength(batch + 1);
       const checked = page.waitForResponse(response => new URL(response.url()).pathname === '/api/updates');

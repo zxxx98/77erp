@@ -237,8 +237,8 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           {!target?.layer.pool_paths && <label className="registration-batch-note">{t('production.batchNote')}<Input.TextArea aria-label={t('production.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
         </div>
       </details>
-      {action.error && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
-      {message && <p className="bom-success" role="status">{message}</p>}
+      {action.error && <p className="form-error registration-feedback registration-feedback-error" role="alert">{productionMessage(action.error)}</p>}
+      {message && !action.error && <p className="bom-success registration-feedback registration-feedback-success" role="status">{message}</p>}
       {drawer && reload}
     </div>
       <div className={drawer ? 'modal-footer registration-drawer-footer' : 'registration-footer-actions'}>

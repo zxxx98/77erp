@@ -121,7 +121,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
     return { ...row, expected_quantity, actual: actual.quantity, disposition: actual.disposition };
   }) : [];
   const heading = stage ? pt("production.register3", { v0: stage.path ? pt("production.semiFinishedProduct") : pt("production.finishedProduct") }) : history ? pt("production.levelBatchRecords") : pt("production.selectProductionLevel");
-  const notices = <>{productionMessage(action.error) && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}</>;
+  const notices = <>{productionMessage(action.error) && <p className="form-error registration-feedback registration-feedback-error" role="alert">{productionMessage(action.error)}</p>}</>;
   const visible = displayStages.filter(item => search.trim()
     ? `${item.name} ${item.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
     : item.path === scope || item.path !== '' && (item.parent_path === scope || item.pool_paths?.some(path => order.stages.find(s => s.path === path)?.parent_path === scope)));

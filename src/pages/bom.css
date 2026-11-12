@@ -61,6 +61,9 @@
 .bom-filter-product { justify-content: space-between; padding: 0 2px 16px; font-size: 13px; }
 .bom-filter-product > span { overflow-wrap: anywhere; }
 .bom-success { color: #11785e; font-size: 13px; margin-bottom: 14px; }
+.registration-feedback { position: sticky; bottom: 80px; z-index: 10; padding: 12px 16px; border: 1px solid; border-radius: 8px; box-shadow: 0 4px 16px #213e611a; overflow-wrap: anywhere; }
+.registration-feedback-success { color: #116149; background: #eaf8f1; border-color: #9bd8ba; }
+.registration-feedback-error { color: #a32635; background: #fff0f0; border-color: #f0a8ad; }
 .bom-calculate-form { align-items: flex-end; }
 :where(.bom-calculate-form > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { width: min(100%, 300px); }
 .bom-calculate-form + .bom-hint { margin-top: 16px; margin-bottom: 0; }

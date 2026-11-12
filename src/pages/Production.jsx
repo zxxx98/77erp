@@ -389,7 +389,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const heading = (title, description, label = pt("production.backToProductionOrders")) => <PageHeading title={title} description={description}>
     <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{label}</Button>
   </PageHeading>;
-  const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className="form-error" role="alert">{productionMessage(action.error)}</p>}
+  const notices = <>{registration.scanner}{registration.busy && <p role="status">{pt("production.loadingProductionOrder")}</p>}{message && <p className="bom-success registration-feedback registration-feedback-success" role="status">{productionMessage(message)}</p>}{productionMessage(action.error) && !registration.scanner && <p className={`form-error${editor?.kind === 'complete' ? ' registration-feedback registration-feedback-error' : ''}`} role="alert">{productionMessage(action.error)}</p>}
     {registrationDrawer && <ProductionQuickRegistration key={`${detail.id}:${registrationDrawer.session}`} presentation="drawer" order={detail} data={listData}
       initialTargetId={registrationDrawer.targetId} onActivity={setRegistrationActivity} onBack={() => setRegistrationDrawer(null)}
       onSaved={async (order, notice) => {
