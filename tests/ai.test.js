@@ -1703,3 +1703,24 @@ test('AI previews optional delivery fields and preserves repeated inbound rows t
   for(const [key,value] of Object.entries(metadata))assert.equal(saved[key],value);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM order_items WHERE order_id=?').get(saved.id).n,2);
 });
+
+test('production AI exposes real pending deficits and their original snapshot without posting or offering settlement tools', async t => {
+  const f=await fixture(t);
+  const parent=f.db.prepare('SELECT * FROM products WHERE id=1').get(),material=f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const bom=(await f.request(f.admin,'/boms',{request_id:randomUUID(),name:'待结算配方',product_id:parent.id,base_quantity:1,base_unit:parent.unit,enabled:1,note:'',items:[{product_id:material.id,quantity:1,unit:material.unit,note:''}]})).data;
+  const order=(await f.request(f.admin,'/production-orders',{request_id:randomUUID(),bom_id:bom.id,bom_version:bom.version,planned_quantity:1,note:''})).data;
+  const before=f.db.prepare('SELECT * FROM products ORDER BY id').all();
+  const recorded=await f.request(f.admin,`/production-orders/${order.id}/complete`,{request_id:randomUUID(),version:order.version,completed_quantity:1,items:[{product_id:material.id,quantity:material.stock+1}],scraps:[],finish_order:false});
+  assert.equal(recorded.status,200,JSON.stringify(recorded.data));assert.equal(recorded.data.registration_status,'unsettled');
+  await f.permissions(['ai','production']);
+  f.use('get_production_order',{production_id:order.id});assert.equal((await f.chat(f.staff)).status,200);
+  const result=JSON.parse(f.calls.at(-1).body.messages.find(message=>message.role==='tool').content);
+  assert.equal(result.pending_registration_count,1);assert.equal(result.registration_issues[0].missing_quantity,1);
+  assert.equal(result.operation_registrations[0].kind,'settlement');assert.equal(result.operation_registrations[0].initial_issues[0].missing_quantity,1);
+  assert.equal(result.completed_quantity,null);assert.equal(result.receipt_documents.length,0);
+  assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
+  assert.match(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description,/missing_quantity/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/所有待处理登记解决前不能结束生产/);
+  assert.ok(!f.calls.at(-1).body.tools.some(tool=>/settle|reconcile/.test(tool.function.name)));
+  assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(),before);
+});

@@ -82,6 +82,10 @@ export function migrateProcessRoutes(db) {
     created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','void')),
     acceptance_id INTEGER REFERENCES quality_acceptances(id), resolved_by_name TEXT NOT NULL DEFAULT '', resolved_at TEXT);
     CREATE INDEX IF NOT EXISTS operation_registrations_order ON production_operation_registrations(production_id,status,id);`);
+  if (!db.prepare('PRAGMA table_info(production_operation_registrations)').all().some(c => c.name === 'kind'))
+    db.exec("ALTER TABLE production_operation_registrations ADD COLUMN kind TEXT NOT NULL DEFAULT 'acceptance' CHECK(kind IN ('acceptance','settlement'))");
+  if (!db.prepare('PRAGMA table_info(production_operation_registrations)').all().some(c => c.name === 'initial_issues'))
+    db.exec("ALTER TABLE production_operation_registrations ADD COLUMN initial_issues TEXT NOT NULL DEFAULT '[]'");
   db.exec('CREATE INDEX IF NOT EXISTS operation_reports_acceptance ON production_operation_reports(acceptance_id,status)');
   for (const [table, column] of [['products', 'default_route_id'], ['boms', 'route_override_id']])
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column))
@@ -379,9 +383,9 @@ function operationWorker(db, req, order) {
   if (!worker?.active || workerId !== req.user.id && (!hasPermission(req.user, 'production') || !isProductionAssignee(worker, order))) fail('仅可选择本人或本单已指派的有效员工。', 403);
   return worker;
 }
-function operationInput(db, req, order, path, quantity, output) {
+export function operationInput(db, req, order, path, quantity, output) {
   const route = order.operation_routes?.find(r => r.path === path);
-  if (!route) { if (req.body.operation_node_id !== undefined) fail('此生产层没有工艺路线。'); return null; }
+  if (!route) { if (req.body.operation_node_id !== undefined) fail('此生产层没有工艺路线。'); operationWorker(db,req,order); return null; }
   if (req.body.operation_schema_version !== 1) fail('此单使用工序登记，请刷新页面后按工序操作。', 409);
   const node = route.operations.find(n => n.id === req.body.operation_node_id);
   if (!node || node.is_output !== output) fail(output ? '请从最终产出工序登记产量和实际耗料。' : '最终工序请使用产出登记入口。');
@@ -395,7 +399,7 @@ function operationInput(db, req, order, path, quantity, output) {
     if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
     if (!validExactQuantity(exactAdd(exactQuantity(node, 'completed_quantity'), quantity), true)) fail('工序累计数量超出范围。');
   }
-  if (node.available_quantity !== null && exactCompare(quantity, exactQuantity(node, 'available_quantity')) > 0) {
+  if (!req.registrationValidation && node.available_quantity !== null && exactCompare(quantity, exactQuantity(node, 'available_quantity')) > 0) {
     if (post) fail('本次报工超过后处理剩余可登记次数。', 409);
     fail('前置工序可用数量不足，请先核对前序报工。', 409);
   }
@@ -488,8 +492,11 @@ export function installProductionOperations(app, db, { route, current, version }
       const part = { ...req, body: { ...req.body, operation_node_id: allocation.node_id } };
       const input = operationInput(db, part, order, allocation.path, allocation.quantity, false);
       if (!input) fail('此生产层没有工艺路线。');
-      insertReport(db, part, order, input, allocation.quantity);
+      if (req.registrationValidation) {
+        if (post) consumePostMaterials(db, order, input.node, allocation.quantity, true);
+      } else insertReport(db, part, order, input, allocation.quantity);
     }
+    if (req.registrationValidation) return;
     db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(), actor(req), order.id);
     return current(req);
   }, true, undefined, 'operations/report'));

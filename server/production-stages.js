@@ -1,3 +1,4 @@
+import { operationInput } from './process-routes.js';
 import { validateStageReceipts, migrateStageReceipts, stageEventTime, stageReceiptDocument, receiptTransfers, receiptTransferComponents, installStageReceipts } from './production-stage-receipts.js';
 import { operationAllocation } from '../shared/operation-overflow.js';
 import { stagePoolPaths, productionPoolOrder, pooledProductionStages, productionPoolPathMap } from '../shared/production-pools.js';
@@ -182,7 +183,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     if (Array.isArray(req.body.items)) {
       const supplied = new Set(req.body.items.map(item => item?.path));
       const postOnly = new Set(o.items.filter(item => item.is_post_processing_only).map(item => item.product_id));
-      req.body.items = [...req.body.items, ...s.items.filter(item => postOnly.has(item.product_id) && item.is_supplemental_input && !supplied.has(item.path))
+      req.body.items = [...req.body.items, ...s.items.filter(item => (postOnly.has(item.product_id) || req.operationRegistrar) && item.is_supplemental_input && !supplied.has(item.path))
         .map(item => ({ path: item.path, quantity: 0 }))];
     }
     if(!Array.isArray(req.body.items)||req.body.items.length!==s.items.length||new Set(req.body.items.map(i=>i?.path)).size!==s.items.length)fail('请核对全部直属投入，路径不能重复或增删。');
@@ -194,6 +195,9 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     const q=parseExactQuantity(req.body.completed_quantity,true),ledger=stageLedger(db,o.id),count=ledger.batches.filter(b=>b.path===s.path).length,pools=productionPoolPathMap(o);
     if(count>=1000||ledger.batches.length>=10000)fail('层级批次达到上限（每层 1000 批、整单 10000 批，含作废），请拆分生产单。');
     if(!validExactQuantity(exactAdd(exactQuantity(s, 'completed_quantity'),q),true))fail('累计产量超出范围。');
+    if (s.path === '') validateScrapActuals(req.body.scraps??[],o.scraps);
+    operationInput(db,req,o,s.path,q,true);
+    if (req.registrationValidation) return;
     const registrationGroup=req.operationRegistrar ? {id:req.operationRegistrar.production_group_id,name:req.operationRegistrar.production_group_name} : productionRegistrationGroup(req.user,o);
     const at=stageEventTime(db,o.id),owner=actor(req),components=new Map(),pool=new Map(o.items.map(i=>[i.product_id,{...quantityFields(exactQuantity(i,'available_quantity')),cost_cents:i.available_cost_cents}]));
     const id=Number(db.prepare(`INSERT INTO production_stage_batches(production_id,stage_id,path,batch_number,completed_quantity,total_cost_cents,note,created_by,created_by_name,production_group_id,production_group_name,created_at) VALUES (?,?,?,?,?,0,?,?,?,?,?,?)`).run(o.id,s.id,s.path,count+1,exactNumber(q),(req.body.note||'').trim(),req.operationRegistrar ? req.operationRegistrar.registered_by : req.user.id,owner,registrationGroup.id,registrationGroup.name,at).lastInsertRowid);
@@ -254,6 +258,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
         path: allocation.path, operation_node_id: allocation.node_id, completed_quantity: allocation.quantity,
         items: actual.items, scraps: req.body.scraps } });
     }
+    if (req.registrationValidation) return;
     return current(req);
   },true,undefined,'stages/complete'));
   app.post('/api/production-orders/:id/stages/batches/:batchId/void',route(req=>{

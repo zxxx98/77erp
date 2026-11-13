@@ -317,6 +317,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     await saved(await api(`/production-orders/${detail.id}`, { warehouseId: data.warehouse_id }), doc.issues?.length ? pt("production.remainingRequestClosed", { number: doc.number }) : pt("production.materialRequestCancelledStockUnchanged"));
   });
   const finishState = postProcessingFinishState(detail);
+  finishState.blocked ||= detail?.pending_registration_count > 0;
   const hasPostMaterialUsage = detail?.items.some(item => item.post_processing_consumed_quantity > 0);
   const canConfirmOutput = detail?.status === 'in_progress' && detail.operation_routes?.some(route => route.product_coefficient != null)
     && (detail.output_completion_confirmed || !detail.output_completed && exactCompare(exactQuantity(detail, 'completed_quantity'), 0) > 0);
@@ -370,7 +371,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         validateScrapActuals(body.scraps, detail.scraps || []);
         if (!window.confirm(pt("production.registerThisBatchOfAndRecordScrapThen", { v0: count(body.completed_quantity), v1: detail.unit, v2: detail.product_name, v3: detail.material_workflow ? pt("production.recordUsageFromTheIssuedBalance") : pt("production.deductStockByThisBatchSActualUsage"), v4: finishOrder ? pt("production.endTheProductionOrder") : pt("production.continueProduction") }))) return;
         const result=await send(`/production-orders/${detail.id}/complete`, body, options);
-        await saved(result, result.registration_status==='pending' ? pt('route.pendingSaved') : pt("production.batchRegisteredProductsAndReceivedScrapAwaitWarehouse", { v0: detail.material_workflow ? pt("production.actualUsageRecorded") : pt("production.actualUsageDeductedFromStock"), v1: finishOrder ? pt("production.productionEnded") : pt("production.productionOrderRemainsOpen") }));
+        await saved(result, result.registration_status==='unsettled' ? pt('production.registration.unsettledSaved') : result.registration_status==='pending' ? pt('route.pendingSaved') : pt("production.batchRegisteredProductsAndReceivedScrapAwaitWarehouse", { v0: detail.material_workflow ? pt("production.actualUsageRecorded") : pt("production.actualUsageDeductedFromStock"), v1: finishOrder ? pt("production.productionEnded") : pt("production.productionOrderRemainsOpen") }));
       } else {
         if (!editor.reason.trim()) throw new Error(pt("production.enterAReasonForVoiding"));
         if (editor.kind === 'void_batch') {
@@ -604,6 +605,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       </div>
       <progress className="production-progress-bar" aria-label={pt('production.outputProgress')} max={Number(detail.planned_quantity) || 1} value={Math.min(Number(detail.planned_quantity), Number(detail.completed_quantity || 0))} />
       <div className="production-progress-caption"><span>{pt('production.plannedOutput2')} {count(detail.planned_quantity)} {detail.unit}</span><span>{pt('production.remainingPlan')} {count(Math.max(0, quantityUnits(detail.planned_quantity) - quantityUnits(detail.completed_quantity ?? 0)) / QUANTITY_SCALE)} {detail.unit}</span></div>
+      {detail.pending_registration_count>0&&<p className="bom-hint">{pt('production.registration.pendingCount',{count:detail.pending_registration_count})}</p>}
       {detail.output_completion_confirmed && <p className="bom-hint">{pt('production.outputRegistrationLocked')}</p>}
     </section>
     {!registrationDrawer && <ProductionAcceptanceRegistrations order={detail} data={listData} onSaved={saved}/>}

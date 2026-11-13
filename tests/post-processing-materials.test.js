@@ -1,3 +1,4 @@
+import { recordAndCancel } from './helpers/pending-registration.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -115,7 +116,7 @@ for (const staged of [false, true]) test('post reports share the issued pool, re
   order = await f.complete(order, 100);
   assert.equal(order.operation_routes.at(-1).post_processing_limit, 5);
   const rejected = await f.report(order, f.reportBody(order, 5));
-  assert.equal(rejected.status, 409);
+  order = await recordAndCancel(f, rejected);
   assert.deepEqual((await f.get(order.id)).items.map(row => row.available_quantity), staged ? [12, 4] : [22, 4]);
   assert.equal((await f.get(order.id)).operation_routes.at(-1).report_count, 0);
   order = await f.complete(order, 10);
@@ -149,7 +150,7 @@ for (const staged of [false, true]) test('post reports share the issued pool, re
   assert.deepEqual(stock(), warehouse);
   order = await f.mutate(order, '/finish', {});
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 55);
+  assert.equal(backup.version, 56);
   const tampered = structuredClone(backup);
   const row = tampered.data.production_operation_reports.find(row => row.id === first.id);
   const materials = JSON.parse(row.post_materials);

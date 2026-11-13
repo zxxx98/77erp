@@ -137,7 +137,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
                 {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t(availableLabel)}</dt><dd>{count(exactQuantity(node, 'available_quantity'))} {unit}</dd></div>}
               </dl>
               {canRegister && <div className="process-operation-card-action">
-                <Button kind="primary" disabled={action.busy || node.available_quantity === 0 || outputRegistrationLocked(order, { path, output: node.is_output })} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
+                <Button kind="primary" disabled={action.busy || outputRegistrationLocked(order, { path, output: node.is_output })} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
               </div>}
             </article>;
           })}

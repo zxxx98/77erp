@@ -1,5 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { parseProductionQuantity } from '../shared/exact-quantity.js';
+import { MAX_QUANTITY } from '../shared/quantity.js';
+import { productionStageItems, stageInputCanBeZero } from '../shared/production-stages.js';
+import { validateProductionCompletion } from '../shared/production.js';
+import { validateScrapActuals } from '../shared/scrap.js';
+import { exactQuantity, exactCompare, exactNumber, parseProductionQuantity } from '../shared/exact-quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { createOnlineWorkbook } from '../shared/quality-online.js';
 import { parseAcceptance } from '../shared/quality-acceptance.js';
@@ -128,22 +132,81 @@ export function validateOperationRegistrationBackup(data) {
     const order=data.production_orders.find(o=>o.id===row.production_id);
     const route=data.production_routes.find(r=>r.production_id===row.production_id&&r.path===row.path);
     let body,node;
-    try {body=JSON.parse(row.body);node=JSON.parse(route.graph).nodes.find(n=>n.id===row.node_id);} catch {fail('备份验收登记内容无效。');}
-    if(!Number.isSafeInteger(row.id)||row.id<1||ids.has(row.id)||!order||!node?.acceptance_revision_id||
+    try {
+      body=JSON.parse(row.body);
+      if(route) {const graph=JSON.parse(route.graph),found=graph.nodes.find(n=>n.id===row.node_id);if(found) node={...found,is_output:route.product_coefficient==null&&!graph.edges.some(edge=>edge.from===found.id)};}
+    } catch {fail('备份验收登记内容无效。');}
+    if(!Number.isSafeInteger(row.id)||row.id<1||ids.has(row.id)||!order||!['acceptance','settlement'].includes(row.kind)||
+      (row.kind==='acceptance'?!node?.acceptance_revision_id:!!node?.acceptance_revision_id)||
+      (row.node_id!==''&&!node)||
       !['operations/report','complete','stages/complete'].includes(row.endpoint)||!['pending','approved','void'].includes(row.status)||
-      !body||Array.isArray(body)||body.operation_node_id!==row.node_id||(body.path??'')!==row.path||body.operation_acceptance!==undefined||
+      !body||Array.isArray(body)||(body.operation_node_id??'')!==row.node_id||(body.path??'')!==row.path||body.operation_acceptance!==undefined||
       !identity(row.registered_by)||!identity(row.worker_id)||!identity(row.production_group_id)||!text(row.production_group_name,100)||!text(row.registered_by_name,100,true)||!text(row.worker_name,100,true)||
       !text(row.created_at,100,true)||!Number.isFinite(Date.parse(row.created_at))||!text(row.resolved_by_name,100)||
       (row.status==='pending' ? row.resolved_at!==null||row.resolved_by_name!==''||row.acceptance_id!==null||order.status!=='draft'
         : !text(row.resolved_at,100,true)||!Number.isFinite(Date.parse(row.resolved_at))||!row.resolved_by_name.trim())) fail('备份验收登记记录无效。');
+    let initialIssues;
+    try {initialIssues=JSON.parse(row.initial_issues);} catch {fail('备份登记问题记录无效。');}
+    if(!Array.isArray(initialIssues)||initialIssues.length>1000) fail('备份登记问题记录无效。');
+    for(const issue of initialIssues) {
+      if(!issue||!['material','semi','predecessor','post_processing'].includes(issue.kind)||!text(issue.key,500,true)||!text(issue.name,100,true)||!text(issue.unit,100,true)) fail('备份登记问题记录无效。');
+      for(const key of ['missing_quantity','required_quantity','available_quantity']) {
+        try {
+          const value=exactQuantity(issue,key);
+          if(typeof issue[key]!=='number'||!Number.isFinite(issue[key])||typeof issue[`${key}_fraction`]!=='string'||exactCompare(value,0)<0||exactCompare(value,MAX_QUANTITY*100)>0||exactNumber(value)!==issue[key]) fail('备份登记问题数量无效。');
+        } catch {fail('备份登记问题数量无效。');}
+      }
+    }
     ids.add(row.id);
     const quantity=body.quantity??body.completed_quantity;
     // Exact fractions are accepted by the normal registration validator on approval.
     try {parseProductionQuantity(quantity,true);} catch {fail('备份验收登记数量无效。');}
-    if(row.status==='approved') {
+    if(row.kind==='settlement') {
+      validateSettlementBody(data,order,row,body,node);
+      if(row.acceptance_id!==null) fail('待结算登记不能关联验收单。');
+    } else if(row.status==='approved') {
       const acceptance=data.quality_acceptances.find(a=>a.id===row.acceptance_id);
       if(!acceptance||acceptance.warehouse_id!==order.warehouse_id||acceptance.revision_id!==node.acceptance_revision_id||
         !data.production_operation_reports.some(r=>r.production_id===order.id&&r.node_id===row.node_id&&r.acceptance_id===row.acceptance_id)) fail('备份验收登记关联无效。');
     } else if(row.acceptance_id!==null) fail('未通过的登记不能关联验收单。');
+  }
+}
+
+function validateSettlementBody(data, order, row, body, node) {
+  const failBody=()=>fail('备份待结算登记内容或关联无效。');
+  const materials=data.production_items.filter(item=>item.production_id===order.id);
+  const scraps=data.production_scraps.filter(item=>item.production_id===order.id);
+  if (body.finish_order!==false && row.endpoint!=='operations/report' ||
+      body.note!==undefined && (typeof body.note!=='string'||body.note.length>500)) failBody();
+  if(row.endpoint==='operations/report') {
+    if(!node||node.id!==row.node_id||node.is_output) failBody();
+    if(row.path.startsWith('@post:')&&!Number.isSafeInteger(body.quantity)) failBody();
+    return;
+  }
+  if(node&&!node.is_output) failBody();
+  if(row.endpoint==='complete') {
+    if(order.stage_workflow||row.path!=='') failBody();
+    if(!Array.isArray(body.items)) failBody();
+    const supplied=new Set(body.items.map(item=>item?.product_id));
+    validateProductionCompletion({...body,items:[...body.items,...materials.filter(item=>item.base_quantity===0&&!supplied.has(item.product_id)).map(item=>({product_id:item.product_id,quantity:0}))]},materials);
+    validateScrapActuals(body.scraps??[],scraps);
+  } else {
+    if(!order.stage_workflow) failBody();
+    const parts=body.auto_overflow?body.allocations:[body];
+    if(!Array.isArray(parts)||!parts.length||parts.length>100) failBody();
+    for(const part of parts) {
+      if(!data.production_stages.some(stage=>stage.production_id===order.id&&stage.path===part.path)||!Array.isArray(part.items)||!part.items.length||part.items.length>500||
+        new Set(part.items.map(item=>item.path)).size!==part.items.length) failBody();
+      parseProductionQuantity(part.completed_quantity??part.quantity,true);
+      const sources=productionStageItems({...order,items:materials,nodes:data.production_bom_nodes.filter(n=>n.production_id===order.id)},part.path);
+      if(sources.some(source=>!source.is_supplemental_input&&!part.items.some(item=>item.path===source.path))) failBody();
+      for(const item of part.items) {
+        const source=sources.find(source=>source.path===item.path);
+        if(!source) failBody();
+        parseProductionQuantity(item.quantity,!stageInputCanBeZero(source,sources));
+        if(item.variance_reason!==undefined&&(typeof item.variance_reason!=='string'||item.variance_reason.length>500)) failBody();
+      }
+    }
+    validateScrapActuals(body.scraps??[],row.path===''?scraps:[]);
   }
 }

@@ -63,7 +63,7 @@ for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} registers f
     await page.locator('.registration-operation').filter({hasText:'下料'}).click();
     await page.getByLabel('本次数量',{exact:true}).fill('2');await page.getByRole('button',{name:'提交登记',exact:true}).click();
     await expect(page.getByRole('status').filter({hasText:'登记已提交'})).toBeVisible();
-    await expect(page.getByRole('region',{name:'登记验收'}).getByText('验收中',{exact:true})).toBeVisible();
+    await expect(page.getByRole('region',{name:'登记与待处理问题'}).getByText('验收中',{exact:true})).toBeVisible();
     await expect(page.getByRole('button',{name:'验收',exact:true})).toHaveCount(0);
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_operation_reports').get().n).toBe(0);
     expect(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n).toBe(0);
@@ -77,7 +77,7 @@ for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} registers f
     await page.getByRole('button',{name:'验收',exact:true}).click();
     await fillAcceptance('12');
     await expect.poll(()=>f.db.prepare('SELECT status FROM production_operation_registrations').get().status).toBe('approved');
-    await expect(page.getByRole('region',{name:'登记验收'}).getByText('登记通过',{exact:true})).toBeVisible();
+    await expect(page.getByRole('region',{name:'登记与待处理问题'}).getByText('登记通过',{exact:true})).toBeVisible();
     await expect(page.getByRole('status').filter({hasText:/^登记通过$/})).toBeVisible();
     const report=f.db.prepare('SELECT * FROM production_operation_reports').get();expect(report.quantity).toBe(2);expect(report.acceptance_id).toBeGreaterThan(0);
     const acceptance=f.db.prepare('SELECT result FROM quality_acceptances').get();expect(JSON.parse(acceptance.result).sheets[0].value.测量值).toBe(12);

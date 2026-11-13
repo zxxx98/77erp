@@ -102,7 +102,6 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       if (outputLocked) throw new Error(t('production.outputRegistrationLocked'));
       if (defaultsError) { if (target.output) setExpanded(true); throw new Error(defaultsError); }
       const value = parseQuantity(quantity, true);
-      if (!allocations.length && target.node?.available_quantity != null && exactCompare(value, exactQuantity(target.node, 'available_quantity')) > 0) throw new Error(t('registration.exceedsAvailable'));
       let suffix, body;
       const operation = target.node ? { operation_node_id: target.node.id, worker_id: workerId } : {};
       if (!target.output) {
@@ -130,7 +129,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, version: order.version, ...await acceptance.enrich(`/production-orders/${order.id}${suffix}`,body,{warehouseId:data.warehouse_id}),
         }, { warehouseId: data.warehouse_id });
         clear();
-        const notice = result.registration_status==='pending' ? t('route.pendingSaved') : t(drawer ? 'registration.savedDrawer' : 'registration.saved', { name: target.name, quantity: count(value), unit: target.unit });
+        const notice = result.registration_status==='unsettled' ? t('production.registration.unsettledSaved') : result.registration_status==='pending' ? t('route.pendingSaved') : t(drawer ? 'registration.savedDrawer' : 'registration.saved', { name: target.name, quantity: count(value), unit: target.unit });
         setMessage(notice);
         await onSaved(result, notice);
       } catch (error) { if (target.output) setExpanded(true); throw error; }

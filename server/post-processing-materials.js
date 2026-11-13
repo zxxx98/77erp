@@ -79,7 +79,7 @@ export function savePostMaterialItems(db, order, materials) {
   }
 }
 
-export function consumePostMaterials(db, order, node, runs) {
+export function consumePostMaterials(db, order, node, runs, validateOnly = false) {
   return (node.materials ?? []).map(material => {
     const { product_id } = material;
     const product = db.prepare('SELECT active,unit,unit_round_up FROM products WHERE id=? AND warehouse_id=?').get(product_id, order.warehouse_id);
@@ -89,6 +89,7 @@ export function consumePostMaterials(db, order, node, runs) {
     if (!validQuantity(quantity, true)) fail(quantityError);
     const item = order.items.find(row => row.product_id === product_id);
     const available = exactQuantity(item, 'available_quantity');
+    if (validateOnly) return { product_id, quantity };
     if (exactCompare(quantity, available) > 0) fail(`${material.name}已领未耗余额不足（当前 ${available} ${material.unit}）。请补料或核对实际耗料。`, 409);
     const basis_cost_cents = item.available_cost_cents;
     return { product_id, quantity, ...quantityFields(available, 'basis_quantity'), basis_cost_cents,

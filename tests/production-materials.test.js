@@ -1,3 +1,4 @@
+import { recordAndCancel } from './helpers/pending-registration.js';
 import { readonlyPositionId, grantPosition } from './helpers/positions.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -324,7 +325,7 @@ test('one application supports independent partial issues, registration during p
   assert.equal(doc.issues.length, 1); assert.equal(f.stock(f.material).stock, 96);
   order = await f.get(order.id); assert.equal(order.status, 'in_progress');
   assert.equal(order.items[0].pending_issue_quantity, 16);
-  assert.equal((await f.complete(order, 5, { completed_quantity: 1, items: [{ product_id: f.material, quantity: 5 },{ product_id: f.second, quantity: 1 }] })).status, 400);
+  order = await recordAndCancel(f, await f.complete(order, 5, { completed_quantity: 1, items: [{ product_id: f.material, quantity: 5 },{ product_id: f.second, quantity: 1 }] }));
   order = f.ok(await f.complete(order, 2, { completed_quantity: 1, items: [{ product_id: f.material, quantity: 2 },{ product_id: f.second, quantity: 1 }] }));
   assert.equal(order.items[0].available_quantity, 2); assert.equal(f.stock(f.material).stock, 96);
   assert.equal((await f.command(`/production-orders/${order.id}/finish`, { version: order.version })).status, 409);

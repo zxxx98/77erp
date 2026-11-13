@@ -106,9 +106,12 @@ test('group workers see and register only their group; snapshots and replay revo
   assert.equal((await f.command(`/production-orders/${a.id}/complete`,f.completion(a),options)).status,403);
   const excessive=f.completion(a,{finish_order:false,items:[{product_id:f.material,quantity:101},{product_id:f.second,quantity:1}]});
   const denied=await f.command(`/production-orders/${a.id}/complete`,excessive,options);
-  assert.equal(denied.status,400);
-  assert.doesNotMatch(denied.data.error,/100|当前/);
-  assert.match((await f.command(`/production-orders/${a.id}/complete`,excessive)).data.error,/当前 100/);
+  assert.equal(denied.status,200);
+  assert.equal(denied.data.registration_status,'unsettled');
+  assert.equal(denied.data.items[0].product.stock,undefined);
+  assert.equal(denied.data.registration_issues[0].missing_quantity,1);
+  const queued=denied.data.operation_registrations.find(row=>row.status==='pending');
+  a=f.ok(await f.command(`/production-orders/${a.id}/operations/registrations/${queued.id}/cancel`,{version:denied.data.version}));
   const body={...f.completion(a,{finish_order:false}),request_id:randomUUID()};
   const done=f.ok(await f.request(`/production-orders/${a.id}/complete`,body,options));
   assert.equal(done.batches[0].created_by,g.employee.id);
@@ -252,7 +255,7 @@ test('assignment backups migrate old single-group orders and never grant cross-i
   const f=await fixture(t), g=await organization(f), person=await g.user('backup-assignee',['production_register'],null);
   const order=await f.create({production_group_ids:[g.a,g.b],user_ids:[person.id]});
   const backup=f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 55);
+  assert.equal(backup.version, 56);
   const restore=async backup=>{ const preview=await f.command('/backup/preview',{backup}); if(preview.status!==200)return preview; return f.command('/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA'}); };
   const invalid=structuredClone(backup);invalid.data.production_orders[0].assigned_users='[{"id":1,"name":"x"},{"id":1,"name":"x"}]';
   assert.equal((await restore(invalid)).status,400);

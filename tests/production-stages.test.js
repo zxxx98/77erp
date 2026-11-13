@@ -1,3 +1,4 @@
+import { recordAndCancel } from './helpers/pending-registration.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -40,7 +41,7 @@ async function fixture(t, { repeated = false } = {}) {
 test('stage A→B→C registration consumes raw pool once, retains WIP, and projects root receipts', async t => {
   const f = await fixture(t); let o = await f.active();
   assert.equal(o.stage_workflow, 1); assert.deepEqual(o.stages.map(s => [s.path,s.planned_quantity]), [['',10],['1',20]]);
-  assert.equal((await f.complete(o, '', 5, [['1',10]])).status, 400);
+  o=await recordAndCancel(f,await f.complete(o, '', 5, [['1',10]]));
   o = f.ok(await f.complete(o,'1',12,[['1.1',36]]));
   assert.equal(o.completed_quantity,null); assert.equal(o.items[0].available_quantity,24);
   assert.equal(o.stages[1].available_quantity,12); assert.equal(o.receipt_documents.length,0);
@@ -64,7 +65,7 @@ test('stage A→B→C registration consumes raw pool once, retains WIP, and proj
 test('stage writes enforce schema, version, paths, balances and idempotency', async t => {
   const f = await fixture(t); let o = await f.active();
   assert.equal((await f.command(`/production-orders/${o.id}/complete`,{version:o.version,completed_quantity:1,items:[{product_id:f.c,quantity:6}],finish_order:false})).status,409);
-  assert.equal((await f.complete(o,'1',1,[['1.1',61]])).status,400);
+  o=await recordAndCancel(f,await f.complete(o,'1',1,[['1.1',61]]));
   assert.equal((await f.complete(o,'missing',1,[['1.1',3]])).status,404);
   assert.equal((await f.complete(o,'1',1,[['1.1',0.00001]])).status,400);
   assert.equal((await f.complete(o,'1',1,[['1.1',3]],{stage_schema_version:undefined})).status,409);
@@ -101,7 +102,7 @@ test('untouched historic drafts explicitly enable from saved snapshot; plans ref
 test('backup roundtrip retains WIP and rejects cross-source, quantity and cost corruption',async t=>{
   const f=await fixture(t); let o=await f.active();
   o=f.ok(await f.complete(o,'1',12,[['1.1',36]]));
-  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 55);
+  let backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 56);
   let preview=f.ok(await f.request('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
   o=await f.get(o.id);assert.equal(o.stages[1].available_quantity,12);
@@ -173,7 +174,7 @@ test('shared semi-finished output supplies either branch with FIFO costs, usage 
   assert.equal(rightBatch.items[0].allocations[0].source_path,'1.1');
   const source=(await f.batches(o,'1.1')).batches[0];
   assert.equal((await f.voidBatch(o,source.id)).status,409);
-  assert.equal((await f.complete(o,'1',2,[['1.1',2]])).status,400);
+  o=await recordAndCancel(f,await f.complete(o,'1',2,[['1.1',2]]));
   o=f.ok(await f.complete(o,'2.1',1,[['2.1.1',3]]));o=f.ok(await f.complete(o,'1',1,[['1.1',1]]));
   assert.equal((await f.batches(o,'1.1')).total,2);
   assert.equal((await f.batches(o,'2.1')).total,2);
@@ -451,7 +452,7 @@ test('remaining semi-finished receipts reserve exact balances, approve costs, re
   assert.equal(doc.quantity_fraction,'1/3');assert.equal(o.stages[1].available_quantity_fraction,'5/3');
   assert.equal(o.stages[1].consumed_quantity,10);assert.equal(o.stages[1].pending_receipt_quantity_fraction,'1/3');
   assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.b).stock,0);
-  assert.equal((await f.complete(o,'',1,[['1',2]])).status,400);
+  o=await recordAndCancel(f,await f.complete(o,'',1,[['1',2]]));
   assert.equal((await f.command(`/production-orders/${o.id}/stage-receipts`,{version:o.version,path:'1',quantity:2})).status,409);
   f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
   doc=f.ok(await f.command(`/production-stage-receipts/${doc.stage_receipt_id}/confirm`,{version:doc.version}));
