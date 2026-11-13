@@ -121,6 +121,8 @@ export function quantityInput(value) {
     const digits = (scaled % 10000n).toString().padStart(4, '0').replace(/0+$/, '');
     return `${scaled / 10000n}${digits ? `.${digits}` : ''}/${inputDenominator}`;
   }
+  const rounded = exactCeil(value, 4);
+  if (validQuantity(rounded)) return String(rounded);
   return `${numerator}/${denominator}`;
 }
 

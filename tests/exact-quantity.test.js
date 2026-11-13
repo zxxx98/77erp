@@ -37,5 +37,8 @@ test('calculated fractions fill inputs with equivalent decimal numerators where 
     assert.equal(quantityInput(value), expected);
     assert.equal(exactCompare(parseExactQuantity(quantityInput(value)), value), 0);
   }
-  assert.equal(quantityInput('1/99999999'), '1/99999999');
+  assert.equal(quantityInput('1/99999999'), '0.0001');
+  assert.equal(quantityInput('2430729/125000000'), '0.0195');
+  assert.equal(quantityInput('270081/125000000'), '0.0022');
+  assert.equal(parseExactQuantity(quantityInput('2430729/125000000')), 0.0195);
 });
