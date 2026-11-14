@@ -516,10 +516,10 @@ test('operation acceptance validates binding, fixes revisions and enforces a sep
   const actual=new ExcelJS.Workbook();await actual.xlsx.load(f.objects.get(file.object_key));assert.equal(actual.getWorksheet('验收').getCell('B1').value,12);
   assert.equal((await f.request(`/quality/acceptances/${report.acceptance_id}`,{}, {method:'DELETE'})).status,409);
   order=f.ok(await f.report(order,'weld',2,'',{operation_acceptance:f.acceptance},options));
-  // Output and consumption must roll back together with the acceptance.
+  // Inspection is retained independently when output still awaits settlement.
   const objectsBefore=f.objects.size;
   order=await recordAndCancel(f,await f.complete(order,3,'',{operation_acceptance:f.acceptance},options));
-  assert.equal(f.objects.size,objectsBefore);
+  assert.equal(f.objects.size,objectsBefore+1);
   order=f.ok(await f.complete(order,1,'',{operation_acceptance:f.acceptance},options));assert.equal(order.completed_quantity,1);
   assert.ok(order.operation_routes[0].reports.find(r=>r.node_id==='out').acceptance_id);
   f.db.prepare('UPDATE positions SET permissions=? WHERE id=?').run(JSON.stringify(['production_register']),position.id);
@@ -527,15 +527,15 @@ test('operation acceptance validates binding, fixes revisions and enforces a sep
   assert.equal(user.id,report.worker_id);
 });
 
-test('acceptance rolls back on invalid predecessors, survives void and backup restore, and preserves old backups',async t=>{
+test('acceptance is retained on missing predecessors, survives void and backup restore, and preserves old backups',async t=>{
   const f=await acceptanceFixture(t);let order=await f.start(await f.create());
   order=await recordAndCancel(f,await f.report(order,'weld',1,'',{operation_acceptance:f.acceptance}));
-  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,0);assert.equal(f.objects.size,1);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,1);assert.equal(f.objects.size,2);
   order=f.ok(await f.report(order,'cut',2,'',{operation_acceptance:f.acceptance}));
   const report=order.operation_routes[0].reports[0];
   assert.equal(qualityChartEntries(f.db,1,f.templateId).length,1);
   order=f.ok(await f.command(`/production-orders/${order.id}/operations/${report.id}/void`,{version:order.version,reason:'重新检验'}));
-  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,1);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n,2);
   const detail=f.ok(await f.request(`/quality/acceptances/${report.acceptance_id}`));assert.equal(detail.operation_reports[0].status,'void');
   assert.equal(qualityChartEntries(f.db,1,f.templateId).length,0);
   const backup=f.ok(await f.request('/backup')),preview=f.ok(await f.command('/backup/preview',{backup}));
@@ -965,7 +965,7 @@ test('pending acceptance covers child and root stage output without consuming ma
   const backup=f.ok(await f.request('/backup'));f.ok(await f.command('/backup/preview',{backup}));
 });
 
-test('approval revalidates current balances and rolls back acceptance files on conflict',async t=>{
+test('approval preserves inspection when current balances still prevent settlement',async t=>{
   const f=await acceptanceFixture(t);let order=await f.start(await f.create());
   for(const node of ['cut','weld']) order=f.ok(await f.report(order,node,2,'',{operation_acceptance:f.acceptance}));
   order=f.ok(await f.complete(order,2));
@@ -976,8 +976,9 @@ test('approval revalidates current balances and rolls back acceptance files on c
   const count=f.objects.size;
   const endpoint=`/production-orders/${order.id}/operations/registrations/${second.id}/approve`;
   assert.equal((await f.command(endpoint,{version:stale,operation_acceptance:f.acceptance})).status,409);
-  assert.equal((await f.command(endpoint,{version:order.version,operation_acceptance:f.acceptance})).status,409);
-  assert.equal(f.objects.size,count);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n,1);
+  order=f.ok(await f.command(endpoint,{version:order.version,operation_acceptance:f.acceptance}));
+  assert.ok(order.operation_registrations.find(r=>r.id===second.id).acceptance_id);
+  assert.equal(f.objects.size,count+1);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n,1);
   assert.equal((await f.get(order.id)).operation_registrations.find(r=>r.id===second.id).status,'pending');
 });
 
@@ -1026,4 +1027,41 @@ test('shortage registration preserves mandatory inspection and migrates historic
   const backup=f.ok(await f.request('/backup'));backup.version=55;
   for(const row of backup.data.production_operation_registrations) {delete row.kind;delete row.initial_issues;}
   f.ok(await f.request('/backup/preview',{backup}));
+});
+
+test('inspector confirms material-deficient output; progress flows before accounting and settlement reuses the inspection',async t=>{
+  const f=await acceptanceFixture(t,{multi:true});let order=await f.start(await f.create());
+  for(const path of ['1','']) for(const node of ['cut','weld'])
+    order=f.ok(await f.report(order,node,12,path,{operation_acceptance:f.acceptance}));
+  order=f.ok(await f.complete(order,12,'1'));
+  const row=order.operation_registrations.find(r=>r.status==='pending');
+  assert.equal(order.flow_progress.stages.find(s=>s.path==='1').completed_quantity,0);
+  order=f.ok(await f.command(`/production-orders/${order.id}/operations/registrations/${row.id}/approve`,{version:order.version,operation_acceptance:f.acceptance}));
+  const inspected=order.operation_registrations.find(r=>r.id===row.id);
+  assert.equal(inspected.status,'pending');assert.ok(inspected.acceptance_id);
+  assert.equal(order.flow_progress.stages.find(s=>s.path==='1').completed_quantity,12);
+  assert.equal(order.stages.find(s=>s.path==='1').completed_quantity,0);
+  assert.equal(order.flow_progress.stages.find(s=>s.path==='').items[0].available_quantity,12);
+  const detail=f.ok(await f.request(`/production-orders/${order.id}/operations/acceptances/${inspected.acceptance_id}`));
+  assert.equal(detail.id,inspected.acceptance_id);
+  assert.equal((await f.request(`/quality/acceptances/${inspected.acceptance_id}`,{}, {method:'DELETE'})).status,409);
+  order=f.ok(await f.complete(order,12,'',{operation_acceptance:f.acceptance}));
+  assert.equal(order.flow_progress.completed_quantity,12);assert.equal(order.pending_registration_count,2);
+  const backup=f.ok(await f.request('/backup')),preview=f.ok(await f.command('/backup/preview',{backup}));
+  f.ok(await f.command('/backup/restore',{backup,...preview,confirmation:'RESTORE_BUSINESS_DATA'}));
+  order=await f.get(order.id);
+  assert.equal(order.flow_progress.completed_quantity,12);
+  order=f.ok(await f.command(`/production-orders/${order.id}/material-requests`,{version:order.version,type:'out',items:[{product_id:f.raw,quantity:4}],note:''}));
+  const doc=order.material_documents.find(d=>d.status==='pending');
+  f.ok(await f.command(`/production-material-documents/${doc.id}/confirm`,{version:doc.version}));order=await f.get(order.id);
+  const count=f.objects.size;
+  // Production management can settle a stored inspection without inspecting again.
+  const position=f.ok(await f.command('/positions',{name:'仅结算管理',permissions:['production']}));
+  const admin=f.db.prepare("SELECT id FROM users WHERE username='routeadmin'").get();
+  f.db.prepare("UPDATE users SET role='employee',position_id=? WHERE id=?").run(position.id,admin.id);
+  order=f.ok(await f.command(`/production-orders/${order.id}/finish`,{version:order.version}));
+  assert.equal(order.status,'completed');assert.equal(order.completed_quantity,12);
+  assert.equal(order.pending_registration_count,0);assert.equal(order.flow_progress.completed_quantity,12);
+  assert.equal(f.objects.size,count);
+  assert.equal(order.operation_routes.find(r=>r.path==='1').reports.find(r=>r.node_id==='out').acceptance_id,inspected.acceptance_id);
 });

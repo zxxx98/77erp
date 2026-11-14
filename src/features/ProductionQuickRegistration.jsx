@@ -1,3 +1,4 @@
+import { productionFlowView } from '../../shared/production-flow.js';
 import { ProductionAcceptanceRegistrations } from './ProductionAcceptanceRegistrations.jsx';
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { stageInputCanBeZero } from '../../shared/production-stages.js';
@@ -38,6 +39,7 @@ function OperationName({ target, compact = false }) {
 }
 
 export function ProductionQuickRegistration({ order, data, initialTargetId, onSaved, onBack, onActivity, presentation = 'page' }) {
+  order = productionFlowView(order);
   useLocale();
   const drawer = presentation === 'drawer';
   const { user, can } = usePermissions();

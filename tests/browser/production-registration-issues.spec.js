@@ -62,3 +62,38 @@ test('mobile predecessor with zero available quantity can be selected and record
     const order=await f.get();expect(order.pending_registration_count).toBe(1);expect(order.batches).toHaveLength(0);
   } finally {await f.close();}
 });
+
+for(const device of ['desktop','mobile','pwa']) test(`${device} uses unsettled semi-finished output and settles automatically when production ends`,async({page,browser})=>{
+  test.setTimeout(90000);
+  const context=device==='pwa'?await browser.newContext({locale:'zh-CN',serviceWorkers:'allow',viewport:{width:390,height:844}}):page.context();
+  if(device==='pwa')page=await context.newPage();
+  if(device==='mobile')await page.setViewportSize({width:390,height:844});
+  const f=await productionIssuesFixture(undefined,{staged:true});
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  try {
+    let order=f.ok(await f.complete(f.order,24,[['1.1',72]],{path:'1'}));
+    const split=f.cookie.indexOf('=');await context.addCookies([{name:f.cookie.slice(0,split),value:f.cookie.slice(split+1),url:f.base}]);
+    await page.goto(`${f.base}/#production?order=${order.id}`);
+    if(device==='pwa')await page.evaluate(()=>navigator.serviceWorker.ready);
+    await page.getByRole('tab',{name:'生产进度',exact:true}).click();
+    const semi=page.locator('.production-progress-item').filter({has:page.getByRole('button',{name:'登记 半成品',exact:true})});
+    await expect(semi).toContainText('24 / 20 kg');
+    await page.getByRole('button',{name:'登记 成品',exact:true}).click();
+    const drawer=page.getByRole('dialog',{name:'生产登记',exact:true});
+    await drawer.getByLabel('本次数量',{exact:true}).fill('12');
+    await drawer.getByRole('button',{name:'提交登记',exact:true}).click();
+    await expect(drawer).toHaveCount(0);
+    order=await f.get();expect(order.flow_progress.completed_quantity).toBe(12);expect(order.batches).toHaveLength(0);
+    const added=await f.supplement(order,[[f.raw,12]]);order=await f.confirm(added.doc);
+    expect(order.flow_progress.settlement_ready).toBe(true);
+    await page.reload();
+    await page.getByRole('button',{name:'更多操作',exact:true}).click();
+    const finish=page.getByRole('button',{name:'结束生产',exact:true}).first();
+    await expect(finish).toBeEnabled();
+    page.once('dialog',dialog=>dialog.accept());await finish.click();
+    await expect.poll(async()=>(await f.get()).status).toBe('completed');
+    order=await f.get();expect(order.pending_registration_count).toBe(0);expect(order.completed_quantity).toBe(12);
+    expect(order.receipt_documents).toHaveLength(1);expect(errors).toEqual([]);
+    await page.screenshot({path:test.info().outputPath(`${device}-flow-finished.png`)});
+  } finally {if(device==='pwa')await context.close();await f.close();}
+});

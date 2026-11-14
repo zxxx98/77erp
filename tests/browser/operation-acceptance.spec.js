@@ -34,7 +34,7 @@ async function fixture(page) {
   await post(`/production-material-documents/${doc.id}/confirm`,{version:doc.version});
   await post('/auth/logout',{});await post('/auth/login',{username:'acceptworker',password:'Worker-test-123'});
   const link=productionRegistrationUrl({origin:base,warehouseId:1,orderId:draft.id,number:draft.number,sourceId:db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value});
-  return {base,db,position,draft,link,objects,route,template,close:async()=>{await notifications.stop();await r2Backup.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}};
+  return {base,db,position,draft,link,objects,route,template,raw,close:async()=>{await notifications.stop();await r2Backup.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}};
 }
 
 for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} registers first and automatically posts output after authorized acceptance`,async({browser})=>{
@@ -109,4 +109,40 @@ for(const mode of ['desktop','mobile']) test(`${mode} edits operation template b
     await page.getByRole('button',{name:'保存路线',exact:true}).click();await expect(page.getByText('工艺路线已保存',{exact:true})).toBeVisible();
     expect(JSON.parse(f.db.prepare('SELECT graph FROM process_routes WHERE id=?').get(f.route.id).graph).nodes[0].acceptance_template_id).toBe(f.template.id);
   }finally{await f.close();await context.close();}
+});
+
+for(const mode of ['desktop','mobile','pwa']) test(`${mode} inspector passes a material-deficient final registration without production management permission`,async({browser})=>{
+  const context=await browser.newContext({locale:'zh-CN',...(mode==='desktop'?{}:devices['iPhone 13']),serviceWorkers:mode==='pwa'?'allow':'block'});
+  const page=await context.newPage(),f=await fixture(page),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const post=async(path,body)=>{
+    const response=await page.request.post(`${f.base}/api${path}`,{data:{request_id:randomUUID(),schema_version:2,stage_schema_version:1,operation_schema_version:1,...body}});
+    const result=await response.json();expect(response.ok(),JSON.stringify(result)).toBe(true);return result;
+  };
+  try {
+    let order=await(await page.request.get(`${f.base}/api/production-orders/${f.draft.id}`)).json();
+    order=await post(`/production-orders/${order.id}/operations/report`,{version:order.version,path:'',operation_node_id:'cut',quantity:12});
+    order=await post(`/production-orders/${order.id}/complete`,{version:order.version,path:'',operation_node_id:'out',completed_quantity:12,items:[{product_id:f.raw.id,quantity:24}],scraps:[],finish_order:false});
+    f.db.prepare('UPDATE positions SET permissions=? WHERE id=?').run(JSON.stringify(['production_register','operation_accept']),f.position.id);
+    await page.goto(f.link);
+    if(mode==='pwa')await page.evaluate(()=>navigator.serviceWorker.ready);
+    const records=page.getByRole('region',{name:'登记与待处理问题'});
+    for(const name of ['下料','最终检验']) {
+      await records.locator('article').filter({has:page.locator('strong').filter({hasText:name})}).getByRole('button',{name:'验收',exact:true}).click();
+      const modal=page.getByRole('dialog',{name:'工序验收单',exact:true});
+      await modal.getByRole('button',{name:'字段填写',exact:true}).click();
+      await modal.getByRole('textbox',{name:'测量值 · B1',exact:true}).fill('12');
+      await modal.getByRole('button',{name:'校验并预览',exact:true}).click();
+      await modal.getByRole('checkbox',{name:'我已核对本批验收内容，确认验收合格',exact:true}).check();
+      await modal.getByRole('button',{name:'验收合格并登记',exact:true}).click();
+      await expect(modal).toHaveCount(0);
+    }
+    await expect(records).toContainText('已验收合格，材料结算独立处理。');
+    await expect(records).toContainText('待结算');
+    await expect(records.getByRole('button',{name:'核对并结算',exact:true})).toHaveCount(0);
+    expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
+    expect(f.db.prepare('SELECT acceptance_id FROM production_operation_registrations WHERE node_id=?').get('out').acceptance_id).toBeGreaterThan(0);
+    expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.raw.id).stock).toBe(80);
+    expect(errors).toEqual([]);
+    await page.screenshot({path:test.info().outputPath(`${mode}-inspected-awaiting-materials.png`),fullPage:true});
+  } finally {await context.close();await f.close();}
 });

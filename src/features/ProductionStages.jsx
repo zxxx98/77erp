@@ -1,3 +1,4 @@
+import { productionFlowView } from '../../shared/production-flow.js';
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { ProductionOperations, OperationWorkerSelect } from './ProductionOperations.jsx';
 import { pooledProductionStages } from '../../shared/production-pools.js';
@@ -24,6 +25,7 @@ const count = value => typeof value === 'string' && value.includes('/') ? value 
 const time = value => new Date(value).toLocaleString(getFormatLocale(), { hour12: false });
 
 export function ProductionStageSummary({ order, onOpen, disabled }) {
+  order = productionFlowView(order);
   useLocale();
   const children = pooledProductionStages(order).filter(stage => stage.path !== '');
   const started = children.filter(stage => stage.completed_quantity > 0).length;
@@ -37,6 +39,7 @@ export function ProductionStageSummary({ order, onOpen, disabled }) {
 }
 
 export function ProductionStages({ order, data, canRegister, canVoid, canReceive, management, busy = false, initialOperationPath, initialHistoryPath, onRegister, onActivity, onSaved, onBack }) {
+  order = productionFlowView(order);
   useLocale();
   const [operationPath, setOperationPath] = useState(initialOperationPath ?? null), [operationActivity, setOperationActivity] = useState(null);
   const [scope, setScope] = useState(''), [search, setSearch] = useState('');
@@ -95,7 +98,6 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       const items = form.items.map(row => {
         const item = stage.items.find(item => item.path === row.path);
         const actual = parseQuantity(row.quantity, !stageInputCanBeZero(item, stage.items));
-        if (exactCompare(actual, exactQuantity(item, 'available_quantity')) > 0) throw new Error(pt("production.insufficientAvailableFirst", { v0: item.name, v1: item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials") }));
         return { ...row, quantity: actual };
       });
       if (!items.some(item => exactCompare(item.quantity, 0) > 0)) throw new Error(pt("production.actualInputForAtLeastOneMaterialMust"));

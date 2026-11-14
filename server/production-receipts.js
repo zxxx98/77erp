@@ -109,6 +109,7 @@ export function installProductionReceipts(app, db, {route}) {
     const batch = db.prepare('SELECT * FROM production_batches WHERE id=?').get(doc.batch_id);
     const order = db.prepare('SELECT * FROM production_orders WHERE id=?').get(doc.production_id);
     if (!batch || batch.status !== 'active' || !order || order.status === 'void') fail('生产批次状态不允许批准入库。',409);
+    if(db.prepare("SELECT 1 FROM production_operation_registrations WHERE production_id=? AND status='pending' LIMIT 1").get(doc.production_id)) fail('生产单仍有登记未结算或未验收，请结清后批准入库。',409);
     const before = doc.items.map(row => db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id));
     for (const row of doc.items) {
       const product = before.find(p => p?.id === row.product_id);

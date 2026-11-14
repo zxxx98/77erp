@@ -389,7 +389,7 @@ export function operationInput(db, req, order, path, quantity, output) {
   if (req.body.operation_schema_version !== 1) fail('此单使用工序登记，请刷新页面后按工序操作。', 409);
   const node = route.operations.find(n => n.id === req.body.operation_node_id);
   if (!node || node.is_output !== output) fail(output ? '请从最终产出工序登记产量和实际耗料。' : '最终工序请使用产出登记入口。');
-  if (node.acceptance_template_id && !req.validatingRegistration && !hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
+  if (node.acceptance_template_id && !req.validatingRegistration && !req.settledAcceptanceId && !hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
   const post = route.product_coefficient != null;
   if (post && !id(quantity)) fail('后处理报工次数必须为正整数。');
   parseExactQuantity(quantity, true);
@@ -428,7 +428,7 @@ export function voidOperationOutput(db, kind, batchId, owner, at, reason) {
   if (report) db.prepare("UPDATE production_operation_reports SET status='void',void_reason=?,voided_by_name=?,voided_at=?,voided_sequence=? WHERE output_kind=? AND output_batch_id=? AND status='active'").run(reason, owner, at, nextOperationSequence(db, report.production_id), kind, batchId);
 }
 export function assertOperationsFinished(db, productionId) {
-  if (db.prepare("SELECT 1 FROM production_operation_registrations WHERE production_id=? AND status='pending' LIMIT 1").get(productionId)) fail('仍有登记正在验收，请先完成验收或取消登记。',409);
+  if (db.prepare("SELECT 1 FROM production_operation_registrations WHERE production_id=? AND status='pending' LIMIT 1").get(productionId)) fail('仍有登记未结算或未验收，请补齐缺口并完成结算、验收或取消登记。',409);
   const order = { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(productionId), stages: db.prepare('SELECT * FROM production_stages WHERE production_id=?').all(productionId),
     items: db.prepare('SELECT * FROM production_items WHERE production_id=?').all(productionId),
     nodes: db.prepare('SELECT * FROM production_bom_nodes WHERE production_id=? ORDER BY position').all(productionId) }; readProductionRoutes(db, order);

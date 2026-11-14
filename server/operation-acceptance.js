@@ -52,7 +52,7 @@ export function createOperationAcceptanceService(db, options) {
   };
   const associated = req => {
     const row=db.prepare(`SELECT a.* FROM quality_acceptances a WHERE a.id=? AND a.warehouse_id=? AND EXISTS
-      (SELECT 1 FROM production_operation_reports p WHERE p.production_id=? AND p.acceptance_id=a.id)`).get(Number(req.params.acceptanceId),req.warehouse.id,Number(req.params.id));
+      (SELECT 1 FROM production_operation_reports p WHERE p.production_id=? AND p.acceptance_id=a.id UNION ALL SELECT 1 FROM production_operation_registrations r WHERE r.production_id=? AND r.acceptance_id=a.id)`).get(Number(req.params.acceptanceId),req.warehouse.id,Number(req.params.id),Number(req.params.id));
     if(!row) fail('此生产单的工序验收单不存在。',404);
     return row;
   };
@@ -98,10 +98,15 @@ export function createOperationAcceptanceService(db, options) {
   };
 }
 
-// Called inside the production transaction. The generated file is only retained
-// after the acceptance, report and (for final operations) output all commit.
+// Called inside the production transaction. A passed inspection may commit on
+// a pending registration before its material ledger and output batch settle.
 export function saveOperationAcceptance(db,req,order,input) {
   if(!input.node.acceptance_template_id || req.validatingRegistration) return null;
+  if(req.settledAcceptanceId) {
+    const saved=db.prepare('SELECT a.id FROM quality_acceptances a JOIN production_operation_registrations r ON r.acceptance_id=a.id WHERE r.id=? AND r.production_id=? AND a.revision_id=?').get(req.operationRegistrar?.id,order.id,input.node.acceptance_revision_id);
+    if(!saved || saved.id!==req.settledAcceptanceId) fail('已验收登记关联无效。',409);
+    return saved.id;
+  }
   if (!hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
   const prepared=req.operationAcceptance;
   if(!prepared || prepared.revision.id !== input.node.acceptance_revision_id) fail('请先完成本工序验收单。');
@@ -143,7 +148,7 @@ export function validateOperationRegistrationBackup(data) {
       !body||Array.isArray(body)||(body.operation_node_id??'')!==row.node_id||(body.path??'')!==row.path||body.operation_acceptance!==undefined||
       !identity(row.registered_by)||!identity(row.worker_id)||!identity(row.production_group_id)||!text(row.production_group_name,100)||!text(row.registered_by_name,100,true)||!text(row.worker_name,100,true)||
       !text(row.created_at,100,true)||!Number.isFinite(Date.parse(row.created_at))||!text(row.resolved_by_name,100)||
-      (row.status==='pending' ? row.resolved_at!==null||row.resolved_by_name!==''||row.acceptance_id!==null||order.status!=='draft'
+      (row.status==='pending' ? row.resolved_at!==null||row.resolved_by_name!==''||order.status!=='draft'
         : !text(row.resolved_at,100,true)||!Number.isFinite(Date.parse(row.resolved_at))||!row.resolved_by_name.trim())) fail('备份验收登记记录无效。');
     let initialIssues;
     try {initialIssues=JSON.parse(row.initial_issues);} catch {fail('备份登记问题记录无效。');}
@@ -164,11 +169,11 @@ export function validateOperationRegistrationBackup(data) {
     if(row.kind==='settlement') {
       validateSettlementBody(data,order,row,body,node);
       if(row.acceptance_id!==null) fail('待结算登记不能关联验收单。');
-    } else if(row.status==='approved') {
+    } else if(row.acceptance_id!==null) {
       const acceptance=data.quality_acceptances.find(a=>a.id===row.acceptance_id);
       if(!acceptance||acceptance.warehouse_id!==order.warehouse_id||acceptance.revision_id!==node.acceptance_revision_id||
-        !data.production_operation_reports.some(r=>r.production_id===order.id&&r.node_id===row.node_id&&r.acceptance_id===row.acceptance_id)) fail('备份验收登记关联无效。');
-    } else if(row.acceptance_id!==null) fail('未通过的登记不能关联验收单。');
+        row.status==='approved'&&!data.production_operation_reports.some(r=>r.production_id===order.id&&r.node_id===row.node_id&&r.acceptance_id===row.acceptance_id)) fail('备份验收登记关联无效。');
+    } else if(row.status==='approved') fail('通过的登记缺少验收单。');
   }
 }
 

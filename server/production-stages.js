@@ -177,7 +177,7 @@ export function installProductionStages(app,db,{route,current,version,units,upda
     const o=stageOrder(req); version(req,o);units(o);
     if(o.status!=='in_progress')fail('请先开始生产并由仓库批准领料后登记。',409);
     const s=o.stages.find(s=>s.path===req.body.path);if(!s)fail('生产层不存在。',404);
-    if(s.path==='')assertOutputOpen(o);
+    if(s.path===''&&!req.operationRegistrar)assertOutputOpen(o);
     if(!validExactQuantity(parseExactQuantity(req.body.completed_quantity,true),true)||req.body.note!==undefined&&(typeof req.body.note!=='string'||req.body.note.length>500)||typeof req.body.finish_order!=='boolean')fail('请核对本批产量、备注及继续生产选项。');
     if(s.path!==''&&(req.body.finish_order||req.body.scraps?.length))fail('半成品层只能登记继续，不登记废料或结束整单。');
     if (Array.isArray(req.body.items)) {

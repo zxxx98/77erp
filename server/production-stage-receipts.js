@@ -89,6 +89,7 @@ export function installStageReceipts(app, db, {route,current,version}) {
     const doc=load(req);
     if(doc.status!=='pending')fail('半成品入库单不是待入库状态。',409);
     const batch=db.prepare('SELECT status FROM production_stage_batches WHERE id=?').get(doc.source_batch_id);
+    if(db.prepare("SELECT 1 FROM production_operation_registrations WHERE production_id=? AND status='pending' LIMIT 1").get(doc.production_id)) fail('生产单仍有登记未结算或未验收，请结清后批准入库。',409);
     const order=db.prepare('SELECT status FROM production_orders WHERE id=?').get(doc.production_id);
     if(batch?.status!=='active'||order?.status==='void')fail('来源批次或生产单已作废。',409);
     const p=db.prepare('SELECT * FROM products WHERE id=?').get(doc.product_id);

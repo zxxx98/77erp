@@ -1,3 +1,4 @@
+import { productionFlowView } from '../../shared/production-flow.js';
 import { ProductionAcceptanceRegistrations } from './ProductionAcceptanceRegistrations.jsx';
 import { WorkbookResults } from '../pages/quality-shared.jsx';
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
@@ -39,6 +40,7 @@ export function OperationWorkerSelect({ order, warehouseId, value, onChange, dis
 }
 
 export function ProductionOperations({ order, path = '', data, canRegister, onRegister, onOutput, onBack, onSaved, onActivity }) {
+  order = productionFlowView(order);
   useLocale();
   const { can, user } = usePermissions(), action = useBusiness();
   const acceptance=useOperationAcceptance();

@@ -1,6 +1,7 @@
+import { productionFlowProgress, productionFlowView } from '../shared/production-flow.js';
 import { registrationIssueState, registrationRequirements } from '../shared/production-registration-issues.js';
 import { operationInput } from './process-routes.js';
-import { createOperationAcceptanceService, assertOperationAcceptancePermission, operationAcceptanceNode } from './operation-acceptance.js';
+import { createOperationAcceptanceService, assertOperationAcceptancePermission, operationAcceptanceNode, saveOperationAcceptance } from './operation-acceptance.js';
 import { positionAuthorization } from './positions.js';
 import { productionAssignments, isProductionAssignee } from '../shared/production-assignment.js';
 import { assertOutputOpen, assertPostProcessingLimits, reopenAfterRootOutputVoid } from './post-processing.js';
@@ -283,6 +284,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
       const actual_inputs=registrationRequirements(order,input,row.endpoint).filter(item=>['material','semi'].includes(item.kind)).map(({key,kind,name,unit,path,quantity})=>({key,kind,name,unit,path,...quantityFields(quantity)}));
       return {...row, actual_inputs, initial_issues:JSON.parse(row.initial_issues), quantity:input.quantity??input.completed_quantity, note:input.note||''};
     });
+    order.flow_progress = productionFlowProgress(order, registrations);
     order.captured_at = new Date().toISOString();
     return isGroupProductionWorker(user) ? productionWorkerProjection(order) : costs ? order : productionWithoutCosts(order);
   });
@@ -358,17 +360,20 @@ export function installProduction(app, db, options = {}) {
         }
         if (/\/operations\/registrations\/\d+\/approve$/.test(path)) {
           const approving=registrationRow(req);
-          if(!hasPermission(req.user,approving.kind==='settlement'?'production':'operation_accept')) fail(approving.kind==='settlement'?'需要生产管理权限。':'需要工序验收权限。',403);
-          if(!operationRequest(db,req).previous) {
+          const previous=operationRequest(db,req).previous;
+          const permission=approving.kind==='settlement'||approving.acceptance_id!==null?'production':'operation_accept';
+          const canReplayInspection=previous&&approving.kind==='acceptance'&&hasPermission(req.user,'operation_accept');
+          if(!hasPermission(req.user,permission)&&!canReplayInspection) fail(permission==='production'?'需要生产管理权限。':'需要工序验收权限。',403);
+          if(!previous) {
             const order=current(req); version(req,order);
             const row=registrationRow(req);
             if(row.status!=='pending') fail('此登记已经处理，请刷新后核对。',409);
             const inspection={...req,body:{...JSON.parse(row.body),operation_acceptance:req.body.operation_acceptance}};
-            prepared=row.kind==='settlement'?null:await acceptances.prepare(inspection);
+            prepared=row.kind==='settlement'||row.acceptance_id!==null?null:await acceptances.prepare(inspection);
             req.operationAcceptance=prepared;
             if(options.sessionUser) {const fresh=options.sessionUser(req);if(!fresh) fail('登录已失效，请重新登录。',401);req.user=fresh;}
             assertProductionOrderAccess(req.user,db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id)||{});
-            if(!hasPermission(req.user,row.kind==='settlement'?'production':'operation_accept')) fail(row.kind==='settlement'?'需要生产管理权限。':'需要工序验收权限。',403);
+            if(!hasPermission(req.user,permission)) fail(permission==='production'?'需要生产管理权限。':'需要工序验收权限。',403);
             if(!hasPermission(req.user,'production')&&row.endpoint!=='operations/report'&&JSON.parse(row.body).finish_order!==false) fail('生产登记必须保留生产单，不能结束生产。',403);
           }
         }
@@ -447,6 +452,10 @@ export function installProduction(app, db, options = {}) {
   const validateRegistration = (req, fn) => fn({...req, body:structuredClone(req.body), registrationValidation:true});
   const register = (req, fn, path, acceptancePending) => {
     validateRegistration({...req,validatingRegistration:!!acceptancePending},fn);
+    if(req.body.finish_order===true && pendingRows(current(req)).length) {
+      reconcileRegistrations(req);
+      req.body.version=current(req).version;
+    }
     const order=current(req);
     const candidate={id:1,status:'pending',body:JSON.stringify(req.body),endpoint:path.split('/').slice(4).join('/')};
     const issues=registrationIssueState(order,[candidate]).rows[0].issues;
@@ -467,37 +476,55 @@ export function installProduction(app, db, options = {}) {
     const order=current(req),existing=pendingRows(order);
     const initialIssues=registrationIssueState(order,[...existing,{id:(existing.at(-1)?.id??0)+1,status:'pending',body:JSON.stringify(body),endpoint:path.split('/').slice(4).join('/')}]).rows.at(-1).issues;
     const group=productionRegistrationGroup(req.user,order);
-    db.prepare(`INSERT INTO production_operation_registrations(production_id,path,node_id,endpoint,body,registered_by,registered_by_name,worker_id,worker_name,created_at,production_group_id,production_group_name,kind,initial_issues)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(Number(req.params.id),body.path??'',body.operation_node_id??'',path.split('/').slice(4).join('/'),JSON.stringify(body),req.user.id,actor(req),worker.id,worker.name||worker.username,new Date().toISOString(),group.id,group.name,kind,JSON.stringify(initialIssues));
+    let acceptanceId=null;
+    if(kind==='acceptance' && req.operationAcceptance) {
+      const input=operationInput(db,{...req,registrationValidation:true},order,body.path??'',body.quantity??body.completed_quantity,body.completed_quantity!==undefined);
+      acceptanceId=saveOperationAcceptance(db,req,order,input);
+    }
+    const registrationId=Number(db.prepare(`INSERT INTO production_operation_registrations(production_id,path,node_id,endpoint,body,registered_by,registered_by_name,worker_id,worker_name,created_at,production_group_id,production_group_name,kind,initial_issues)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(Number(req.params.id),body.path??'',body.operation_node_id??'',path.split('/').slice(4).join('/'),JSON.stringify(body),req.user.id,actor(req),worker.id,worker.name||worker.username,new Date().toISOString(),group.id,group.name,kind,JSON.stringify(initialIssues)).lastInsertRowid);
+    if(acceptanceId!==null) db.prepare('UPDATE production_operation_registrations SET acceptance_id=? WHERE id=?').run(acceptanceId,registrationId);
     db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(),actor(req),Number(req.params.id));
-    return {...current(req),registration_status:kind==='settlement'?'unsettled':'pending'};
+    return {...current(req),registration_status:kind==='settlement'||acceptanceId!==null?'unsettled':'pending'};
   };
   const settleRegistration = (req, row) => {
     const order=current(req);
-    if(row.status!=='pending'||row.kind==='acceptance'&&!req.operationAcceptance) fail('此登记已经处理或尚未验收，请刷新后核对。',409);
+    if(row.status!=='pending'||row.kind==='acceptance'&&row.acceptance_id===null&&!req.operationAcceptance) fail('此登记已经处理或尚未验收，请刷新后核对。',409);
     const fn=registrationHandlers.get(row.endpoint);
     if(!fn) fail('登记类型无效。');
-    const replay={...req,operationRegistrar:row,body:{...JSON.parse(row.body),version:order.version}};
+    const replay={...req,settledAcceptanceId:row.acceptance_id,operationRegistrar:row,body:{...JSON.parse(row.body),version:order.version}};
     validateRegistration(replay,fn);
     const issues=registrationIssueState(order,[row]).rows[0].issues;
     if(issues.length) fail(`登记仍有待处理问题：${issues.map(i=>`${i.name}缺少 ${i.missing_quantity_fraction||i.missing_quantity} ${i.unit}`).join('、')}。`,409);
     // Mark resolved before replay so completion checks cannot count this row twice.
     db.prepare("UPDATE production_operation_registrations SET status='approved',resolved_by_name=?,resolved_at=? WHERE id=?").run(actor(req),new Date().toISOString(),row.id);
     fn(replay);
-    if (row.kind==='acceptance') db.prepare('UPDATE production_operation_registrations SET acceptance_id=? WHERE id=?').run(req.operationAcceptance.id,row.id);
+    if (row.kind==='acceptance' && req.operationAcceptance) db.prepare('UPDATE production_operation_registrations SET acceptance_id=? WHERE id=?').run(req.operationAcceptance.id,row.id);
   };
   app.post('/api/production-orders/:id/operations/registrations/:registrationId/approve',route(req=>{
     const order=current(req);version(req,order);
-    settleRegistration(req,registrationRow(req));
+    let row=registrationRow(req);
+    if(row.kind==='acceptance' && row.acceptance_id===null) {
+      const replay={...req,body:{...JSON.parse(row.body),version:order.version},registrationValidation:true};
+      const fn=registrationHandlers.get(row.endpoint);
+      validateRegistration({...replay,validatingRegistration:true},fn);
+      const input=operationInput(db,replay,order,row.path,replay.body.quantity??replay.body.completed_quantity,row.endpoint!=='operations/report');
+      const acceptanceId=saveOperationAcceptance(db,replay,order,input);
+      db.prepare('UPDATE production_operation_registrations SET acceptance_id=? WHERE id=?').run(acceptanceId,row.id);
+      db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(),actor(req),order.id);
+      row=registrationRow(req);
+      // Inspection confirms physical work even while the material ledger waits.
+      if(registrationIssueState(current(req),[row]).rows[0].issues.length) return current(req);
+    }
+    settleRegistration(req,row);
     return current(req);
   },true));
-  app.post('/api/production-orders/:id/operations/registrations/reconcile',route(req=>{
-    const order=current(req);version(req,order);
+  const reconcileRegistrations=req=>{
     let progress=true;
     const errors=new Map();
     while(progress) {
       progress=false;
-      for(const row of pendingRows(current(req)).filter(r=>r.kind==='settlement')) {
+      for(const row of pendingRows(current(req)).filter(r=>r.kind==='settlement'||r.acceptance_id!==null)) {
         db.exec('SAVEPOINT settle_registration');
         try {
           settleRegistration(req,row);
@@ -509,7 +536,12 @@ export function installProduction(app, db, options = {}) {
         }
       }
     }
-    return {...current(req),settlement_errors:[...errors].map(([id,error])=>({id,error}))};
+    return [...errors].map(([id,error])=>({id,error}));
+  };
+  app.post('/api/production-orders/:id/operations/registrations/reconcile',route(req=>{
+    const order=current(req);version(req,order);
+    const settlement_errors=reconcileRegistrations(req);
+    return {...current(req),settlement_errors};
   },true));
   app.post('/api/production-orders/:id/operations/registrations/:registrationId/cancel',route(req=>{
     const order=current(req);version(req,order);const row=registrationRow(req);
@@ -634,7 +666,7 @@ export function installProduction(app, db, options = {}) {
   app.post('/api/production-orders/:id/complete', route(req => {
     const order = current(req); checkOpen(req, order); units(order);
     if (order.stage_workflow) fail('分层生产请按指定层登记，不能通过旧登记入口完成。',409);
-    assertOutputOpen(order);
+    if(!req.operationRegistrar) assertOutputOpen(order);
     if (req.body.finish_order !== false) assertNoPendingMaterials(db, order);
     if (Array.isArray(req.body.items)) {
       const supplied = new Set(req.body.items.map(item => item?.product_id));
@@ -698,17 +730,20 @@ export function installProduction(app, db, options = {}) {
     if (typeof req.body.completed !== 'boolean') fail('请选择确认或撤销成品生产完成。');
     if (!order.operation_routes.some(route => route.product_coefficient != null)) fail('此生产单未绑定后处理工序。', 409);
     if (req.body.completed === order.output_completion_confirmed) return order;
-    if (req.body.completed && pendingRows(order).some(row=>row.endpoint!=='operations/report'&&row.path==='')) fail('仍有成品登记待结算或验收，请先处理后再确认成品生产完成。',409);
-    const quantity = exactQuantity(order, 'completed_quantity');
-    if (req.body.completed && (exactCompare(quantity, 0) <= 0 || order.output_completed))
+    if (req.body.completed && pendingRows(order).some(row=>row.endpoint!=='operations/report'&&row.path===''&&row.kind==='acceptance'&&row.acceptance_id===null)) fail('仍有成品登记尚未验收，请先验收后再确认成品生产完成。',409);
+    const flow=productionFlowView(order);
+    const quantity = exactQuantity(flow, 'completed_quantity');
+    if (req.body.completed && (exactCompare(quantity, 0) <= 0 || flow.output_completed))
       fail('仅已登记有效产出但未达到计划的生产单可以确认成品生产完成。', 409);
-    assertPostProcessingLimits(order, quantity, req.body.completed);
+    assertPostProcessingLimits(flow, quantity, req.body.completed);
     db.prepare('UPDATE production_orders SET output_completion_confirmed=?,updated_by_name=?,updated_at=? WHERE id=?')
       .run(Number(req.body.completed), actor(req), new Date().toISOString(), order.id);
     return current(req);
   }, true));
   app.post('/api/production-orders/:id/finish', route(req => {
-    const order = current(req); checkOpen(req, order);
+    const initial=current(req);checkOpen(req,initial);
+    reconcileRegistrations(req);
+    const order=current(req);
     assertNoPendingMaterials(db, order);
     assertOperationsFinished(db, order.id);
     if (order.stage_workflow) assertStagesFinished(order);

@@ -190,7 +190,7 @@ export function installQuality(app, db, options = {}) {
   const acceptanceDetail = row => {
     const revision = db.prepare('SELECT revision,name,definition FROM quality_template_revisions WHERE id=?').get(row.revision_id);
     const file = db.prepare('SELECT filename FROM quality_template_files WHERE id=?').get(row.file_id);
-    return {...row,operation_reports:db.prepare('SELECT p.id,p.production_id,p.node_id,p.quantity,p.status,p.void_reason,o.number AS production_number FROM production_operation_reports p JOIN production_orders o ON o.id=p.production_id WHERE p.acceptance_id=? ORDER BY p.id').all(row.id),bindings:JSON.parse(row.bindings),result:JSON.parse(row.result),definition:JSON.parse(revision.definition),revision:revision.revision,template_name:revision.name,filename:file.filename};
+    return {...row,operation_registrations:db.prepare('SELECT r.id,r.production_id,r.node_id,r.status,o.number AS production_number FROM production_operation_registrations r JOIN production_orders o ON o.id=r.production_id WHERE r.acceptance_id=? ORDER BY r.id').all(row.id),operation_reports:db.prepare('SELECT p.id,p.production_id,p.node_id,p.quantity,p.status,p.void_reason,o.number AS production_number FROM production_operation_reports p JOIN production_orders o ON o.id=p.production_id WHERE p.acceptance_id=? ORDER BY p.id').all(row.id),bindings:JSON.parse(row.bindings),result:JSON.parse(row.result),definition:JSON.parse(revision.definition),revision:revision.revision,template_name:revision.name,filename:file.filename};
   };
   const activeRevision = req => {
     const id = Number(req.body.template_id), revisionId = Number(req.body.revision_id);
@@ -345,7 +345,7 @@ export function installQuality(app, db, options = {}) {
   }));
   router.delete('/acceptances/:id',run(req=>transaction(()=>{
     const row=acceptance(req);
-    if (db.prepare('SELECT 1 FROM production_operation_reports WHERE acceptance_id=? LIMIT 1').get(row.id)) throw error('此验收单已关联工序登记，不能删除。',409);
+    if (db.prepare('SELECT 1 FROM production_operation_reports WHERE acceptance_id=? UNION ALL SELECT 1 FROM production_operation_registrations WHERE acceptance_id=? LIMIT 1').get(row.id,row.id)) throw error('此验收单已关联工序登记，不能删除。',409);
     db.prepare("INSERT INTO app_metadata(key,value) VALUES ('quality_acceptance_last_deleted_id',?) ON CONFLICT(key) DO UPDATE SET value=CAST(MAX(CAST(value AS INTEGER),CAST(excluded.value AS INTEGER)) AS TEXT)").run(String(row.id));
     // Keep originals for existing backups, as with reset and template replacement.
     db.prepare('DELETE FROM quality_acceptances WHERE id=?').run(row.id);

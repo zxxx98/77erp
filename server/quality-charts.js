@@ -4,7 +4,7 @@ import { operationRequest, saveOperationRequest } from './operations.js';
 
 const error=(message,status=400)=>Object.assign(new Error(message),{status});
 // Voided operation inspections remain auditable, but no longer contribute to charts.
-export const activeQualityAcceptance = (alias='a') => `(NOT EXISTS (SELECT 1 FROM production_operation_reports p WHERE p.acceptance_id=${alias}.id) OR EXISTS (SELECT 1 FROM production_operation_reports p WHERE p.acceptance_id=${alias}.id AND p.status='active'))`;
+export const activeQualityAcceptance = (alias='a') => `((NOT EXISTS (SELECT 1 FROM production_operation_reports p WHERE p.acceptance_id=${alias}.id) AND NOT EXISTS (SELECT 1 FROM production_operation_registrations r WHERE r.acceptance_id=${alias}.id)) OR EXISTS (SELECT 1 FROM production_operation_reports p WHERE p.acceptance_id=${alias}.id AND p.status='active') OR EXISTS (SELECT 1 FROM production_operation_registrations r WHERE r.acceptance_id=${alias}.id AND r.status='pending'))`;
 export function migrateQualityCharts(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS quality_charts (
     id INTEGER PRIMARY KEY, warehouse_id INTEGER NOT NULL REFERENCES warehouses(id), template_id INTEGER NOT NULL REFERENCES quality_templates(id),

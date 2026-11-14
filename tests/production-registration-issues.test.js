@@ -221,3 +221,68 @@ test('computed shortage snapshots retain precision beyond manual decimal inputs 
   issues[0].missing_quantity=-1;bad.data.production_operation_registrations[0].initial_issues=JSON.stringify(issues);
   assert.equal((await f.request('/backup/preview',{backup:bad})).status,400);
 });
+
+test('unsettled semi-finished output flows to the parent and finishing settles the whole cost chain', async t => {
+  const f=await productionIssuesFixture(t,{staged:true});
+  let o=f.ok(await f.complete(f.order,24,[['1.1',72]],{path:'1'}));
+  assert.equal(o.stages[1].completed_quantity,0);
+  assert.equal(o.flow_progress.stages[1].completed_quantity,24);
+  assert.equal(o.flow_progress.stages[0].items[0].available_quantity,24);
+  o=f.ok(await f.complete(o,12,[['1',24]]));
+  assert.equal(o.flow_progress.completed_quantity,12);
+  assert.equal(o.flow_progress.stages[1].available_quantity,0);
+  assert.equal(o.pending_registration_count,2);
+  assert.equal(o.receipt_documents.length,0);
+  const failed=await f.command(`/production-orders/${o.id}/finish`,{version:o.version});
+  assert.equal(failed.status,409);
+  assert.equal((await f.get()).batches.length,0);
+  const added=await f.supplement(o,[[f.raw,12]]);o=await f.confirm(added.doc);
+  o=f.ok(await f.command(`/production-orders/${o.id}/finish`,{version:o.version}));
+  assert.equal(o.status,'completed');assert.equal(o.pending_registration_count,0);
+  assert.equal(o.completed_quantity,12);assert.equal(o.flow_progress.completed_quantity,12);
+  assert.equal(o.items[0].available_quantity,0);
+  assert.equal(o.total_cost_cents,o.material_documents.reduce((sum,doc)=>sum+doc.items.reduce((n,i)=>n+i.cost_cents,0),0));
+  assert.equal(o.receipt_documents.length,1);
+  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+});
+
+test('warehouse cannot approve an existing finished receipt while other registrations remain unsettled', async t=>{
+  const f=await productionIssuesFixture(t);
+  let o=f.ok(await f.complete(f.order,1,[[f.raw,2],[f.other,1]]));
+  const receipt=o.receipt_documents[0];
+  o=f.ok(await f.complete(o,12,[[f.raw,24],[f.other,12]]));
+  const denied=await f.command(`/production-receipts/${receipt.id}/confirm`,{version:receipt.version});
+  assert.equal(denied.status,409);assert.match(denied.data.error,/未结算/);
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.output).stock,0);
+  o=f.ok(await f.cancel(o,pending(o)[0]));
+  f.ok(await f.command(`/production-receipts/${receipt.id}/confirm`,{version:receipt.version}));
+  assert.equal(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.output).stock,1);
+});
+
+test('short production can confirm flow completion and report post-processing before material settlement',async t=>{
+  const f=await productionIssuesFixture(t,{postProcessing:true});
+  let o=f.ok(await f.complete(f.order,5,[[f.raw,24],[f.other,5]]));
+  assert.equal(o.flow_progress.completed_quantity,5);assert.equal(o.completed_quantity,null);
+  o=f.ok(await f.command(`/production-orders/${o.id}/output-completion`,{version:o.version,completed:true}));
+  assert.equal(o.output_completion_confirmed,true);
+  const path=o.operation_routes.find(r=>r.product_coefficient!=null).path;
+  assert.equal(o.flow_progress.operation_routes.find(r=>r.path===path).post_processing_limit,3);
+  assert.equal((await f.complete(o,1,[[f.raw,2],[f.other,1]])).status,409);
+  o=f.ok(await f.report(o,'pack',3,path));
+  assert.equal(o.flow_progress.operation_routes.find(r=>r.path===path).operations[0].completed_quantity,3);
+  assert.equal((await f.command(`/production-orders/${o.id}/output-completion`,{version:o.version,completed:false})).status,409);
+  const added=await f.supplement(o,[[f.raw,4]]);o=await f.confirm(added.doc);
+  o=f.ok(await f.command(`/production-orders/${o.id}/finish`,{version:o.version}));
+  assert.equal(o.status,'completed');assert.equal(o.completed_quantity,5);assert.equal(o.pending_registration_count,0);
+  assert.equal(o.operation_routes.find(r=>r.path===path).operations[0].completed_quantity,3);
+});
+
+test('registering the final batch and finishing also reconciles earlier ready work',async t=>{
+  const f=await productionIssuesFixture(t);
+  let o=f.ok(await f.complete(f.order,12,[[f.raw,24],[f.other,12]]));
+  const added=await f.supplement(o,[[f.raw,6],[f.other,3]]);o=await f.confirm(added.doc);
+  o=f.ok(await f.complete(o,1,[[f.raw,2],[f.other,1]],{finish_order:true}));
+  assert.equal(o.status,'completed');assert.equal(o.completed_quantity,13);
+  assert.equal(o.pending_registration_count,0);assert.equal(o.batches.length,2);
+  assert.equal(o.items[0].available_quantity,0);
+});

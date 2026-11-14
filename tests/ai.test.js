@@ -1385,7 +1385,7 @@ test('AI reads process routes and operation snapshots without granting route wri
   assert.match(f.calls.at(-1).body.messages[0].content,/BOM.*工艺流程图/);
   assert.match(f.calls.at(-1).body.messages[0].content,/虚线.*供料.*不指定.*工序/);
   assert.match(f.calls.at(-1).body.messages[0].content,/operation_accept.*工序验收权限/);
-  assert.match(f.calls.at(-1).body.messages[0].content,/pending为验收中，approved为登记通过/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/pending且acceptance_id为空为验收中，pending且acceptance_id非空为已验收待结算/);
   assert.match(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description,/验收中，不计工序完成量、成品产量、耗料或计件工资/);
   assert.match(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description,/部分作废.*split_from_id.*最终工序/);
   assert.match(f.calls.at(-1).body.messages[0].content,/删除工艺路线须由具有BOM管理权限的用户/);
@@ -1720,6 +1720,9 @@ test('production AI exposes real pending deficits and their original snapshot wi
   assert.equal(result.pending_registration_count,1);assert.equal(result.registration_issues[0].missing_quantity,1);
   assert.equal(result.operation_registrations[0].kind,'settlement');assert.equal(result.operation_registrations[0].initial_issues[0].missing_quantity,1);
   assert.equal(result.completed_quantity,null);assert.equal(result.receipt_documents.length,0);
+  assert.equal(result.flow_progress.completed_quantity,1);
+  assert.equal(result.flow_progress.settlement_ready,false);
+  assert.match(f.calls.at(-1).body.messages[0].content,/缺料不阻止验收合格/);
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.match(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description,/missing_quantity/);
   assert.match(f.calls.at(-1).body.messages[0].content,/所有待处理登记解决前不能结束生产/);

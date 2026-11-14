@@ -1,3 +1,4 @@
+import { productionFlowView } from '../../shared/production-flow.js';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, Minus, Plus, Maximize2 } from 'lucide-react';
 import { Button, PageHeading, QueryStatus } from '../components/common.jsx';
@@ -175,6 +176,7 @@ export function BomProcessOverview({ bomId, data, onBack }) {
 }
 
 export function ProductionProcessOverview({ order, onOpen, disabled }) {
+  order = productionFlowView(order);
   const layers = useMemo(() => productionOverviewLayers(order), [order]);
   return <ProcessOverview layers={layers} production onOpen={onOpen} disabled={disabled} />;
 }

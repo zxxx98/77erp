@@ -1,3 +1,4 @@
+import { productionFlowView } from '../../shared/production-flow.js';
 import { useMemo, useState } from 'react';
 import { Button, Badge } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
@@ -12,6 +13,7 @@ const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { ma
 
 // Keep every product reachable in one list; operations expand in place.
 export function ProductionProgress({ order, busy, onRegister, onHistory, onOperations }) {
+  order = productionFlowView(order);
   useLocale();
   const [search, setSearch] = useState('');
   const targets = useMemo(() => registrationTargets(order), [order]);
