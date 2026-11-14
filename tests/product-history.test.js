@@ -139,6 +139,9 @@ test('product history merges orders, returns, void reversals and stock adjustmen
   assert.equal(records.find(r => r.event === 'stocktake').after_stock, 6.5);
   assert.equal(records.find(r => r.event === 'reduce').delta, -0.5);
   assert.equal(records.find(r => r.event === 'order' && r.order_id === sale.id).operator, 'admin');
+  assert.equal(records.find(r => r.event === 'order' && r.order_id === sale.id).applicant, 'admin');
+  assert.equal(records.find(r => r.event === 'order' && r.order_id === sale.id).balance, 7);
+  assert.equal(records.find(r => r.event === 'reduce').balance, 6);
   assert.equal((await f.request(`/products/${f.product}/history`, undefined, 'GET', f.warehouse)).status, 400);
   assert.equal((await f.request('/products/999999/history')).status, 404);
   const remote = (await f.request('/data', undefined, 'GET', f.warehouse)).data.products[0];
@@ -154,6 +157,8 @@ test('history pagination has no duplicates and rejects invalid offsets', async t
   assert.equal(first.has_more, true);
   assert.equal(second.records.length, 5);
   assert.equal(second.has_more, false);
+  assert.deepEqual(first.records.map(r => r.balance), Array.from({ length: 20 }, (_, i) => 25 - i));
+  assert.deepEqual(second.records.map(r => r.balance), [5, 4, 3, 2, 1]);
   assert.equal(new Set([...first.records, ...second.records].map(r => r.order_id)).size, 25);
   for (const offset of ['-1', 'abc', '1.5', '9007199254740992', '0&offset=1'])
     assert.equal((await f.request(`/products/${f.product}/history?offset=${offset}`)).status, 400);
@@ -172,4 +177,21 @@ test('history requires login, keeps stocktake permissions and omits financial fi
   for (const key of ['price', 'cost_cents', 'total', 'amount_cents', 'inventory_value_cents']) assert.equal(Object.hasOwn(history[0], key), false);
   assert.equal((await grantPosition(f.db, (path, body, method) => f.request(path, body, method), staff, ['basic_view', 'stocktake'])).status, 200);
   assert.equal((await f.request(path, undefined, 'GET', 1, cookie)).data.records.length, 2);
+});
+
+test('history distinguishes applicants from approvers and includes hidden adjustments in balances', async t => {
+  const f = await fixture(t);
+  const inbound = await f.order('in', 10);
+  await f.command('/stock/reduce', { product_id: f.product, quantity: 2, reason: '隐藏报损' });
+  const sale = await f.order('out', 3);
+  f.db.prepare("UPDATE orders SET created_by_name='申请员工',approved_by_name='审核员工' WHERE id=?").run(sale.id);
+  const staff = (await f.request('/users', { position_id: readonlyPositionId(f.db), username: 'balance-reader', employee_no: 'balance-reader', password: 'Test-staff-123' })).data.id;
+  const auth = (await f.request('/auth/login', { username: 'balance-reader', password: 'Test-staff-123' }, 'POST', 1, null)).cookie;
+  const history = (await f.request(`/products/${f.product}/history`, undefined, 'GET', 1, auth)).data.records;
+  assert.equal(history.length, 2);
+  assert.equal(history.find(r => r.order_id === inbound.id).balance, 10);
+  const record = history.find(r => r.order_id === sale.id);
+  assert.equal(record.balance, 5);
+  assert.equal(record.applicant, '申请员工');
+  assert.equal(record.operator, '审核员工');
 });

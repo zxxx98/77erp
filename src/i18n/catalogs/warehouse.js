@@ -5096,6 +5096,9 @@ export default {
     "Price:",
     "Giá:"
   ],
+  "warehouse.history.approver": ["审核人：", "Approved by: ", "Người duyệt: "],
+  "warehouse.history.applicant": ["申请人：", "Requested by: ", "Người đề nghị: "],
+  "warehouse.history.balance": ["余量：", "Balance: ", "Tồn còn: "],
   "warehouse.operator": [
     "操作人：",
     "Operator:",

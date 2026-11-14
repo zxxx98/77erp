@@ -46,7 +46,7 @@ export function ProductHistory({ product, onViewOrder }) {
       <h4>{translate("warehouse.current.material.operation.records")}</h4>
       <p className="muted">{translate("warehouse.the.current.warehouse.s.entry.and.exit.returns.and.invalidation.records")}</p>
       <ol className="product-history-list">{records.map(record => <li key={`${record.event}:${record.event_id}`}>
-        <div className="product-history-title"><strong>{label(record)}</strong>{record.event !== 'price_change' && <span>{record.delta === null ? translate("warehouse.already.carried.forward.at.the.beginning.of.the.period") : `${record.delta > 0 ? '+' : ''}${count(record.delta)} ${record.unit || product.unit}`}</span>}</div>
+        <div className="product-history-title"><strong>{label(record)}</strong>{record.event !== 'price_change' && <div className="product-history-quantity"><span>{record.delta === null ? translate("warehouse.already.carried.forward.at.the.beginning.of.the.period") : `${record.delta > 0 ? '+' : ''}${count(record.delta)} ${record.unit || product.unit}`}</span><small className="muted">{translate("warehouse.history.balance")}{record.balance == null ? translate("warehouse.stock.after.issue.unknown") : `${count(record.balance)} ${record.unit || product.unit}`}</small></div>}</div>
         <time dateTime={record.created_at}>{new Date(record.created_at).toLocaleString(getFormatLocale(), { hour12: false })}</time>
         {record.order_id && <div><AntButton type="text" htmlType="button" className="text-button" onClick={() => onViewOrder(record.order_id)}>{record.number}</AntButton>{record.partner && <span> · {record.partner}</span>}</div>}
         {record.kind === 'production' && <p>{record.number}</p>}
@@ -56,7 +56,8 @@ export function ProductHistory({ product, onViewOrder }) {
           {record.before_cost !== record.after_cost && <p>{translate("warehouse.cost.price")}{currencySymbol()} {price(record.before_cost)} → {currencySymbol()} {price(record.after_cost)}</p>}
           {record.before_price !== record.after_price && <p>{translate("warehouse.price")}{currencySymbol()} {price(record.before_price)} → {currencySymbol()} {price(record.after_price)}</p>}
         </>}
-        {record.operator && <p>{translate("warehouse.operator")}{record.operator}</p>}
+        {record.operator && <p>{translate("warehouse.history.approver")}{record.operator}</p>}
+        <p>{translate("warehouse.history.applicant")}{record.applicant || translate("warehouse.operator.unknown")}</p>
         {record.note && <p>{record.note}</p>}
       </li>)}</ol>
       {loading && <p><LoadingStatus>{translate("warehouse.reading.operation.records")}</LoadingStatus></p>}

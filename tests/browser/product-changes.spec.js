@@ -18,6 +18,10 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} defer
     expect(created.status()).toBe(201);
     const product = await (await context.request.get(`/api/products/barcode/${barcode}`)).json();
     expect((await context.request.put(`/api/products/${product.id}`, { data: { ...product, cost: 12.34, price: 25.67 } })).ok()).toBe(true);
+    const orderResponse = await context.request.post('/api/orders', { data: { type: 'in', partner: '记录供应商', items: [{ product_id: product.id, quantity: 10, price: 12.34 }] } });
+    expect(orderResponse.status()).toBe(201);
+    const order = await orderResponse.json();
+    expect((await context.request.post(`/api/orders/${order.id}/approve`, { data: { version: order.version, request_id: `history-approval-${order.id}` } })).ok()).toBe(true);
     const page = await context.newPage();
     const scripts = [];
     page.on('request', request => { if (request.resourceType() === 'script') scripts.push(request.url()); });
@@ -36,7 +40,10 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} defer
     await expect(history).toContainText('物料改价');
     await expect(history).toContainText('成本价：$ 10.00 → $ 12.34');
     await expect(history).toContainText('售价：$ 20.00 → $ 25.67');
-    await expect(history).toContainText('操作人：admin');
+    await expect(history).toContainText('审核人：admin');
+    await expect(history).toContainText('申请人：admin');
+    await expect(history.locator('.product-history-quantity')).toContainText('+10 件');
+    await expect(history.locator('.product-history-quantity')).toContainText('余量：10 件');
     await expect(history).not.toContainText('期初已结转');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   } finally {
