@@ -196,6 +196,7 @@ export default {
   "production.enterIssueQuantity": ["请至少填写一种材料的本次实发数量。", "Enter an issue quantity for at least one material.", "Nhập số lượng cấp cho ít nhất một nguyên liệu."],
   "production.confirmCurrentIssue": ["确认申请 {{number}} 的本次实发数量？仅扣减本次实际发出的材料库存，剩余数量可后续继续发料。", "Confirm this issue for {{number}}? Only the quantities issued now are deducted. Remaining materials can be issued later.", "Xác nhận cấp lần này cho {{number}}? Chỉ trừ kho số lượng thực cấp lần này. Phần còn lại có thể cấp sau."],
   "production.issueMaterials": ["领料", "Issue materials", "Nhận nguyên liệu"],
+  "production.netPlannedRequirement": ["计划需求（不含损耗）", "Planned requirement (excluding loss)", "Nhu cầu kế hoạch (không hao hụt)"],
   "production.plannedRequirement": ["计划需求", "Planned requirement", "Nhu cầu kế hoạch"],
   "production.requestedQuantity": ["累计申请", "Total requested", "Tổng đã yêu cầu"],
   "production.partialIssueProductionHint": ["材料已部分领用，可按已领余额登记生产；剩余待发材料可继续前往仓库领取。", "Materials are partially issued. Register production within the issued balance and collect the remaining request from the warehouse.", "Đã nhận một phần nguyên liệu. Ghi nhận sản xuất trong số dư đã nhận và tiếp tục nhận phần còn lại tại kho."],

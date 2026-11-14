@@ -201,6 +201,7 @@ async function standardLossFlow(page, pwa = false, lossMethod = 'internal') {
     await submitProductionBatch(page, true);
     await expect(page.locator('.bom-success')).toContainText('待入库批次仍需仓库批准');
     await page.getByRole('tab', { name: '物料', exact: true }).click();
+    await expect(page.locator('[data-field="net_planned_quantity"]').first()).toHaveText('27 千克');
     await expect(page.getByRole('group', { name: '材料甲耗料差异分析', exact: true })).toContainText(external ? '+2.2 千克' : '+2 千克');
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[1].id).stock).toBe(78);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(scrap.id).stock).toBe(0);

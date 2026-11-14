@@ -11,7 +11,7 @@ import { exactQuantity } from '../../shared/exact-quantity.js';
 const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const cost = cents => `${currencySymbol()}${money(cents / 100)}`;
 const columns = [
-  ['planned_quantity', 'plannedRequirement'], ['pending_issue_quantity', 'pendingIssue'],
+  ['net_planned_quantity', 'netPlannedRequirement'], ['planned_quantity', 'plannedRequirement'], ['pending_issue_quantity', 'pendingIssue'],
   ['issued_quantity', 'issued'], ['used_quantity', 'used'],
   ['returned_quantity', 'returned'], ['available_quantity', 'issuedBalance'],
 ];
@@ -51,7 +51,7 @@ export function ProductionMaterialLedger({ order, costs, busy }) {
             <td className="production-ledger-toggle"><button type="button" className="bom-tree-action" disabled={busy} aria-expanded={open} aria-controls={detailsId}
               aria-label={t(open ? 'production.collapseLedgerDetails' : 'production.viewDetails2', { v0: item.name })} onClick={() => toggle(item.product_id)}>{t(open ? 'production.collapse' : 'production.viewDetails')}</button></td>
           </tr>
-          <tr id={detailsId} hidden={!open} className="production-ledger-details"><td colSpan={8}>
+          <tr id={detailsId} hidden={!open} className="production-ledger-details"><td colSpan={columns.length + 2}>
             {open && <>
               <dl className="production-ledger-metadata">
                 {item.post_processing_planned_quantity > 0 && <>

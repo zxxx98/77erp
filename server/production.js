@@ -21,7 +21,7 @@ import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { validateBomLossRate, validateBomLossMethod } from '../shared/bom.js';
-import { validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionMaterialAnalysis } from '../shared/production.js';
+import { validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionNetPlannedItems, productionMaterialAnalysis } from '../shared/production.js';
 import { productionBatchSummary } from '../shared/production-batches.js';
 import { productionRegistrationUrl } from '../shared/production-link.js';
 import { renderProductionPdf } from './production-pdf.js';
@@ -249,6 +249,7 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     const registrations = db.prepare("SELECT * FROM production_operation_registrations WHERE production_id=? ORDER BY (status='pending') DESC,id DESC LIMIT 100").all(order.id);
     order.quantity_rounding = productionRounding(db, order.id);
     if (order.material_workflow) order.items = materialBalances(order, readPostMaterialUsage(db, order.id), postMaterialPlanByProduct(order.operation_routes));
+    order.items = productionNetPlannedItems(order);
     order.post_processing_material_cost_cents = sumPostMaterialCosts(order.items.map(item => ({ cost_cents: item.post_processing_consumed_cost_cents ?? 0 })));
     Object.assign(order, quantityFields(exactAdd(exactQuantity(order, 'completed_quantity'), order.quantity_rounding.filter(row => row.kind === 'product').reduce((sum, row) => exactAdd(sum, exactQuantity(row)), 0)), 'settled_completed_quantity'));
     order.settled_total_cost_cents = (order.total_cost_cents || 0) + order.quantity_rounding.filter(row => row.kind === 'material').reduce((sum, row) => sum + row.cost_cents, 0);

@@ -54,6 +54,8 @@ for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mo
     await expect(ledger.getByText('生产原料', { exact: true })).toHaveCount(1);
     await expect(page.getByRole('heading', { name: '计划备料', exact: true })).toHaveCount(0);
     const item = ledger.locator('tbody').filter({ hasText: '生产原料' });
+    await expect(item.locator('[data-field="net_planned_quantity"]')).toHaveText('10 千克');
+    await expect(item.locator('[data-field="net_planned_quantity"]')).toHaveAttribute('data-label', '计划需求（不含损耗）');
     await expect(item.locator('[data-field="planned_quantity"]')).toContainText('10');
     await expect(item.locator('[data-field="pending_issue_quantity"]')).toContainText('10');
     await expect(item.locator('[data-field="available_quantity"]')).toContainText('0');

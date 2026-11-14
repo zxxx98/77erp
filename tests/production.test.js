@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 import { moveInventory } from '../server/commerce.js';
-import { productionMaterialAnalysis } from '../shared/production.js';
+import { productionMaterialAnalysis, productionNetPlannedItems } from '../shared/production.js';
 import { parseBomQuantity } from '../shared/bom.js';
 import { migrateBom } from '../server/bom.js';
 import { migrateProduction, nextProductionOrderNumber } from '../server/production.js';
@@ -153,11 +153,13 @@ test('loss snapshots drive plans and actual-output variance without double-count
   assert.deepEqual(prepared.scraps.map(row => row.planned_quantity), [3, 2.5]);
   const draft = await f.create({ bom_version: bom.version });
   assert.equal(draft.items[0].loss_rate, 10); assert.equal(draft.items[0].planned_quantity, 50);
+  assert.equal(draft.items[0].net_planned_quantity, 45);
   assert.equal((await f.request(`/production-orders/${oldDraft.id}`)).data.items[0].loss_rate, 0);
   // Changing the live recipe must not affect either previously saved order.
   f.ok(await f.command(`/boms/${bom.id}`, { ...bom, items: [{ ...bom.items[0], loss_rate: 25 }] }));
   const resized = f.ok(await f.command(`/production-orders/${draft.id}`, { version: draft.version, planned_quantity: 4, note: '' }));
   assert.equal(resized.items[0].loss_rate, 10); assert.equal(resized.items[0].planned_quantity, 20);
+  assert.equal(resized.items[0].net_planned_quantity, 18);
   assert.deepEqual(resized.scraps.map(row => row.planned_quantity), [1.2, 1]);
   const done = f.ok(await f.command(`/production-orders/${draft.id}/complete`, { version: resized.version, completed_quantity: 6,
     items: [{ product_id: f.material, quantity: 33, variance_reason: '额外调机' }],
@@ -1121,4 +1123,27 @@ test('production order numbering uses date plus 3-digit sequence starting from 0
   f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
     VALUES ('202611031000',1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u','${arbitraryDate}','${arbitraryDate}')`).run();
   assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '202611031001');
+});
+
+test('net planned requirements remove all layer losses, preserve supply splits, fractions, rounding and post-processing plans', () => {
+  const nodes = [
+    { path: '1', parent_path: '', product_id: 2, quantity: 9, bom_base_quantity: 1, loss_rate: 10, loss_method: 'internal', usage_mode: 'explode', supply_fraction: '1/2' },
+    { path: '1.1', parent_path: '1', product_id: 3, quantity: 2, bom_base_quantity: 1, loss_rate: 20, loss_method: 'external', usage_mode: 'stock' },
+    { path: '2', parent_path: '', product_id: 3, quantity: 1, bom_base_quantity: 1, loss_rate: 0, loss_method: 'internal', usage_mode: 'stock' },
+  ];
+  const order = { snapshot_format: 2, nodes, planned_quantity: 10, items: [
+    { product_id: 3, base_quantity: null, post_processing_planned_quantity: 5 },
+    { product_id: 4, base_quantity: 0 },
+    { product_id: 5, base_quantity: 0, post_processing_planned_quantity: 2 },
+  ] };
+  assert.deepEqual(productionNetPlannedItems(order).map(item => item.net_planned_quantity), [105, 0, 2]);
+  assert.equal(nodes[0].loss_rate, 10, 'original snapshot remains unchanged');
+  for (const loss_method of ['internal', 'external']) {
+    const base = { base_quantity: 1, planned_quantity: 10, loss_method, items: [
+      { product_id: 3, base_quantity: 0.3334, base_quantity_fraction: '1/3', loss_rate: 10 },
+    ] };
+    assert.equal(productionNetPlannedItems(base)[0].net_planned_quantity, 3.333334);
+    base.items[0].unit_round_up = 1;
+    assert.equal(productionNetPlannedItems(base)[0].net_planned_quantity, 4);
+  }
 });

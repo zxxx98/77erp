@@ -32,6 +32,16 @@ export function productionItemQuantity(item, quantity, order, standards) {
   return item.unit_round_up ? Math.ceil(standard) : standard;
 }
 
+// Reuse the saved supply split and rounding rules, removing loss at every level.
+export function productionNetPlannedItems(order) {
+  const netOrder = { ...order, nodes: order.nodes?.map(node => ({ ...node, loss_rate: 0 })) };
+  const standards = order.snapshot_format === 2 || order.multi_level
+    ? new Map(calculateBomNodes(netOrder.nodes, order.planned_quantity, order.quantity_decimals ?? 6).rows.map(row => [row.product_id, row.required])) : undefined;
+  return order.items.map(item => ({ ...item, ...quantityFields(exactAdd(
+    productionItemQuantity({ ...item, loss_rate: 0 }, order.planned_quantity, netOrder, standards),
+    item.post_processing_planned_quantity ?? 0), 'net_planned_quantity') }));
+}
+
 export function validateProductionPlan(value, stored = false) {
   if (!value || !validQuantity(value.planned_quantity, true, stored ? 6 : 4)) throw new Error('计划产量需为正数，最多 4 位小数。');
   if (typeof value.note !== 'string' || value.note.length > 500) throw new Error('生产备注最多 500 字。');

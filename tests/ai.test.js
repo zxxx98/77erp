@@ -245,6 +245,8 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} productio
   result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
   assert.equal(result.scraps[0].planned_quantity, 1.5); assert.equal(result.scraps[0].actual_quantity, null);
   assert.equal(result.items[0].standard_quantity, null);
+  assert.equal(result.items[0].net_planned_quantity, 1);
+  assert.match(f.calls.at(-1).body.messages.find(message => message.role === 'system').content, /net_planned_quantity为按本单快照/);
   assert.equal(result.loss_method, lossMethod); assert.equal(result.items[0].planned_quantity, lossMethod === 'internal' ? 1.25 : 1.2); assert.equal(result.items[0].base_quantity_fraction, '1/3'); assert.equal(result.bom_version, bom.version);
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(), before);

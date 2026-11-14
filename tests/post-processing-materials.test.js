@@ -94,6 +94,7 @@ test('planned post-processing demands merge with BOM rows and recalculate from t
   assert.equal(order.operation_routes[0].post_processing_planned_runs, 6);
   assert.deepEqual(order.operation_routes[0].post_processing_materials.map(row => [row.quantity, row.planned_quantity]), [[0.3333, 1.9998], [2, 12]]);
   assert.deepEqual(order.items.map(row => [row.planned_quantity, row.post_processing_planned_quantity, row.total_planned_quantity]), [[110, 1.9998, 111.9998], [0, 12, 12]]);
+  assert.deepEqual(order.items.map(row => row.net_planned_quantity), [111.9998, 12]);
   assert.equal(order.material_documents.length, 0);
   f.ok(await f.route([{ product_id: f.raw.id, quantity: 8 }], { id: route.id, version: route.version }));
   order = await f.mutate(order, '/sync-operation-prices', {});

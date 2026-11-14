@@ -77,7 +77,7 @@ function BomPicker({ data, disabled, onSelect }) {
   </section>;
 }
 
-function Materials({ rows, complete, disabled, onQuantity, onReason, completedQuantity, baseQuantity, lossMethod, nodes, showActual, costs, issued }) {
+function Materials({ rows, complete, disabled, onQuantity, onReason, completedQuantity, baseQuantity, lossMethod, nodes, showActual, costs, issued, showNetPlan }) {
   useLocale();
   let standards;
   if (nodes && complete) {
@@ -99,6 +99,7 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
         {row.note && <small>{row.note}</small>}
         {row.product && row.unit !== row.product.unit && <p className="bom-warning">{pt("production.currentUnitChangedTo")} {row.product.unit}{pt("production.thisOrderRetains")} {row.unit}。</p>}
         {row.product && !row.product.active && <p className="bom-warning">{pt("production.materialDisabled")}</p>}</div>
+      {showNetPlan && <div><small>{pt("production.netPlannedRequirement")}</small><span data-field="net_planned_quantity">{count(row.net_planned_quantity)} {row.unit}</span></div>}
       <div><small>{pt("production.plannedUsage")}</small><span>{count(row.planned_quantity)} {row.unit}</span></div>
       {complete ? <label>{pt("production.actualUsage")}{row.unit}）<FormField value={row.quantity} required label={pt("production.actualUsage2", { v0: row.name })}><AntInput aria-label={pt("production.actualUsage2", { v0: row.name })} inputMode="text"  disabled={disabled} value={row.quantity}
 
@@ -694,7 +695,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     {!detail.material_workflow && <section className="panel bom-section"><h2>{detail.completed_at ? pt("production.usageRecords") : pt("production.plannedMaterials")}</h2>
       {!!detail.stage_workflow && <p className="bom-hint">{pt("production.actualUsageHereIsGroupedByFinalProduct")}</p>}
       {detail.completed_at && <p className="bom-hint">{pt("production.standardUsageUsesTheSavedNetUsageLoss")}</p>}
-      <Materials rows={detail.items} issued={!!detail.material_workflow && ['in_progress', 'completed'].includes(detail.status)} showActual={!!detail.completed_at} costs={management && can('finance')} />
+      <Materials rows={detail.items} showNetPlan issued={!!detail.material_workflow && ['in_progress', 'completed'].includes(detail.status)} showActual={!!detail.completed_at} costs={management && can('finance')} />
       {detail.status === 'void' && detail.completed_at && <p className="bom-hint">{pt("production.originalCompletionRecordsRetainedAboveThisOrderIs")}</p>}
       {!detail.completed_at && <p className="bom-hint">{pt("production.stockReadAt2")} {time(detail.captured_at)}。{detail.material_workflow ? pt("production.draftsAndPendingIssueRequestsDoNotReserve") : pt("production.thisHistoricalOrderVerifiesActualUsageAndDeducts")}</p>}
     </section>}
