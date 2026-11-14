@@ -37,6 +37,27 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
 .production-registration-drawer .registration-details > summary { padding-inline: 0; }
 .production-registration-drawer .registration-details-body { padding-inline: 0; }
 .production-registration-drawer .registration-drawer-body { display: block; }
+.production-registration-drawer .registration-drawer-body > .production-acceptance-registrations {
+  margin-top: 20px;
+  margin-bottom: 0;
+}
+.production-acceptance-registrations .process-history-list {
+  margin-top: 14px;
+}
+.production-acceptance-registrations .process-history-main > p {
+  margin: 4px 0;
+}
+.production-acceptance-registrations .process-history-main > details {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.production-acceptance-registrations .process-history-main > details p {
+  margin: 4px 0 0 12px;
+}
+.production-acceptance-registrations .process-history-action.bom-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
 .production-registration-drawer .registration-drawer-footer { justify-content: flex-end; gap: 12px; }
 .registration-inline-picker { display: grid; gap: 12px; margin-top: 12px; min-width: 0; }
 .registration-inline-picker .registration-operations {

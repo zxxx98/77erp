@@ -3,7 +3,7 @@ import { ProductionAcceptanceRegistrations } from './ProductionAcceptanceRegistr
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { stageInputCanBeZero } from '../../shared/production-stages.js';
 import { operationAllocation } from '../../shared/operation-overflow.js';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 import { Button, Modal, PageHeading } from '../components/common.jsx';
 import { Input, Radio } from '../ui/controls.jsx';
@@ -42,6 +42,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   order = productionFlowView(order);
   useLocale();
   const drawer = presentation === 'drawer';
+  const formId = useId();
   const { user, can } = usePermissions();
   const action = useBusiness();
   const acceptance=useOperationAcceptance();
@@ -155,9 +156,8 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
     clear(); setMessage(''); await onSaved(latest);
   }))}>{t('production.reloadProductionOrder')}</Button></div></details>;
-  const form = <form onSubmit={submit} className="registration-form">
-    <div className={drawer ? 'form-body registration-drawer-body' : undefined}>
-      <div className="registration-workspace-grid">
+  const formContent = <>
+    <div className="registration-workspace-grid">
         <section className="panel bom-section registration-step-block">
           <div className="bom-section-heading registration-section-head">
             <h2>{t('registration.chooseOperation')}</h2>
@@ -241,21 +241,34 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
       {action.error && <p className="form-error registration-feedback registration-feedback-error" role="alert">{productionMessage(action.error)}</p>}
       {message && !action.error && <p className="bom-success registration-feedback registration-feedback-success" role="status">{message}</p>}
       {drawer && reload}
-    </div>
-      <div className={drawer ? 'modal-footer registration-drawer-footer' : 'registration-footer-actions'}>
-        {drawer ? <Button disabled={action.busy} onClick={() => leave(onBack)}>{t('production.cancel')}</Button> : reload}
-        <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable || outputLocked}>{t('registration.submit')}</Button>
+    </>;
+  const registrations = <ProductionAcceptanceRegistrations order={order} data={data} onSaved={async(result,notice)=>{setMessage(notice);await onSaved(result,notice);}}/>;
+  if (drawer) return <>
+    <Modal presentation="drawer" className="production-registration-drawer" title={t('production.productionRegistration')}
+      subtitle={`${order.number} · ${order.product_name}`} onClose={() => leave(onBack)}>
+      <div className="form-body registration-drawer-body">
+        <form id={formId} onSubmit={submit} className="registration-form">{formContent}</form>
+        {registrations}
       </div>
-    </form>;
-  if (drawer) return <Modal presentation="drawer" className="production-registration-drawer" title={t('production.productionRegistration')}
-    subtitle={`${order.number} · ${order.product_name}`} onClose={() => leave(onBack)}>
-    {form}<ProductionAcceptanceRegistrations order={order} data={data} onSaved={async(result,notice)=>{setMessage(notice);await onSaved(result,notice);}}/>{acceptance.dialog}
-  </Modal>;
+      <div className="modal-footer registration-drawer-footer">
+        <Button disabled={action.busy} onClick={() => leave(onBack)}>{t('production.cancel')}</Button>
+        <Button type="submit" form={formId} className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable || outputLocked}>{t('registration.submit')}</Button>
+      </div>
+    </Modal>
+    {acceptance.dialog}
+  </>;
   return <div className="production-quick-registration">
     {acceptance.dialog}
     <PageHeading title={t('production.productionRegistration')} description={`${order.number} · ${order.product_name}`}>
       <Button icon={ArrowLeft} disabled={action.busy} onClick={() => leave(onBack)}>{t('production.backToOrderDetails')}</Button>
     </PageHeading>
-    {form}<ProductionAcceptanceRegistrations order={order} data={data} onSaved={async(result,notice)=>{setMessage(notice);await onSaved(result,notice);}}/>
+    <form onSubmit={submit} className="registration-form">
+      {formContent}
+      <div className="registration-footer-actions">
+        {reload}
+        <Button type="submit" className="registration-submit" kind="primary" busy={action.busy} disabled={!target || !quantity.trim() || !registerable || outputLocked}>{t('registration.submit')}</Button>
+      </div>
+    </form>
+    {registrations}
   </div>;
 }

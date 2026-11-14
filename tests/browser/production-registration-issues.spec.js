@@ -97,3 +97,33 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} uses unsettled s
     await page.screenshot({path:test.info().outputPath(`${device}-flow-finished.png`)});
   } finally {if(device==='pwa')await context.close();await f.close();}
 });
+
+for(const device of ['desktop','mobile']) test(`${device} registration drawer scrolls cleanly with many pending records`,async({page})=>{
+  if(device==='mobile') await page.setViewportSize({width:390,height:844});
+  const f=await productionIssuesFixture(undefined,{routed:true});
+  try {
+    let order=f.order;
+    for(let i=0;i<6;i++) order=f.ok(await f.complete(order,12,[[f.raw,24],[f.other,12]]));
+    const split=f.cookie.indexOf('=');
+    await page.context().addCookies([{name:f.cookie.slice(0,split),value:f.cookie.slice(split+1),url:f.base,httpOnly:true,sameSite:'Lax'}]);
+    await page.goto(`${f.base}/#production?order=${order.id}`);
+    await page.getByRole('button',{name:'登记',exact:true}).click();
+    const drawer=page.getByRole('dialog',{name:'生产登记',exact:true});
+    await expect(drawer.getByLabel('本次数量',{exact:true})).toBeVisible();
+    await expect(drawer.getByRole('button',{name:'提交登记',exact:true})).toBeVisible();
+    const body=drawer.locator('.form-body');
+    const scrollMetrics=await body.evaluate(el=>({scrollHeight:el.scrollHeight,clientHeight:el.clientHeight,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth}));
+    expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+    expect(scrollMetrics.scrollWidth).toBeLessThanOrEqual(scrollMetrics.clientWidth+1);
+    const cards=drawer.locator('.process-history-card');
+    await expect(cards).toHaveCount(6);
+    const firstMain=await cards.first().locator('.process-history-main').boundingBox();
+    expect(firstMain.width).toBeGreaterThanOrEqual(device==='desktop'?260:200);
+    await cards.last().scrollIntoViewIfNeeded();
+    const scrolledTop=await body.evaluate(el=>el.scrollTop);
+    expect(scrolledTop).toBeGreaterThan(0);
+    const lastBox=await cards.last().boundingBox();
+    const viewportHeight=await page.evaluate(()=>window.innerHeight);
+    expect(lastBox.y+lastBox.height).toBeLessThanOrEqual(viewportHeight+2);
+  } finally { await f.close(); }
+});
