@@ -201,7 +201,7 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
         db.prepare('SELECT 1 FROM production_routes WHERE route_id=? LIMIT 1').get(old.id)))
       fail('工艺已被引用，不能变更工艺类型。', 409);
     validateProcessGraph(body.graph);
-    const { product_coefficient, price_table_id, price_table_name, ...graph } = body.graph;
+    const { product_coefficient, price_table_id, price_table_name, post_processing_materials_per_unit, ...graph } = body.graph;
     // Older clients preserve additional tables when saving unchanged topology.
     if (graph.price_tables === undefined && old?.graph.price_tables) graph.price_tables = old.graph.price_tables;
     validateProcessGraph(graph);
@@ -276,8 +276,9 @@ export function capturePostProcessingOperations(db, order, operations = [], { bo
     const selectedGraph = processGraphWithPrices(parseGraph(route.graph), input.price_table_id);
     const node = selectedGraph.nodes.find(node => node.id === input.node_id);
     if (!node) fail('所选后处理工序不存在。');
-    const materials = normalizePostMaterials(db, order.warehouse_id, bomMaterials ? input.materials : node.materials, true);
-    const graph = { ...selectedGraph, nodes: [materials.length ? { ...node, materials } : node], edges: [] };
+    const materials = normalizePostMaterials(db, order.warehouse_id, bomMaterials && input.usage_basis !== 'material' ? input.materials : node.materials, true);
+    const graph = { ...selectedGraph, nodes: [materials.length ? { ...node, materials } : node], edges: [],
+      ...(bomMaterials && input.usage_basis === 'material' && materials.length ? { post_processing_materials_per_unit: input.materials } : {}) };
     savePostMaterialItems(db, order, materials);
     captureAcceptanceVersions(db, graph, order.warehouse_id);
     db.prepare('INSERT INTO production_routes(production_id,path,route_id,route_version,route_name,graph,product_coefficient) VALUES (?,?,?,?,?,?,?)')
@@ -308,7 +309,7 @@ export function readProductionRoutes(db, order) {
     const isPost = row.product_coefficient != null;
     const post = !isPost ? {} : {
       ...planPostMaterials(graph, order.planned_quantity, row.product_coefficient),
-      post_processing_limit: postProcessingLimit(order.status === 'void' ? 0 : exactQuantity(order, 'completed_quantity'), row.product_coefficient, order.output_completed),
+      post_processing_limit: postProcessingLimit(order.status === 'void' ? 0 : exactQuantity(order, 'completed_quantity'), row.product_coefficient, order.output_completed, graph),
       unit: postProcessingUnit,
     };
     const route = { ...row, ...post, graph };
@@ -394,6 +395,7 @@ export function operationInput(db, req, order, path, quantity, output) {
   if (node.acceptance_template_id && !req.validatingRegistration && !req.settledAcceptanceId && !hasPermission(req.user,'operation_accept')) fail(acceptancePermissionMessage,403);
   const post = route.product_coefficient != null;
   if (post && !id(quantity)) fail('后处理报工次数必须为正整数。');
+  if (post && route.graph.post_processing_materials_per_unit) consumePostMaterials(db, order, node, quantity);
   parseExactQuantity(quantity, true);
   if (!post) {
     const layer = order.stages?.find(s => s.path === path) || order;
@@ -401,7 +403,7 @@ export function operationInput(db, req, order, path, quantity, output) {
     if (!product?.active || product.unit !== layer.unit || product.unit_round_up !== layer.unit_round_up) fail('生产物料已停用、单位或取整规则已变化，请先核对。',409);
     if (!validExactQuantity(exactAdd(exactQuantity(node, 'completed_quantity'), quantity), true)) fail('工序累计数量超出范围。');
   }
-  if (!req.registrationValidation && node.available_quantity !== null && exactCompare(quantity, exactQuantity(node, 'available_quantity')) > 0) {
+  if ((!req.registrationValidation || route.graph.post_processing_materials_per_unit) && node.available_quantity !== null && exactCompare(quantity, exactQuantity(node, 'available_quantity')) > 0) {
     if (post) fail('本次报工超过后处理剩余可登记次数。', 409);
     fail('前置工序可用数量不足，请先核对前序报工。', 409);
   }
@@ -699,7 +701,7 @@ export function validateProcessRouteBackup(data) {
     const order = orders.get(snapshot.production_id), operations = processProgress(snapshot.graph, snapshot.reports);
     if (snapshot.product_coefficient !== null) {
       const completed = productionOutputCompleted(order), quantity = order.status === 'void' ? 0 : exactQuantity(order, 'completed_quantity');
-      const limit = postProcessingLimit(quantity, snapshot.product_coefficient, completed);
+      const limit = postProcessingLimit(quantity, snapshot.product_coefficient, completed, snapshot.graph);
       const reported = operations[0].completed_quantity;
       if (!Number.isSafeInteger(reported) || reported > limit || order.status === 'completed' && (!completed || reported !== limit))
         fail('备份后处理次数超过上限或与生产完成状态不一致。');

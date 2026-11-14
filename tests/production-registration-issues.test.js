@@ -123,7 +123,7 @@ test('settlement revalidates changed units and rolls back every write while reta
 test('pending fractional shortages survive backup restore and retain exact cumulative amounts', async t => {
   const f = await productionIssuesFixture(t); let o = f.ok(await f.complete(f.order, '1/3', [[f.raw, '61/3'], [f.other, '1/3']]));
   assert.equal(o.registration_issues.find(row => row.product_id === f.raw).missing_quantity_fraction, '1/3');
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 57);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 58);
   const preview = f.ok(await f.request('/backup/preview', { backup }));
   f.ok(await f.command('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' }));
   o = await f.get(); assert.equal(o.pending_registration_count, 1); assert.equal(o.registration_issues[0].missing_quantity_fraction, '1/3');

@@ -40,7 +40,7 @@ export function productionFlowProgress(order, registrations) {
     const paths = route.product_coefficient == null ? stagePoolPaths(order,route.path) : [route.path];
     const reports = route.operations.map(n=>({node_id:n.id,...quantityFields(exactQuantity(n,'completed_quantity')),status:'active'}));
     reports.push(...parts.filter(p=>paths.includes(p.path)).map(p=>({node_id:p.node_id,...quantityFields(p.quantity),status:'active'})));
-    const projected = {...route,...(route.product_coefficient == null ? {} : {post_processing_limit:postProcessingLimit(completed,route.product_coefficient,productionOutputCompleted(order,completed))})};
+    const projected = {...route,...(route.product_coefficient == null ? {} : {post_processing_limit:postProcessingLimit(completed,route.product_coefficient,productionOutputCompleted(order,completed),route.graph)})};
     return {...projected,operations:productionRouteProgress(projected,reports)};
   });
   const claimed=new Map();

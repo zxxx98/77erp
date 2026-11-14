@@ -366,7 +366,7 @@ test('group workers can report only themselves and their orders, including befor
 
 test('new backup roundtrip preserves routes and reports, rejects corrupt output and dependencies, and resets safely',async t=>{
   const f=await fixture(t);let order=await f.start(await f.create());order=f.ok(await f.report(order,'cut',3));order=f.ok(await f.report(order,'weld',3));order=f.ok(await f.complete(order,2));
-  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 57);
+  const backup=f.ok(await f.request('/backup'));assert.equal(backup.version, 58);
   const preview=f.ok(await f.command('/backup/preview',{backup}));
   f.ok(await f.command('/backup/restore',{backup,token:preview.token,current_token:preview.current_token,confirmation:'RESTORE_BUSINESS_DATA'}));
   order=await f.get(order.id);assert.equal(order.operation_routes[0].operations.find(n=>n.id==='weld').completed_quantity,3);
@@ -861,7 +861,7 @@ test('production rejects retired additional operations and exposes no dedicated 
   order = f.ok(await f.report(order,'cut',1));
   assert.equal(Object.hasOwn(order.operation_routes[0].reports[0],'material_items'),false);
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 57);
+  assert.equal(backup.version, 58);
   assert.equal(Object.hasOwn(backup.data.production_routes[0],'additional_quantity'),false);
   assert.equal(Object.hasOwn(backup.data.production_operation_reports[0],'material_items'),false);
 });

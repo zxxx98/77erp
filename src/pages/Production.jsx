@@ -501,7 +501,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           rows={source.operation_routes.filter(route => route.product_coefficient != null).map(route => ({
             route_id: route.id, node_id: route.operations[0].id, route_name: route.route_name, name: route.operations[0].name,
             price_table_name: route.graph.price_table_name,
-            product_coefficient: route.product_coefficient, materials: route.post_processing_materials,
+            product_coefficient: route.product_coefficient,
+            ...(route.graph.post_processing_materials_per_unit ? { usage_basis: 'material', materials: route.graph.post_processing_materials_per_unit, materials_per_run: route.post_processing_materials } : { materials: route.post_processing_materials }),
           }))} unit={unit} plannedQuantity={editor.planned_quantity} readOnly />}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}

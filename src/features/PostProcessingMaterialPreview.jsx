@@ -1,5 +1,6 @@
 import { exactCompare, exactMultiply, exactQuantity, exactSubtract, formatExactQuantity } from '../../shared/exact-quantity.js';
 import { t, getFormatLocale } from '../i18n/index.js';
+import { postProcessingMaterialAvailableRuns } from '../../shared/post-processing.js';
 
 const count = value => formatExactQuantity(value, getFormatLocale());
 
@@ -8,6 +9,7 @@ export function PostProcessingMaterialPreview({ materials, items, runs }) {
   return <section className="registration-fixed-materials" aria-label={t('production.fixedMaterialPreview')}>
     <h3>{t('production.fixedMaterialPreview')}</h3>
     <p className="bom-hint">{t('production.fixedMaterialPreviewHint')}</p>
+    <p className="bom-hint">{t('production.fixedMaterialMaxRuns', { count: postProcessingMaterialAvailableRuns(materials, items) })}</p>
     <ul>
       {materials.map(row => {
         const item = items.find(item => item.product_id === row.product_id);

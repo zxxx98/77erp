@@ -1,6 +1,8 @@
 import { normalizePostMaterials } from './post-processing-materials.js';
 import { processGraphWithPrices } from '../shared/process-routes.js';
 import { validQuantity } from '../shared/quantity.js';
+import { validateBomQuantity } from '../shared/bom.js';
+import { postProcessingMaterialRate } from '../shared/post-processing.js';
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const id = value => Number.isSafeInteger(value) && value > 0;
@@ -10,7 +12,7 @@ export function validateBomPostProcessing(operations) {
   const seen = new Set();
   for (const row of operations) {
     if (!row || !id(row.route_id) || !id(row.route_version) || typeof row.node_id !== 'string' || !row.node_id.trim() || row.node_id.length > 100 ||
-        row.product_coefficient !== 1 || !(row.price_table_id == null || typeof row.price_table_id === 'string' && row.price_table_id.length <= 100) ||
+        row.product_coefficient !== 1 || !(row.usage_basis === undefined || row.usage_basis === 'material') || !(row.price_table_id == null || typeof row.price_table_id === 'string' && row.price_table_id.length <= 100) ||
         !Array.isArray(row.materials) || row.materials.length > 100 ||
         row.materials.some(material => !id(material?.product_id) || !validQuantity(material.quantity, true)) ||
         new Set(row.materials.map(material => material.product_id)).size !== row.materials.length)
@@ -18,6 +20,8 @@ export function validateBomPostProcessing(operations) {
     const key = JSON.stringify([row.route_id, row.node_id]);
     if (seen.has(key)) fail('同一道后处理工序不能重复添加。');
     seen.add(key);
+    if (row.usage_basis === 'material') for (const material of row.materials)
+      validateBomQuantity(material.quantity, material.quantity_fraction ?? '');
   }
   return operations;
 }
@@ -34,8 +38,13 @@ export function resolveBomPostProcessing(db, warehouseId, operations, productId,
     const bound = node.materials ?? [];
     if (bound.length !== input.materials.length || bound.some(row => !input.materials.some(material => material.product_id === row.product_id)))
       fail('后处理工序绑定材料已变化，请在 BOM 中重新选择工序并核对用量。', 409);
-    const materials = normalizePostMaterials(db, warehouseId, bound.map(row => ({ product_id: row.product_id,
+    const perRun = normalizePostMaterials(db, warehouseId, bound, true);
+    const materials = input.usage_basis === 'material' ? perRun.map(row => {
+      const usage = input.materials.find(material => material.product_id === row.product_id);
+      return { ...row, quantity: usage.quantity, quantity_fraction: usage.quantity_fraction ?? '' };
+    }) : normalizePostMaterials(db, warehouseId, bound.map(row => ({ product_id: row.product_id,
       quantity: input.materials.find(material => material.product_id === row.product_id).quantity })), true);
+    if (input.usage_basis === 'material' && materials.length) postProcessingMaterialRate(materials, perRun);
     if (!checkVersions && input.materials.some(saved => {
       const current = materials.find(row => row.product_id === saved.product_id);
       return saved.unit !== undefined && (saved.unit !== current.unit || saved.unit_round_up !== current.unit_round_up);
@@ -43,6 +52,6 @@ export function resolveBomPostProcessing(db, warehouseId, operations, productId,
     if (materials.some(row => row.product_id === productId)) fail('成品不能作为自身的后处理材料。');
     return { route_id: route.id, route_version: route.version, node_id: node.id, name: node.name, route_name: route.name,
       price_table_id: input.price_table_id ?? null, price_table_name: graph.price_table_name ?? '',
-      product_coefficient: 1, materials };
+      product_coefficient: 1, materials, ...(input.usage_basis === 'material' ? { usage_basis: 'material', materials_per_run: perRun } : {}) };
   });
 }

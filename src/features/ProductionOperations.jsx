@@ -132,7 +132,7 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
               <OperationPrice node={node} unit={unit} />
               {node.acceptance_template_id && <Badge tone="orange">{t('route.acceptanceRequired')}</Badge>}
               {node.note && <p className="process-operation-note">{node.note}</p>}
-              {postProcessing ? <p className="bom-hint">{t('production.productCoefficient')} {count(route.product_coefficient)} {order.unit} · {t(order.output_completed ? 'production.postProcessingFinal' : 'production.postProcessingAvailable')} {count(route.post_processing_limit)} {unit}</p>
+              {postProcessing ? <p className="bom-hint">{route.graph.post_processing_materials_per_unit ? t('production.bomPostProcessingAutomatic') : `${t('production.productCoefficient')} ${count(route.product_coefficient)} ${order.unit}`} · {t(order.output_completed ? 'production.postProcessingFinal' : 'production.postProcessingAvailable')} {count(route.post_processing_limit)} {unit}</p>
                 : <p className="bom-hint">{`${t('route.predecessors')}: ${node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}`}</p>}
               <dl className="process-operation-stats">
                 <div className="process-stat-box"><dt>{t('route.completed')}</dt><dd>{count(exactQuantity(node, 'completed_quantity'))} {unit}</dd></div>

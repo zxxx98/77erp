@@ -151,7 +151,7 @@ for (const staged of [false, true]) test('post reports share the issued pool, re
   assert.deepEqual(stock(), warehouse);
   order = await f.mutate(order, '/finish', {});
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 57);
+  assert.equal(backup.version, 58);
   const tampered = structuredClone(backup);
   const row = tampered.data.production_operation_reports.find(row => row.id === first.id);
   const materials = JSON.parse(row.post_materials);
@@ -322,7 +322,7 @@ for (const staged of [false, true]) test('BOM inherits per-finished-unit post ma
   assert.equal(order.operation_routes[0].product_coefficient, 1);
   assert.deepEqual(order.items.map(row => row.total_planned_quantity), [5, 8]);
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 57);
+  assert.equal(backup.version, 58);
   const tampered = structuredClone(backup);
   const config = JSON.parse(tampered.data.boms.find(row => row.id === bom.id).post_processing_operations);
   config[0].materials[0].quantity = 0;
@@ -370,4 +370,87 @@ test('BOM validates bound materials, per-unit quantities and stale post-processi
   // A removed template material remains protected by the saved BOM reference.
   assert.equal(f.ok(await f.command('/products/batch/delete/preview', { ids: [f.label.id] })).blocked.length, 1);
   assert.equal(changed.graph.nodes[0].materials[0].product_id, f.raw.id);
+});
+
+
+for (const staged of [false, true]) test('fractional carton use plans whole boxes and caps reports by output and issued boxes (' + (staged ? 'staged' : 'ordinary') + ')', async t => {
+  const f = await fixture(t, { staged });
+  const route = f.ok(await f.route([{ product_id: f.label.id, quantity: 1 }]));
+  const binding = { route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 1,
+    usage_basis: 'material', materials: [{ product_id: f.label.id, quantity: 0.01, quantity_fraction: '1/100' }] };
+  const bom = await f.save('/boms/' + f.bom.id, { ...f.bom, post_processing_operations: [binding] });
+  assert.equal(bom.post_processing_operations[0].materials[0].quantity_fraction, '1/100');
+  const input = { bom_id: bom.id, bom_version: bom.version, planned_quantity: 110, note: '' };
+  const plan = await f.save('/production-orders/prepare', input);
+  let order = await f.save('/production-orders', { ...input, structure_token: plan.structure_token });
+  assert.equal(order.operation_routes[0].post_processing_planned_runs, 2);
+  assert.equal(order.operation_routes[0].post_processing_materials[0].quantity, 1);
+  assert.deepEqual(order.items.map(row => row.total_planned_quantity), [110, 2]);
+  order = await f.mutate(order, '/start', {});
+  await f.issue(order.material_documents[0], [{ product_id: f.raw.id, quantity: 110 }, { product_id: f.label.id, quantity: 1 }]);
+  order = await f.get(order.id);
+  if (staged) order = await f.complete(order, 110, '1');
+  order = await f.complete(order, 100);
+  assert.equal(order.operation_routes[0].post_processing_limit, 1);
+  assert.equal(order.items.find(row => row.product_id === f.label.id).available_quantity, 1);
+  const reject = async count => {
+    assert.equal((await f.report(order, f.reportBody(order, count))).status, 409);
+    const refreshed = await f.get(order.id);
+    assert.equal(refreshed.pending_registration_count, 0);
+    assert.equal(refreshed.version, order.version);
+  };
+  await reject(2);
+  order = f.ok(await f.report(order, f.reportBody(order, 1)));
+  order = await f.complete(order, 10);
+  assert.equal(order.operation_routes[0].post_processing_limit, 2);
+  assert.equal(order.items.find(row => row.product_id === f.label.id).post_processing_consumed_quantity, 1);
+  await reject(1); // A finished product exists, but its second carton has not been issued.
+  const doc = order.material_documents[0];
+  await f.issue(doc, [{ product_id: f.label.id, quantity: 1 }]);
+  order = await f.get(order.id);
+  order = f.ok(await f.report(order, f.reportBody(order, 1)));
+  await reject(1);
+  assert.equal(order.items.find(row => row.product_id === f.label.id).post_processing_consumed_quantity, 2);
+  assert.equal(order.completed_quantity, 110);
+  f.ok(await f.route([{ product_id: f.label.id, quantity: 2 }], { id: route.id, version: route.version }));
+  order = await f.mutate(order, '/sync-operation-prices', {});
+  assert.equal(order.operation_routes[0].post_processing_planned_runs, 2);
+  assert.equal(order.operation_routes[0].graph.post_processing_materials_per_unit[0].quantity_fraction, '1/100');
+  const backup = f.ok(await f.request('/backup'));
+  const forged = structuredClone(backup);
+  const snapshot = forged.data.production_routes.find(row => row.production_id === order.id);
+  const graph = JSON.parse(snapshot.graph);
+  graph.post_processing_materials_per_unit[0].quantity_fraction = '1/10';
+  snapshot.graph = JSON.stringify(graph);
+  assert.equal((await f.request('/backup/preview', { backup: forged })).status, 400);
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  await f.save('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' });
+  order = await f.get(order.id);
+  assert.equal(order.operation_routes[0].post_processing_limit, 2);
+  const report = order.operation_routes[0].reports[0];
+  order = await f.mutate(order, '/operations/' + report.id + '/void', { reason: '装箱纠正' });
+  assert.equal(order.items.find(row => row.product_id === f.label.id).available_quantity, 1);
+  order = f.ok(await f.report(order, f.reportBody(order, 1)));
+  assert.equal(order.items.find(row => row.product_id === f.label.id).available_quantity, 0);
+});
+
+test('BOM carton fractions preserve exact demand and validate material ratios', async t => {
+  const f = await fixture(t);
+  const route = f.ok(await f.route([{ product_id: f.label.id, quantity: 1 }]));
+  const binding = { route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 1,
+    usage_basis: 'material', materials: [{ product_id: f.label.id, quantity: 0.0034, quantity_fraction: '1/300' }] };
+  const bom = await f.save('/boms/' + f.bom.id, { ...f.bom, post_processing_operations: [binding] });
+  const input = { bom_id: bom.id, bom_version: bom.version, planned_quantity: 900, note: '' };
+  const plan = await f.save('/production-orders/prepare', input);
+  const order = await f.save('/production-orders', { ...input, structure_token: plan.structure_token });
+  assert.equal(order.operation_routes[0].post_processing_planned_runs, 3);
+  assert.equal(order.items.find(row => row.product_id === f.label.id).total_planned_quantity, 3);
+  const invalid = await f.command('/boms/' + bom.id, { ...bom, post_processing_operations: [{ ...binding,
+    materials: [{ product_id: f.label.id, quantity: 0.1, quantity_fraction: '1/300' }] }] });
+  assert.equal(invalid.status, 400);
+  const dual = f.ok(await f.route([{ product_id: f.label.id, quantity: 1 }, { product_id: f.raw.id, quantity: 2 }], { name: '双材料装箱' }));
+  const invalidRatio = await f.command('/boms/' + bom.id, { ...bom, post_processing_operations: [{ ...binding, route_id: dual.id, route_version: dual.version,
+    materials: [{ product_id: f.label.id, quantity: 0.01, quantity_fraction: '1/100' }, { product_id: f.raw.id, quantity: 0.01, quantity_fraction: '1/100' }] }] });
+  assert.equal(invalidRatio.status, 400);
+  assert.match(invalidRatio.data.error, /相同比例/);
 });

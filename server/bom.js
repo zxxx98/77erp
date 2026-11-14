@@ -1,3 +1,4 @@
+import { validatePostMaterialGraph } from './post-processing-materials.js';
 import { resolveBomPostProcessing, validateBomPostProcessing } from './bom-post-processing.js';
 import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
 import { buildProductionSupply } from './production-supply.js';
@@ -123,8 +124,11 @@ export function getBom(db, warehouseId, id) {
   return readSnapshot(db, () => {
     const bom = db.prepare('SELECT * FROM boms WHERE id=? AND warehouse_id=?').get(id, warehouseId);
     if (!bom) fail('BOM不存在或不属于当前仓库。', 404);
-    bom.post_processing_operations = JSON.parse(bom.post_processing_operations).map(row => ({ ...row,
-      route_version: db.prepare('SELECT version FROM process_routes WHERE id=? AND warehouse_id=?').get(row.route_id, warehouseId)?.version ?? row.route_version }));
+    bom.post_processing_operations = JSON.parse(bom.post_processing_operations).map(row => {
+      const route = db.prepare('SELECT version,graph FROM process_routes WHERE id=? AND warehouse_id=?').get(row.route_id, warehouseId);
+      return { ...row, route_version: route?.version ?? row.route_version,
+        materials_per_run: row.materials_per_run ?? (route ? JSON.parse(route.graph).nodes.find(node => node.id === row.node_id)?.materials ?? [] : []) };
+    });
     bom.product = publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(bom.product_id, warehouseId));
     bom.items = db.prepare('SELECT * FROM bom_items WHERE bom_id=? ORDER BY position,id').all(id).map(item => ({
       ...item, child_bom: item.child_bom_id ? db.prepare('SELECT id,name,version,product_id,base_quantity,enabled FROM boms WHERE id=? AND warehouse_id=?').get(item.child_bom_id, warehouseId) : null, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, warehouseId)),
@@ -248,14 +252,16 @@ export function validateBomBackup(data) {
     catch { fail('备份 BOM 后处理配置无效。'); }
     for (const row of post) {
       const route = data.process_routes.find(route => route.id === row.route_id);
-      if (Object.keys(row).length !== 9 || ['name', 'route_name'].some(key => typeof row[key] !== 'string' || !row[key].trim() || row[key].length > 100) ||
+      if (Object.keys(row).length !== (row.usage_basis === 'material' ? 11 : 9) || ['name', 'route_name'].some(key => typeof row[key] !== 'string' || !row[key].trim() || row[key].length > 100) ||
           typeof row.price_table_name !== 'string' || row.price_table_name.length > 100 ||
           route?.warehouse_id !== bom.warehouse_id || route.route_kind !== 'post_processing' || row.materials.some(material =>
           material.product_id === bom.product_id || products.get(material.product_id)?.warehouse_id !== bom.warehouse_id ||
-          Object.keys(material).length !== 7 || ![0, 1].includes(material.unit_round_up) || material.unit_round_up && !Number.isInteger(material.quantity) ||
+          Object.keys(material).length !== (row.usage_basis === 'material' ? 8 : 7) || ![0, 1].includes(material.unit_round_up) || row.usage_basis !== 'material' && material.unit_round_up && !Number.isInteger(material.quantity) ||
           ['name', 'barcode', 'specification', 'unit'].some(key => typeof material[key] !== 'string' ||
             material[key].length > (key === 'specification' ? 500 : 100) || key !== 'specification' && !material[key].trim())))
         fail('备份 BOM 后处理关联或用量无效。');
+      if (row.usage_basis === 'material' && row.materials.length) validatePostMaterialGraph({ nodes: [{ materials: row.materials_per_run }],
+        post_processing_materials_per_unit: row.materials }, true, products, bom.warehouse_id);
     }
     validateBomLossMethod(bom.loss_method);
     const items = grouped.get(bom.id) || [];

@@ -10,7 +10,7 @@ export function assertOutputOpen(order) {
 export function assertPostProcessingLimits(order, quantity, confirmed) {
   const completed = productionOutputCompleted(order, quantity, confirmed);
   for (const route of order.operation_routes.filter(route => route.product_coefficient != null)) {
-    const limit = postProcessingLimit(quantity, route.product_coefficient, completed);
+    const limit = postProcessingLimit(quantity, route.product_coefficient, completed, route.graph);
     if (exactCompare(exactQuantity(route.operations[0], 'completed_quantity'), limit) > 0)
       conflict('调整后已登记后处理次数将超过可登记上限，请先作废相应后处理记录。');
   }

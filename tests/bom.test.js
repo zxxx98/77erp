@@ -344,7 +344,7 @@ test('decimal numerator recipes and scrap rules calculate exactly and survive ba
 test('BOM backup restores all relations, rejects tampering, refreshes edit versions and accepts older backups', async t => {
   const f = await fixture(t), bom = await f.create();
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 57);
+  assert.equal(backup.version, 58);
   assert.equal(backup.data.boms.length, 1);
   for (const tamper of [
     value => { value.data.bom_items = []; },

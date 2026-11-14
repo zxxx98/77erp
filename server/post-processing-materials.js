@@ -1,7 +1,8 @@
 import { allocate } from './commerce.js';
 import { validQuantity } from '../shared/quantity.js';
 import { exactAdd, exactCompare, exactMultiply, exactQuantity, quantityFields, validExactQuantity } from '../shared/exact-quantity.js';
-import { postProcessingLimit } from '../shared/post-processing.js';
+import { validateBomQuantity } from '../shared/bom.js';
+import { postProcessingLimit, postProcessingMaterialRate } from '../shared/post-processing.js';
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const productError = '请选择当前仓库已启用的后处理材料。';
@@ -39,7 +40,7 @@ export function normalizePostMaterials(db, warehouseId, value, post) {
 }
 
 export function planPostMaterials(graph, plannedQuantity, coefficient) {
-  const post_processing_planned_runs = postProcessingLimit(plannedQuantity, coefficient, true);
+  const post_processing_planned_runs = postProcessingLimit(plannedQuantity, coefficient, true, graph);
   return { post_processing_planned_runs, post_processing_materials: (graph.nodes[0].materials ?? []).map(material => {
     const planned_quantity = exactMultiply(material.quantity, post_processing_planned_runs);
     if (!validQuantity(planned_quantity, true)) fail(quantityError);
@@ -134,6 +135,7 @@ export function postMaterialUsage(reports) {
 }
 
 export function validatePostMaterialGraph(graph, post, products, warehouseId, items) {
+  validatePostMaterialBasis(graph, post, products, warehouseId);
   for (const node of graph.nodes) for (const row of checkedMaterials(node.materials, post, backupError)) {
     if (Object.keys(row).length !== 7 || products.get(row.product_id)?.warehouse_id !== warehouseId ||
         ![0,1].includes(row.unit_round_up) || row.unit_round_up && !Number.isInteger(row.quantity) ||
@@ -146,6 +148,21 @@ export function validatePostMaterialGraph(graph, post, products, warehouseId, it
           item.base_quantity === 0 && identity.some(key => item[key] !== row[key])) fail(backupError);
     }
   }
+}
+
+export function validatePostMaterialBasis(graph, post, products, warehouseId) {
+  const basis = graph.post_processing_materials_per_unit;
+  if (basis === undefined) return;
+  const fixed = graph.nodes[0].materials ?? [];
+  if (!post || !Array.isArray(basis) || !basis.length || basis.length !== fixed.length ||
+      new Set(basis.map(row => row?.product_id)).size !== basis.length) fail(backupError);
+  for (const row of basis) {
+    const material = fixed.find(material => material.product_id === row?.product_id);
+    if (!material || Object.keys(row).length !== 8 || typeof row.quantity_fraction !== 'string' ||
+        identity.some(key => row[key] !== material[key]) || products.get(row.product_id)?.warehouse_id !== warehouseId) fail(backupError);
+    validateBomQuantity(row.quantity, row.quantity_fraction);
+  }
+  postProcessingMaterialRate(basis, fixed);
 }
 
 export function validatePostMaterialReport(report, node, post) {

@@ -64,7 +64,7 @@ test('concurrent approvals and withdrawals serialize and revoked permission cann
 });
 test('pending/rejected approvals survive validated backup restore and corrections remain immediate',async t=>{
   const f=await fixture(t);const pending=await f.submit('in',10);const rejected=await f.submit();await f.command(f.admin,`/orders/${rejected.id}/reject`,{version:1,reason:'数量有误'});
-  const backup=(await f.request(f.admin,'/backup')).data;assert.equal(backup.version, 57);
+  const backup=(await f.request(f.admin,'/backup')).data;assert.equal(backup.version, 58);
   const preview=await f.request(f.admin,'/backup/preview',{backup});assert.equal(preview.status,200,JSON.stringify(preview.data));
   const restore=await f.command(f.admin,'/backup/restore',{backup,...preview.data,confirmation:'RESTORE_BUSINESS_DATA'});assert.equal(restore.status,200,JSON.stringify(restore.data));
   assert.equal(f.stock().stock,100);assert.equal((await f.command(f.admin,`/orders/${pending.id}/approve`,{version:1})).status,200);assert.equal(f.stock().stock,110);
