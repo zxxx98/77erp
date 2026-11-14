@@ -61,3 +61,5 @@ export const R2BackupSettings = deferred(() => import('./R2BackupSettings.jsx'),
 export const PositionManager = deferred(() => import('./Positions.jsx'), 'PositionManager');
 
 export const Payroll = deferred(() => import('./pages/Payroll.jsx'), 'Payroll');
+
+export const MyTodos = deferred(() => import('./pages/MyTodos.jsx'), 'MyTodos');

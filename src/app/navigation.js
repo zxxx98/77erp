@@ -2,6 +2,7 @@ import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, ScanLine, History, Megaphone, PackageCheck, Settings, ListTree, ClipboardList, Banknote } from 'lucide-react';
 
 export const navItems = [
+  { id: 'todos', get name() { return translate('todos.title'); }, icon: ClipboardList, group: 'main', get mobile() { return translate('todos.title'); } },
   { id: 'overview', permission: 'basic_view', get name() { return translate("system.dashboard"); }, icon: LayoutDashboard, mode: 'warehouse', group: 'main', get mobile() { return translate("system.dashboard"); } },
   { id: 'products', permission: 'basic_view', get name() { return translate("system.materials"); }, icon: Box, mode: 'warehouse', group: 'main', get mobile() { return translate("system.material"); } },
   { id: 'purchases', permission: 'stock_in_view', get name() { return translate("system.stock.in"); }, icon: ArrowDownToLine, mode: 'warehouse', group: 'main' },

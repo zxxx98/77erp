@@ -24,6 +24,8 @@ async function fixture(page) {
     const order=await post('/production-orders',{bom_id:bom.id,bom_version:bom.version,planned_quantity:5,note:`审批分页测试${i+1}`});
     orders.push(await post(`/production-orders/${order.id}/start`,{version:order.version,schema_version:2}));
   }
+  const reminders=await (await page.request.get(`${base}/api/todo-notifications`)).json();
+  if(reminders.total) await post('/todo-notifications/acknowledge',{through_id:reminders.through_id});
   return {base,db,post,orders,material,close:async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();}};
 }
 

@@ -261,6 +261,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     const path = req.path.toLowerCase().replace(/\/+$/, '');
     const read = ['GET', 'HEAD'].includes(req.method);
     const post = req.method === 'POST';
+    if (read && ['/todos','/todo-notifications'].includes(path) || post && path === '/todo-notifications/acknowledge') return next();
     const groupProductionRoute = (read && (path === '/production-orders' || /^\/production-orders\/\d+(?:\/pdf|\/stages\/batches|\/operation-workers|\/operations\/(?:reports|acceptance-template|acceptances\/\d+))?$/.test(path))) ||
       (post && /^\/production-orders\/\d+\/(?:(?:stages\/)?complete|operations\/report|operations\/registrations\/\d+\/(?:approve|cancel))$/.test(path));
     if (usesProductionWorkspace(req.user)) {

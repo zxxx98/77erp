@@ -33,7 +33,7 @@ import { ProductBatchDialog } from '../pages/Products.jsx';
 import { orderStatusLabel } from '../features/OrderApprovals.jsx';
 import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
-export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderPayroll, renderProcessRoutes, renderProduction, announcementCount, updateNotice }) {
+export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderPayroll, renderProcessRoutes, renderProduction, renderTodos, announcementCount, updateNotice }) {
   useLocale();
   const { can } = usePermissions();
   const tabs = modeItems(mode, key => key === 'stock_in_view' ? canViewStock(user,'in') : key === 'stock_out_view' ? canViewStock(user,'out') : key === 'production_view' ? canViewProduction(user) : can(key)).filter(item => item.mobile);
@@ -103,6 +103,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
           {page === 'bom' && renderBom()}
           {page === 'production' && renderProduction()}
           {page === 'scanner' && renderScanner()}
+          {page === 'todos' && renderTodos()}
           {page === 'announcements' && renderAnnouncements()}
           <div className="mw-refresh"><span className="mw-muted">{updated ? translate("warehouse.read.at", { v0: updated.toLocaleTimeString(getFormatLocale(), { hour12: false }) }) : translate("warehouse.data.is.saved.on.the.server")}</span><AntButton type="default" htmlType="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}{translate("warehouse.refresh.data")}</AntButton></div>
         </>}

@@ -90,7 +90,7 @@ test('production mode keeps quality permission checks and account preferences is
   await page.goto('/');
   await expect(page.getByRole('group', { name: '业务模式' }).getByRole('button', { name: '仓储', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('group', { name: '业务模式' }).getByRole('button', { name: '生产', exact: true }).click();
-  await expect(page.getByText('没有品质管理权限，请联系管理员。', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '我的待办', exact: true })).toContainText('暂时没有需要您审核的单据');
   await expect(page.getByRole('navigation', { name: '主导航', exact: true }).getByRole('link', { name: '品质管理', exact: true })).toHaveCount(0);
   expect((await page.request.get('/api/quality/templates')).status()).toBe(403);
 });

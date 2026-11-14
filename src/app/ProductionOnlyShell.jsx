@@ -1,10 +1,11 @@
+import { TodoNotifications, useTodoNotifications } from '../TodoNotifications.jsx';
 import { localizeError } from '../i18n/errors.js';
 import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { api, setWarehouseId } from '../api.js';
 import { PermissionContext } from '../permissions.jsx';
-import { Production, ChangePassword, UserPreferences } from '../LazyComponents.jsx';
+import { Production, MyTodos, ChangePassword, UserPreferences } from '../LazyComponents.jsx';
 import { Button, Modal } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
 import { useDataUpdates, DataUpdateNotice } from '../DataUpdates.jsx';
@@ -15,6 +16,9 @@ import { LanguageSwitcher } from '../i18n/LanguageSwitcher.jsx';
 
 export function ProductionOnlyShell({ admin, onLogout }) {
   useLocale();
+  const [page, setPage] = useState(() => location.hash.startsWith('#todos') ? 'todos' : 'production');
+  useEffect(() => { const changed = () => setPage(location.hash.startsWith('#todos') ? 'todos' : 'production'); window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed); }, []);
+  const navigate = destination => { if (window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) { location.hash = `#${destination}`; setPage(destination === 'todos' ? 'todos' : 'production'); } };
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   useEffect(() => {
     if (!mobileDevice || !preferencesOpen) return;
@@ -57,15 +61,22 @@ export function ProductionOnlyShell({ admin, onLogout }) {
   };
   useEffect(() => { load(); }, []);
   const user = data?.user || admin;
+  const todoNotifications = useTodoNotifications(data || {}, admin.id);
+  const openTodo = async item => {
+    if (item.warehouse_id !== data.warehouse_id && !await switchWarehouse(item.warehouse_id)) return;
+    navigate(`production?order=${item.production_id}`);
+  };
   const updatesAvailable = useDataUpdates(data || {}, admin.id);
   return <PermissionContext.Provider value={user}><div className="production-only-shell">
     <header className="production-only-header"><div><strong>{translate("system.77.erp.production.operations.only")}</strong><p>{user.name || user.username} · {user.production_group_name || translate("system.not.grouped")}</p></div><div className="production-only-actions">
+      <Button onClick={() => navigate(page === 'todos' ? 'production' : 'todos')}>{page === 'todos' ? translate('system.return.to.production.order') : translate('todos.title')}</Button>
       <Button onClick={() => setPreferencesOpen(true)}>{translate("system.preferences")}</Button>
       {data && <label>{translate("system.current.warehouse")}<Select aria-label={translate("system.current.warehouse")} disabled={busy} value={data.warehouse_id} onChange={async value => { if (!window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) return; setWarehouseId(Number(value)); await load(); }} >{data.warehouses?.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</Select></label>}
       <Button disabled={busy} onClick={() => { if (window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) setPassword(!password); }}>{password ? translate("system.return.to.production.order") : translate("system.change.password")}</Button><Button onClick={async () => { if (window.dispatchEvent(new Event('erp:before-navigate', { cancelable: true }))) { try { await onLogout(); } catch (e) { setError(localizeError(e.message)); } } }}>{translate("system.sign.out")}</Button>
       <LanguageSwitcher compact={mobileDevice} />
     </div></header>
-    <main>{updatesAvailable && <DataUpdateNotice onRefresh={load} busy={busy} />}{error && <p role="alert" className="form-error">{error}</p>}{!data ? <div role="status"><LoadingIndicator />{translate("system.reading.production.workspace")}<Button onClick={load} disabled={busy}>{translate("system.reconnect")}</Button></div> : password ? <section className="panel bom-section"><ChangePassword onChanged={onLogout} /></section> : <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} onChanged={load} onSwitchWarehouse={switchWarehouse} />}</main>
+    <main>{updatesAvailable && <DataUpdateNotice onRefresh={load} busy={busy} />}{error && <p role="alert" className="form-error">{error}</p>}{!data ? <div role="status"><LoadingIndicator />{translate("system.reading.production.workspace")}<Button onClick={load} disabled={busy}>{translate("system.reconnect")}</Button></div> : password ? <section className="panel bom-section"><ChangePassword onChanged={onLogout} /></section> : page === 'todos' ? <MyTodos data={data} onOpen={openTodo} /> : <Production key={`${data.warehouse_id}:${user.permissions_version}`} data={data} onChanged={load} onSwitchWarehouse={switchWarehouse} />}</main>
+    <TodoNotifications snapshot={todoNotifications.snapshot} onRefresh={todoNotifications.refresh} onOpen={() => navigate('todos')} />
     {preferencesOpen && <Modal title={translate("system.preferences")} onClose={() => setPreferencesOpen(false)}><div className="form-body"><UserPreferences showTitle={false} /></div></Modal>}
   </div></PermissionContext.Provider>;
 }

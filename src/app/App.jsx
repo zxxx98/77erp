@@ -1,3 +1,4 @@
+import { TodoNotifications, useTodoNotifications } from '../TodoNotifications.jsx';
 import { localizeError } from '../i18n/errors.js';
 import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
@@ -46,6 +47,7 @@ import { PermissionContext } from '../permissions.jsx';
 import { LoadingIndicator } from '../Loading.jsx';
 import {
   MobileShell,
+  MyTodos,
   Scanner,
   Dashboard,
   Announcements,
@@ -255,6 +257,7 @@ function StandardApp({ admin, onLogout }) {
       if (filter.q) params.set('q', filter.q);
       acceptedHash.current += `?${params}`;
     }
+    if (id === 'production' && filter?.order) acceptedHash.current += `?order=${filter.order}`;
     if (id === 'production' && filter?.scan) acceptedHash.current += '?scan=1';
     location.hash = acceptedHash.current;
     setNotification(false);
@@ -322,6 +325,12 @@ function StandardApp({ admin, onLogout }) {
     if (!can('stocktake')) { notify(translate("system.if.you.do.not.have.permission.for.this.operation.please.contact"), 'error'); return; }
     setModal({ kind: 'reduce', product });
   };
+  const todoNotifications = useTodoNotifications(data, admin.id);
+  const openTodo = async item => {
+    if (item.warehouse_id !== data.warehouse_id && !await switchWarehouse(item.warehouse_id)) return;
+    if (item.source === 'registration') navigate('production', { order: item.production_id });
+    else navigate(['order_in','material_return','receipt','stage_receipt'].includes(item.kind) ? 'purchases' : 'sales', { approval: item.source === 'order' ? 'ordinary' : ['receipt','stage_receipt'].includes(item.source) ? 'receipts' : item.kind === 'material_return' ? 'returns' : 'issues', q: item.number });
+  };
   const visibleNav = modeItems(mode, can);
   const currentNav = navItems.find((n) => n.id === page);
   const updateNotice = updatesAvailable ? <DataUpdateNotice onRefresh={reload} busy={refreshing} disabled={!!modal} /> : null;
@@ -335,6 +344,7 @@ function StandardApp({ admin, onLogout }) {
         loggingOut={loggingOut} logout={logout}
         updateNotice={updateNotice}
         announcementCount={announcementCount}
+        renderTodos={() => <MyTodos data={data} onOpen={openTodo} />}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">{translate("system.if.you.do.not.have.quality.management.rights.please.contact.the")}</div>}
         renderPayroll={() => can('finance') ? <Payroll key={data.warehouse_id} data={data} /> : null}
@@ -569,6 +579,7 @@ function StandardApp({ admin, onLogout }) {
                   showDetail={openOrderDetail}
                 />
               )}
+              {page === 'todos' && <MyTodos data={data} onOpen={openTodo} />}
               {page === 'announcements' && <Announcements data={data} openModal={setModal} />}
               {page === 'quality' && can('quality') && <Quality data={data} onConfigure={() => setModal({ kind: 'settings', section: 'data' })} />}
               {page === 'quality' && !can('quality') && <div className="info-box">{translate("system.if.you.do.not.have.quality.management.rights.please.contact.the")}</div>}
@@ -767,6 +778,7 @@ function StandardApp({ admin, onLogout }) {
           </AntButton>
         </div>
       )}
+      <TodoNotifications snapshot={todoNotifications.snapshot} onRefresh={todoNotifications.refresh} onOpen={() => navigate('todos')} />
     </div></PermissionContext.Provider>
   );
 }

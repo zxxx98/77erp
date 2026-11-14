@@ -1,3 +1,4 @@
+import { installTodoContext, installTodos } from './todos.js';
 import { installPayroll } from './payroll.js';
 import { migrateProcessRoutes, installProcessRoutes, routeBinding, clearProcessRoutes } from './process-routes.js';
 import { migrateExactQuantities } from './exact-quantity.js';
@@ -270,6 +271,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   db.prepare("INSERT OR IGNORE INTO app_metadata (key,value) VALUES ('instance_id',?)").run(randomUUID());
 
   const app = express();
+  installTodoContext(app, db);
   app.set("trust proxy", options.trustProxy ?? false);
   migrateOperations(db);
   migrateCommerce(db);
@@ -316,6 +318,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   installImagebed(app, db, options);
   migrateOrderApproval(db);
   installOrderApproval(app, db);
+  installTodos(app, db);
   const { catalogValues } = installCatalog(app, db);
   const dataRevision = installDataUpdates(app, db);
   // Lightweight bootstrap: business lists and details are queried on demand.

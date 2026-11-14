@@ -41,5 +41,6 @@ export async function api(path, options) {
     error.data = data;
     throw error;
   }
+  if (options?.method && !['GET','HEAD'].includes(options.method.toUpperCase()) && !path.startsWith('/todo-notifications')) window.dispatchEvent(new Event('erp:business-changed'));
   return data;
 }
