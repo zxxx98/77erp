@@ -20,7 +20,14 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pla
   const button = (name, container = page) => container.getByRole('button', { name, exact: true });
   const label = name => page.getByLabel(name, { exact: true });
   const expectPageFits = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const dismissNotice = async () => {
+    const ack = page.getByRole('button', { name: '我知道了', exact: true });
+    if (await ack.isVisible()) await ack.click();
+  };
   page.on('dialog', prompt => prompt.accept());
+  page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
+    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
+  });
   try {
     await post('/auth/setup', { username: 'postadmin', password: 'Test-admin-123' });
     await post('/settings/reset', { confirmation: 'RESET_BUSINESS_DATA' });
@@ -100,6 +107,8 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pla
     await button('提交领料申请').click();
     const order = await getOrder();
     await post(`/production-material-documents/${order.material_documents[0].id}/confirm`, { version: order.material_documents[0].version });
+    const reminders = await (await page.request.get(`${base}/api/todo-notifications`)).json();
+    if (reminders.total) await post('/todo-notifications/acknowledge', { through_id: reminders.through_id });
     await productionAction(page, '刷新单据与库存');
     await page.getByRole('tab', { name: '物料', exact: true }).click();
     const ledger = page.getByRole('table', { name: '生产物料台账' });
@@ -115,7 +124,8 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pla
     await expect(page.getByRole('status').filter({ hasText: '已登记 包装成品' })).toBeVisible();
     expect((await getOrder()).items.find(item => item.product_id === carton.id).post_processing_consumed_quantity).toBe(0);
     expect((await getOrder()).items.find(item => item.product_id === carton.id).available_quantity).toBe(3);
-    if (mode === 'desktop') await button('登记').click();
+    if (mode !== 'desktop') await button('返回单据详情').click();
+    await button('登记').click();
     await page.getByRole('radio', { name: /包装.*后处理工序/ }).click();
     await label('本次数量').fill('4');
     const preview = page.getByRole('region', { name: '本次固定耗料' });
@@ -130,6 +140,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pla
     await preview.evaluate(element => element.scrollIntoView({ block: 'center' }));
     await page.screenshot({ path: test.info().outputPath('fixed-material-preview.png'), animations: 'disabled' });
     await preview.screenshot({ path: test.info().outputPath('fixed-material-preview-detail.png'), animations: 'disabled' });
+    await dismissNotice();
     await button('提交登记').click();
     await expect(page.getByRole('status').filter({ hasText: '已登记 包装' })).toContainText('3 次');
     const payroll = await (await page.request.get(`${base}/api/payroll/production-order?production_id=${id}`)).json();

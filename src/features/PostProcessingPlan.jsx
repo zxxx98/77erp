@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { postProcessingLimit } from '../../shared/post-processing.js';
 import { parseQuantity } from '../../shared/quantity.js';
 import { exactMultiply, exactQuantity, formatExactQuantity } from '../../shared/exact-quantity.js';
-import { Button } from '../components/common.jsx';
+import { Badge, Button } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { FormField } from '../ui/FormField.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
@@ -26,10 +26,13 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
       const graph = { nodes: [{ materials: perRun }], ...(row.usage_basis === 'material' ? { post_processing_materials_per_unit: row.materials } : {}) };
       const estimate = estimatedRuns(plannedQuantity, row.product_coefficient, graph);
       const label = `${t('production.productCoefficient')} ${row.name}`;
+      const hasMaterials = (row.materials || []).length > 0;
       return <section key={`${row.route_id}:${row.node_id}`} className="post-processing-binding">
         <div className="production-material">
           <div className="production-material-name"><strong>{row.name}</strong><small>{row.route_name}</small><small>{t('route.priceTable')} · {row.price_table_name || t('route.defaultPriceTable')}</small></div>
-          {row.usage_basis === 'material' || bomConfig ? <span>{t('production.bomPostProcessingAutomatic')}</span> : readOnly ? <span>{t('production.productCoefficient')} {row.product_coefficient} {unit}</span> : <label>{t('production.productCoefficient')}（{unit}）<FormField required value={row.product_coefficient} label={label}>
+          {bomConfig ? (
+            hasMaterials ? <span>{t('production.bomPostProcessingAutomatic')}</span> : <Badge tone="orange">{t('production.bomPostProcessingUnbound')}</Badge>
+          ) : row.usage_basis === 'material' ? <span>{t('production.bomPostProcessingAutomatic')}</span> : readOnly ? <span>{t('production.productCoefficient')} {row.product_coefficient} {unit}</span> : <label>{t('production.productCoefficient')}（{unit}）<FormField required value={row.product_coefficient} label={label}>
             <Input aria-label={label} inputMode="decimal" value={row.product_coefficient} disabled={disabled}
               onChange={event => onChange(rows.map((item, i) => i === index ? { ...item, product_coefficient: event.target.value } : item))} />
           </FormField></label>}
@@ -37,7 +40,8 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
             onClick={() => onChange(rows.filter((_, i) => i !== index))}>{t('production.removePostProcessing')}</Button>}
         </div>
         {!bomConfig && estimate != null && <p className="bom-hint">{t('production.postProcessingEstimate', { count: estimate.toLocaleString(getFormatLocale()) })}</p>}
-        {!!row.materials?.length && <ul className="post-processing-material-list">
+        {bomConfig && !hasMaterials && <p className="bom-hint form-error" role="alert">{t('production.bomPostProcessingNoMaterials')}</p>}
+        {hasMaterials && <ul className="post-processing-material-list">
           {row.materials.map(material => {
             const values = quantity => ({ quantity: formatExactQuantity(quantity, getFormatLocale()), unit: material.unit });
             return <li key={material.product_id}>
