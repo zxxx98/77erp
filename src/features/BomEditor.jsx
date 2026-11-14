@@ -5,6 +5,7 @@ import { Select } from '../Dropdown.jsx';
 import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 import { FormField } from '../ui/FormField.jsx';
 import { ProductPicker } from './ProductPicker.jsx';
+import { PostProcessingPlan } from './PostProcessingPlan.jsx';
 import { RoutePicker } from './RoutePicker.jsx';
 import { ChildBomPicker } from './ChildBomPicker.jsx';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
@@ -289,6 +290,9 @@ export function BomEditor({
         />
         {(dirty || !editor.id) && <p className="bom-hint">{pt('overview.saveFirst')}</p>}
       </section>
+
+      <PostProcessingPlan rows={editor.post_processing_operations || []} onChange={post_processing_operations => update({ post_processing_operations })}
+        data={queryData} unit={editor.product?.unit || ''} disabled={action.busy} bomConfig />
 
       <section className="panel bom-section">
         <div className="bom-section-heading">

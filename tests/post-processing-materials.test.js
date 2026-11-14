@@ -62,7 +62,7 @@ async function fixture(t, { staged = false } = {}) {
   });
   const reportBody = (order, quantity) => ({ version: order.version, path: '@post:1', operation_node_id: 'pack', quantity, request_id: randomUUID() });
   const report = (order, body, options) => command('/production-orders/' + order.id + '/operations/report', body, options);
-  return { db, request, ok, command, save, raw, label, product, route, create, mutate, get, issue, complete, reportBody, report };
+  return { db, request, ok, command, save, raw, label, product, route, create, mutate, get, issue, complete, reportBody, report, bom, parent };
 }
 
 test('post-processing templates validate material identity, four decimals and whole units', async t => {
@@ -151,7 +151,7 @@ for (const staged of [false, true]) test('post reports share the issued pool, re
   assert.deepEqual(stock(), warehouse);
   order = await f.mutate(order, '/finish', {});
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 56);
+  assert.equal(backup.version, 57);
   const tampered = structuredClone(backup);
   const row = tampered.data.production_operation_reports.find(row => row.id === first.id);
   const materials = JSON.parse(row.post_materials);
@@ -300,3 +300,74 @@ for (const labelCost of [Number.MAX_SAFE_INTEGER, Math.floor(Number.MAX_SAFE_INT
     assert.equal(after.operation_routes[0].report_count, 0);
     assert.deepEqual(after.items.map(row => row.available_cost_cents), order.items.map(row => row.available_cost_cents));
   });
+
+
+for (const staged of [false, true]) test('BOM inherits per-finished-unit post materials without consuming them on output (' + (staged ? 'staged' : 'ordinary') + ')', async t => {
+  const f = await fixture(t, { staged });
+  const route = f.ok(await f.route([{ product_id: f.raw.id, quantity: 9 }, { product_id: f.label.id, quantity: 1 }]));
+  const materials = [{ product_id: f.raw.id, quantity: 0.25 }, { product_id: f.label.id, quantity: 2 }];
+  const binding = { route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 1, materials };
+  let bom = await f.save('/boms/' + f.bom.id, { ...f.bom, post_processing_operations: [binding] });
+  assert.deepEqual(bom.post_processing_operations[0].materials.map(row => row.quantity), [0.25, 2]);
+  assert.equal((await f.command('/process-routes/' + route.id + '/delete', { version: route.version })).status, 409);
+  // Older clients preserve the new BOM field.
+  const old = { ...bom, note: 'legacy edit' }; delete old.post_processing_operations;
+  bom = await f.save('/boms/' + bom.id, old);
+  const prepare = () => f.save('/production-orders/prepare', { bom_id: bom.id, bom_version: bom.version, planned_quantity: 4 });
+  const plan = await prepare();
+  assert.deepEqual(plan.post_processing_operations[0].materials.map(row => row.quantity), [0.25, 2]);
+  let order = await f.save('/production-orders', { bom_id: bom.id, bom_version: bom.version, planned_quantity: 4, note: '', structure_token: plan.structure_token,
+    // An older caller cannot replace the configured BOM quantities.
+    post_processing_operations: [{ ...binding, product_coefficient: 20, materials: [{ product_id: f.raw.id, quantity: 99 }] }] });
+  assert.equal(order.operation_routes[0].product_coefficient, 1);
+  assert.deepEqual(order.items.map(row => row.total_planned_quantity), [5, 8]);
+  const backup = f.ok(await f.request('/backup'));
+  assert.equal(backup.version, 57);
+  const tampered = structuredClone(backup);
+  const config = JSON.parse(tampered.data.boms.find(row => row.id === bom.id).post_processing_operations);
+  config[0].materials[0].quantity = 0;
+  tampered.data.boms.find(row => row.id === bom.id).post_processing_operations = JSON.stringify(config);
+  assert.equal((await f.request('/backup/preview', { backup: tampered })).status, 400);
+  const preview = f.ok(await f.request('/backup/preview', { backup }));
+  await f.save('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' });
+  bom = f.ok(await f.request('/boms/' + bom.id));
+  assert.deepEqual(bom.post_processing_operations[0].materials.map(row => row.quantity), [0.25, 2]);
+  await f.save('/boms/' + bom.id, { ...bom, post_processing_operations: [] });
+  order = await f.mutate(await f.get(order.id), '/start', {});
+  await f.issue(order.material_documents[0]);
+  order = await f.get(order.id);
+  if (staged) order = await f.complete(order, 4, '1');
+  order = await f.complete(order, 4);
+  assert.deepEqual(order.items.map(row => row.available_quantity), [1, 8]);
+  assert.deepEqual(order.items.map(row => row.post_processing_consumed_quantity), [0, 0]);
+  order = f.ok(await f.report(order, f.reportBody(order, 4)));
+  assert.deepEqual(order.items.map(row => row.available_quantity), [0, 0]);
+  assert.deepEqual(order.items.map(row => row.post_processing_consumed_quantity), [1, 8]);
+  assert.equal(order.completed_quantity, 4);
+});
+
+test('BOM validates bound materials, per-unit quantities and stale post-processing plans atomically', async t => {
+  const f = await fixture(t);
+  const route = f.ok(await f.route([{ product_id: f.raw.id, quantity: 1 }, { product_id: f.label.id, quantity: 1 }]));
+  const binding = { route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 1, materials: [{ product_id: f.raw.id, quantity: 0.25 }, { product_id: f.label.id, quantity: 1 }] };
+  for (const row of [null, { ...binding, product_coefficient: 20 }, { ...binding, materials: [] },
+    { ...binding, materials: [{ product_id: f.label.id, quantity: 1 }] },
+    { ...binding, materials: [{ product_id: f.raw.id, quantity: 0.00001 }] }]) {
+    assert.equal((await f.command('/boms/' + f.bom.id, { ...f.bom, post_processing_operations: [row] })).status >= 400, true);
+    assert.equal(f.ok(await f.request('/boms/' + f.bom.id)).version, f.bom.version);
+  }
+  let bom = await f.save('/boms/' + f.bom.id, { ...f.bom, post_processing_operations: [binding] });
+  const plan = await f.save('/production-orders/prepare', { bom_id: bom.id, bom_version: bom.version, planned_quantity: 4 });
+  const updated = f.ok(await f.route([{ product_id: f.raw.id, quantity: 8 }, { product_id: f.label.id, quantity: 1 }], { id: route.id, version: route.version }));
+  const input = { bom_id: bom.id, bom_version: bom.version, planned_quantity: 4, note: '', structure_token: plan.structure_token };
+  assert.equal((await f.command('/production-orders', input)).status, 409);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM production_orders').get().n, 0);
+  const refreshed = await f.save('/production-orders/prepare', input);
+  assert.equal(refreshed.post_processing_operations[0].materials[0].quantity, 0.25);
+  assert.equal(refreshed.post_processing_operations[0].route_version, updated.version);
+  const changed = f.ok(await f.route([{ product_id: f.raw.id, quantity: 1 }], { id: route.id, version: updated.version }));
+  assert.equal((await f.command('/production-orders/prepare', input)).status, 409);
+  // A removed template material remains protected by the saved BOM reference.
+  assert.equal(f.ok(await f.command('/products/batch/delete/preview', { ids: [f.label.id] })).blocked.length, 1);
+  assert.equal(changed.graph.nodes[0].materials[0].product_id, f.raw.id);
+});

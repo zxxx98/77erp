@@ -1729,3 +1729,29 @@ test('production AI exposes real pending deficits and their original snapshot wi
   assert.ok(!f.calls.at(-1).body.tools.some(tool=>/settle|reconcile/.test(tool.function.name)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(),before);
 });
+
+
+test('AI reads BOM post-processing per-unit material use and explains automatic inheritance without write tools', async t => {
+  const f = await fixture(t, ':memory:', false);
+  await f.permissions(['ai', 'bom', 'production']);
+  const product = f.db.prepare('SELECT * FROM products WHERE id=1').get();
+  const raw = f.db.prepare('SELECT * FROM products WHERE id=2').get();
+  const route = await f.request(f.admin, '/process-routes', { request_id: randomUUID(), name: 'BOM包装', route_kind: 'post_processing', enabled: 1, note: '',
+    graph: { nodes: [{ id: 'pack', name: '包装', note: '', x: 24, y: 24, materials: [{ product_id: raw.id, quantity: 9 }] }], edges: [] } });
+  assert.equal(route.status, 200, JSON.stringify(route.data));
+  const bom = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'BOM后处理用量', product_id: product.id, base_quantity: 1, base_unit: product.unit, enabled: 1, note: '',
+    items: [{ product_id: raw.id, quantity: 1, unit: raw.unit, note: '' }], post_processing_operations: [{ route_id: route.data.id, route_version: route.data.version,
+      node_id: 'pack', product_coefficient: 1, materials: [{ product_id: raw.id, quantity: 0.25 }] }] });
+  assert.equal(bom.status, 200, JSON.stringify(bom.data));
+  for (const [tool, args] of [['get_bom', { bom_id: bom.data.id }], ['calculate_bom', { bom_id: bom.data.id, production_quantity: 4 }]]) {
+    f.use(tool, args);
+    assert.equal((await f.chat(f.staff)).status, 200);
+    const result = JSON.parse(f.calls.at(-1).body.messages.find(message => message.role === 'tool').content);
+    assert.equal(result.post_processing_operations[0].product_coefficient, 1);
+    assert.equal(result.post_processing_operations[0].materials[0].quantity, 0.25);
+    assert.ok(!JSON.stringify(result).includes('cost'));
+    const prompt = f.calls.at(-1).body.messages[0].content;
+    assert.match(prompt, /生产单自动继承BOM配置/);
+    assert.match(prompt, /成品登记不消耗后处理材料/);
+  }
+});

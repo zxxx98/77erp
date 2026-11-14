@@ -587,7 +587,8 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
       return '物料被生产单引用，不能删除，请使用停用。';
     if (db.prepare('SELECT 1 FROM boms WHERE product_id=? LIMIT 1').get(product.id) ||
         db.prepare('SELECT 1 FROM bom_items WHERE product_id=? LIMIT 1').get(product.id) ||
-        db.prepare('SELECT 1 FROM bom_scraps WHERE product_id=? LIMIT 1').get(product.id))
+        db.prepare('SELECT 1 FROM bom_scraps WHERE product_id=? LIMIT 1').get(product.id) ||
+        db.prepare("SELECT 1 FROM boms b, json_each(b.post_processing_operations) o, json_each(o.value,'$.materials') m WHERE json_extract(m.value,'$.product_id')=? LIMIT 1").get(product.id))
       return '物料被BOM引用，不能删除，请移除引用或使用停用。';
     return null;
   };

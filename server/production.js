@@ -580,7 +580,7 @@ export function installProduction(app, db, options = {}) {
     validateProductionPlan(req.body);
     const targets = assignmentTargets(req.body);
     const plan = prepareProduction(db, req), bom = getBom(db, req.warehouse.id, plan.bom_id);
-    if ((plan.multi_level || req.body.supply_choices !== undefined) && req.body.structure_token !== plan.structure_token) fail('下级配方已变化或尚未预览，请重新测算后保存。当前填写内容已保留。', 409);
+    if ((plan.multi_level || plan.post_processing_operations.length || req.body.supply_choices !== undefined) && req.body.structure_token !== plan.structure_token) fail('下级配方已变化或尚未预览，请重新测算后保存。当前填写内容已保留。', 409);
     const at = new Date().toISOString(), owner = actor(req), number = nextProductionOrderNumber(db, at);
     const id = Number(db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,
       product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,
@@ -605,7 +605,8 @@ export function installProduction(app, db, options = {}) {
     }
     const order = db.prepare('SELECT * FROM production_orders WHERE id=?').get(id);
     captureProductionRoutes(db, order);
-    capturePostProcessingOperations(db, order, req.body.post_processing_operations);
+    capturePostProcessingOperations(db, order, plan.post_processing_operations.length ? plan.post_processing_operations : req.body.post_processing_operations,
+      { bomMaterials: plan.post_processing_operations.length > 0 });
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id/assign', route(req => {

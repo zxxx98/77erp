@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
 import { productionAction } from './production-ui-helpers.js';
 
-for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} binds post-processing and gates completion on actual output and every operation`, async ({ browser }) => {
+for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} preserves legacy post-processing and gates completion on actual output and every operation`, async ({ browser }) => {
   test.setTimeout(60000);
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage();
@@ -40,27 +40,14 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} bin
     const product = name => post('/products', { name, barcode: randomUUID(), category: '生产', unit: '件', cost: 1, price: 2, threshold: 0 });
     const output = await product('后处理成品'), raw = await product('原材料');
     db.prepare('UPDATE products SET stock=200,inventory_value_cents=20000 WHERE id=?').run(raw.id);
-    await post('/boms', { product_id: output.id, name: '原始配方', base_quantity: 1, base_unit: '件', enabled: 1, note: '', items: [{ product_id: raw.id, quantity: 1, unit: '件', note: '' }] });
-    await page.goto(`${base}/#production`);
-    await button('新建生产单').click();
-    await page.getByRole('button', { name: /^选择配方 后处理成品 ·/ }).click();
-    await page.getByLabel('计划产量', { exact: true }).fill('110');
-    await expect(button('添加附加工序')).toHaveCount(0);
-    for (const [route, node, coefficient] of [['后处理模板', '包装', '20'], ['贴标模板', '贴标', '50']]) {
-      await button('添加后处理工序').click();
-      const picker = dialog('添加后处理工序');
-      await button(route, picker).waitFor();
-      await expect(button('普通生产模板', picker)).toHaveCount(0);
-      await button(route, picker).click();
-      await button(node, picker).click();
-      await page.getByLabel(`每次处理成品数量 ${node}`, { exact: true }).fill(coefficient);
-    }
-    await expect(page.locator('.post-processing-plan')).toContainText('预计 6 次');
-    const created = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/production-orders');
-    await button('保存生产草稿').click();
-    expect((await created).postDataJSON()).not.toHaveProperty('additional_operations');
-    await expect(page.locator('.bom-success')).toContainText('库存未变动');
-    const { id } = db.prepare('SELECT id FROM production_orders ORDER BY id DESC LIMIT 1').get();
+    const bom = await post('/boms', { product_id: output.id, name: '原始配方', base_quantity: 1, base_unit: '件', enabled: 1, note: '', items: [{ product_id: raw.id, quantity: 1, unit: '件', note: '' }] });
+    // Historical orders retain their saved per-run coefficients.
+    const routes = db.prepare("SELECT * FROM process_routes WHERE route_kind='post_processing' ORDER BY id").all();
+    const draft = await post('/production-orders', { bom_id: bom.id, bom_version: bom.version, planned_quantity: 110, note: '',
+      post_processing_operations: routes.map((route, index) => ({ route_id: route.id, route_version: route.version,
+        node_id: JSON.parse(route.graph).nodes[0].id, product_coefficient: index ? 50 : 20 })) });
+    const id = draft.id;
+    await page.goto(`${base}/#production?order=${id}`);
     const get = async () => (await page.request.get(`${base}/api/production-orders/${id}`)).json();
     await button('开始生产').click();
     await button('提交领料申请').click();

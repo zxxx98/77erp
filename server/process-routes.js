@@ -170,7 +170,7 @@ export function listProcessRoutes(db, warehouseId, query = {}) {
   const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) n FROM process_routes WHERE ${where}`).get(...params).n;
   const productStmt = db.prepare(`SELECT DISTINCT p.id,p.name,p.barcode,p.production_type FROM products p WHERE p.warehouse_id=? AND (p.default_route_id=? OR EXISTS (SELECT 1 FROM boms b WHERE b.warehouse_id=p.warehouse_id AND b.product_id=p.id AND b.route_override_id=?)) ORDER BY p.id`);
   const routes = db.prepare(`SELECT * FROM process_routes WHERE ${where} ORDER BY ${ROUTE_SORTS[sort]} LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset))
-    .map(row => ({ ...row, graph: parseGraph(row.graph), products: productStmt.all(warehouseId, row.id, row.id), product_count: db.prepare('SELECT COUNT(*) n FROM products WHERE default_route_id=?').get(row.id).n, bom_count: db.prepare('SELECT COUNT(*) n FROM boms WHERE route_override_id=?').get(row.id).n }));
+    .map(row => ({ ...row, graph: parseGraph(row.graph), products: productStmt.all(warehouseId, row.id, row.id), product_count: db.prepare('SELECT COUNT(*) n FROM products WHERE default_route_id=?').get(row.id).n, bom_count: db.prepare("SELECT COUNT(*) n FROM boms WHERE route_override_id=? OR EXISTS (SELECT 1 FROM json_each(boms.post_processing_operations) p WHERE json_extract(p.value,'$.route_id')=?)").get(row.id, row.id).n }));
   return { routes, total, has_more: Number(offset) + routes.length < total };
 }
 
@@ -179,7 +179,7 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     const row = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(Number(routeId), warehouseId);
     if (!row) fail('工艺路线不存在或不属于当前仓库。', 404);
     return { ...row, graph: parseGraph(row.graph), products: db.prepare('SELECT id,name,barcode,production_type FROM products WHERE default_route_id=? ORDER BY id').all(row.id),
-      boms: db.prepare('SELECT id,name FROM boms WHERE route_override_id=? ORDER BY id').all(row.id) };
+      boms: db.prepare("SELECT id,name FROM boms WHERE route_override_id=? OR EXISTS (SELECT 1 FROM json_each(boms.post_processing_operations) p WHERE json_extract(p.value,'$.route_id')=?) ORDER BY id").all(row.id, row.id) };
   };
   const route = (fn, write = false) => (req, res) => {
     try {
@@ -208,6 +208,8 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     if (old) {
       const tableIds = new Set(processPriceTables(graph).map(table => table.id));
       const bindings = db.prepare('SELECT b.route_price_table_id FROM boms b JOIN products p ON p.id=b.product_id WHERE COALESCE(b.route_override_id,p.default_route_id)=?').all(old.id);
+      const postBindings = db.prepare("SELECT p.value FROM boms b, json_each(b.post_processing_operations) p WHERE json_extract(p.value,'$.route_id')=?").all(old.id).map(row => JSON.parse(row.value));
+      if (postBindings.some(row => row.price_table_id != null && !tableIds.has(row.price_table_id))) fail('单价表已被BOM后处理引用，请先更换BOM关联的单价表。', 409);
       if (bindings.some(row => row.route_price_table_id != null && !tableIds.has(row.route_price_table_id))) fail('单价表已被BOM引用，请先更换BOM关联的单价表。', 409);
     }
     body.graph = {...graph,nodes:graph.nodes.map(({acceptance_revision_id,acceptance_template_name,product_coefficient,materials,...node})=>{
@@ -259,7 +261,7 @@ function captureAcceptanceVersions(db, graph, warehouseId) {
   }
 }
 
-export function capturePostProcessingOperations(db, order, operations = []) {
+export function capturePostProcessingOperations(db, order, operations = [], { bomMaterials = false } = {}) {
   if (!Array.isArray(operations) || operations.length > 50) fail('后处理工序最多 50 道。');
   const seen = new Set();
   for (const [index, input] of operations.entries()) {
@@ -274,7 +276,7 @@ export function capturePostProcessingOperations(db, order, operations = []) {
     const selectedGraph = processGraphWithPrices(parseGraph(route.graph), input.price_table_id);
     const node = selectedGraph.nodes.find(node => node.id === input.node_id);
     if (!node) fail('所选后处理工序不存在。');
-    const materials = normalizePostMaterials(db, order.warehouse_id, node.materials, true);
+    const materials = normalizePostMaterials(db, order.warehouse_id, bomMaterials ? input.materials : node.materials, true);
     const graph = { ...selectedGraph, nodes: [materials.length ? { ...node, materials } : node], edges: [] };
     savePostMaterialItems(db, order, materials);
     captureAcceptanceVersions(db, graph, order.warehouse_id);

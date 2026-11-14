@@ -189,7 +189,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
       body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity, supply_choices: [] } });
     setEditor(previous => ({ kind: 'new', note: previous?.note || '',
-      post_processing_operations: previous?.post_processing_operations || [], planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
+      planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
   };
   const supplyStale = editor?.kind === 'new' && editor.plan && (Number(editor.planned_quantity) !== editor.plan.production_quantity || JSON.stringify(editor.supply_choices) !== JSON.stringify(editor.plan.prepared_choices || []));
   const supplyRequest = (draft, signal) => {
@@ -356,12 +356,6 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
             if (prepared.plan.structure_token !== editor.plan.structure_token) { update(prepared); throw new Error(pt('production.supplyReviewBeforeSave')); }
           }
           body.supply_choices = prepared.supply_choices || []; body.bom_id = prepared.plan.bom_id; body.bom_version = prepared.plan.version; body.structure_token = prepared.plan.structure_token;
-          body.post_processing_operations = (editor.post_processing_operations || []).map(row => {
-            let product_coefficient;
-            try { product_coefficient = parseQuantity(row.product_coefficient, true); }
-            catch { throw new Error(pt('production.productCoefficientInvalid')); }
-            return { route_id: row.route_id, route_version: row.route_version, node_id: row.node_id, price_table_id: row.price_table_id ?? null, product_coefficient };
-          });
         }
         else body.version = detail.version;
         await saved(await send(path, body, options), pt("production.productionDraftSavedStockUnchanged"));
@@ -501,8 +495,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           </>}
         </section>}
         {editor.kind === 'new' && source && <ProductionSupply supplies={source.supplies || []} choices={editor.supply_choices || []} onChange={supply_choices => update({ supply_choices })} onCalculate={recalculateSupply} stale={supplyStale} disabled={action.busy} />}
-        {editor.kind === 'new' && source && <PostProcessingPlan rows={editor.post_processing_operations || []} onChange={post_processing_operations => update({ post_processing_operations })}
-          data={listData} unit={unit} plannedQuantity={editor.planned_quantity} disabled={action.busy} />}
+        {editor.kind === 'new' && source?.post_processing_operations?.length > 0 && <PostProcessingPlan rows={source.post_processing_operations}
+          unit={unit} plannedQuantity={editor.planned_quantity} readOnly />}
         {editor.kind === 'edit' && source.operation_routes?.some(route => route.product_coefficient != null && route.post_processing_materials?.length) && <PostProcessingPlan
           rows={source.operation_routes.filter(route => route.product_coefficient != null).map(route => ({
             route_id: route.id, node_id: route.operations[0].id, route_name: route.route_name, name: route.operations[0].name,

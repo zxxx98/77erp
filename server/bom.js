@@ -1,3 +1,4 @@
+import { resolveBomPostProcessing, validateBomPostProcessing } from './bom-post-processing.js';
 import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
 import { buildProductionSupply } from './production-supply.js';
 import { routeBinding, routePriceBinding } from './process-routes.js';
@@ -66,6 +67,8 @@ export function migrateBom(db) {
   if (db.prepare('PRAGMA index_list(boms)').all().some(index => index.unique &&
       db.prepare(`PRAGMA index_info("${index.name}")`).all().map(row => row.name).join(',') === 'warehouse_id,product_id'))
     rebuildTable(db, 'boms', sql => sql.replace(/,\s*UNIQUE\s*\(warehouse_id,\s*product_id\)/i, ''));
+  if (!db.prepare('PRAGMA table_info(boms)').all().some(column => column.name === 'post_processing_operations'))
+    db.exec("ALTER TABLE boms ADD COLUMN post_processing_operations TEXT NOT NULL DEFAULT '[]'");
   migrateSortOrder(db, 'boms');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS boms_product_name ON boms(warehouse_id,product_id,trim(name)); CREATE INDEX IF NOT EXISTS boms_product ON boms(warehouse_id,product_id);');
   if (!db.prepare('PRAGMA table_info(bom_items)').all().some(column => column.name === 'usage_mode'))
@@ -73,8 +76,10 @@ export function migrateBom(db) {
   db.exec('CREATE INDEX IF NOT EXISTS bom_items_child ON bom_items(child_bom_id)');
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='bom_version';
     UPDATE boms SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='bom_version') WHERE id=NEW.id;`;
+  if (!db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='bom_version_update'").get()?.sql.includes('post_processing_operations'))
+    db.exec('DROP TRIGGER IF EXISTS bom_version_update');
   db.exec(`CREATE TRIGGER IF NOT EXISTS bom_version_insert AFTER INSERT ON boms BEGIN ${advance} END;
-    CREATE TRIGGER IF NOT EXISTS bom_version_update AFTER UPDATE OF name,product_id,base_quantity,base_unit,loss_method,note,enabled,updated_at,updated_by_name ON boms BEGIN ${advance} END;`);
+    CREATE TRIGGER IF NOT EXISTS bom_version_update AFTER UPDATE OF name,product_id,base_quantity,base_unit,loss_method,note,enabled,updated_at,updated_by_name,post_processing_operations ON boms BEGIN ${advance} END;`);
 }
 
 export function clearBom(db, warehouseId) {
@@ -118,6 +123,8 @@ export function getBom(db, warehouseId, id) {
   return readSnapshot(db, () => {
     const bom = db.prepare('SELECT * FROM boms WHERE id=? AND warehouse_id=?').get(id, warehouseId);
     if (!bom) fail('BOM不存在或不属于当前仓库。', 404);
+    bom.post_processing_operations = JSON.parse(bom.post_processing_operations).map(row => ({ ...row,
+      route_version: db.prepare('SELECT version FROM process_routes WHERE id=? AND warehouse_id=?').get(row.route_id, warehouseId)?.version ?? row.route_version }));
     bom.product = publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(bom.product_id, warehouseId));
     bom.items = db.prepare('SELECT * FROM bom_items WHERE bom_id=? ORDER BY position,id').all(id).map(item => ({
       ...item, child_bom: item.child_bom_id ? db.prepare('SELECT id,name,version,product_id,base_quantity,enabled FROM boms WHERE id=? AND warehouse_id=?').get(item.child_bom_id, warehouseId) : null, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(item.product_id, warehouseId)),
@@ -171,6 +178,7 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
     const bom = getBom(db, warehouse.id, id);
     productionQuantity = bom.product.unit_round_up ? Math.ceil(productionQuantity) : productionQuantity;
     if (version !== undefined && version !== bom.version) fail('BOM已变化，请重新打开后测算。', 409);
+    const post_processing_operations = resolveBomPostProcessing(db, warehouse.id, bom.post_processing_operations, bom.product_id);
     const cache = new Map([[bom.id, bom]]);
     const load = childId => {
       if (!cache.has(childId)) cache.set(childId, getBom(db, warehouse.id, childId));
@@ -195,8 +203,8 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
       [...b.items, ...b.scraps].map(row => [row.product_id, row.quantity, row.quantity_fraction, row.loss_rate, row.usage_mode, row.child_bom_id, row.note, row.method, row.source_product_id,
         row.product.name, row.product.barcode, row.product.specification, row.product.active, row.product.unit, row.product.unit_round_up])]);
     return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity, loss_method: bom.loss_method,
-      schema_version: 2, supplies: supply?.supplies, multi_level: result.multi_level, nodes: withCurrentProductionTypes(db, warehouse.id, result.nodes),
-      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints, routeFingerprints, ...(supply ? [supplyChoices, supplyChoices.some(row => row.mode === 'partial') ? productionQuantity : null] : [])])).digest('hex'),
+      post_processing_operations, schema_version: 2, supplies: supply?.supplies, multi_level: result.multi_level, nodes: withCurrentProductionTypes(db, warehouse.id, result.nodes),
+      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints, routeFingerprints, post_processing_operations, ...(supply ? [supplyChoices, supplyChoices.some(row => row.mode === 'partial') ? productionQuantity : null] : [])])).digest('hex'),
       scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
         planned_quantity: scrapExpectedQuantity({ ...row, unit_round_up: row.product.unit_round_up }, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
       quantity_decimals: 4, production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
@@ -235,6 +243,20 @@ export function validateBomBackup(data) {
   }
   const parents = new Set();
   for (const bom of data.boms) {
+    let post;
+    try { post = validateBomPostProcessing(JSON.parse(bom.post_processing_operations)); }
+    catch { fail('备份 BOM 后处理配置无效。'); }
+    for (const row of post) {
+      const route = data.process_routes.find(route => route.id === row.route_id);
+      if (Object.keys(row).length !== 9 || ['name', 'route_name'].some(key => typeof row[key] !== 'string' || !row[key].trim() || row[key].length > 100) ||
+          typeof row.price_table_name !== 'string' || row.price_table_name.length > 100 ||
+          route?.warehouse_id !== bom.warehouse_id || route.route_kind !== 'post_processing' || row.materials.some(material =>
+          material.product_id === bom.product_id || products.get(material.product_id)?.warehouse_id !== bom.warehouse_id ||
+          Object.keys(material).length !== 7 || ![0, 1].includes(material.unit_round_up) || material.unit_round_up && !Number.isInteger(material.quantity) ||
+          ['name', 'barcode', 'specification', 'unit'].some(key => typeof material[key] !== 'string' ||
+            material[key].length > (key === 'specification' ? 500 : 100) || key !== 'specification' && !material[key].trim())))
+        fail('备份 BOM 后处理关联或用量无效。');
+    }
     validateBomLossMethod(bom.loss_method);
     const items = grouped.get(bom.id) || [];
     validateBom({ ...bom, items }, true);
@@ -301,6 +323,8 @@ export function installBom(app, db) {
       if (!material || !material.active) fail('材料不存在、已停用或不属于当前仓库，请重新选择。');
       if (item.unit !== material.unit) fail('材料单位已变化，请重新选择材料并核对用量。', 409);
     }
+    const postOperations = resolveBomPostProcessing(db, req.warehouse.id,
+      body.post_processing_operations === undefined ? (existing?.post_processing_operations ?? []) : body.post_processing_operations, body.product_id, body.post_processing_operations !== undefined);
     const at = new Date().toISOString(), owner = req.user.name || req.user.username;
     let id = existing?.id;
     if (existing) {
@@ -318,6 +342,7 @@ export function installBom(app, db) {
     const priceTableId = routePriceBinding(db, req.warehouse.id, effectiveRouteId,
       req.body.route_price_table_id === undefined ? (effectiveRouteId === oldRouteId ? existing?.route_price_table_id ?? null : null) : req.body.route_price_table_id);
     db.prepare('UPDATE boms SET route_override_id=?,route_price_table_id=? WHERE id=?').run(routeId, priceTableId, id);
+    db.prepare('UPDATE boms SET post_processing_operations=? WHERE id=?').run(JSON.stringify(postOperations), id);
     const insert = db.prepare('INSERT INTO bom_items(bom_id,product_id,quantity,quantity_fraction,loss_rate,unit,note,position,usage_mode,child_bom_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
     body.items.forEach((item, index) => insert.run(id, item.product_id, item.quantity, item.quantity_fraction ?? '', item.loss_rate, item.unit, item.note.trim(), index, item.usage_mode, item.child_bom_id));
     const insertScrap = db.prepare('INSERT INTO bom_scraps(bom_id,product_id,method,source_product_id,quantity,quantity_fraction,unit,note,position) VALUES (?,?,?,?,?,?,?,?,?)');
