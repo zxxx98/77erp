@@ -6,7 +6,7 @@ import { productionRegistrationUrl } from '../../shared/production-link.js';
 
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 
-async function fixture(page, worker = false, shared = false) {
+async function fixture(page, worker = false, shared = false, partial = false) {
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -25,6 +25,7 @@ async function fixture(page, worker = false, shared = false) {
   const product = name => post('/products', { name, barcode: randomUUID(), category: '生产', unit: '件', cost: 1, price: 2, threshold: 0 });
   const output = await product('分层成品'), half = await product('分层半成品'), raw = await product('分层原料');
   db.prepare('UPDATE products SET stock=100,inventory_value_cents=10000 WHERE id=?').run(raw.id);
+  if (partial) db.prepare('UPDATE products SET stock=10,inventory_value_cents=1000 WHERE id=?').run(half.id);
   const bom = (product_id, name, items) => post('/boms', { product_id, name, base_quantity: 1, base_unit: '件', note: '', enabled: 1, items });
   const child = await bom(half.id, '半成品配方', [{ product_id: raw.id, quantity: 3, unit: '件', note: '' }]);
   let parent;
@@ -38,8 +39,9 @@ async function fixture(page, worker = false, shared = false) {
     }
     parent = await bom(output.id, '黑白芯线配方', branches);
   } else parent = await bom(output.id, '成品配方', [{ product_id: half.id, quantity: 2, unit: '件', note: '', usage_mode: 'explode', child_bom_id: child.id }]);
-  const plan = await post('/production-orders/prepare', { bom_id: parent.id, bom_version: parent.version, planned_quantity: 10 });
-  const draft = await post('/production-orders', { bom_id: parent.id, bom_version: parent.version, planned_quantity: 10, structure_token: plan.structure_token, note: '', production_group_id: group?.id });
+  const supply_choices = partial ? [{ path: '1', mode: 'partial', stock_quantity: 5 }] : undefined;
+  const plan = await post('/production-orders/prepare', { bom_id: parent.id, bom_version: parent.version, planned_quantity: 10, supply_choices });
+  const draft = await post('/production-orders', { bom_id: parent.id, bom_version: parent.version, planned_quantity: 10, supply_choices, structure_token: plan.structure_token, note: '', production_group_id: group?.id });
   const started = await post(`/production-orders/${draft.id}/start`, { version: draft.version });
   const doc = started.material_documents[0];
   await post(`/production-material-documents/${doc.id}/confirm`, { version: doc.version });
@@ -49,6 +51,31 @@ async function fixture(page, worker = false, shared = false) {
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close();
   } };
 }
+
+for (const mode of ['desktop', 'mobile']) test(`${mode} progress includes issued and produced semi-finished stock`, async ({ page }) => {
+  page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
+    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
+  });
+  if (mode === 'mobile') {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone);
+  }
+  const f = await fixture(page, false, false, true);
+  try {
+    await page.goto(`${f.base}/#production`);
+    await page.getByRole('button', { name: `查看生产单 ${f.draft.number}`, exact: true }).click();
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
+    const halfStage = page.locator('.production-progress-item').filter({ has: page.getByRole('button', { name: '登记 分层半成品', exact: true }) });
+    await expect(halfStage).toContainText('单内可用 5 件');
+    await halfStage.getByRole('button', { name: '登记 分层半成品', exact: true }).click();
+    await page.getByLabel('本次数量', { exact: true }).fill('3');
+    await adjustUsage(page);
+    await page.getByRole('button', { name: '按本批产量带出耗料', exact: true }).click();
+    await submitProductionBatch(page);
+    await page.getByRole('tab', { name: '生产进度', exact: true }).click();
+    await expect(halfStage).toContainText('单内可用 8 件');
+  } finally { await f.close(); }
+});
 
 for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child BOM then root without double consumption`, async ({ page, browser }) => {
   test.setTimeout(90000);

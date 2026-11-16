@@ -7,6 +7,7 @@ import { useLocale } from '../i18n/react.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { addQuantity } from '../../shared/quantity.js';
 import { pooledProductionStages } from '../../shared/production-pools.js';
+import { exactAdd, exactNumber, exactQuantity } from '../../shared/exact-quantity.js';
 import { OperationPrice } from './OperationPrice.jsx';
 
 const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
@@ -27,6 +28,7 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
     {!matches.length && <p className="bom-hint">{t('production.noMatchingProductionLevels')}</p>}
     {matches.map(layer => {
       const rows = targets.filter(target => target.path === layer.path), routed = rows.some(target => target.node);
+      const available = exactNumber(exactAdd(exactQuantity(layer, 'available_quantity'), exactQuantity(order.items?.find(item => item.product_id === layer.product_id), 'available_quantity')));
       const parent = layers.find(item => item.path === layer.parent_path);
       const reached = layer.completed_quantity >= layer.planned_quantity;
       const waitingForOutput = layer.postProcessing && !order.output_completed && reached;
@@ -44,15 +46,15 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
             {!layer.postProcessing && <Button disabled={busy} onClick={() => onHistory(layer.path)} aria-label={t('production.viewBatches', { v0: layer.name })}>{t('production.batchRecords')}</Button>}
           </div>
         </div>
-        {!!order.stage_workflow && layer.path && !layer.postProcessing && <p className="bom-hint">{t('production.availableInOrder')} {count(layer.available_quantity)} {layer.unit} · {t('production.pendingReceipt')} {count(layer.pending_receipt_quantity)} {layer.unit} · {t('production.received')} {count(layer.received_quantity)} {layer.unit}</p>}
+        {!!order.stage_workflow && layer.path && !layer.postProcessing && <p className="bom-hint">{t('production.availableInOrder')} {count(available)} {layer.unit} · {t('production.pendingReceipt')} {count(layer.pending_receipt_quantity)} {layer.unit} · {t('production.received')} {count(layer.received_quantity)} {layer.unit}</p>}
         {layer.pool_paths && <><p className="bom-hint">{t('production.poolHint')}</p>
-          <p className="bom-hint">{t('production.availableInOrder')} <strong>{count(layer.available_quantity)} {layer.unit}</strong> · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>
+          <p className="bom-hint">{t('production.availableInOrder')} <strong>{count(available)} {layer.unit}</strong> · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>
           <details className="production-disclosure"><summary>{t('production.poolUsage')}</summary>
             {layer.pool_usages.length ? layer.pool_usages.map(usage => <p key={usage.path}>{usage.name} · {usage.path}: {count(usage.quantity)} {layer.unit}</p>) : <p className="bom-hint">{t('production.poolUnused')}</p>}
           </details></>}
         {!!order.stage_workflow && !layer.postProcessing && <details className="production-disclosure">
           <summary>{t('production.viewCumulativeInputVariance')}</summary>
-          {layer.path && <p className="bom-hint">{t('production.availableInOrder')} {count(layer.available_quantity)} {layer.unit} · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>}
+          {layer.path && <p className="bom-hint">{t('production.availableInOrder')} {count(available)} {layer.unit} · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>}
           {layer.items.map(item => <div className="stage-cumulative-input" key={item.path}>
             <strong>{item.name}</strong>
             <p>{t('production.cumulativeActual')} {count(item.actual_quantity)} {item.unit} {t('production.cumulativeStandard')} {item.standard_quantity == null ? '—' : count(item.standard_quantity)} {item.unit}</p>
