@@ -50,6 +50,7 @@ import { ProductionProgress } from '../features/ProductionProgress.jsx';
 import { ProductionDetailTabs } from '../features/ProductionDetailTabs.jsx';
 import { ProductionOperationPrices } from '../features/ProductionOperationPrices.jsx';
 import { ProductionMaterialLedger } from '../features/ProductionMaterialLedger.jsx';
+import { ProductionFinishPipeline } from '../features/ProductionFinishPipeline.jsx';
 import { money as formatMoney, currencySymbol } from '../app/format.js';
 
 const count = value => typeof value === 'string' && value.includes('/') ? value : Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
@@ -153,6 +154,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const [linkLoading, setLinkLoading] = useState(false);
   const [detailTab, setDetailTab] = useState('overview');
   const [moreOpen, setMoreOpen] = useState(false);
+  const [finishPipelineOpen, setFinishPipelineOpen] = useState(false);
+  useEffect(() => setFinishPipelineOpen(false), [detail?.id]);
   const [syncPriceConfirm, setSyncPriceConfirm] = useState(false);
   useEffect(() => setSyncPriceConfirm(false), [detail?.id]);
   const [processDiagramOpen, setProcessDiagramOpen] = useState(false);
@@ -183,7 +186,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     window.addEventListener('erp:before-navigate', before); window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('erp:before-navigate', before); window.removeEventListener('beforeunload', unload); };
   }, []);
-  const begin = value => { setMoreOpen(false); const next = ['stages', 'quick_registration'].includes(value.kind) ? { ...value, session: ++stageSession.current } : value; setEditor(next); setBaseline(JSON.stringify(next)); setMessage(''); action.setError(''); };
+  const begin = value => { setMoreOpen(false); setFinishPipelineOpen(false); const next = ['stages', 'quick_registration'].includes(value.kind) ? { ...value, session: ++stageSession.current } : value; setEditor(next); setBaseline(JSON.stringify(next)); setMessage(''); action.setError(''); };
   const update = value => { setEditor(previous => ({ ...previous, ...value })); action.setError(''); };
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
@@ -321,6 +324,13 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const finishState = postProcessingFinishState(detail ? productionFlowView(detail) : detail);
   finishState.blocked ||= detail?.flow_progress?.settlement_ready === false;
   const hasRecordedOutput = detail && (detail.batch_count > 0 || detail.flow_progress?.completed_quantity > 0);
+  const hasPendingFinishWork = detail && (
+    detail.pending_registration_count > 0
+    || detail.material_documents?.some(doc => doc.status === 'pending')
+    || detail.receipt_documents?.some(doc => doc.kind === 'stage' && doc.status === 'pending')
+    || (detail.stage_workflow && detail.stages?.some(stage => stage.path !== '' && stage.available_quantity > 0))
+  );
+  const canOpenFinish = detail?.status === 'in_progress' && (hasRecordedOutput || hasPendingFinishWork);
   const hasPostMaterialUsage = detail?.items.some(item => item.post_processing_consumed_quantity > 0);
   const canConfirmOutput = detail?.status === 'in_progress' && detail.operation_routes?.some(route => route.product_coefficient != null)
     && (detail.output_completion_confirmed || !productionFlowView(detail).output_completed && exactCompare(exactQuantity(productionFlowView(detail), 'completed_quantity'), 0) > 0);
@@ -330,12 +340,11 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     const updated = await send(`/production-orders/${detail.id}/output-completion`, { completed, version: detail.version }, { warehouseId: data.warehouse_id });
     await saved(updated, pt(completed ? 'production.outputCompletionConfirmed' : 'production.outputCompletionRevoked'));
   });
-  const finishOrder = () => action.run(async () => {
-    if (finishState.blocked) return;
+  const finishOrder = () => {
     setMoreOpen(false);
-    if (!window.confirm(pt("production.endThisProductionOrderPendingBatchesStillRequire"))) return;
-    await saved(await send(`/production-orders/${detail.id}/finish`, { version: detail.version }, { warehouseId: data.warehouse_id }), pt("production.productionEndedPendingReceiptsStillRequireWarehouseApproval"));
-  });
+    action.setError('');
+    setFinishPipelineOpen(true);
+  };
   const submitter = useRef(null);
   const submit = () => {
 
@@ -554,9 +563,9 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
         <div className="production-more-controls">
           {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
           {management && detail.status === 'in_progress' && <>
-            <Button disabled={action.busy || finishState.blocked || !hasRecordedOutput || detail.material_documents?.some(doc => doc.status === 'pending')} onClick={finishOrder}>{pt("production.endProduction")}</Button>
+            <Button disabled={action.busy || !canOpenFinish} onClick={finishOrder}>{pt("production.endProduction")}</Button>
             <PostProcessingFinishNotice state={finishState} />
-            {(!hasRecordedOutput || detail.material_documents?.some(doc => doc.status === 'pending')) && <p className="bom-hint">{pt('production.finishRequirements')}</p>}
+            {!canOpenFinish && <p className="bom-hint">{pt('production.finishRequirements')}</p>}
           </>}
           {management && canConfirmOutput && <Button disabled={action.busy} onClick={() => changeOutputCompletion(!detail.output_completion_confirmed)}>
             {pt(detail.output_completion_confirmed ? 'production.revokeOutputCompletion' : 'production.confirmOutputCompletion')}
@@ -607,6 +616,12 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.output_completion_confirmed && <p className="bom-hint">{pt('production.outputRegistrationLocked')}</p>}
     </section>
     {!registrationDrawer && <ProductionAcceptanceRegistrations order={detail} data={listData} onSaved={saved}/>}
+    {finishPipelineOpen && detail?.status === 'in_progress' && <ProductionFinishPipeline key={`finish-pipeline:${detail.id}`} order={detail} data={listData}
+      onClose={() => setFinishPipelineOpen(false)}
+      onUpdated={async updated => { setDetail(updated); setRevision(n => n + 1); await onChanged?.(); }}
+      onFinished={async (finished, text) => { setFinishPipelineOpen(false); await saved(finished, text); }}
+      onOpenRegistration={targetId => { setFinishPipelineOpen(false); beginCompletion(targetId); }}
+      onOpenSupplement={() => { setFinishPipelineOpen(false); requestMaterials('out'); }} />}
     <ProductionDetailTabs key={detail.id} active={detailTab} onChange={setDetailTab} items={[
       { key: 'overview', label: pt('production.overviewTab'), children: <>
     <section className="panel bom-section production-next-steps" aria-label={pt('production.nextSteps')}>
@@ -616,8 +631,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       {detail.status !== 'void' && detail.material_documents?.some(doc => doc.status === 'pending') && <div className="production-task"><span>{pt('production.materialRequestPending')}</span><Button onClick={() => setDetailTab('materials')}>{pt('production.viewMaterialRequest')}</Button></div>}
       {detail.status !== 'void' && detail.pending_receipt_quantity > 0 && <div className="production-task"><span>{pt('production.receiptPendingHint', { quantity: count(detail.pending_receipt_quantity), unit: detail.unit })}</span><Button onClick={() => setDetailTab('records')}>{pt('production.viewPendingReceipts')}</Button></div>}
       {detail.status === 'completed' && detail.material_workflow === 1 && detail.items.some(item => item.available_quantity > 0) && <div className="production-task"><span>{pt('production.unusedMaterialsRemainVerifyAndRequestAReturn')}</span><Button onClick={() => setDetailTab('materials')}>{pt('production.materialsTab')}</Button></div>}
-      {management && detail.status === 'in_progress' && (finishState.blocked || hasRecordedOutput && !detail.material_documents?.some(doc => doc.status === 'pending')) && <>
-        <div className="production-task"><span>{pt('production.finishWhenReady')}</span><Button disabled={action.busy || finishState.blocked} onClick={finishOrder}>{pt('production.endProduction')}</Button></div>
+      {management && detail.status === 'in_progress' && (finishState.blocked || canOpenFinish) && <>
+        <div className="production-task"><span>{pt('production.finishWhenReady')}</span><Button disabled={action.busy || !canOpenFinish} onClick={finishOrder}>{pt('production.endProduction')}</Button></div>
         <PostProcessingFinishNotice state={finishState} />
       </>}
     </section>

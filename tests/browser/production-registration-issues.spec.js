@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { productionIssuesFixture } from '../helpers/production-issues.js';
+import { confirmFinishPipeline } from './production-ui-helpers.js';
 
 for (const device of ['desktop','mobile','pwa']) test(`${device} records shortages, displays live deficits and settles after actual replenishment`, async ({ page, browser }) => {
   test.setTimeout(90000);
@@ -25,8 +26,13 @@ for (const device of ['desktop','mobile','pwa']) test(`${device} records shortag
     await expect(records).toContainText('原料 · 还缺 4 kg');
     await expect(records).toContainText('辅料 · 还缺 2 kg');
     await page.getByRole('button',{name:'更多操作',exact:true}).click();
-    await expect(page.getByRole('button',{name:'结束生产',exact:true}).first()).toBeDisabled();
-    await page.keyboard.press('Escape');
+    await page.getByRole('button',{name:'结束生产',exact:true}).first().click();
+    const finishDialog=page.getByRole('dialog',{name:'完结生产流水线',exact:true});
+    await expect(finishDialog).toBeVisible();
+    await expect(finishDialog).toContainText('原料 · 还缺 4 kg');
+    await expect(finishDialog.getByRole('button',{name:'下一步：处理结余',exact:true})).toBeDisabled();
+    await finishDialog.getByRole('button',{name:'取消',exact:true}).click();
+    await expect(finishDialog).toHaveCount(0);
     let order=await f.get();
     expect(order.completed_quantity).toBeNull();expect(order.receipt_documents).toHaveLength(0);
     const added=await f.supplement(order,[[f.raw,4],[f.other,2]]);
@@ -90,7 +96,8 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} uses unsettled s
     await page.getByRole('button',{name:'更多操作',exact:true}).click();
     const finish=page.getByRole('button',{name:'结束生产',exact:true}).first();
     await expect(finish).toBeEnabled();
-    page.once('dialog',dialog=>dialog.accept());await finish.click();
+    await finish.click();
+    await confirmFinishPipeline(page);
     await expect.poll(async()=>(await f.get()).status).toBe('completed');
     order=await f.get();expect(order.pending_registration_count).toBe(0);expect(order.completed_quantity).toBe(12);
     expect(order.receipt_documents).toHaveLength(1);expect(errors).toEqual([]);

@@ -162,6 +162,58 @@ export function assertNoPendingMaterials(db, order) {
   if (order.material_workflow && hasPendingMaterials(db, order.id)) fail('请先确认或取消待批准的生产材料单。', 409);
 }
 
+export function createFinishMaterialReturn(db, req, order, { items, note = '', confirm = false } = {}) {
+  if (confirm !== undefined && typeof confirm !== 'boolean') fail('退料确认参数无效。');
+  if (confirm && !hasPermission(req.user, 'stock_approve')) fail('无此方向的仓库权限。', 403);
+  if (note !== undefined && (typeof note !== 'string' || note.length > 500)) fail('申请备注最多 500 字。');
+  if (items === undefined || items === null) return null;
+  if (!Array.isArray(items) || items.length > 500 || new Set(items.map(row => row?.product_id)).size !== items.length)
+    fail('请核对补料或退料方向及材料明细，材料不能重复。');
+  if (!items.length) return null;
+  if (!order.material_workflow) fail('仅生产中的单据可补料，生产中或已完成单据可退料。', 409);
+  assertNoPendingMaterials(db, order);
+  const normalized = items.map(row => {
+    const item = isId(row?.product_id) && order.items.find(item => item.product_id === row.product_id);
+    const quantity = item && parseExactQuantity(row.quantity, true);
+    if (!item || !validExactQuantity(quantity, true)) fail('材料需属于本生产单，申请数量需为正数且最多 4 位小数。');
+    const product = db.prepare('SELECT * FROM products WHERE id=?').get(item.product_id);
+    if (!product || product.warehouse_id !== req.warehouse.id || item.unit !== product.unit || item.unit_round_up !== product.unit_round_up)
+      fail(`${item.name}单位或取整规则已变化，请取消后重新核对。`, 409);
+    if (!product.active) fail(`${item.name}已停用，请先核对物料。`);
+    if (exactCompare(quantity, exactQuantity(item, 'available_quantity')) > 0) fail(`${item.name}退料超过已领未耗余额。`);
+    return { product_id: item.product_id, quantity };
+  });
+  const at = new Date().toISOString(), number = `SCTL${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const id = Number(db.prepare(`INSERT INTO production_material_documents(number,warehouse_id,production_id,production_number,product_name,unit,type,kind,note,created_by_name,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,'in','return',?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, order.product_name, order.unit, (note ?? '').trim(), actor(req), at, at).lastInsertRowid);
+  for (const row of normalized) {
+    const item = order.items.find(item => item.product_id === row.product_id);
+    const itemId = Number(db.prepare(`INSERT INTO production_material_document_items(document_id,product_id,name,barcode,specification,unit,unit_round_up,quantity)
+      VALUES (?,?,?,?,?,?,?,?)`).run(id, item.product_id, item.name, item.barcode, item.specification, item.unit, item.unit_round_up, exactNumber(row.quantity)).lastInsertRowid);
+    saveExactQuantity(db, 'production_material_document_items', itemId, 'quantity', row.quantity);
+  }
+  if (confirm) {
+    const doc = materialDocument(db, id, req.warehouse.id);
+    const before = doc.items.map(row => db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id));
+    let total = 0;
+    for (const row of doc.items) {
+      const item = order.items.find(item => item.product_id === row.product_id), product = before.find(p => p.id === row.product_id);
+      if (!item || product.warehouse_id !== req.warehouse.id || row.unit !== product.unit || row.unit_round_up !== product.unit_round_up) fail(`${row.name}单位或取整规则已变化，请取消后重新核对。`, 409);
+      if (!product.active) fail(`${row.name}已停用，请先核对物料。`);
+      const cost = allocate(item.available_cost_cents, exactQuantity(row), exactQuantity(item, 'available_quantity'));
+      moveInventory(db, row.product_id, exactQuantity(row), cost);
+      db.prepare('UPDATE production_material_document_items SET cost_cents=? WHERE id=?').run(cost, row.id);
+      total += cost;
+      if (!Number.isSafeInteger(total)) fail('材料成本超出范围。');
+    }
+    db.prepare("UPDATE production_material_documents SET status='confirmed',total_cost_cents=?,confirmed_by_name=?,confirmed_at=?,updated_at=? WHERE id=?")
+      .run(total, actor(req), at, at, id);
+    notifyStockChanges(db, req, before, { production_id: order.id, number: doc.number, material_document_id: id });
+  }
+  db.prepare('UPDATE production_orders SET updated_by_name=?,updated_at=? WHERE id=?').run(actor(req), at, order.id);
+  return materialDocument(db, id, req.warehouse.id);
+}
+
 function normalizeItems(order, items, actual = false, stored = false) {
   if (!Array.isArray(items) || !items.length || items.length > order.items.length || new Set(items.map(row => row?.product_id)).size !== items.length)
     fail('请核对材料明细，材料不能重复。');

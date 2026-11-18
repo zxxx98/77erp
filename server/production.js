@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { getBom, listBoms, calculateBom, withCurrentProductionTypes } from './bom.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 import { moveInventory, allocate } from './commerce.js';
-import { migrateProductionMaterials, productionMaterialTables, materialDocuments, materialBalances, installProductionMaterials, assertNoPendingMaterials } from './production-materials.js';
+import { migrateProductionMaterials, productionMaterialTables, materialDocuments, materialBalances, installProductionMaterials, assertNoPendingMaterials, createFinishMaterialReturn } from './production-materials.js';
 import { migrateProductionReceipts, productionReceiptTables, receiptDocuments, receiptQuantities, createProductionReceipt, installProductionReceipts, assertReceiptReversalPermission, voidProductionReceipt } from './production-receipts.js';
 import { notifyStockChanges } from './notifications.js';
 import { hasPermission } from '../shared/permissions.js';
@@ -752,6 +752,11 @@ export function installProduction(app, db, options = {}) {
     finalizeProductionQuantities(db, req, order);
     db.prepare("UPDATE production_orders SET status='completed',updated_by_name=?,updated_at=? WHERE id=?")
       .run(actor(req), new Date().toISOString(), order.id);
+    createFinishMaterialReturn(db, req, current(req), {
+      items: req.body.return_items,
+      note: req.body.return_note,
+      confirm: req.body.confirm_return,
+    });
     return current(req);
   }, true));
   app.post('/api/production-orders/:id/batches/:batchId/void', route(req => {

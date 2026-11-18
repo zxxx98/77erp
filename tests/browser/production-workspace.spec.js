@@ -1,6 +1,7 @@
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
+import { confirmFinishPipeline } from './production-ui-helpers.js';
 
 for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production workspace keeps progress visible and uses one registration flow`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? { viewport: { width: 1440, height: 1000 } } : devices['iPhone 13']), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
@@ -64,8 +65,8 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production worksp
     await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
     await page.getByRole('tab', { name: '概览', exact: true }).click();
     await expect(page.getByRole('region', { name: '当前待办' })).toContainText('待仓库入库 2 件');
-    page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '结束生产', exact: true }).click();
+    await confirmFinishPipeline(page);
     await expect(page.getByText('已完工', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '返回生产单', exact: true }).click();
     await page.getByRole('group', { name: '生产单快捷筛选' }).getByRole('button', { name: '待入库', exact: true }).click();

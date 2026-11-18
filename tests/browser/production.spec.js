@@ -1,4 +1,4 @@
-import { productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
+import { productionAction, adjustUsage, submitProductionBatch, confirmFinishPipeline } from './production-ui-helpers.js';
 import { browserPosition } from './position-helpers.js';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
@@ -524,8 +524,8 @@ async function partialProductionFlow(page, pwa = false) {
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.products[1].id).stock).toBe(88);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(scrap.id).stock).toBe(0);
     const afterCorrection = f.inventory();
-    page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '结束生产', exact: true }).click();
+    await confirmFinishPipeline(page);
     await expect(page.getByText('已完工', { exact: true })).toBeVisible(); expect(f.inventory()).toEqual(afterCorrection);
     await productionAction(page, '作废生产单');
     await page.getByLabel('作废原因', { exact: true }).fill('剩余批次整单回退');

@@ -133,9 +133,13 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child B
     expect(order.total_cost_cents).toBe(3000);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.half.id).stock).toBe(0);
     expect(f.db.prepare('SELECT stock FROM products WHERE id=?').get(f.raw.id).stock).toBe(40);
-    page.once('dialog', dialog => dialog.accept());
     await productionAction(page, '结束生产');
-    await expect(page.getByRole('alert')).toContainText('半成品');
+    const finishDialog = page.getByRole('dialog', { name: '完结生产流水线', exact: true });
+    await expect(finishDialog).toBeVisible();
+    await expect(finishDialog.getByRole('alert')).toContainText('半成品');
+    await expect(finishDialog.getByRole('button', { name: '下一步：完结预览', exact: true })).toBeDisabled();
+    await finishDialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(finishDialog).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath('stage-progress.png'), fullPage: true });
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await page.getByRole('button', { name: '查看批次 分层半成品', exact: true }).click();

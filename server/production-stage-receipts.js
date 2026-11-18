@@ -54,7 +54,10 @@ export function receiptTransferComponents(receipts) {
 export function installStageReceipts(app, db, {route,current,version}) {
   app.post('/api/production-orders/:id/stage-receipts',route(req=>{
     const order=current(req);version(req,order);
+    if (req.body.confirm!==undefined && typeof req.body.confirm!=='boolean') fail('半成品入库确认参数无效。');
+    if (req.body.confirm && !hasPermission(req.user,'stock_approve')) fail('需要出入库审核权限。',403);
     if (!order.stage_workflow || order.status!=='in_progress') fail('仅生产中的分层生产单可申请半成品入库。',409);
+    if (req.body.confirm && db.prepare("SELECT 1 FROM production_operation_registrations WHERE production_id=? AND status='pending' LIMIT 1").get(order.id)) fail('生产单仍有登记未结算或未验收，请结清后批准入库。',409);
     const stage=order.stages.find(s=>s.path!==''&&s.path===req.body.path);
     if (!stage) fail('请选择半成品层。');
     if(db.prepare('SELECT COUNT(*) n FROM production_stage_receipts WHERE production_id=?').get(order.id).n>=10000)fail('半成品入库单达到上限，请拆分生产单。');
@@ -62,7 +65,7 @@ export function installStageReceipts(app, db, {route,current,version}) {
     if (!validExactQuantity(quantity,true)) fail('半成品入库数量必须大于零。');
     const product=db.prepare('SELECT * FROM products WHERE id=?').get(stage.product_id);
     if (!product?.active || product.unit!==stage.unit || product.unit_round_up!==stage.unit_round_up) fail('半成品已停用或单位、取整规则已变化。',409);
-    const ledger=stageLedger(db,order.id), paths=stagePoolPaths(order,stage.path);
+    const ledger=stageLedger(db,order.id), paths=stagePoolPaths(order,stage.path), created=[];
     let needed=quantity;
     for (const batch of ledger.batches.filter(b=>paths.includes(b.path)&&b.status==='active')) {
       if (exactCompare(needed,0)===0) break;
@@ -74,8 +77,15 @@ export function installStageReceipts(app, db, {route,current,version}) {
       const id=Number(db.prepare(`INSERT INTO production_stage_receipts(number,warehouse_id,production_id,source_batch_id,quantity,total_cost_cents,components,created_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`)
         .run(number,order.warehouse_id,order.id,batch.id,exactNumber(q),cost,JSON.stringify(components),actor(req),at,at).lastInsertRowid);
       saveExactQuantity(db,stageReceiptTable,id,'quantity',q);needed=exactSubtract(needed,q);
+      created.push({id,number,q,cost,at});
     }
     if (exactCompare(needed,0)>0) fail('半成品入库数量超过本单可用余额。',409);
+    if (req.body.confirm) for (const row of created) {
+      const before=db.prepare('SELECT * FROM products WHERE id=?').get(stage.product_id);
+      moveInventory(db,stage.product_id,row.q,row.cost);
+      db.prepare("UPDATE production_stage_receipts SET status='confirmed',confirmed_at=?,confirmed_by_name=?,updated_at=? WHERE id=?").run(row.at,actor(req),row.at,row.id);
+      notifyStockChanges(db,req,[before],{production_id:order.id,number:row.number});
+    }
     db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(stageEventTime(db,order.id),actor(req),order.id);
     return current(req);
   },true));

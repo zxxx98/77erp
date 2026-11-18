@@ -4751,6 +4751,21 @@ export const validationMessages = {
     "验收单编号无效。",
     "Invalid acceptance document ID.",
     "Mã phiếu nghiệm thu không hợp lệ."
+  ],
+  "PRODUCTION_FINISH_RETURN_CONFIRM_INVALID": [
+    "退料确认参数无效。",
+    "Invalid material return confirmation parameter.",
+    "Tham số xác nhận trả nguyên liệu không hợp lệ."
+  ],
+  "PRODUCTION_STAGE_RECEIPT_CONFIRM_INVALID": [
+    "半成品入库确认参数无效。",
+    "Invalid semi-finished receipt confirmation parameter.",
+    "Tham số xác nhận nhập kho bán thành phẩm không hợp lệ."
+  ],
+  "PRODUCTION_STAGE_RECEIPT_PENDING_REGISTRATIONS": [
+    "生产单仍有登记未结算或未验收，请结清后批准入库。",
+    "Resolve or inspect pending registrations before approving semi-finished receipts.",
+    "Cần quyết toán hoặc nghiệm thu các bản ghi chờ trước khi duyệt nhập kho bán thành phẩm."
   ]
 };
 export const validationNestedParams = {"VALIDATION_AUTH_56FB08F914": ["p0"], "VALIDATION_PRODUCTION_4A3C3368D5": ["p0"]};

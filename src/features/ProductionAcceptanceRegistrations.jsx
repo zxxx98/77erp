@@ -7,10 +7,10 @@ import { useLocale } from '../i18n/react.jsx';
 import { formatExactQuantity } from '../../shared/exact-quantity.js';
 import './production-registration.css';
 
-export function ProductionAcceptanceRegistrations({order,data,onSaved,path}) {
+export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendingOnly=false}) {
   useLocale();
   const {can,user}=usePermissions(), action=useBusiness(), acceptance=useOperationAcceptance();
-  const rows=(order.operation_registrations||[]).filter(row=>path===undefined||row.path===path);
+  const rows=(order.operation_registrations||[]).filter(row=>(path===undefined||row.path===path)&&(!pendingOnly||row.status==='pending'));
   if(!rows.length) return null;
   const reconcile=()=>action.run(async()=>{
     const result=await action.send(`/production-orders/${order.id}/operations/registrations/reconcile`,{schema_version:2,stage_schema_version:1,operation_schema_version:1,version:order.version},{warehouseId:data.warehouse_id});

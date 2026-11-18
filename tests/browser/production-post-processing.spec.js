@@ -1,7 +1,7 @@
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
-import { productionAction } from './production-ui-helpers.js';
+import { productionAction, confirmFinishPipeline } from './production-ui-helpers.js';
 
 for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} preserves legacy post-processing and gates completion on actual output and every operation`, async ({ browser }) => {
   test.setTimeout(60000);
@@ -99,6 +99,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pre
     await more();
     await expect(button('结束生产', dialog('更多操作'))).toBeEnabled();
     await button('结束生产', dialog('更多操作')).click();
+    await confirmFinishPipeline(page);
     await expect(page.getByRole('status').filter({ hasText: '生产已结束' })).toBeVisible();
     order = await get();
     expect(order.completed_quantity).toBe(101);

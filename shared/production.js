@@ -1,7 +1,9 @@
 import { calculateBomNodes } from './bom-expansion.js';
 import { validQuantity, quantityUnits, QUANTITY_SCALE, validStoredQuantity } from './quantity.js';
 import { bomRequiredQuantity } from './bom.js';
-import { parseProductionQuantity as parseExactQuantity, exactCompare, exactQuantity, validExactQuantity, exactBomQuantity, exactAdd, exactMultiply, exactSubtract, exactDivide, exactNumber, quantityFields } from './exact-quantity.js';
+import { parseProductionQuantity as parseExactQuantity, exactCompare, exactQuantity, validExactQuantity, exactBomQuantity, exactAdd, exactMultiply, exactSubtract, exactDivide, exactCeil, exactMax, exactSum, exactNumber, quantityFields } from './exact-quantity.js';
+import { productionFlowView } from './production-flow.js';
+import { pooledProductionStages } from './production-pools.js';
 
 export function productionActualDefault(item, quantity, order) {
   if (item.base_quantity === 0) return 0;
@@ -89,4 +91,139 @@ export function productionMaterialAnalysis(item, completedQuantity, baseQuantity
     return { standard_quantity: null, variance_quantity: null, variance_rate: null,
       analysis_error: '标准耗料暂无法计算，请核对合格产量、实际耗料和本单配方；标准数量超出上限时仅保留实际记录。' };
   }
+}
+
+export function productionFinishPreview(order) {
+  if (!order) return null;
+  const flow = productionFlowView(order);
+  const pendingRegistrations = (order.operation_registrations || []).filter(row => row.status === 'pending');
+  const unsettledRegistrations = pendingRegistrations.filter(row => row.kind === 'settlement' || row.acceptance_id != null);
+  const uninspectedRegistrations = pendingRegistrations.filter(row => row.kind === 'acceptance' && row.acceptance_id == null);
+  const settlementReady = order.flow_progress?.settlement_ready !== false;
+  const readyRegistrations = settlementReady ? unsettledRegistrations : [];
+  const completedOutput = exactQuantity(flow, 'completed_quantity');
+  const hasOutput = exactCompare(completedOutput, 0) > 0;
+  const outputRounding = order.status === 'completed'
+    ? exactSubtract(exactQuantity(order, 'settled_completed_quantity'), completedOutput)
+    : hasOutput ? exactSubtract(exactCeil(completedOutput, order.unit_round_up ? 0 : 4), completedOutput) : 0;
+  const settledOutput = exactAdd(completedOutput, outputRounding);
+  const materials = (order.items || []).map(item => {
+    if (!order.material_workflow) {
+      return {
+        ...item,
+        ...quantityFields(exactQuantity(item, 'actual_quantity'), 'projected_consumed_quantity'),
+        ...quantityFields(0, 'projected_available_quantity'),
+        ...quantityFields(0, 'rounding_quantity'),
+        ...quantityFields(0, 'rounding_shortage_quantity'),
+        ...quantityFields(0, 'returnable_quantity'),
+      };
+    }
+    const pendingMaterial = exactSum(readyRegistrations.flatMap(row => (row.actual_inputs || []).filter(input => input.key === `material:${item.product_id}`)));
+    const consumed = exactAdd(exactQuantity(item, 'consumed_quantity'), pendingMaterial);
+    const available = exactMax(0, exactSubtract(exactQuantity(item, 'available_quantity'), pendingMaterial));
+    const rounding = order.status === 'completed' ? 0 : exactSubtract(exactCeil(consumed, item.unit_round_up ? 0 : 4), consumed);
+    const shortage = exactCompare(rounding, available) > 0 ? exactSubtract(rounding, available) : 0;
+    const returnable = exactCompare(available, rounding) > 0 ? exactSubtract(available, rounding) : 0;
+    return {
+      ...item,
+      ...quantityFields(consumed, 'projected_consumed_quantity'),
+      ...quantityFields(available, 'projected_available_quantity'),
+      ...quantityFields(rounding, 'rounding_quantity'),
+      ...quantityFields(shortage, 'rounding_shortage_quantity'),
+      ...quantityFields(returnable, 'returnable_quantity'),
+    };
+  });
+  const scraps = (order.scraps || []).map(scrap => {
+    const stockQty = exactQuantity(scrap, 'stock_quantity');
+    const stockRounding = order.status === 'completed' ? 0 : exactSubtract(exactCeil(stockQty, scrap.unit_round_up ? 0 : 4), stockQty);
+    const discardQty = exactQuantity(scrap, 'discard_quantity');
+    const discardRounding = order.status === 'completed' ? 0 : exactSubtract(exactCeil(discardQty, scrap.unit_round_up ? 0 : 4), discardQty);
+    return {
+      ...scrap,
+      ...quantityFields(stockRounding, 'stock_rounding_quantity'),
+      ...quantityFields(exactAdd(stockQty, stockRounding), 'settled_stock_quantity'),
+      ...quantityFields(discardRounding, 'discard_rounding_quantity'),
+      ...quantityFields(exactAdd(discardQty, discardRounding), 'settled_discard_quantity'),
+    };
+  });
+  const semiFinishedBalances = order.stage_workflow
+    ? pooledProductionStages(flow).filter(stage => stage.path !== '' && exactCompare(exactQuantity(stage, 'available_quantity'), 0) > 0)
+    : [];
+  const pendingMaterialDocuments = (order.material_documents || []).filter(doc => doc.status === 'pending');
+  const pendingStageReceipts = (order.receipt_documents || []).filter(doc => doc.kind === 'stage' && doc.status === 'pending');
+  const postRoutes = (flow.operation_routes || []).filter(route => route.product_coefficient != null);
+  const waitingForOutput = postRoutes.length > 0 && !flow.output_completed;
+  const postProcessingGaps = postRoutes.flatMap(route => {
+    const node = route.operations?.[0];
+    return node && node.available_quantity > 0 ? [{ path: route.path, route_name: route.route_name, node_id: node.id, name: node.name, remaining: node.available_quantity }] : [];
+  });
+  const canonicalStagePaths = order.stage_workflow ? new Set(pooledProductionStages(flow).map(stage => stage.path)) : null;
+  const operationWip = [];
+  for (const route of (flow.operation_routes || [])) {
+    if (route.product_coefficient != null) continue;
+    if (canonicalStagePaths && !canonicalStagePaths.has(route.path)) continue;
+    const outputNode = route.operations?.find(node => node.is_output);
+    if (!outputNode) continue;
+    const outputQty = exactQuantity(outputNode, 'completed_quantity');
+    const layer = order.stage_workflow ? order.stages?.find(stage => stage.path === route.path) : null;
+    for (const node of route.operations || []) {
+      const nodeQty = exactQuantity(node, 'completed_quantity');
+      if (exactCompare(nodeQty, outputQty) !== 0) {
+        operationWip.push({
+          path: route.path,
+          layer_name: layer?.name || order.product_name,
+          route_name: route.route_name,
+          node_id: node.id,
+          name: node.name,
+          unit: layer?.unit || order.unit,
+          ...quantityFields(nodeQty, 'completed_quantity'),
+          ...quantityFields(outputQty, 'output_quantity'),
+          ...quantityFields(exactSubtract(nodeQty, outputQty), 'wip_quantity'),
+        });
+      }
+    }
+  }
+  const returnableMaterials = materials.filter(item => exactCompare(exactQuantity(item, 'returnable_quantity'), 0) > 0);
+  const roundingShortages = materials.filter(item => exactCompare(exactQuantity(item, 'rounding_shortage_quantity'), 0) > 0);
+  const roundingMaterials = materials.filter(item => exactCompare(exactQuantity(item, 'rounding_quantity'), 0) > 0);
+  const hasRootUninspected = uninspectedRegistrations.some(row => row.endpoint !== 'operations/report' && row.path === '');
+  const step1Blocked = !hasOutput
+    || pendingMaterialDocuments.length > 0
+    || pendingStageReceipts.length > 0
+    || uninspectedRegistrations.length > 0
+    || (unsettledRegistrations.length > 0 && !settlementReady)
+    || waitingForOutput
+    || postProcessingGaps.length > 0
+    || operationWip.length > 0;
+  const step1HasItems = step1Blocked || unsettledRegistrations.length > 0;
+  const step2Blocked = semiFinishedBalances.length > 0 || pendingStageReceipts.length > 0 || roundingShortages.length > 0;
+  const step2HasItems = step2Blocked || returnableMaterials.length > 0;
+  return {
+    has_output: hasOutput,
+    settlement_ready: settlementReady,
+    can_confirm_output_completion: postRoutes.length > 0 && !flow.output_completed && hasOutput && !order.output_completion_confirmed && !hasRootUninspected,
+    product: {
+      ...quantityFields(completedOutput, 'completed_quantity'),
+      ...quantityFields(outputRounding, 'rounding_quantity'),
+      ...quantityFields(settledOutput, 'settled_quantity'),
+    },
+    materials,
+    returnable_materials: returnableMaterials,
+    rounding_shortages: roundingShortages,
+    rounding_materials: roundingMaterials,
+    scraps,
+    semi_finished_balances: semiFinishedBalances,
+    pending_material_documents: pendingMaterialDocuments,
+    pending_stage_receipts: pendingStageReceipts,
+    pending_registrations: pendingRegistrations,
+    unsettled_registrations: unsettledRegistrations,
+    uninspected_registrations: uninspectedRegistrations,
+    waiting_for_output: waitingForOutput,
+    post_processing_gaps: postProcessingGaps,
+    operation_wip: operationWip,
+    step1_blocked: step1Blocked,
+    step1_has_items: step1HasItems,
+    step2_blocked: step2Blocked,
+    step2_has_items: step2HasItems,
+  };
 }

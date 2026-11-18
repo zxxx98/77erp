@@ -1,4 +1,4 @@
-.mobile-device {font-size:15px;--muted:#647084;--green:#16866d;--orange:#a56b12;--red:#c63f4a;}
+.mobile-device {font-size:15px;--muted:#647084;--green:#16866d;--orange:#a56b12;--red:#c63f4a;scroll-padding-bottom:calc(88px + env(safe-area-inset-bottom));}
 .mobile-device body {background:#f7f8fa;}
 .mw-shell {min-height:100dvh;background:#f7f8fa;font-size:15px;line-height:1.5;}
 .mw-topbar {position:sticky;top:0;z-index:40;background:#fff;}

@@ -7337,5 +7337,295 @@ export default {
     "未绑定物料",
     "Unbound material",
     "Vật tư chưa liên kết"
+  ],
+  "production.finishPipeline.title": [
+    "完结生产流水线",
+    "Production Finish Pipeline",
+    "Quy trình kết thúc sản xuất"
+  ],
+  "production.finishPipeline.stepDocuments": [
+    "1. 单据与在制",
+    "1. Documents & WIP",
+    "1. Chứng từ & dở dang"
+  ],
+  "production.finishPipeline.stepBalances": [
+    "2. 结余处理",
+    "2. Balance Settlement",
+    "2. Xử lý số dư"
+  ],
+  "production.finishPipeline.stepConfirm": [
+    "3. 完结确认",
+    "3. Final Preview",
+    "3. Xác nhận kết thúc"
+  ],
+  "production.finishPipeline.nextBalances": [
+    "下一步：处理结余",
+    "Next: Handle balances",
+    "Tiếp theo: Xử lý số dư"
+  ],
+  "production.finishPipeline.nextConfirm": [
+    "下一步：完结预览",
+    "Next: Final preview",
+    "Tiếp theo: Xem trước kết thúc"
+  ],
+  "production.finishPipeline.prevStep": [
+    "上一步",
+    "Previous",
+    "Quay lại"
+  ],
+  "production.finishPipeline.confirmFinish": [
+    "确认完结生产单",
+    "Confirm Finish Order",
+    "Xác nhận kết thúc lệnh"
+  ],
+  "production.finishPipeline.step1Ready": [
+    "单据与在制已全部核对就绪，可以继续处理结余。",
+    "All documents and work in progress are cleared. Proceed to balances.",
+    "Mọi chứng từ và dở dang đã sẵn sàng. Tiếp tục xử lý số dư."
+  ],
+  "production.finishPipeline.step1AutoSettleHint": [
+    "以下待结算登记的物料与前序均已满足，可在此立即核对结算，也可在最终完结时自动结算。",
+    "These pending registrations already meet material and predecessor requirements. Settle them now or let finishing settle them automatically.",
+    "Các bản ghi chờ quyết toán sau đã đủ điều kiện vật tư và công đoạn trước. Có thể quyết toán ngay hoặc tự động quyết toán khi kết thúc."
+  ],
+  "production.finishPipeline.noOutputBlocker": [
+    "尚未登记任何有效成品产出，请先登记成品批次后再结束生产。",
+    "No valid finished output has been recorded yet. Register at least one finished batch first.",
+    "Chưa có sản lượng thành phẩm hợp lệ. Hãy ghi nhận ít nhất một lô thành phẩm trước."
+  ],
+  "production.finishPipeline.goToRegister": [
+    "前往登记",
+    "Go to registration",
+    "Đi tới ghi nhận"
+  ],
+  "production.finishPipeline.pendingMaterialDocsTitle": [
+    "待处理的领退料单",
+    "Pending material documents",
+    "Chứng từ vật tư đang chờ"
+  ],
+  "production.finishPipeline.pendingMaterialDocsHint": [
+    "请先批准发料、关闭剩余待发或取消待处理材料单，锁定本单已领余额后再处理结余。",
+    "Confirm issues, close remaining requests, or cancel pending material documents to lock the order balance before handling leftovers.",
+    "Vui lòng duyệt cấp, đóng phần chờ cấp hoặc hủy chứng từ vật tư đang chờ để chốt số dư trước khi xử lý dư thừa."
+  ],
+  "production.finishPipeline.pendingStageReceiptsTitle": [
+    "待审批半成品入库单",
+    "Pending semi-finished receipts",
+    "Phiếu nhập bán thành phẩm chờ duyệt"
+  ],
+  "production.finishPipeline.pendingStageReceiptsHint": [
+    "仍有半成品待入库，请先由仓库批准入库或取消申请后才能结束生产。",
+    "Semi-finished receipts remain pending. Approve or cancel them before ending production.",
+    "Còn phiếu nhập bán thành phẩm chờ duyệt. Cần phê duyệt hoặc hủy yêu cầu trước khi kết thúc."
+  ],
+  "production.finishPipeline.operationWipTitle": [
+    "工序在制与后处理核对",
+    "Operations & post-processing check",
+    "Kiểm tra công đoạn & hậu xử lý"
+  ],
+  "production.finishPipeline.operationWipLine": [
+    "{{layer}} · {{name}} 尚有在制 {{wip}} {{unit}}（已报工 {{completed}} / 最终产出 {{output}}）",
+    "{{layer}} · {{name}} has {{wip}} {{unit}} in progress (reported {{completed}} / final output {{output}})",
+    "{{layer}} · {{name}} còn dở dang {{wip}} {{unit}} (đã báo {{completed}} / đầu ra cuối {{output}})"
+  ],
+  "production.finishPipeline.operationWipHint": [
+    "仍有工序在制数量，请先完成流转或前往修正报工后再结束生产。",
+    "Work remains in progress in these operations. Complete the flow or adjust reports before finishing.",
+    "Vẫn còn sản phẩm dở dang tại các công đoạn này. Hoàn tất luân chuyển hoặc điều chỉnh trước khi kết thúc."
+  ],
+  "production.finishPipeline.goToSupplement": [
+    "前往申请补料",
+    "Request supplement",
+    "Đi tới yêu cầu bổ sung"
+  ],
+  "production.finishPipeline.semiFinishedSectionTitle": [
+    "半成品结余处理",
+    "Semi-finished balances",
+    "Xử lý số dư bán thành phẩm"
+  ],
+  "production.finishPipeline.semiFinishedSectionHint": [
+    "分层生产单的剩余半成品必须消耗于上层或办理入库并确认后，才能完结生产单。",
+    "Remaining semi-finished output must be consumed by a parent level or received into warehouse stock before finishing.",
+    "Bán thành phẩm còn lại phải được cấp trên sử dụng hoặc nhập kho và duyệt trước khi kết thúc lệnh."
+  ],
+  "production.finishPipeline.semiFinishedLabel": [
+    "可入库余量：{{quantity}} {{unit}}（累计 {{completed}} / 已供上层 {{consumed}}）",
+    "Available: {{quantity}} {{unit}} (completed {{completed}} / supplied {{consumed}})",
+    "Khả dụng: {{quantity}} {{unit}} (hoàn thành {{completed}} / đã cấp trên {{consumed}})"
+  ],
+  "production.finishPipeline.semiFinishedRequestAndConfirm": [
+    "申请并确认入库",
+    "Request & confirm receipt",
+    "Yêu cầu & xác nhận nhập kho"
+  ],
+  "production.finishPipeline.semiFinishedConsumeHint": [
+    "如需继续用于上层成品生产，可关闭本弹窗前往登记上层批次。",
+    "To consume remaining semi-finished output in a parent batch instead, close this dialog and register parent output.",
+    "Nếu muốn dùng cho cấp trên, đóng hộp thoại này và ghi nhận lô cấp trên."
+  ],
+  "production.finishPipeline.roundingShortageTitle": [
+    "材料完结取整余额不足",
+    "Material balance insufficient for final rounding",
+    "Số dư vật tư không đủ để làm tròn cuối lệnh"
+  ],
+  "production.finishPipeline.roundingShortageItem": [
+    "{{name}} 完结取整需补足 {{rounding}} {{unit}}，当前可用余额仅 {{available}} {{unit}}，还缺 {{shortage}} {{unit}}。",
+    "{{name}} needs {{rounding}} {{unit}} for final rounding, but only {{available}} {{unit}} is available ({{shortage}} {{unit}} short).",
+    "{{name}} cần {{rounding}} {{unit}} để làm tròn cuối lệnh nhưng chỉ còn {{available}} {{unit}} (thiếu {{shortage}} {{unit}})."
+  ],
+  "production.finishPipeline.materialReturnSectionTitle": [
+    "原材料结余退料",
+    "Remaining raw material returns",
+    "Trả lại nguyên liệu còn dư"
+  ],
+  "production.finishPipeline.materialReturnSectionHint": [
+    "系统已自动扣除完结取整差额，计算各物料实际可退回结余。可核对退料数量并随完结单据提交仓库。",
+    "Final rounding adjustments are deducted automatically to calculate returnable balances. Review quantities to create a material return when finishing.",
+    "Hệ thống đã tự trừ phần chênh lệch làm tròn cuối lệnh để tính số dư có thể trả. Kiểm tra số lượng để tạo phiếu trả khi kết thúc."
+  ],
+  "production.finishPipeline.submitReturnToggle": [
+    "完结时同时生成剩余材料退料申请单",
+    "Create material return request on finish",
+    "Tạo phiếu yêu cầu trả nguyên liệu khi kết thúc"
+  ],
+  "production.finishPipeline.confirmReturnToggle": [
+    "同时确认退料入库（直接恢复仓库库存）",
+    "Also confirm return receipt into stock immediately",
+    "Đồng thời xác nhận nhập kho trả hàng (khôi phục tồn kho ngay)"
+  ],
+  "production.finishPipeline.fillAllReturnable": [
+    "全部填入可退余量",
+    "Fill all returnable",
+    "Điền toàn bộ số dư trả"
+  ],
+  "production.finishPipeline.clearAllReturnable": [
+    "全部清零",
+    "Clear all",
+    "Đặt về 0"
+  ],
+  "production.finishPipeline.currentBalanceCol": [
+    "当前余额",
+    "Current balance",
+    "Số dư hiện tại"
+  ],
+  "production.finishPipeline.roundingDeductionCol": [
+    "取整扣减",
+    "Rounding deduction",
+    "Trừ làm tròn"
+  ],
+  "production.finishPipeline.returnableCol": [
+    "可退余量",
+    "Returnable",
+    "Có thể trả"
+  ],
+  "production.finishPipeline.returnQuantityCol": [
+    "本次退料",
+    "Return quantity",
+    "Số lượng trả"
+  ],
+  "production.finishPipeline.returnQuantityLabel": [
+    "{{name}} 完结退料数量",
+    "{{name}} finish return quantity",
+    "Số lượng trả khi kết thúc của {{name}}"
+  ],
+  "production.finishPipeline.returnExceeded": [
+    "退料数量不能超过可退余量 {{max}} {{unit}}。",
+    "Return quantity cannot exceed {{max}} {{unit}}.",
+    "Số lượng trả không được vượt quá {{max}} {{unit}}."
+  ],
+  "production.finishPipeline.returnNoteLabel": [
+    "退料申请备注",
+    "Return request note",
+    "Ghi chú phiếu trả nguyên liệu"
+  ],
+  "production.finishPipeline.noBalances": [
+    "当前生产单没有半成品结余，也没有可退回的原材料结余。",
+    "There are no remaining semi-finished or returnable material balances on this order.",
+    "Lệnh sản xuất này không còn số dư bán thành phẩm hay nguyên liệu có thể trả."
+  ],
+  "production.finishPipeline.settlementSummaryTitle": [
+    "完结结算汇总",
+    "Final Settlement Summary",
+    "Tổng hợp quyết toán kết thúc"
+  ],
+  "production.finishPipeline.outputSummaryLabel": [
+    "累计登记产量",
+    "Recorded good output",
+    "Sản lượng đã ghi nhận"
+  ],
+  "production.finishPipeline.outputRoundingLabel": [
+    "成品取整差额",
+    "Output rounding adjustment",
+    "Chênh lệch làm tròn thành phẩm"
+  ],
+  "production.finishPipeline.settledOutputLabel": [
+    "完结结算产量",
+    "Settled final output",
+    "Sản lượng quyết toán cuối"
+  ],
+  "production.finishPipeline.materialRoundingSummaryTitle": [
+    "原材料完结取整明细",
+    "Material rounding adjustments",
+    "Chi tiết làm tròn nguyên liệu"
+  ],
+  "production.finishPipeline.scrapRoundingSummaryTitle": [
+    "废料完结取整明细",
+    "Scrap rounding adjustments",
+    "Chi tiết làm tròn phế liệu"
+  ],
+  "production.finishPipeline.returnPreviewTitle": [
+    "本次结余退料预览",
+    "Planned material return",
+    "Xem trước phiếu trả nguyên liệu"
+  ],
+  "production.finishPipeline.returnPreviewConfirmed": [
+    "确认完结后将同步生成退料单并立即确认入库，恢复对应仓库库存。",
+    "Finishing will create and immediately confirm the material return, restoring warehouse stock.",
+    "Khi kết thúc sẽ tạo và xác nhận nhập kho phiếu trả nguyên liệu ngay, khôi phục tồn kho."
+  ],
+  "production.finishPipeline.returnPreviewPending": [
+    "确认完结后生产单将变为已完工，同时生成待仓库审核的退料申请单（不阻断生产单完结）。",
+    "Finishing will complete this order and submit the material return request for warehouse confirmation.",
+    "Khi kết thúc, lệnh sẽ hoàn tất và gửi phiếu yêu cầu trả nguyên liệu cho kho duyệt."
+  ],
+  "production.finishPipeline.returnPreviewSkipped": [
+    "本次暂不提交退料申请，剩余已领材料保留在本单，完结后仍可在「物料」页签手动申请退料。",
+    "No return request will be created now. Unused materials remain on this order and can still be returned later from the Materials tab.",
+    "Chưa tạo phiếu trả lúc này. Vật tư chưa dùng vẫn nằm trên lệnh và có thể trả sau ở mục Vật tư."
+  ],
+  "production.finishPipeline.returnPreviewEmpty": [
+    "本次无待退回原材料，确认后将直接结算并完结生产单。",
+    "No materials to return. Confirming will finalize rounding and complete the production order.",
+    "Không có nguyên liệu cần trả. Xác nhận sẽ làm tròn và hoàn tất lệnh sản xuất."
+  ],
+  "production.finishPipeline.finishedWithReturnPending": [
+    "生产已结束，剩余材料退料申请已提交仓库；待入库成品批次仍需仓库批准。",
+    "Production ended and material return requested. Pending finished product receipts still require warehouse approval.",
+    "Đã kết thúc sản xuất và gửi yêu cầu trả nguyên liệu. Các lô thành phẩm chờ nhập vẫn cần kho duyệt."
+  ],
+  "production.finishPipeline.finishedWithReturnConfirmed": [
+    "生产已结束，退料单已同步生成并确认入库；待入库成品批次仍需仓库批准。",
+    "Production ended and material return confirmed into stock. Pending finished product receipts still require warehouse approval.",
+    "Đã kết thúc sản xuất và xác nhận nhập kho trả nguyên liệu. Các lô thành phẩm chờ nhập vẫn cần kho duyệt."
+  ],
+  "production.finishPipeline.stageReceiptConfirmSuccess": [
+    "半成品入库申请已提交并确认入库。",
+    "Semi-finished receipt submitted and confirmed into stock.",
+    "Đã gửi và xác nhận nhập kho bán thành phẩm."
+  ],
+  "production.finishPipeline.approveReceipt": [
+    "批准并确认入库",
+    "Approve & confirm receipt",
+    "Duyệt & xác nhận nhập kho"
+  ],
+  "production.finishPipeline.cancelReceipt": [
+    "取消入库申请",
+    "Cancel receipt request",
+    "Hủy yêu cầu nhập kho"
+  ],
+  "production.finishPipeline.confirmCancelReceipt": [
+    "确认取消申请",
+    "Confirm cancellation",
+    "Xác nhận hủy yêu cầu"
   ]
 };
