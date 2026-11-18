@@ -30,6 +30,7 @@ import { migrateProductionStages, productionStageTables, saveProductionStages, r
 import { exactQuantity, exactAdd, exactSubtract, exactCompare, exactNumber, quantityFields, parseProductionQuantity as parseExactQuantity, validExactQuantity } from '../shared/exact-quantity.js';
 import { saveExactQuantity, migrateExactQuantities } from './exact-quantity.js';
 import { productionRounding, finalizeProductionQuantities, reopenProductionQuantities } from './production-rounding.js';
+import { reviewProductionConsumption } from './production-review.js';
 
 export const productionBatchTables = ['production_batches', 'production_batch_items', 'production_batch_scraps'];
 export const productionTables = ['production_quantity_rounding', 'production_orders', 'production_items', 'production_scraps', 'production_bom_nodes', ...productionBatchTables, ...productionMaterialTables, ...productionReceiptTables, ...productionStageTables, ...productionOperationTables];
@@ -741,6 +742,12 @@ export function installProduction(app, db, options = {}) {
       .run(Number(req.body.completed), actor(req), new Date().toISOString(), order.id);
     return current(req);
   }, true));
+  app.post('/api/production-orders/:id/consumption-review', route(req => reviewProductionConsumption(
+    db,
+    req,
+    current(req),
+    { checkOpen, units, stockBefore, actor, updateBatchTotals, current },
+  ), true));
   app.post('/api/production-orders/:id/finish', route(req => {
     const initial=current(req);checkOpen(req,initial);
     reconcileRegistrations(req);

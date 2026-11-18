@@ -136,6 +136,10 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child B
     await productionAction(page, '结束生产');
     const finishDialog = page.getByRole('dialog', { name: '完结生产流水线', exact: true });
     await expect(finishDialog).toBeVisible();
+    const nextDocuments = finishDialog.getByRole('button', { name: '下一步：单据与在制', exact: true });
+    if (await nextDocuments.isVisible()) await nextDocuments.click();
+    const nextBalances = finishDialog.getByRole('button', { name: '下一步：处理结余', exact: true });
+    if (await nextBalances.isVisible()) await nextBalances.click();
     await expect(finishDialog.getByRole('alert')).toContainText('半成品');
     await expect(finishDialog.getByRole('button', { name: '下一步：完结预览', exact: true })).toBeDisabled();
     await finishDialog.getByRole('button', { name: '取消', exact: true }).click();

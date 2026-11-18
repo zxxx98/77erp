@@ -7343,20 +7343,155 @@ export default {
     "Production Finish Pipeline",
     "Quy trình kết thúc sản xuất"
   ],
+  "production.finishPipeline.stepReview": [
+    "1. 用料复核",
+    "1. Usage Review",
+    "1. Kiểm tra tiêu hao"
+  ],
   "production.finishPipeline.stepDocuments": [
-    "1. 单据与在制",
-    "1. Documents & WIP",
-    "1. Chứng từ & dở dang"
+    "2. 单据与在制",
+    "2. Documents & WIP",
+    "2. Chứng từ & dở dang"
   ],
   "production.finishPipeline.stepBalances": [
-    "2. 结余处理",
-    "2. Balance Settlement",
-    "2. Xử lý số dư"
+    "3. 结余处理",
+    "3. Balance Settlement",
+    "3. Xử lý số dư"
   ],
   "production.finishPipeline.stepConfirm": [
-    "3. 完结确认",
-    "3. Final Preview",
-    "3. Xác nhận kết thúc"
+    "4. 完结确认",
+    "4. Final Preview",
+    "4. Xác nhận kết thúc"
+  ],
+  "production.finishPipeline.nextDocuments": [
+    "下一步：单据与在制",
+    "Next: Documents & WIP",
+    "Tiếp theo: Chứng từ & dở dang"
+  ],
+  "production.finishPipeline.saveReview": [
+    "保存复核",
+    "Save Review",
+    "Lưu kiểm tra"
+  ],
+  "production.finishPipeline.saveReviewAndNext": [
+    "保存复核并下一步",
+    "Save & Next",
+    "Lưu & Tiếp theo"
+  ],
+  "production.finishPipeline.resetReview": [
+    "还原当前值",
+    "Reset Values",
+    "Khôi phục giá trị"
+  ],
+  "production.finishPipeline.reviewTitle": [
+    "用料复核单",
+    "Material & Semi-finished Review Sheet",
+    "Phiếu kiểm tra tiêu hao vật tư & bán thành phẩm"
+  ],
+  "production.finishPipeline.reviewHint": [
+    "汇总当前已登记批次的实际材料与半成品消耗。核对或修改后保存，后续单据、可退结余与成本将自动按复核后的数据计算。",
+    "Lists current recorded material and semi-finished consumption from active batches. Save any adjustments before continuing so documents, balances, and rounding use the reviewed quantities.",
+    "Tổng hợp lượng tiêu hao nguyên liệu và bán thành phẩm đã ghi nhận. Lưu điều chỉnh trước khi tiếp tục để chứng từ, số dư và làm tròn tính theo dữ liệu đã kiểm tra."
+  ],
+  "production.finishPipeline.reviewEmpty": [
+    "当前暂无已登记的生产批次耗用记录，可直接进入下一步处理单据。",
+    "No active batch consumption recorded yet. Proceed directly to documents and WIP.",
+    "Chưa có bản ghi tiêu hao lô nào. Có thể chuyển thẳng sang bước tiếp theo."
+  ],
+  "production.finishPipeline.reviewPendingHint": [
+    "当前仍有 {{count}} 条待结算或待验收登记尚未计入复核单；可在下一步核销后返回本步核对最新消耗。",
+    "{{count}} pending or uninspected registration(s) are not yet reflected below; resolve them in the next step and return here if needed.",
+    "Vẫn còn {{count}} bản ghi chờ quyết toán hoặc nghiệm thu chưa tính vào phiếu kiểm tra; xử lý ở bước sau rồi quay lại nếu cần."
+  ],
+  "production.finishPipeline.reviewSaved": [
+    "复核单已保存，后续单据与结余已按复核数据更新。",
+    "Usage review saved; balances and costs have been recalculated.",
+    "Đã lưu phiếu kiểm tra; số dư và giá vốn đã được tính lại."
+  ],
+  "production.finishPipeline.reviewUnsavedHint": [
+    "复核单有未保存修改，请先保存复核或还原后再跳转后续步骤。",
+    "Unsaved changes in the review sheet. Save or reset before moving to later steps.",
+    "Phiếu kiểm tra có thay đổi chưa lưu. Hãy lưu hoặc khôi phục trước khi chuyển bước."
+  ],
+  "production.finishPipeline.reviewRawBadge": [
+    "原材料",
+    "Material",
+    "Nguyên liệu"
+  ],
+  "production.finishPipeline.reviewSemiBadge": [
+    "半成品",
+    "Semi-finished",
+    "Bán thành phẩm"
+  ],
+  "production.finishPipeline.reviewStageRoot": [
+    "成品层",
+    "Finished Stage",
+    "Công đoạn thành phẩm"
+  ],
+  "production.finishPipeline.reviewStageSub": [
+    "半成品层",
+    "Sub-stage",
+    "Công đoạn bán thành phẩm"
+  ],
+  "production.finishPipeline.reviewStageOutput": [
+    "本层已产出 {{quantity}} {{unit}}",
+    "Stage output {{quantity}} {{unit}}",
+    "Sản lượng tầng này {{quantity}} {{unit}}"
+  ],
+  "production.finishPipeline.reviewRecordedLabel": [
+    "当前已登记",
+    "Recorded",
+    "Đã ghi nhận"
+  ],
+  "production.finishPipeline.reviewStandardLabel": [
+    "按产出标准",
+    "Standard",
+    "Định mức"
+  ],
+  "production.finishPipeline.reviewPoolHeadroom": [
+    "剩余可调余量",
+    "Available headroom",
+    "Dư địa còn lại"
+  ],
+  "production.finishPipeline.reviewPostAdded": [
+    "含后处理固定耗用 +{{quantity}} {{unit}}",
+    "Includes fixed post-processing +{{quantity}} {{unit}}",
+    "Bao gồm sau xử lý cố định +{{quantity}} {{unit}}"
+  ],
+  "production.finishPipeline.reviewInputLabel": [
+    "{{name}} 复核耗料数量",
+    "{{name}} reviewed consumption",
+    "Tiêu hao kiểm tra {{name}}"
+  ],
+  "production.finishPipeline.reviewReasonLabel": [
+    "{{name}} 复核差异说明",
+    "{{name}} review variance note",
+    "Ghi chú chênh lệch {{name}}"
+  ],
+  "production.finishPipeline.reviewReasonPlaceholder": [
+    "可选：填写复核调整原因",
+    "Optional: reason for review adjustment",
+    "Tùy chọn: lý do điều chỉnh"
+  ],
+  "production.finishPipeline.reviewDelta": [
+    "较原登记 {{delta}} {{unit}}",
+    "{{delta}} {{unit}} vs recorded",
+    "{{delta}} {{unit}} so với đã ghi"
+  ],
+  "production.finishPipeline.reviewExceededPool": [
+    "当前可用余量不足（合计可调上限 {{max}} {{unit}}）",
+    "Exceeds available balance (combined max {{max}} {{unit}})",
+    "Vượt quá số dư khả dụng (giới hạn {{max}} {{unit}})"
+  ],
+  "production.finishPipeline.reviewSemiRequired": [
+    "为本层必耗半成品，不能复核为 0",
+    "Required semi-finished input cannot be reviewed to 0",
+    "Bán thành phẩm bắt buộc không thể về 0"
+  ],
+  "production.finishPipeline.reviewPostProcessingList": [
+    "后处理固定耗料（按工序次数自动核算，不在此调整）",
+    "Fixed post-processing materials (auto-calculated from runs)",
+    "Vật tư cố định sau xử lý (tự động tính theo lượt)"
   ],
   "production.finishPipeline.nextBalances": [
     "下一步：处理结余",

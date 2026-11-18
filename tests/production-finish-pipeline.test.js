@@ -428,3 +428,250 @@ test('stage-receipts confirm=true immediately stocks remaining semi-finished out
   const backupPreview = f.ok(await f.request('/backup/preview', { backup }));
   f.ok(await f.command('/backup/restore', { backup, ...backupPreview, confirmation: 'RESTORE_BUSINESS_DATA' }));
 });
+
+test('consumption-review adjusts non-stage material consumption across batches, updates costs/returnables and preserves accounting invariants', async t => {
+  const f = await setupFixture(t, { roundUp: false });
+  let order = await f.createOrder(5);
+  order = f.ok(await f.command(`/production-orders/${order.id}/start`, { version: order.version }));
+  f.ok(await f.command(`/production-material-documents/${order.material_documents[0].id}/confirm`, {
+    version: order.material_documents[0].version,
+    items: [{ product_id: f.raw, quantity: 10 }, { product_id: f.other, quantity: 10 }],
+  }));
+  order = await f.get(order.id);
+  assert.equal(productionFinishPreview(order).review_has_items, false);
+
+  // Register Batch 1 and confirm its finished receipt.
+  order = f.ok(await f.command(`/production-orders/${order.id}/complete`, {
+    version: order.version,
+    completed_quantity: 2,
+    items: [{ product_id: f.raw, quantity: 4, variance_reason: '' }, { product_id: f.other, quantity: 2, variance_reason: '' }],
+    scraps: [],
+    finish_order: false,
+  }));
+  const receipt1 = order.receipt_documents[0];
+  f.ok(await f.command(`/production-receipts/${receipt1.id}/confirm`, { version: receipt1.version }));
+  order = await f.get(order.id);
+  assert.equal(f.stock(f.output).stock, 2);
+  assert.equal(f.stock(f.output).inventory_value_cents, 6000);
+
+  // Register Batch 2 and keep its receipt pending.
+  order = f.ok(await f.command(`/production-orders/${order.id}/complete`, {
+    version: order.version,
+    completed_quantity: 1,
+    items: [{ product_id: f.raw, quantity: 2, variance_reason: '' }, { product_id: f.other, quantity: 1, variance_reason: '' }],
+    scraps: [],
+    finish_order: false,
+  }));
+  const previewBefore = productionFinishPreview(order);
+  assert.equal(previewBefore.review_has_items, true);
+  assert.equal(previewBefore.review_materials.find(m => m.product_id === f.raw).recorded_quantity, 6);
+  assert.equal(previewBefore.review_materials.find(m => m.product_id === f.other).recorded_quantity, 3);
+
+  // Workers without production management permission cannot submit consumption review.
+  const regCookie = await f.createWorker('reviewreg', ['basic_view', 'production_register']);
+  await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    items: [{ product_id: f.raw, quantity: 7 }, { product_id: f.other, quantity: 3 }],
+  }, { cookie: regCookie, expected: 403 });
+
+  // Exceeding issued balance or setting all items to zero is rejected atomically.
+  await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    items: [{ product_id: f.raw, quantity: 11 }, { product_id: f.other, quantity: 3 }],
+  }, { expected: 400 });
+  await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    items: [{ product_id: f.raw, quantity: 0 }, { product_id: f.other, quantity: 0 }],
+  }, { expected: 400 });
+
+  // Review: raw 6 -> 7 (+1 hits pending Batch 2), other 3 -> 1.5 (-1 hits pending Batch 2, -0.5 adjusts confirmed Batch 1).
+  order = f.ok(await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    items: [
+      { product_id: f.raw, quantity: 7, variance_reason: '损耗复核上调' },
+      { product_id: f.other, quantity: 1.5, variance_reason: '辅料复用结余' },
+    ],
+  }));
+  assert.equal(order.items.find(i => i.product_id === f.raw).consumed_quantity, 7);
+  assert.equal(order.items.find(i => i.product_id === f.raw).available_quantity, 3);
+  assert.equal(order.items.find(i => i.product_id === f.other).consumed_quantity, 1.5);
+  assert.equal(order.items.find(i => i.product_id === f.other).available_quantity, 8.5);
+  // Confirmed output stock value dropped by 0.5 * $10 = 500 cents (6000 -> 5500); pending Batch 2 became 2000 + 1000 = 3000.
+  assert.equal(f.stock(f.output).inventory_value_cents, 5500);
+  assert.equal(order.batches[0].total_cost_cents, 5500);
+  assert.equal(order.batches[1].total_cost_cents, 3000);
+  const previewAfter = productionFinishPreview(order);
+  assert.equal(previewAfter.returnable_materials.find(m => m.product_id === f.raw).returnable_quantity, 3);
+  assert.equal(previewAfter.returnable_materials.find(m => m.product_id === f.other).returnable_quantity, 8.5);
+
+  // Confirm Batch 2 receipt, sell all 3 finished units, then verify confirmed-only cost review rejects safely.
+  const receipt2 = order.receipt_documents.find(d => d.batch_id === order.batches[1].id);
+  f.ok(await f.command(`/production-receipts/${receipt2.id}/confirm`, { version: receipt2.version }));
+  const sale = f.ok(await f.command('/orders', {
+    type: 'out',
+    partner: '客户',
+    note: '',
+    items: [{ product_id: f.output, quantity: 3, price: 30 }],
+  }));
+  f.ok(await f.command(`/orders/${sale.id}/approve`, { version: sale.version }));
+  assert.equal(f.stock(f.output).stock, 0);
+  order = await f.get(order.id);
+  await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    items: [{ product_id: f.raw, quantity: 8 }, { product_id: f.other, quantity: 1.5 }],
+  }, { expected: 409 });
+
+  // Finish returning all reviewed remaining materials and run full backup + restore check.
+  order = await f.get(order.id);
+  const finished = f.ok(await f.command(`/production-orders/${order.id}/finish`, {
+    version: order.version,
+    return_items: [{ product_id: f.raw, quantity: 3 }, { product_id: f.other, quantity: 8.5 }],
+    confirm_return: true,
+  }));
+  assert.equal(finished.status, 'completed');
+  assert.equal(f.stock(f.raw).stock, 93);
+  assert.equal(f.stock(f.other).stock, 98.5);
+  const backup = f.ok(await f.request('/backup'));
+  const backupPreview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...backupPreview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal((await f.get(order.id)).status, 'completed');
+});
+
+test('consumption-review on staged orders adjusts both raw materials and semi-finished consumption with full ledger replay & backup validation', async t => {
+  const f = await setupFixture(t, { staged: true });
+  let order = await f.createOrder(4);
+  order = f.ok(await f.command(`/production-orders/${order.id}/start`, { version: order.version }));
+  f.ok(await f.command(`/production-material-documents/${order.material_documents[0].id}/confirm`, {
+    version: order.material_documents[0].version,
+    items: [{ product_id: f.raw, quantity: 10 }],
+  }));
+  order = await f.get(order.id);
+
+  // Produce 3 kg semi-finished using 6 kg raw ($60 -> $20/kg).
+  order = f.ok(await f.command(`/production-orders/${order.id}/stages/complete`, {
+    version: order.version,
+    path: '1',
+    completed_quantity: 3,
+    items: [{ path: '1.1', quantity: 6 }],
+    finish_order: false,
+  }));
+  // Create then void a root batch to cover voided-history ledger replay checks.
+  order = f.ok(await f.command(`/production-orders/${order.id}/stages/complete`, {
+    version: order.version,
+    path: '',
+    completed_quantity: 1,
+    items: [{ path: '1', quantity: 1 }],
+    scraps: [],
+    finish_order: false,
+  }));
+  const voidBatchId = order.stages.find(s => s.path === '').items ? f.db.prepare("SELECT id FROM production_stage_batches WHERE production_id=? AND path=''").get(order.id).id : null;
+  order = f.ok(await f.command(`/production-orders/${order.id}/stages/batches/${voidBatchId}/void`, {
+    version: order.version,
+    reason: '测试作废回溯',
+  }));
+
+  // Register active root batch: 1/3 output using 1/3 semi-finished, plus submit pending 1 kg semi-finished receipt.
+  order = f.ok(await f.command(`/production-orders/${order.id}/stages/complete`, {
+    version: order.version,
+    path: '',
+    completed_quantity: '1/3',
+    items: [{ path: '1', quantity: '1/3' }],
+    scraps: [],
+    finish_order: false,
+  }));
+  order = f.ok(await f.command(`/production-orders/${order.id}/stage-receipts`, {
+    version: order.version,
+    path: '1',
+    quantity: 1,
+  }));
+
+  const previewBefore = productionFinishPreview(order);
+  assert.equal(previewBefore.review_has_items, true);
+  assert.equal(previewBefore.review_stages.length, 2);
+  const rootSemiReview = previewBefore.review_stages[1].items[0];
+  assert.equal(rootSemiReview.cannot_be_zero, true);
+
+  // Reject setting required semi-finished to 0 or exceeding pool beyond pending BCRK reservation.
+  await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    stage_inputs: [{ stage_path: '', input_path: '1', quantity: 0 }],
+  }, { expected: 400 });
+  await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    stage_inputs: [{ stage_path: '', input_path: '1', quantity: 2.5 }],
+  }, { expected: 409 });
+
+  // Review both raw material (6 -> 4.5, cost $45 -> $15/kg semi) and semi-finished (1/3 -> 2/3) simultaneously.
+  order = f.ok(await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    stage_inputs: [
+      { stage_path: '1', input_path: '1.1', quantity: 4.5, variance_reason: '下层用料下调' },
+      { stage_path: '', input_path: '1', quantity: '2/3', variance_reason: '上层半成品复核调增' },
+    ],
+  }));
+  const rawItem = order.items.find(i => i.product_id === f.raw);
+  assert.equal(rawItem.consumed_quantity, 4.5);
+  assert.equal(rawItem.available_quantity, 5.5);
+  const semiStage = order.stages.find(s => s.path === '1');
+  assert.equal(exactCompare(exactQuantity(semiStage, 'consumed_quantity'), '2/3'), 0);
+  assert.equal(exactCompare(exactQuantity(semiStage, 'available_quantity'), '4/3'), 0);
+  const pendingStageDoc = order.receipt_documents.find(d => d.kind === 'stage' && d.status === 'pending');
+  assert.equal(pendingStageDoc.total_cost_cents, 1500);
+  assert.equal(order.total_cost_cents, 1000);
+
+  // Clear pending & remaining semi-finished receipts, finish order returning remaining 5.5 kg raw, verify backup/restore.
+  f.ok(await f.command(`/production-stage-receipts/${pendingStageDoc.stage_receipt_id}/confirm`, { version: pendingStageDoc.version }));
+  order = await f.get(order.id);
+  order = f.ok(await f.command(`/production-orders/${order.id}/stage-receipts`, {
+    version: order.version,
+    path: '1',
+    quantity: '4/3',
+    confirm: true,
+  }));
+  const finished = f.ok(await f.command(`/production-orders/${order.id}/finish`, {
+    version: order.version,
+    return_items: [{ product_id: f.raw, quantity: 5.5 }],
+    confirm_return: true,
+  }));
+  assert.equal(finished.status, 'completed');
+  const semiStock = f.db.prepare('SELECT stock, stock_fraction, inventory_value_cents FROM products WHERE id=?').get(f.semi);
+  assert.equal(exactCompare(exactQuantity(semiStock, 'stock'), '7/3'), 0);
+  assert.equal(semiStock.inventory_value_cents, 3500);
+  assert.equal(f.stock(f.raw).stock, 95.5);
+  const backup = f.ok(await f.request('/backup'));
+  const backupPreview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...backupPreview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal((await f.get(order.id)).status, 'completed');
+});
+
+test('consumption-review adjusts historical non-material-workflow order raw stock and receipt cost directly', async t => {
+  const f = await setupFixture(t);
+  f.db.exec(`CREATE TRIGGER hist_review AFTER UPDATE OF material_workflow ON production_orders
+    WHEN NEW.material_workflow=1 BEGIN UPDATE production_orders SET material_workflow=0 WHERE id=NEW.id; END;`);
+  let order = await f.createOrder(2);
+  order = f.ok(await f.command(`/production-orders/${order.id}/complete`, {
+    version: order.version,
+    completed_quantity: 2,
+    items: [{ product_id: f.raw, quantity: 2 }, { product_id: f.other, quantity: 2 }],
+    scraps: [],
+    finish_order: false,
+  }));
+  assert.equal(f.stock(f.raw).stock, 98);
+  assert.equal(f.stock(f.other).stock, 98);
+  assert.equal(order.total_cost_cents, 4000);
+
+  order = f.ok(await f.command(`/production-orders/${order.id}/consumption-review`, {
+    version: order.version,
+    items: [{ product_id: f.raw, quantity: 3 }, { product_id: f.other, quantity: 1 }],
+  }));
+  assert.equal(f.stock(f.raw).stock, 97);
+  assert.equal(f.stock(f.other).stock, 99);
+  assert.equal(order.total_cost_cents, 4000);
+
+  const finished = f.ok(await f.command(`/production-orders/${order.id}/finish`, { version: order.version }));
+  assert.equal(finished.status, 'completed');
+  const backup = f.ok(await f.request('/backup'));
+  const backupPreview = f.ok(await f.request('/backup/preview', { backup }));
+  f.ok(await f.command('/backup/restore', { backup, ...backupPreview, confirmation: 'RESTORE_BUSINESS_DATA' }));
+  assert.equal((await f.get(order.id)).status, 'completed');
+});

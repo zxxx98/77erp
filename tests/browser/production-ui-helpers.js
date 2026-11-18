@@ -16,6 +16,10 @@ export async function adjustUsage(page) {
 export async function confirmFinishPipeline(page, { returnMaterials = false, confirmReturn = false } = {}) {
   const dialog = page.getByRole('dialog', { name: '完结生产流水线', exact: true });
   await expect(dialog).toBeVisible();
+  const nextDocuments = dialog.getByRole('button', { name: '下一步：单据与在制', exact: true });
+  if (await nextDocuments.isVisible()) {
+    await nextDocuments.click();
+  }
   const nextBalances = dialog.getByRole('button', { name: '下一步：处理结余', exact: true });
   if (await nextBalances.isVisible()) {
     await nextBalances.click();

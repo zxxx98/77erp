@@ -216,7 +216,7 @@
 .production-finish-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .production-finish-stepper {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 .production-finish-step {
@@ -311,7 +311,24 @@
   font-size: 13px;
 }
 .production-finish-return-row > div,
-.production-finish-return-input { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.production-finish-return-input,
+.production-finish-review-reason { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.production-finish-review-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.8fr) repeat(2, minmax(96px, 1fr)) minmax(150px, 1.3fr) minmax(140px, 1.2fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f2;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+.production-finish-review-row small { color: #647084; font-size: 12px; overflow-wrap: anywhere; }
+.production-finish-review-row span { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.production-finish-review-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.production-finish-delta-up { color: #b45309 !important; font-weight: 500; }
+.production-finish-delta-down { color: #047857 !important; font-weight: 500; }
 .production-finish-return-row small { color: #647084; font-size: 12px; overflow-wrap: anywhere; }
 .production-finish-return-row span { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .production-finish-summary-grid {
@@ -351,9 +368,11 @@
 .production-finish-footer { justify-content: flex-end; flex-wrap: wrap; }
 
 @media (max-width: 640px) {
-  .production-finish-stepper { grid-template-columns: 1fr; }
-  .production-finish-return-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production-finish-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production-finish-return-row,
+  .production-finish-review-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .production-finish-return-name,
-  .production-finish-return-input { grid-column: 1 / -1; }
+  .production-finish-return-input,
+  .production-finish-review-reason { grid-column: 1 / -1; }
   .production-finish-summary-grid { grid-template-columns: 1fr; }
 }

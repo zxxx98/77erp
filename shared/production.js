@@ -3,7 +3,8 @@ import { validQuantity, quantityUnits, QUANTITY_SCALE, validStoredQuantity } fro
 import { bomRequiredQuantity } from './bom.js';
 import { parseProductionQuantity as parseExactQuantity, exactCompare, exactQuantity, validExactQuantity, exactBomQuantity, exactAdd, exactMultiply, exactSubtract, exactDivide, exactCeil, exactMax, exactSum, exactNumber, quantityFields } from './exact-quantity.js';
 import { productionFlowView } from './production-flow.js';
-import { pooledProductionStages } from './production-pools.js';
+import { pooledProductionStages, productionPoolPathMap } from './production-pools.js';
+import { stageInputCanBeZero } from './production-stages.js';
 
 export function productionActualDefault(item, quantity, order) {
   if (item.base_quantity === 0) return 0;
@@ -186,6 +187,62 @@ export function productionFinishPreview(order) {
   const returnableMaterials = materials.filter(item => exactCompare(exactQuantity(item, 'returnable_quantity'), 0) > 0);
   const roundingShortages = materials.filter(item => exactCompare(exactQuantity(item, 'rounding_shortage_quantity'), 0) > 0);
   const roundingMaterials = materials.filter(item => exactCompare(exactQuantity(item, 'rounding_quantity'), 0) > 0);
+  const activeBatches = (order.batches || []).filter(batch => batch.status === 'active');
+  const reviewMaterials = !order.stage_workflow && activeBatches.length > 0
+    ? (order.items || [])
+        .filter(item => !item.is_post_processing_only)
+        .map(item => {
+          const recorded = exactSum(
+            activeBatches.map(batch => batch.items?.find(entry => entry.product_id === item.product_id)).filter(Boolean),
+            'actual_quantity',
+          );
+          const available = order.material_workflow
+            ? exactQuantity(item, 'available_quantity')
+            : exactQuantity(item.product || {}, 'stock');
+          return {
+            ...item,
+            ...quantityFields(recorded, 'recorded_quantity'),
+            ...quantityFields(available, 'review_available_quantity'),
+            ...quantityFields(exactAdd(recorded, available), 'max_quantity'),
+            min_quantity: 0,
+          };
+        })
+    : [];
+  const reviewPostProcessingMaterials = !order.stage_workflow && activeBatches.length > 0
+    ? (order.items || []).filter(
+        item => item.is_post_processing_only && exactCompare(exactQuantity(item, 'post_processing_consumed_quantity'), 0) > 0,
+      )
+    : [];
+  const poolMap = order.stage_workflow ? productionPoolPathMap(order) : new Map();
+  const stageByPath = new Map((order.stages || []).map(stage => [stage.path, stage]));
+  const orderedStages = order.stage_workflow
+    ? [...(order.stages || []).filter(stage => stage.path !== ''), ...(order.stages || []).filter(stage => stage.path === '')]
+    : [];
+  const reviewStages = orderedStages
+    .filter(stage => exactCompare(exactQuantity(stage, 'completed_quantity'), 0) > 0)
+    .map(stage => ({
+      ...stage,
+      items: (stage.items || []).map(node => {
+        const recorded = exactQuantity(node, 'actual_quantity');
+        const poolPaths = node.usage_mode === 'explode' ? (poolMap.get(node.path) || [node.path]) : null;
+        const poolAvailable = poolPaths
+          ? exactSum(poolPaths.map(path => stageByPath.get(path)).filter(Boolean), 'available_quantity')
+          : exactQuantity(order.items?.find(item => item.product_id === node.product_id) || {}, 'available_quantity');
+        return {
+          ...node,
+          stage_path: stage.path,
+          input_path: node.path,
+          pool_key: poolPaths ? `semi:${poolPaths.join('|')}` : `raw:${node.product_id}`,
+          cannot_be_zero: !stageInputCanBeZero(node, stage.items),
+          ...quantityFields(recorded, 'recorded_quantity'),
+          ...quantityFields(poolAvailable, 'pool_available_quantity'),
+          ...quantityFields(exactAdd(recorded, poolAvailable), 'max_quantity'),
+        };
+      }),
+    }));
+  const reviewHasItems = order.stage_workflow
+    ? reviewStages.some(stage => stage.items.length > 0)
+    : reviewMaterials.length > 0;
   const hasRootUninspected = uninspectedRegistrations.some(row => row.endpoint !== 'operations/report' && row.path === '');
   const step1Blocked = !hasOutput
     || pendingMaterialDocuments.length > 0
@@ -208,6 +265,10 @@ export function productionFinishPreview(order) {
       ...quantityFields(settledOutput, 'settled_quantity'),
     },
     materials,
+    review_has_items: reviewHasItems,
+    review_materials: reviewMaterials,
+    review_post_processing_materials: reviewPostProcessingMaterials,
+    review_stages: reviewStages,
     returnable_materials: returnableMaterials,
     rounding_shortages: roundingShortages,
     rounding_materials: roundingMaterials,

@@ -29,6 +29,7 @@ for (const device of ['desktop','mobile','pwa']) test(`${device} records shortag
     await page.getByRole('button',{name:'结束生产',exact:true}).first().click();
     const finishDialog=page.getByRole('dialog',{name:'完结生产流水线',exact:true});
     await expect(finishDialog).toBeVisible();
+    await finishDialog.getByRole('button',{name:'2. 单据与在制',exact:true}).click();
     await expect(finishDialog).toContainText('原料 · 还缺 4 kg');
     await expect(finishDialog.getByRole('button',{name:'下一步：处理结余',exact:true})).toBeDisabled();
     await finishDialog.getByRole('button',{name:'取消',exact:true}).click();

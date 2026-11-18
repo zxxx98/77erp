@@ -4766,6 +4766,106 @@ export const validationMessages = {
     "生产单仍有登记未结算或未验收，请结清后批准入库。",
     "Resolve or inspect pending registrations before approving semi-finished receipts.",
     "Cần quyết toán hoặc nghiệm thu các bản ghi chờ trước khi duyệt nhập kho bán thành phẩm."
+  ],
+  "PRODUCTION_REVIEW_REASON_LIMIT": [
+    "复核差异说明最多 500 字。",
+    "Consumption review note can be up to 500 characters.",
+    "Ghi chú chênh lệch kiểm tra tiêu hao tối đa 500 ký tự."
+  ],
+  "PRODUCTION_REVIEW_POSTED_STOCK_CLEARED": [
+    "{p0}已全部出库且库存成本已结清，不能再调整已入库批次成本。",
+    "{p0} has been fully issued out of inventory and its cost is settled, so confirmed batch cost can no longer be adjusted.",
+    "{p0} đã xuất hết khỏi kho và giá vốn đã tất toán, không thể điều chỉnh giá vốn lô đã nhập kho."
+  ],
+  "PRODUCTION_REVIEW_QUANTITY_TOO_LOW": [
+    "{p0}复核数量过低，需保证每个有效批次至少保留必耗或大于 0 的耗料。",
+    "Reviewed consumption for {p0} is too low; each active batch must keep required semi-finished or positive usage.",
+    "Số lượng kiểm tra lại cho {p0} quá thấp; mỗi lô hiệu lực cần giữ mức bán thành phẩm bắt buộc hoặc lớn hơn 0."
+  ],
+  "PRODUCTION_REVIEW_ITEMS_INVALID": [
+    "请核对复核材料明细，材料不能重复或超出本生产单范围。",
+    "Verify the reviewed material items; duplicates or out-of-order materials are not allowed.",
+    "Vui lòng kiểm tra danh sách vật tư; không được trùng lặp hoặc vượt ngoài lệnh sản xuất."
+  ],
+  "PRODUCTION_REVIEW_BATCH_REQUIRED": [
+    "请先登记至少一个有效完工批次后再复核。",
+    "Register at least one active completion batch before reviewing consumption.",
+    "Vui lòng ghi nhận ít nhất một lô hoàn thành hiệu lực trước khi kiểm tra tiêu hao."
+  ],
+  "PRODUCTION_REVIEW_MATERIAL_UNMATCHED": [
+    "材料需属于本生产单。",
+    "Materials must belong to this production order.",
+    "Vật tư phải thuộc lệnh sản xuất này."
+  ],
+  "PRODUCTION_REVIEW_QUANTITY_INVALID": [
+    "复核耗料需为非负数且最多 4 位小数。",
+    "Reviewed consumption must be non-negative with up to 4 decimal places.",
+    "Số lượng tiêu hao kiểm tra phải không âm và tối đa 4 chữ số thập phân."
+  ],
+  "PRODUCTION_REVIEW_POST_PROCESSING_FIXED": [
+    "{p0}为后处理固定耗料，请在后处理工序中核对，不能在复核单修改。",
+    "{p0} is fixed post-processing consumption; adjust it in post-processing reports instead of the review sheet.",
+    "{p0} là tiêu hao cố định sau xử lý; hãy điều chỉnh tại công đoạn sau xử lý."
+  ],
+  "PRODUCTION_REVIEW_ISSUED_INSUFFICIENT": [
+    "{p0}已领未耗余额不足（当前 {p1} {p2}）。请先补料或核对复核耗料。",
+    "Insufficient issued unconsumed balance for {p0} (current: {p1} {p2}). Request additional materials or verify the reviewed consumption.",
+    "Số dư đã lĩnh chưa tiêu hao của {p0} không đủ (hiện tại: {p1} {p2}). Hãy lĩnh bù hoặc kiểm tra lại lượng tiêu hao."
+  ],
+  "PRODUCTION_REVIEW_STOCK_INSUFFICIENT": [
+    "{p0}库存不足（当前 {p1} {p2}）。请先补料或核对复核耗料。",
+    "Insufficient stock for {p0} (current: {p1} {p2}). Request additional stock or verify the reviewed consumption.",
+    "Tồn kho {p0} không đủ (hiện tại: {p1} {p2}). Hãy bổ sung tồn kho hoặc kiểm tra lại lượng tiêu hao."
+  ],
+  "PRODUCTION_REVIEW_BATCH_POSITIVE_REQUIRED": [
+    "第 {p0} 批需保留至少一种大于零的材料耗料。",
+    "Batch {p0} must keep at least one material with positive consumption.",
+    "Lô thứ {p0} phải giữ ít nhất một vật tư có tiêu hao lớn hơn 0."
+  ],
+  "PRODUCTION_REVIEW_STAGE_BALANCE_INSUFFICIENT": [
+    "{p0}来源层［{p1}］半成品余额不足（还缺 {p2}），请核对复核耗料或先取消待入库半成品单。",
+    "Insufficient semi-finished balance for {p0} from source stage [{p1}] (short by {p2}). Adjust reviewed consumption or cancel pending stage receipts first.",
+    "Số dư bán thành phẩm {p0} từ công đoạn [{p1}] không đủ (thiếu {p2}). Hãy điều chỉnh lượng kiểm tra hoặc hủy phiếu nhập bán thành phẩm chờ."
+  ],
+  "PRODUCTION_REVIEW_STAGE_RECEIPT_CONFLICT": [
+    "调整后半成品可用余额不足以覆盖已提交的半成品入库单，请先取消或作废半成品入库单后再复核。",
+    "Remaining semi-finished balance after adjustment cannot cover submitted stage receipts; void or cancel stage receipts first.",
+    "Số dư bán thành phẩm sau điều chỉnh không đủ bù các phiếu nhập bán thành phẩm đã gửi; hãy hủy phiếu nhập trước."
+  ],
+  "PRODUCTION_REVIEW_STAGE_INPUTS_INVALID": [
+    "请核对各层复核耗料明细，不能重复提交相同投入项。",
+    "Verify stage consumption review items; duplicate inputs are not allowed.",
+    "Vui lòng kiểm tra chi tiết tiêu hao các tầng; không được gửi trùng mục đầu vào."
+  ],
+  "PRODUCTION_REVIEW_STAGE_PATH_INVALID": [
+    "请核对复核层路径。",
+    "Verify the reviewed stage path.",
+    "Vui lòng kiểm tra đường dẫn tầng kiểm tra."
+  ],
+  "PRODUCTION_REVIEW_STAGE_INPUT_UNMATCHED": [
+    "投入物料或半成品不属于该生产层。",
+    "The input material or semi-finished product does not belong to this production stage.",
+    "Vật tư hoặc bán thành phẩm đầu vào không thuộc tầng sản xuất này."
+  ],
+  "PRODUCTION_REVIEW_STAGE_NO_BATCHES": [
+    "生产层［{p0}］暂无有效产出批次，不能调整复核数量。",
+    "Production stage [{p0}] has no active output batches to review or adjust.",
+    "Tầng sản xuất [{p0}] chưa có lô sản lượng hiệu lực để điều chỉnh."
+  ],
+  "PRODUCTION_REVIEW_SEMI_REQUIRED": [
+    "{p0}为本层必耗半成品，不能复核为 0。",
+    "{p0} is a required semi-finished input for this stage and cannot be reviewed to 0.",
+    "{p0} là bán thành phẩm bắt buộc của tầng này, không thể kiểm tra về 0."
+  ],
+  "PRODUCTION_REVIEW_STAGE_BATCH_POSITIVE_REQUIRED": [
+    "［{p0}］第 {p1} 批需保留至少一项大于零的直属投入。",
+    "[{p0}] Batch {p1} must keep at least one direct input greater than 0.",
+    "[{p0}] Lô thứ {p1} phải giữ ít nhất một đầu vào trực tiếp lớn hơn 0."
+  ],
+  "PRODUCTION_REVIEW_ALREADY_FINALIZED": [
+    "生产单已完结取整，请先回退后再复核耗料。",
+    "This production order already has final quantity rounding; reopen before reviewing consumption.",
+    "Lệnh sản xuất đã làm tròn tất toán, hãy mở lại trước khi kiểm tra tiêu hao."
   ]
 };
 export const validationNestedParams = {"VALIDATION_AUTH_56FB08F914": ["p0"], "VALIDATION_PRODUCTION_4A3C3368D5": ["p0"]};

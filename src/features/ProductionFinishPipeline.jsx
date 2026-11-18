@@ -12,6 +12,7 @@ import { useLocale } from '../i18n/react.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { productionFinishPreview } from '../../shared/production.js';
 import {
+  exactAdd,
   exactCompare,
   exactQuantity,
   exactSubtract,
@@ -38,9 +39,13 @@ export function ProductionFinishPipeline({
   const preview = useMemo(() => productionFinishPreview(order), [order]);
 
   const [step, setStep] = useState(() => (
-    preview?.step1_has_items ? 1 : preview?.step2_has_items ? 2 : 3
+    preview?.review_has_items ? 1
+      : preview?.step1_has_items ? 2
+        : preview?.step2_has_items ? 3 : 4
   ));
   const [statusMessage, setStatusMessage] = useState('');
+  const [reviewOverrides, setReviewOverrides] = useState({});
+  const [reviewReasons, setReviewReasons] = useState({});
   const [returnToggle, setReturnToggle] = useState(null);
   const [returnOverrides, setReturnOverrides] = useState({});
   const [returnNote, setReturnNote] = useState('');
@@ -54,7 +59,124 @@ export function ProductionFinishPipeline({
   const canApprove = can('stock_approve');
   const canManage = can('production');
   const locked = action.busy;
-  const activeStep = preview.step1_blocked ? 1 : (preview.step2_blocked && step > 2 ? 2 : step);
+
+  const duplicateStageNames = new Set(
+    preview.review_stages
+      .map(stage => stage.name)
+      .filter((name, index, list) => list.indexOf(name) !== index),
+  );
+  const reviewEntries = order.stage_workflow
+    ? preview.review_stages.flatMap(stage => {
+        const stageLabel = duplicateStageNames.has(stage.name) && stage.path ? `${stage.name} [${stage.path}]` : stage.name;
+        return stage.items.map(node => ({
+          key: `${stage.path}:${node.path}`,
+          stage_path: stage.path,
+          input_path: node.path,
+          product_id: node.product_id,
+          name: node.name,
+          barcode: node.barcode,
+          specification: node.specification,
+          unit: node.unit,
+          kind: node.usage_mode === 'explode' ? 'semi' : 'raw',
+          recorded: exactQuantity(node, 'recorded_quantity'),
+          standard: node.standard_quantity,
+          poolKey: node.pool_key,
+          poolBaseAvailable: exactQuantity(node, 'pool_available_quantity'),
+          cannotBeZero: node.cannot_be_zero,
+          postQuantity: 0,
+          labelName: `${stageLabel} · ${node.name}`,
+        }));
+      })
+    : preview.review_materials.map(item => ({
+        key: String(item.product_id),
+        product_id: item.product_id,
+        name: item.name,
+        barcode: item.barcode,
+        specification: item.specification,
+        unit: item.unit,
+        kind: 'raw',
+        recorded: exactQuantity(item, 'recorded_quantity'),
+        standard: item.standard_quantity,
+        poolKey: `raw:${item.product_id}`,
+        poolBaseAvailable: exactQuantity(item, 'review_available_quantity'),
+        cannotBeZero: false,
+        postQuantity: exactQuantity(item, 'post_processing_consumed_quantity'),
+        labelName: item.name,
+      }));
+
+  const parsedReview = (() => {
+    const errors = new Map();
+    const parsedValues = new Map();
+    const poolDeltas = new Map();
+    const positiveDeltasByPool = new Map();
+    let hasValueChanges = false;
+    let hasReasonChanges = false;
+
+    for (const entry of reviewEntries) {
+      const raw = reviewOverrides[entry.key] ?? quantityInput(entry.recorded);
+      const trimmed = String(raw ?? '').trim();
+      const reason = String(reviewReasons[entry.key] ?? '').trim();
+      if (reason) hasReasonChanges = true;
+      try {
+        const parsed = parseExactQuantity(trimmed, false);
+        parsedValues.set(entry.key, parsed);
+        if (entry.cannotBeZero && exactCompare(parsed, 0) <= 0) {
+          errors.set(entry.key, `${entry.name} ${t('production.finishPipeline.reviewSemiRequired')}`);
+          continue;
+        }
+        const delta = exactSubtract(parsed, entry.recorded);
+        if (exactCompare(delta, 0) !== 0) hasValueChanges = true;
+        poolDeltas.set(entry.poolKey, exactAdd(poolDeltas.get(entry.poolKey) ?? 0, delta));
+        if (exactCompare(delta, 0) > 0) {
+          const list = positiveDeltasByPool.get(entry.poolKey) || [];
+          list.push(entry);
+          positiveDeltasByPool.set(entry.poolKey, list);
+        }
+      } catch (error) {
+        hasValueChanges = true;
+        errors.set(entry.key, productionMessage(error.message));
+      }
+    }
+
+    for (const [poolKey, delta] of poolDeltas.entries()) {
+      const entriesInPool = positiveDeltasByPool.get(poolKey) || [];
+      if (!entriesInPool.length) continue;
+      const baseAvailable = entriesInPool[0].poolBaseAvailable;
+      if (exactCompare(delta, baseAvailable) > 0) {
+        for (const entry of entriesInPool) {
+          if (errors.has(entry.key)) continue;
+          const ownVal = parsedValues.get(entry.key);
+          const ownDelta = exactSubtract(ownVal, entry.recorded);
+          const othersDelta = exactSubtract(delta, ownDelta);
+          const headroom = exactSubtract(baseAvailable, othersDelta);
+          const maxForEntry = exactAdd(entry.recorded, headroom);
+          errors.set(
+            entry.key,
+            t('production.finishPipeline.reviewExceededPool', { max: formatQty(maxForEntry), unit: entry.unit }),
+          );
+        }
+      }
+    }
+
+    return {
+      errors,
+      parsedValues,
+      poolDeltas,
+      hasValueChanges,
+      hasReasonChanges,
+      hasChanges: hasValueChanges || hasReasonChanges,
+      hasError: errors.size > 0,
+    };
+  })();
+
+  const reviewLocked = parsedReview.hasChanges || parsedReview.hasError;
+  const activeStep = reviewLocked
+    ? 1
+    : preview.step1_blocked && step > 2
+      ? 2
+      : preview.step2_blocked && step > 3
+        ? 3
+        : step;
 
   const parsedReturn = (() => {
     const errors = new Map();
@@ -203,8 +325,58 @@ export function ProductionFinishPipeline({
     );
   });
 
+  const resetReview = () => {
+    action.setError('');
+    setStatusMessage('');
+    setReviewOverrides({});
+    setReviewReasons({});
+  };
+
+  const saveReview = advance => action.run(async () => {
+    if (parsedReview.hasError || !parsedReview.hasChanges) {
+      if (advance && !parsedReview.hasChanges && !parsedReview.hasError) {
+        action.setError('');
+        setStep(2);
+      }
+      return;
+    }
+    const payload = order.stage_workflow
+      ? {
+          version: order.version,
+          stage_inputs: reviewEntries.map(entry => {
+            const qty = parsedReview.parsedValues.get(entry.key);
+            const reason = String(reviewReasons[entry.key] ?? '').trim();
+            return {
+              stage_path: entry.stage_path,
+              input_path: entry.input_path,
+              quantity: qty,
+              ...(reason ? { variance_reason: reason } : {}),
+            };
+          }),
+        }
+      : {
+          version: order.version,
+          items: reviewEntries.map(entry => {
+            const qty = parsedReview.parsedValues.get(entry.key);
+            const reason = String(reviewReasons[entry.key] ?? '').trim();
+            return {
+              product_id: entry.product_id,
+              quantity: qty,
+              ...(reason ? { variance_reason: reason } : {}),
+            };
+          }),
+        };
+    const fresh = await sendOrderAction('/consumption-review', payload);
+    setReviewOverrides({});
+    setReviewReasons({});
+    setReturnOverrides({});
+    setStageInputs({});
+    await notifyUpdate(fresh, t('production.finishPipeline.reviewSaved'));
+    if (advance) setStep(2);
+  });
+
   const submitFinish = () => action.run(async () => {
-    if (preview.step1_blocked || preview.step2_blocked || parsedReturn.hasError) return;
+    if (reviewLocked || preview.step1_blocked || preview.step2_blocked || parsedReturn.hasError) return;
     const returnItems = parsedReturn.items.map(({ product_id, quantity }) => ({ product_id, quantity }));
     const confirmImmediate = canApprove && confirmReturn && returnItems.length > 0;
     const finished = await sendOrderAction('/finish', {
@@ -284,10 +456,77 @@ export function ProductionFinishPipeline({
     </div>
   );
 
+  const renderReviewRow = entry => {
+    const rawValue = reviewOverrides[entry.key] ?? quantityInput(entry.recorded);
+    const reasonValue = reviewReasons[entry.key] ?? '';
+    const rowError = parsedReview.errors.get(entry.key);
+    const parsed = parsedReview.parsedValues.get(entry.key);
+    const delta = parsed !== undefined && !rowError ? exactSubtract(parsed, entry.recorded) : 0;
+    const poolHeadroom = exactSubtract(entry.poolBaseAvailable, parsedReview.poolDeltas.get(entry.poolKey) ?? 0);
+    return (
+      <article className="production-finish-review-row" key={entry.key}>
+        <div className="production-finish-return-name">
+          <div className="production-finish-review-title">
+            <strong>{entry.name}</strong>
+            <Badge tone={entry.kind === 'semi' ? 'blue' : 'gray'}>
+              {t(entry.kind === 'semi' ? 'production.finishPipeline.reviewSemiBadge' : 'production.finishPipeline.reviewRawBadge')}
+            </Badge>
+          </div>
+          <small>{entry.barcode}{entry.specification ? ` · ${entry.specification}` : ''}</small>
+          {exactCompare(entry.postQuantity, 0) > 0 && (
+            <small>{t('production.finishPipeline.reviewPostAdded', { quantity: formatQty(entry.postQuantity), unit: entry.unit })}</small>
+          )}
+        </div>
+        <div>
+          <small>{t('production.finishPipeline.reviewRecordedLabel')}</small>
+          <span>{formatQty(entry.recorded)} {entry.unit}</span>
+          {entry.standard != null && (
+            <small>{t('production.finishPipeline.reviewStandardLabel')} {formatQty(entry.standard)} {entry.unit}</small>
+          )}
+        </div>
+        <div>
+          <small>{t('production.finishPipeline.reviewPoolHeadroom')}</small>
+          <span>{formatQty(poolHeadroom)} {entry.unit}</span>
+        </div>
+        <label className="production-finish-return-input">
+          <small>{t('production.finishPipeline.reviewInputLabel', { name: entry.name })}（{entry.unit}）</small>
+          <Input
+            aria-label={t('production.finishPipeline.reviewInputLabel', { name: entry.labelName })}
+            inputMode="text"
+            disabled={locked}
+            value={rawValue}
+            onChange={event => setReviewOverrides(prev => ({ ...prev, [entry.key]: event.target.value }))}
+          />
+          {!rowError && exactCompare(delta, 0) !== 0 && (
+            <small className={exactCompare(delta, 0) > 0 ? 'production-finish-delta-up' : 'production-finish-delta-down'}>
+              {t('production.finishPipeline.reviewDelta', {
+                delta: `${exactCompare(delta, 0) > 0 ? '+' : ''}${formatQty(delta)}`,
+                unit: entry.unit,
+              })}
+            </small>
+          )}
+          {rowError && <span className="form-error" role="alert">{rowError}</span>}
+        </label>
+        <label className="production-finish-review-reason">
+          <small>{t('production.finishPipeline.reviewReasonLabel', { name: entry.name })}</small>
+          <Input
+            aria-label={t('production.finishPipeline.reviewReasonLabel', { name: entry.labelName })}
+            maxLength={500}
+            placeholder={t('production.finishPipeline.reviewReasonPlaceholder')}
+            disabled={locked}
+            value={reasonValue}
+            onChange={event => setReviewReasons(prev => ({ ...prev, [entry.key]: event.target.value }))}
+          />
+        </label>
+      </article>
+    );
+  };
+
   const stepStates = [
-    { id: 1, label: t('production.finishPipeline.stepDocuments'), done: !preview.step1_blocked && activeStep > 1, enabled: true },
-    { id: 2, label: t('production.finishPipeline.stepBalances'), done: !preview.step1_blocked && !preview.step2_blocked && activeStep > 2, enabled: !preview.step1_blocked },
-    { id: 3, label: t('production.finishPipeline.stepConfirm'), done: false, enabled: !preview.step1_blocked && !preview.step2_blocked && !parsedReturn.hasError },
+    { id: 1, label: t('production.finishPipeline.stepReview'), done: !reviewLocked && activeStep > 1, enabled: true },
+    { id: 2, label: t('production.finishPipeline.stepDocuments'), done: !reviewLocked && !preview.step1_blocked && activeStep > 2, enabled: !reviewLocked },
+    { id: 3, label: t('production.finishPipeline.stepBalances'), done: !reviewLocked && !preview.step1_blocked && !preview.step2_blocked && activeStep > 3, enabled: !reviewLocked && !preview.step1_blocked },
+    { id: 4, label: t('production.finishPipeline.stepConfirm'), done: false, enabled: !reviewLocked && !preview.step1_blocked && !preview.step2_blocked && !parsedReturn.hasError },
   ];
 
   const scrapAdjustments = preview.scraps.filter(
@@ -328,6 +567,88 @@ export function ProductionFinishPipeline({
         )}
 
         {activeStep === 1 && (
+          <div className="production-finish-section">
+            <div className="production-finish-block">
+              <div className="production-finish-block-head">
+                <h3>{t('production.finishPipeline.reviewTitle')}</h3>
+                {preview.review_has_items && <Badge tone="blue">{reviewEntries.length}</Badge>}
+              </div>
+              <p className="bom-hint">{t('production.finishPipeline.reviewHint')}</p>
+
+              {order.pending_registration_count > 0 && (
+                <p className="bom-hint">
+                  {t('production.finishPipeline.reviewPendingHint', { count: order.pending_registration_count })}
+                </p>
+              )}
+
+              {reviewLocked && (
+                <p className="bom-hint" role="status">{t('production.finishPipeline.reviewUnsavedHint')}</p>
+              )}
+
+              {!preview.review_has_items && (
+                <div className="production-finish-ready" role="status">
+                  <Check size={18} aria-hidden="true" />
+                  <span>{t('production.finishPipeline.reviewEmpty')}</span>
+                </div>
+              )}
+
+              {preview.review_has_items && !order.stage_workflow && (
+                <div className="production-finish-card-list">
+                  {preview.review_materials.map(item => {
+                    const entry = reviewEntries.find(candidate => candidate.key === String(item.product_id));
+                    return entry ? renderReviewRow(entry) : null;
+                  })}
+                </div>
+              )}
+
+              {preview.review_has_items && order.stage_workflow && (
+                <div className="production-finish-card-list">
+                  {preview.review_stages.map(stage => {
+                    const stageLabel = duplicateStageNames.has(stage.name) && stage.path ? `${stage.name} [${stage.path}]` : stage.name;
+                    return (
+                      <div className="production-finish-card" key={stage.path || 'root'}>
+                        <div className="production-finish-card-head">
+                          <div>
+                            <strong>{stageLabel}</strong>
+                            <small>
+                              {t(stage.path ? 'production.finishPipeline.reviewStageSub' : 'production.finishPipeline.reviewStageRoot')} ·{' '}
+                              {t('production.finishPipeline.reviewStageOutput', {
+                                quantity: formatQty(exactQuantity(stage, 'completed_quantity')),
+                                unit: stage.unit,
+                              })}
+                            </small>
+                          </div>
+                        </div>
+                        <div className="production-finish-card-list">
+                          {stage.items.map(node => {
+                            const entry = reviewEntries.find(candidate => candidate.key === `${stage.path}:${node.path}`);
+                            return entry ? renderReviewRow(entry) : null;
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {preview.review_post_processing_materials.length > 0 && (
+                <div className="production-finish-block">
+                  <h3>{t('production.finishPipeline.reviewPostProcessingList')}</h3>
+                  <ul className="production-finish-plain-list">
+                    {preview.review_post_processing_materials.map(item => (
+                      <li key={item.product_id}>
+                        <span>{item.name}</span>
+                        <strong>{formatQty(exactQuantity(item, 'post_processing_consumed_quantity'))} {item.unit}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeStep === 2 && (
           <div className="production-finish-section">
             {!preview.step1_has_items && (
               <div className="production-finish-ready" role="status">
@@ -438,7 +759,7 @@ export function ProductionFinishPipeline({
           </div>
         )}
 
-        {activeStep === 2 && (
+        {activeStep === 3 && (
           <div className="production-finish-section">
             {order.stage_workflow && (preview.semi_finished_balances.length > 0 || preview.pending_stage_receipts.length > 0) && (
               <div className="production-finish-block">
@@ -644,7 +965,7 @@ export function ProductionFinishPipeline({
           </div>
         )}
 
-        {activeStep === 3 && (
+        {activeStep === 4 && (
           <div className="production-finish-section">
             <div className="production-finish-block">
               <h3>{t('production.finishPipeline.settlementSummaryTitle')}</h3>
@@ -741,29 +1062,59 @@ export function ProductionFinishPipeline({
           </Button>
         )}
         <Button disabled={locked} onClick={onClose}>{t('production.cancel')}</Button>
-        {activeStep === 1 && (
+        {activeStep === 1 && !parsedReview.hasChanges && (
           <Button
             kind="primary"
-            disabled={locked || preview.step1_blocked}
+            disabled={locked}
             onClick={() => { action.setError(''); setStep(2); }}
           >
-            {t('production.finishPipeline.nextBalances')}
+            {t('production.finishPipeline.nextDocuments')}
           </Button>
+        )}
+        {activeStep === 1 && parsedReview.hasChanges && (
+          <>
+            <Button disabled={locked} onClick={resetReview}>
+              {t('production.finishPipeline.resetReview')}
+            </Button>
+            <Button
+              disabled={locked || parsedReview.hasError}
+              onClick={() => saveReview(false)}
+            >
+              {t('production.finishPipeline.saveReview')}
+            </Button>
+            <Button
+              kind="primary"
+              busy={action.busy}
+              disabled={locked || parsedReview.hasError}
+              onClick={() => saveReview(true)}
+            >
+              {t('production.finishPipeline.saveReviewAndNext')}
+            </Button>
+          </>
         )}
         {activeStep === 2 && (
           <Button
             kind="primary"
-            disabled={locked || preview.step2_blocked || parsedReturn.hasError}
+            disabled={locked || preview.step1_blocked}
             onClick={() => { action.setError(''); setStep(3); }}
           >
-            {t('production.finishPipeline.nextConfirm')}
+            {t('production.finishPipeline.nextBalances')}
           </Button>
         )}
         {activeStep === 3 && (
           <Button
             kind="primary"
+            disabled={locked || preview.step2_blocked || parsedReturn.hasError}
+            onClick={() => { action.setError(''); setStep(4); }}
+          >
+            {t('production.finishPipeline.nextConfirm')}
+          </Button>
+        )}
+        {activeStep === 4 && (
+          <Button
+            kind="primary"
             busy={action.busy}
-            disabled={locked || preview.step1_blocked || preview.step2_blocked || parsedReturn.hasError}
+            disabled={locked || reviewLocked || preview.step1_blocked || preview.step2_blocked || parsedReturn.hasError}
             onClick={submitFinish}
           >
             {t('production.finishPipeline.confirmFinish')}

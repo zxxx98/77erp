@@ -113,7 +113,14 @@ for (const mode of ['desktop', 'Pixel 7', 'pwa']) {
       const dialog = page.getByRole('dialog', { name: '完结生产流水线', exact: true });
       await expect(dialog).toBeVisible();
 
-      // Step 1: Pending partial material document blocks advancing until closed.
+      // Step 1: Usage review sheet lists raw and semi-finished consumption; advance to Step 2.
+      await expect(dialog.getByText('用料复核单', { exact: true })).toBeVisible();
+      await dialog.getByLabel('管道半成品 · 管道原料 复核耗料数量', { exact: true }).fill('3.5');
+      await dialog.getByLabel('管道成品 · 管道半成品 复核耗料数量', { exact: true }).fill('1/2');
+      await dialog.getByRole('button', { name: '保存复核并下一步', exact: true }).click();
+      await expect(dialog.getByRole('status').first()).toContainText('复核单已保存');
+
+      // Step 2: Pending partial material document blocks advancing until closed.
       await expect(dialog.getByText('待处理的领退料单', { exact: true })).toBeVisible();
       await expect(dialog.getByRole('button', { name: '下一步：处理结余', exact: true })).toBeDisabled();
       await dialog.getByRole('button', { name: '关闭剩余待发', exact: true }).click();
@@ -123,23 +130,22 @@ for (const mode of ['desktop', 'Pixel 7', 'pwa']) {
       await expect(dialog.getByRole('button', { name: '下一步：处理结余', exact: true })).toBeEnabled();
       await dialog.getByRole('button', { name: '下一步：处理结余', exact: true }).click();
 
-      // Step 2: Semi-finished balance (5/3 kg) must be cleared before advancing to Step 3.
+      // Step 3: Semi-finished balance (2 - 1/2 = 3/2 kg) must be cleared before advancing to Step 4.
       await expect(dialog.getByText('半成品结余处理', { exact: true })).toBeVisible();
       await expect(dialog.getByRole('button', { name: '下一步：完结预览', exact: true })).toBeDisabled();
       await dialog.getByRole('button', { name: '申请并确认入库', exact: true }).click();
       await expect(dialog.getByRole('status').first()).toContainText('已提交并确认入库');
       await expect(dialog.getByRole('button', { name: '下一步：完结预览', exact: true })).toBeEnabled();
 
-      // Step 2 also shows raw material balances with rounding deduction:
+      // Step 3 also shows raw material balances recalculated after review (raw: 6 - 3.5 = 2.5):
       // extraRaw: balance 11/3, rounding 1/15000 (0.0001), returnable = 3.6666.
-      // raw: balance 2, returnable = 2.
       await expect(dialog.getByLabel('管道辅料 完结退料数量', { exact: true })).toHaveValue('3.6666');
-      await expect(dialog.getByLabel('管道原料 完结退料数量', { exact: true })).toHaveValue('2');
+      await expect(dialog.getByLabel('管道原料 完结退料数量', { exact: true })).toHaveValue('2.5');
       await dialog.getByLabel('管道原料 完结退料数量', { exact: true }).fill('1.5');
       await dialog.getByLabel('退料申请备注', { exact: true }).fill('管道退回余料');
       await dialog.getByRole('button', { name: '下一步：完结预览', exact: true }).click();
 
-      // Step 3: Rounding preview & pending return summary.
+      // Step 4: Rounding preview & pending return summary.
       await expect(dialog.getByText('完结结算汇总', { exact: true })).toBeVisible();
       await expect(dialog).toContainText('0.3334');
       await expect(dialog).toContainText('管道原料');
@@ -216,13 +222,14 @@ for (const mode of ['desktop', 'Pixel 7', 'pwa']) {
       await page.getByRole('button', { name: '结束生产', exact: true }).first().click();
       const dialog = page.getByRole('dialog', { name: '完结生产流水线', exact: true });
       await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: '4. 完结确认', exact: true }).click();
       await expect(dialog.getByText('完结结算汇总', { exact: true })).toBeVisible();
       await expect(dialog.getByText('本次无待退回原材料，确认后将直接结算并完结生产单。')).toBeVisible();
       await dialog.getByRole('button', { name: '确认完结生产单', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await expect(page.getByText('已完工', { exact: true })).toBeVisible();
 
-      // Case 2: Production-only user sees Step 2 without immediate confirmation option, then admin confirms immediately.
+      // Case 2: Production-only user sees Step 3 without immediate confirmation option, then admin confirms immediately.
       let orderB = await startAndIssue(bomB, 3);
       orderB = await post(`/production-orders/${orderB.id}/complete`, {
         version: orderB.version,
@@ -239,6 +246,7 @@ for (const mode of ['desktop', 'Pixel 7', 'pwa']) {
       await page.reload();
       await page.getByRole('button', { name: '结束生产', exact: true }).first().click();
       await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: '3. 结余处理', exact: true }).click();
       await expect(dialog.getByRole('checkbox', { name: '完结时同时生成剩余材料退料申请单', exact: true })).toBeChecked();
       await expect(dialog.getByRole('checkbox', { name: '同时确认退料入库（直接恢复仓库库存）', exact: true })).toHaveCount(0);
       await dialog.getByRole('button', { name: '取消', exact: true }).click();
@@ -252,6 +260,7 @@ for (const mode of ['desktop', 'Pixel 7', 'pwa']) {
       await expect(notice).toHaveCount(0);
       await page.getByRole('button', { name: '结束生产', exact: true }).first().click();
       await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: '3. 结余处理', exact: true }).click();
       await dialog.getByRole('checkbox', { name: '同时确认退料入库（直接恢复仓库库存）', exact: true }).check();
       await dialog.getByRole('button', { name: '下一步：完结预览', exact: true }).click();
       await expect(dialog.getByText(/立即确认入库/)).toBeVisible();
