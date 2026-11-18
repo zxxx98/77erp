@@ -16,11 +16,13 @@ import { validateProcessGraph, arrangeProcessGraph, processPriceTables } from '.
 import { ProcessGraph, ProcessFlowStrip, orderProcessNodes } from '../features/ProcessGraph.jsx';
 import { addProcessNode } from '../features/process-graph-editing.js';
 import { PostProcessingMaterialEditor, postProcessingMaterialPayload } from '../features/PostProcessingMaterialEditor.jsx';
+import { PostProcessingTables } from '../features/PostProcessingTables.jsx';
 import './bom.css';
 
 export function ProcessRoutes({ data }) {
   useLocale();
   const action = useBusiness();
+  const [showPostTables, setShowPostTables] = useState(false);
   const [q, setQ] = useState(''), [productionType, setProductionType] = useState('成品'), [status, setStatus] = useState('all'), [sort, setSort] = useState('custom'), [offset, setOffset] = useState(0), [revision, setRevision] = useState(0);
   const [routeKind, setRouteKind] = useState('production');
   const [priceTableId, setPriceTableId] = useState('default');
@@ -66,7 +68,8 @@ export function ProcessRoutes({ data }) {
     setSelected(nodeId);
   };
   const notices = <>{action.error && <p className="form-error" role="alert">{action.error}</p>}{message && <p className="bom-success" role="status">{message}</p>}</>;
-  if (!editor) return <div className="bom-page process-page"><PageHeading title={t('route.title')} description={t('route.listHint')}><Button kind="primary" icon={Plus} onClick={() => apply({ name: '', note: '', enabled: 1, route_kind: routeKind === 'post_processing' ? routeKind : 'production', graph: { nodes: [{ id: crypto.randomUUID(), name: t('route.newNode'), note: '', x: 24, y: 24 }], edges: [] } })}>{t('route.new')}</Button></PageHeading>
+  if (showPostTables) return <PostProcessingTables data={data} onBack={() => setShowPostTables(false)} />;
+  if (!editor) return <div className="bom-page process-page"><PageHeading title={t('route.title')} description={t('route.listHint')}><Button onClick={() => setShowPostTables(true)}>{t('production.postProcessingTables')}</Button><Button kind="primary" icon={Plus} onClick={() => apply({ name: '', note: '', enabled: 1, route_kind: routeKind === 'post_processing' ? routeKind : 'production', graph: { nodes: [{ id: crypto.randomUUID(), name: t('route.newNode'), note: '', x: 24, y: 24 }], edges: [] } })}>{t('route.new')}</Button></PageHeading>
     {notices}
     <section className="panel bom-section">
       <div className="bom-list-filters process-list-filters">

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
 import { productionAction } from './production-ui-helpers.js';
 
-for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} plans fractional carton use and limits packing reports`, async ({ browser }) => {
+for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} creates and selects a post-processing table, then reports packing`, async ({ browser }) => {
   test.setTimeout(60000);
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage();
@@ -59,30 +59,32 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pla
     await button('保存路线').click();
     await expect(page.locator('.bom-success')).toContainText('工艺路线已保存');
 
-    await page.goto(`${base}/#bom`);
-    await button('编辑').click();
+    await button('后处理工序表').click();
+    await button('新建后处理工序表').click();
+    await label('工序表名称').fill('成品包装方案');
     await button('添加后处理工序').click();
     const picker = page.getByRole('dialog', { name: '添加后处理工序' });
     await button('固定包装模板', picker).click();
     await picker.getByRole('combobox', { name: '单价表', exact: true }).click();
     await page.getByRole('option', { name: 'B型号包装', exact: true }).click();
     await button('包装', picker).click();
-    await expect(label('每单位成品用量 纸箱')).toHaveValue('1');
-    await label('每单位成品用量 纸箱').fill('0.00001');
-    await button('保存BOM').click();
+    await label('每次处理成品数量 包装').fill('0.00001');
+    await button('保存工序表').click();
     await expect(page.getByRole('alert')).toContainText('最多 4 位小数');
-    await label('每单位成品用量 纸箱').fill('1/100');
+    await label('每次处理成品数量 包装').fill('100');
     await expectPageFits();
-    await button('保存BOM').click();
-    await expect(page.locator('.bom-success')).toContainText('BOM已保存');
-    await button('编辑').click();
-    await expect(label('每单位成品用量 纸箱')).toHaveValue('1/100');
-    await button('保存BOM').click();
-    await expect(page.locator('.bom-success')).toContainText('BOM已保存');
+    await button('保存工序表').click();
+    await expect(page.getByText('成品包装方案', { exact: true })).toBeVisible();
+    await button('编辑工序表').click();
+    await expect(label('每次处理成品数量 包装')).toHaveValue('100');
+    await button('保存工序表').click();
+    await expect(page.getByText('成品包装方案', { exact: true })).toBeVisible();
     await page.goto(`${base}/#production`);
     await button('新建生产单').click();
     await page.getByRole('button', { name: /^选择配方 包装成品 ·/ }).click();
     await label('计划产量').fill('250');
+    await button('选择后处理工序表').click();
+    await button('成品包装方案', page.getByRole('dialog', { name: '选择后处理工序表' })).click();
     const plan = page.locator('.post-processing-plan');
     await expect(plan).toContainText('预计 3 次');
     await expect(plan).toContainText('预计用量 3 个');
@@ -92,7 +94,9 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pla
     await expectPageFits();
     const created = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/production-orders');
     await button('保存生产草稿').click();
-    expect((await created).postDataJSON()).not.toHaveProperty('post_processing_operations');
+    const createBody = (await created).postDataJSON();
+    expect(createBody).not.toHaveProperty('post_processing_operations');
+    expect(createBody.post_processing_table_id).toBeGreaterThan(0);
     await expect(page.locator('.bom-success')).toContainText('库存未变动');
     const { id } = db.prepare('SELECT id FROM production_orders ORDER BY id DESC LIMIT 1').get();
     const getOrder = async () => (await page.request.get(`${base}/api/production-orders/${id}`)).json();
@@ -101,7 +105,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pla
     expect(snapshot.price_table_name).toBe('B型号包装');
     expect(snapshot.nodes[0].unit_price).toBe(3);
     expect(snapshot.nodes[0].materials[0].quantity).toBe(1);
-    expect(snapshot.post_processing_materials_per_unit[0].quantity_fraction).toBe('1/100');
+    expect((await getOrder()).operation_routes[0].product_coefficient).toBe(100);
     await button('开始生产').click();
     await expect(page.locator('.production-material').filter({ hasText: '纸箱' }).filter({ hasText: '3' })).toBeVisible();
     await button('提交领料申请').click();

@@ -1,4 +1,5 @@
 import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
+import { postProcessingTableReferencesRoute } from './post-processing-tables.js';
 import { saveOperationAcceptance, acceptancePermissionMessage, validateOperationRegistrationBackup } from './operation-acceptance.js';
 import { operationAllocation } from '../shared/operation-overflow.js';
 import { productionPools, stagePoolPaths, productionPoolOrder } from '../shared/production-pools.js';
@@ -15,7 +16,7 @@ import { postProcessingLimit, postProcessingUnit, productionOutputCompleted } fr
 import { productionTypes } from '../shared/product-production-type.js';
 import { normalizePostMaterials, planPostMaterials, postMaterialPlanByProduct, totalPlannedMaterials, savePostMaterialItems, consumePostMaterials, readPostMaterialReport, postMaterialUsage, sumPostMaterialCosts, validatePostMaterialGraph, validatePostMaterialReport, stripLegacyPostMaterials } from './post-processing-materials.js';
 
-export const processRouteTables = ['process_routes'];
+export const processRouteTables = ['process_routes', 'post_processing_tables'];
 export const productionOperationTables = ['production_routes', 'production_operation_reports', 'production_operation_registrations'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
 const routeKinds = ['production', 'post_processing'];
@@ -121,10 +122,11 @@ export function routePriceBinding(db, warehouseId, routeId, tableId) {
 
 export function clearProcessRoutes(db, warehouseId) {
   if (warehouseId === undefined) {
-    db.exec('UPDATE products SET default_route_id=NULL; UPDATE boms SET route_override_id=NULL,route_price_table_id=NULL; DELETE FROM process_routes;');
+    db.exec('UPDATE products SET default_route_id=NULL; UPDATE boms SET route_override_id=NULL,route_price_table_id=NULL; DELETE FROM post_processing_tables; DELETE FROM process_routes;');
   } else {
     db.prepare('UPDATE products SET default_route_id=NULL WHERE warehouse_id=?').run(warehouseId);
     db.prepare('UPDATE boms SET route_override_id=NULL,route_price_table_id=NULL WHERE warehouse_id=?').run(warehouseId);
+    db.prepare('DELETE FROM post_processing_tables WHERE warehouse_id=?').run(warehouseId);
     db.prepare('DELETE FROM process_routes WHERE warehouse_id=?').run(warehouseId);
   }
 }
@@ -197,7 +199,7 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 100 || typeof body.note !== 'string' || body.note.length > 1000 || ![0,1].includes(body.enabled)) fail('路线名称、说明或启用状态无效。');
     const kind = body.route_kind === undefined ? old?.route_kind ?? 'production' : body.route_kind;
     if (!routeKinds.includes(kind)) fail('请选择有效的工艺类型。');
-    if (old && old.route_kind !== kind && (old.products.length || old.boms.length ||
+    if (old && old.route_kind !== kind && (old.products.length || old.boms.length || postProcessingTableReferencesRoute(db, old.id) ||
         db.prepare('SELECT 1 FROM production_routes WHERE route_id=? LIMIT 1').get(old.id)))
       fail('工艺已被引用，不能变更工艺类型。', 409);
     validateProcessGraph(body.graph);
@@ -246,6 +248,7 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
     if (req.body.version !== current.version) fail('工艺路线已变化，请刷新后操作。', 409);
     if (current.products.length) fail('此工艺路线已被物料引用，请先解除关联，或改为停用。', 409);
     if (current.boms.length) fail('此工艺路线已被BOM引用，请先解除关联，或改为停用。', 409);
+    if (postProcessingTableReferencesRoute(db, current.id)) fail('此工艺路线已被后处理工序表引用，请先解除关联，或改为停用。', 409);
     if (db.prepare('SELECT 1 FROM production_routes WHERE route_id=? LIMIT 1').get(current.id))
       fail('此工艺路线已被生产单引用，不能删除，可改为停用。', 409);
     db.prepare('DELETE FROM process_routes WHERE id=?').run(current.id);

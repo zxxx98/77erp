@@ -9,7 +9,6 @@ import { SortHandle, useSortableList } from '../components/SortableList.jsx';
 import { Input as AntInput } from '../ui/controls.jsx';
 import { parseQuantity } from '../../shared/quantity.js';
 import { parseBomQuantity, validateBom } from '../../shared/bom.js';
-import { postProcessingMaterialPayload } from '../features/PostProcessingMaterialEditor.jsx';
 import { validateScrapRules } from '../../shared/scrap.js';
 import { BomProcessOverview } from '../features/ProcessOverview.jsx';
 import { BomCalculation } from '../features/BomCalculation.jsx';
@@ -23,8 +22,6 @@ const count = value => Number(value).toLocaleString(getFormatLocale(), { maximum
 const editable = bom => ({
   ...bom,
   items: bom.items.map(item => ({ ...item, quantity: item.quantity_fraction || item.quantity })),
-  post_processing_operations: (bom.post_processing_operations || []).map(row => ({ ...row,
-    materials: row.materials.map(material => ({ ...material, quantity: material.quantity_fraction || material.quantity })) })),
   scraps: (bom.scraps || []).map(row => ({ ...row, quantity: row.quantity_fraction || row.quantity })),
 });
 const newBom = product => ({
@@ -38,7 +35,6 @@ const newBom = product => ({
   enabled: 1,
   items: [],
   scraps: [],
-  post_processing_operations: [],
 });
 
 function BomList({
@@ -222,7 +218,6 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
         note: bom.note,
         items: editable(bom).items,
         scraps: editable(bom).scraps,
-        post_processing_operations: editable(bom).post_processing_operations,
       });
     } else {
       apply(bom);
@@ -240,11 +235,6 @@ export function Bom({ data, initialProduct, onCreateProduction }) {
       loss_method: editor.loss_method,
       note: editor.note,
       enabled: editor.enabled,
-      post_processing_operations: (editor.post_processing_operations || []).map(row => ({
-        route_id: row.route_id, route_version: row.route_version, node_id: row.node_id, price_table_id: row.price_table_id ?? null,
-        product_coefficient: 1, ...(row.usage_basis === 'material' ? { usage_basis: 'material', materials: row.materials.map(material => ({
-          product_id: material.product_id, ...parseBomQuantity(material.quantity) })) } : { materials: postProcessingMaterialPayload(row.materials) }),
-      })),
       items: editor.items.map(item => ({
         product_id: item.product_id,
         ...parseBomQuantity(item.quantity),

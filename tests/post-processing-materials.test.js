@@ -65,6 +65,46 @@ async function fixture(t, { staged = false } = {}) {
   return { db, request, ok, command, save, raw, label, product, route, create, mutate, get, issue, complete, reportBody, report, bom, parent };
 }
 
+test('a reusable post-processing table overrides legacy BOM configuration and freezes multiple operations', async t => {
+  const f = await fixture(t);
+  const route = f.ok(await f.route([{ product_id: f.label.id, quantity: 1 }]));
+  const second = f.ok(await f.route([], { name: '复检' }));
+  const binding = (route, product_coefficient) => ({ route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient });
+  const bom = await f.save(`/boms/${f.bom.id}`, { ...f.bom, post_processing_operations: [{ ...binding(route, 1), materials: [{ product_id: f.label.id, quantity: 3 }] }] });
+  const operations = [binding(route, 100), binding(second, 25)];
+  const tableInput = { name: '通用包装', enabled: 1, operations };
+  const basePath = '/post-processing-tables';
+  assert.equal((await f.command(basePath, { ...tableInput, operations: [operations[0], operations[0]] })).status, 400);
+  assert.equal((await f.command(basePath, { ...tableInput, operations: [{ ...operations[0], product_coefficient: 0 }] })).status, 400);
+  const table = await f.save(basePath, tableInput);
+  const tablePath = `${basePath}/${table.id}`;
+  assert.equal((await f.command(`/process-routes/${second.id}/delete`, { version: second.version })).status, 409);
+  const input = { bom_id: bom.id, bom_version: bom.version, planned_quantity: 250, note: '', supply_choices: [], post_processing_table_id: table.id };
+  const plan = await f.save('/production-orders/prepare', input);
+  assert.equal(plan.legacy_post_processing, true);
+  assert.deepEqual(plan.post_processing_operations, []);
+  const preview = () => f.request(`${tablePath}/preview`).then(f.ok);
+  const firstPreview = await preview();
+  const changed = await f.save(tablePath, { ...tableInput, version: table.version, operations: [operations[0], binding(second, 50)] });
+  const createBody = { ...input, structure_token: plan.structure_token, post_processing_table_token: firstPreview.token };
+  assert.equal((await f.command('/production-orders', createBody)).status, 409);
+  assert.equal((await f.command('/production-orders', { ...createBody, post_processing_table_token: (await preview()).token, post_processing_operations: operations })).status, 400);
+  const order = await f.save('/production-orders', { ...createBody, post_processing_table_token: (await preview()).token });
+  assert.deepEqual(order.operation_routes.map(row => [row.product_coefficient, row.post_processing_planned_runs]), [[100, 3], [50, 5]]);
+  assert.equal(order.items.find(row => row.product_id === f.label.id).post_processing_planned_quantity, 3);
+  const plain = await f.save('/production-orders', { ...createBody, post_processing_table_id: null });
+  assert.deepEqual(plain.operation_routes, []);
+  const backup = f.ok(await f.request('/backup'));
+  const disabled = await f.save(`${tablePath}/status`, { version: changed.version, enabled: 0 });
+  assert.equal((await f.request(`${tablePath}/preview`)).status, 409);
+  assert.deepEqual(f.ok(await f.request(basePath)).tables, []);
+  await f.save(`${tablePath}/delete`, { version: disabled.version });
+  assert.deepEqual((await f.get(order.id)).operation_routes.map(row => row.product_coefficient), [100, 50]);
+  const restore = await f.save('/backup/preview', { backup });
+  await f.save('/backup/restore', { backup, ...restore, confirmation: 'RESTORE_BUSINESS_DATA' });
+  assert.deepEqual((await preview()).operations.map(row => row.product_coefficient), [100, 50]);
+});
+
 test('post-processing templates validate material identity, four decimals and whole units', async t => {
   const f = await fixture(t), raw = { product_id: f.raw.id, quantity: 0.0001 }, label = { product_id: f.label.id, quantity: 1 };
   const other = await f.save('/warehouses', { name: '隔离仓' });
@@ -151,7 +191,7 @@ for (const staged of [false, true]) test('post reports share the issued pool, re
   assert.deepEqual(stock(), warehouse);
   order = await f.mutate(order, '/finish', {});
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 58);
+  assert.equal(backup.version, 59);
   const tampered = structuredClone(backup);
   const row = tampered.data.production_operation_reports.find(row => row.id === first.id);
   const materials = JSON.parse(row.post_materials);
@@ -322,7 +362,7 @@ for (const staged of [false, true]) test('BOM inherits per-finished-unit post ma
   assert.equal(order.operation_routes[0].product_coefficient, 1);
   assert.deepEqual(order.items.map(row => row.total_planned_quantity), [5, 8]);
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 58);
+  assert.equal(backup.version, 59);
   const tampered = structuredClone(backup);
   const config = JSON.parse(tampered.data.boms.find(row => row.id === bom.id).post_processing_operations);
   config[0].materials[0].quantity = 0;

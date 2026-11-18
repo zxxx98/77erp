@@ -1,0 +1,5 @@
+.post-processing-binding { padding: 16px; border: 1px solid #e4eaf3; border-radius: 12px; background: #fbfcfe; margin: 12px 0; }
+.post-processing-row, .post-processing-table-card { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.post-processing-name { display: grid; flex: 1 1 170px; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.post-processing-row > label { flex: 1 1 170px; min-width: 0; }
+.post-processing-row > .btn, .post-processing-table-card > .bom-actions { margin: 0; }

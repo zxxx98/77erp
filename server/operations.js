@@ -3,6 +3,7 @@ import { validateExactQuantityBackup } from './exact-quantity.js';
 import { validExactQuantity } from '../shared/exact-quantity.js';
 import { validateProductionRoundingBackup } from './production-rounding.js';
 import { processRouteTables, productionOperationTables, clearProcessRoutes, validateProcessRouteBackup } from './process-routes.js';
+import { validatePostProcessingTableBackup } from './post-processing-tables.js';
 import { stripLegacyPostMaterials } from './post-processing-materials.js';
 import { customerPartNumbersValue, validateCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
@@ -439,7 +440,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 58,
+    version: 59,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -448,11 +449,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 59) data.post_processing_tables = [];
     if (value.version < 57) for (const bom of data.boms || []) bom.post_processing_operations = '[]';
     if (value.version < 56) for (const row of data.production_operation_registrations || []) {row.kind = 'acceptance';row.initial_issues='[]';}
     if (value.version < 55) for (const bom of data.boms || []) bom.route_price_table_id = null;
@@ -881,6 +883,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     validateBomBackup(data);
     validateExactQuantityBackup(data);
     const postPlans = validateProcessRouteBackup(data);
+    validatePostProcessingTableBackup(data);
     validateProductionBackup(data, postPlans);
     validateProductionMaterialBackup(data);
     validateProductionReceiptBackup(data);
@@ -905,7 +908,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         adjustments: data.stock_adjustments.length,
         contacts: data.contacts.length, templates: data.templates.length, payments: data.payments.length, stock_qrs: data.stock_qr_codes.length,
         quality_templates: data.quality_templates.length, quality_acceptances: data.quality_acceptances.length, quality_charts: data.quality_charts.length, quality_files: data.quality_template_files.length,
-        process_routes: data.process_routes.length, production_routes: data.production_routes.length, production_operation_reports: data.production_operation_reports.length,
+        process_routes: data.process_routes.length, post_processing_tables: data.post_processing_tables.length, production_routes: data.production_routes.length, production_operation_reports: data.production_operation_reports.length,
         boms: data.boms.length, bom_scraps: data.bom_scraps.length, production_scraps: data.production_scraps.length,
         production_bom_nodes: data.production_bom_nodes.length, production_orders: data.production_orders.length, production_batches: data.production_batches.length,
       };

@@ -6,6 +6,7 @@ import { ProductPicker } from '../features/ProductPicker.jsx';
 import { ProductionSupply } from '../features/ProductionSupply.jsx';
 import { ProductionAssignments } from '../features/ProductionAssignments.jsx';
 import { PostProcessingPlan } from '../features/PostProcessingPlan.jsx';
+import { PostProcessingTablePicker } from '../features/PostProcessingTables.jsx';
 import { PostProcessingFinishNotice } from '../features/PostProcessingFinishNotice.jsx';
 import { postProcessingFinishState } from '../production-registration.js';
 import { productionAssignments, productionAssignmentNames } from '../../shared/production-assignment.js';
@@ -165,6 +166,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const action = useBusiness();
   const send = async (path, body, options) => action.send(path, { schema_version: 2, stage_schema_version: 1, operation_schema_version: 1, ...await acceptance.enrich(path,body,options) }, options);
   const listData = useMemo(() => ({ ...data, productionRevision: revision }), [data, revision]);
+  const [postTablePicker, setPostTablePicker] = useState(false);
   const list = useQuery(queryPath('/production-orders', { q, status, offset }), listData, 150);
   const dirty = !!editor && JSON.stringify(editor) !== baseline;
   // A workspace refresh after warehouse approval must refresh an open detail too.
@@ -190,7 +192,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   const update = value => { setEditor(previous => ({ ...previous, ...value })); action.setError(''); };
   const chooseBom = async bom => {
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
-      body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity, supply_choices: [] } });
+      body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity, supply_choices: [], post_processing_table_id: null } });
     setEditor(previous => ({ kind: 'new', note: previous?.note || '',
       planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
   };
@@ -199,7 +201,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     const choices = (draft.supply_choices || []).map(row => ({ ...row, ...(row.mode === 'partial' ? { stock_quantity: parseQuantity(row.stock_quantity, true) } : {}) }));
     return api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id, signal,
       body: { schema_version: 2, bom_id: draft.plan.bom_id, bom_version: draft.plan.version,
-        planned_quantity: parseQuantity(draft.planned_quantity, true), supply_choices: choices } })
+        planned_quantity: parseQuantity(draft.planned_quantity, true), supply_choices: choices, post_processing_table_id: draft.postTable?.id ?? null } })
       .then(plan => ({ plan: { ...plan, prepared_choices: choices }, supply_choices: choices, planned_quantity: String(plan.production_quantity) }));
   };
   const recalculateSupply = () => action.run(async () => update(await supplyRequest(editor)));
@@ -365,6 +367,8 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
             if (prepared.plan.structure_token !== editor.plan.structure_token) { update(prepared); throw new Error(pt('production.supplyReviewBeforeSave')); }
           }
           body.supply_choices = prepared.supply_choices || []; body.bom_id = prepared.plan.bom_id; body.bom_version = prepared.plan.version; body.structure_token = prepared.plan.structure_token;
+          body.post_processing_table_id = prepared.postTable?.id ?? null;
+          if (prepared.postTable) body.post_processing_table_token = prepared.postTable.token;
         }
         else body.version = detail.version;
         await saved(await send(path, body, options), pt("production.productionDraftSavedStockUnchanged"));
@@ -504,15 +508,23 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           </>}
         </section>}
         {editor.kind === 'new' && source && <ProductionSupply supplies={source.supplies || []} choices={editor.supply_choices || []} onChange={supply_choices => update({ supply_choices })} onCalculate={recalculateSupply} stale={supplyStale} disabled={action.busy} />}
-        {editor.kind === 'new' && source?.post_processing_operations?.length > 0 && <PostProcessingPlan rows={source.post_processing_operations}
-          unit={unit} plannedQuantity={editor.planned_quantity} readOnly />}
-        {editor.kind === 'edit' && source.operation_routes?.some(route => route.product_coefficient != null && route.post_processing_materials?.length) && <PostProcessingPlan
+        {editor.kind === 'new' && source && <PostProcessingPlan rows={editor.postTable?.operations || []} unit={unit}
+          plannedQuantity={editor.planned_quantity} readOnly hint="production.postProcessingTableSnapshot">
+          {source.legacy_post_processing && !editor.postTable && <p className="bom-hint">{pt('production.legacyPostProcessingNotInherited')}</p>}
+          <div className="bom-actions">
+            <strong>{editor.postTable?.name ?? pt('production.noPostProcessingTableSelected')}</strong>
+            <Button type="button" disabled={action.busy} onClick={() => setPostTablePicker(true)}>{pt('production.choosePostProcessingTable')}</Button>
+            {editor.postTable && <Button type="button" disabled={action.busy} onClick={() => update({ postTable: null })}>{pt('production.clearPostProcessingTable')}</Button>}
+          </div>
+          {postTablePicker && <PostProcessingTablePicker data={listData} onSelect={postTable => update({ postTable })} onClose={() => setPostTablePicker(false)} />}
+        </PostProcessingPlan>}
+        {editor.kind === 'edit' && source.operation_routes?.some(route => route.product_coefficient != null) && <PostProcessingPlan
           rows={source.operation_routes.filter(route => route.product_coefficient != null).map(route => ({
             route_id: route.id, node_id: route.operations[0].id, route_name: route.route_name, name: route.operations[0].name,
             price_table_name: route.graph.price_table_name,
             product_coefficient: route.product_coefficient,
             ...(route.graph.post_processing_materials_per_unit ? { usage_basis: 'material', materials: route.graph.post_processing_materials_per_unit, materials_per_run: route.post_processing_materials } : { materials: route.post_processing_materials }),
-          }))} unit={unit} plannedQuantity={editor.planned_quantity} readOnly />}
+          }))} unit={unit} plannedQuantity={editor.planned_quantity} readOnly hint="production.postProcessingSavedSnapshot" />}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}

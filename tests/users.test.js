@@ -203,7 +203,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 58);
+  assert.equal(backup.version, 59);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -286,6 +286,9 @@ const routeRoles = new Map(Object.entries({
   'get /api/process-routes': 'employee', 'get /api/process-routes/:id': 'employee',
   'post /api/process-routes': 'bom', 'post /api/process-routes/:id': 'bom', 'post /api/process-routes/:id/status': 'bom', 'post /api/process-routes/reorder': 'bom',
   'post /api/process-routes/:id/delete': 'bom',
+  'get /api/post-processing-tables': 'bom_or_production', 'get /api/post-processing-tables/:id/preview': 'bom_or_production',
+  'get /api/post-processing-tables/:id': 'bom', 'post /api/post-processing-tables': 'bom', 'post /api/post-processing-tables/:id': 'bom',
+  'post /api/post-processing-tables/:id/status': 'bom', 'post /api/post-processing-tables/:id/delete': 'bom',
   'get /api/production-orders/:id/operation-workers': 'production', 'get /api/production-orders/:id/operations/reports': 'production',
   'post /api/production-orders/:id/operations/registrations/reconcile': 'production',
   'post /api/production-orders/:id/operations/registrations/:registrationId/approve': 'production',
@@ -340,7 +343,7 @@ test('every API route declares its role, and employee access matches that declar
     const [method, path] = key.split(' ');
     const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':announcementId', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
     const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
-    assert.equal(response.status === 403, ['admin', 'ai', 'bom', 'production', 'stock_approve', 'submitter'].includes(role), `${key} 返回 ${response.status}`);
+    assert.equal(response.status === 403, ['admin', 'ai', 'bom', 'bom_or_production', 'production', 'stock_approve', 'submitter'].includes(role), `${key} 返回 ${response.status}`);
   }
   assert.deepEqual(counts(), before, '权限探测不应改动业务数据');
   assert.equal((await f.request(employee.cookie, '/auth/logout', {}, 'POST')).status, 200);

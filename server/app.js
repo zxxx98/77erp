@@ -1,6 +1,7 @@
 import { installTodoContext, installTodos } from './todos.js';
 import { installPayroll } from './payroll.js';
 import { migrateProcessRoutes, installProcessRoutes, routeBinding, clearProcessRoutes } from './process-routes.js';
+import { migratePostProcessingTables, installPostProcessingTables } from './post-processing-tables.js';
 import { migrateExactQuantities } from './exact-quantity.js';
 import { migrateProductionRounding } from './production-rounding.js';
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
@@ -287,6 +288,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateBom(db);
   migrateProduction(db);
   migrateProcessRoutes(db);
+  migratePostProcessingTables(db);
   migrateProductionRounding(db);
   migrateExactQuantities(db);
   migrateProductVersions(db);
@@ -312,6 +314,7 @@ export function createApp(dbPath = resolve(root, "data/77erp.sqlite"), options =
   migrateQuality(db);
   installQuality(app, db, { ...options, sessionUser });
   installProcessRoutes(app, db, { operationRequest, saveOperationRequest });
+  installPostProcessingTables(app, db, { operationRequest, saveOperationRequest });
   installPayroll(app, db);
   installBom(app, db);
   installProduction(app, db, { ...options, sessionUser });

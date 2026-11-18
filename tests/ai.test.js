@@ -1431,6 +1431,7 @@ test('AI distinguishes post-processing templates and explains output-based limit
   assert.match(prompt, /作废.*恢复.*材料/);
   assert.match(prompt, /后处理工艺也支持graph.price_tables/);
   assert.match(prompt, /post_processing_operations用price_table_id/);
+  assert.match(prompt, /新建生产单时选用整张表或不选，不自动继承 BOM/);
   assert.ok(!offered.some(tool => /^(?:preview|save|report|void).*post_processing/.test(tool.function.name)));
   const bom = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI后处理配方', product_id: product.id, base_quantity: 1, base_unit: product.unit, enabled: 1, note: '', items: [{ product_id: raw.id, quantity: 1, unit: raw.unit, note: '' }] });
   assert.equal(bom.status, 200, JSON.stringify(bom.data));
@@ -1752,7 +1753,7 @@ test('AI reads BOM post-processing per-unit material use and explains automatic 
     assert.equal(result.post_processing_operations[0].materials[0].quantity_fraction, '1/100');
     assert.ok(!JSON.stringify(result).includes('cost'));
     const prompt = f.calls.at(-1).body.messages[0].content;
-    assert.match(prompt, /生产单自动继承BOM配置/);
+    assert.match(prompt, /旧客户端可继承BOM配置/);
     assert.match(prompt, /成品登记不消耗后处理材料/);
     assert.match(prompt, /1000条预计领10个纸箱、装箱10次/);
   }
