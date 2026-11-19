@@ -67,7 +67,8 @@ async function fixture(t, { staged = false } = {}) {
 
 test('a reusable post-processing table overrides legacy BOM configuration and freezes multiple operations', async t => {
   const f = await fixture(t);
-  const route = f.ok(await f.route([{ product_id: f.label.id, quantity: 1 }]));
+  const route = f.ok(await f.route([{ product_id: f.label.id }]));
+  assert.equal(route.graph.nodes[0].materials[0].quantity, 1);
   const second = f.ok(await f.route([], { name: '复检' }));
   const binding = (route, product_coefficient) => ({ route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient });
   const bom = await f.save(`/boms/${f.bom.id}`, { ...f.bom, post_processing_operations: [{ ...binding(route, 1), materials: [{ product_id: f.label.id, quantity: 3 }] }] });
@@ -112,7 +113,7 @@ test('post-processing templates validate material identity, four decimals and wh
   const inactive = await f.product('INACTIVE');
   f.db.prepare('UPDATE products SET active=0 WHERE id=?').run(inactive.id);
   for (const materials of [null, {}, [null], [raw, raw], [{ ...raw, product_id: String(f.raw.id) }], [{ ...raw, product_id: foreign.id }],
-    [{ ...raw, product_id: inactive.id }], [{ ...raw, quantity: 0 }], [{ ...raw, quantity: '1' }], [{ ...raw, quantity: 0.00001 }], [{ ...label, quantity: 0.5 }]]) {
+    [{ ...raw, product_id: inactive.id }], [{ ...raw, quantity: 0 }], [{ ...raw, quantity: null }], [{ ...raw, quantity: '1' }], [{ ...raw, quantity: 0.00001 }], [{ ...label, quantity: 0.5 }]]) {
     assert.equal((await f.route(materials)).status, 400, JSON.stringify(materials));
   }
   assert.equal((await f.route([raw], { route_kind: 'production' })).status, 400);

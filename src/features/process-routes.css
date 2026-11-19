@@ -653,12 +653,9 @@
 .process-fixed-materials .bom-search-row > input {
   flex-basis: 100%;
 }
-.process-fixed-material,
-.process-fixed-material > label {
+.process-fixed-material {
   display: grid;
   gap: 6px;
-}
-.process-fixed-material {
   justify-items: start;
   margin-top: 12px;
   overflow-wrap: anywhere;

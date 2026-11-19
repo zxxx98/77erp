@@ -12,7 +12,7 @@ import { saveExactQuantity } from './exact-quantity.js';
 import { reopenProductionQuantities } from './production-rounding.js';
 import { validateProcessGraph, processProgress, productionRouteProgress, processGraphWithPrices, processPriceTables } from '../shared/process-routes.js';
 import { validateOperationPrice } from '../shared/payroll.js';
-import { postProcessingLimit, postProcessingUnit, productionOutputCompleted } from '../shared/post-processing.js';
+import { defaultPostMaterialPerRun, postProcessingLimit, postProcessingUnit, productionOutputCompleted } from '../shared/post-processing.js';
 import { productionTypes } from '../shared/product-production-type.js';
 import { normalizePostMaterials, planPostMaterials, postMaterialPlanByProduct, totalPlannedMaterials, savePostMaterialItems, consumePostMaterials, readPostMaterialReport, postMaterialUsage, sumPostMaterialCosts, validatePostMaterialGraph, validatePostMaterialReport, stripLegacyPostMaterials } from './post-processing-materials.js';
 
@@ -219,7 +219,7 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
         const template=db.prepare('SELECT enabled,published_revision FROM quality_templates WHERE id=? AND warehouse_id=?').get(node.acceptance_template_id,req.warehouse.id);
         if(!template?.enabled || !template.published_revision) fail('请选择当前仓库已启用且已发布的验收模板。');
       }
-      const fixed = normalizePostMaterials(db, req.warehouse.id, materials, kind === 'post_processing');
+      const fixed = normalizePostMaterials(db, req.warehouse.id, materials, kind === 'post_processing', defaultPostMaterialPerRun);
       return fixed.length ? { ...node, materials: fixed } : node;
     })};
     const at = new Date().toISOString();

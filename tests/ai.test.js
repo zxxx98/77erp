@@ -1433,6 +1433,7 @@ test('AI distinguishes post-processing templates and explains output-based limit
   assert.match(prompt, /post_processing_operations用price_table_id/);
   assert.match(prompt, /新建生产单时选用整张表或不选，不自动继承 BOM/);
   assert.match(prompt, /可逐道添加工序.*导入整条工艺路线.*保留原设置/);
+  assert.match(prompt, /新添加的固定材料.*每次默认消耗1个库存单位.*旧绑定保留原用量/);
   assert.ok(!offered.some(tool => /^(?:preview|save|report|void).*post_processing/.test(tool.function.name)));
   const bom = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI后处理配方', product_id: product.id, base_quantity: 1, base_unit: product.unit, enabled: 1, note: '', items: [{ product_id: raw.id, quantity: 1, unit: raw.unit, note: '' }] });
   assert.equal(bom.status, 200, JSON.stringify(bom.data));

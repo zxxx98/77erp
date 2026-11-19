@@ -48,15 +48,16 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     await expect(label('搜索材料')).toBeVisible({ timeout: 3000 });
     await label('搜索材料').fill('纸箱');
     await button('添加材料 纸箱').click();
-    await label('每次用量 纸箱').fill('0.00001');
-    await button('保存路线').click();
-    await expect(page.getByRole('alert')).toContainText('最多 4 位小数');
-    await label('每次用量 纸箱').fill('1');
+    const fixedMaterials = page.getByRole('region', { name: '固定用料', exact: true });
+    await expect(fixedMaterials.getByText('每次用量 1 个', { exact: true })).toBeVisible();
+    await expect(label('每次用量 纸箱')).toHaveCount(0);
     await button('新增单价表').click();
     await label('单价表名称（型号）').fill('B型号包装');
     await label('包装 计件单价').fill('3');
     await expectPageFits();
+    const routeSaved = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/process-routes');
     await button('保存路线').click();
+    expect((await routeSaved).postDataJSON().graph.nodes[0].materials).toEqual([{ product_id: carton.id }]);
     await expect(page.locator('.bom-success')).toContainText('工艺路线已保存');
 
     await button('后处理工序表').click();

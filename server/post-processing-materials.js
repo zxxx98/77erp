@@ -20,17 +20,17 @@ export function stripLegacyPostMaterials(value) {
   return JSON.stringify(graph);
 }
 
-function checkedMaterials(value, post, error) {
+function checkedMaterials(value, post, error, defaultQuantity) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 100 || new Set(value.map(row => row?.product_id)).size !== value.length ||
-      value.some(row => !isId(row?.product_id) || !validQuantity(row.quantity, true))) fail(error);
+      value.some(row => !isId(row?.product_id) || !validQuantity(row.quantity === undefined ? defaultQuantity : row.quantity, true))) fail(error);
   if (!post && value.length) fail(error);
   return value;
 }
 
-export function normalizePostMaterials(db, warehouseId, value, post) {
-  const materials = checkedMaterials(value, post, post ? configError : '仅后处理工序可以配置固定材料。');
-  return materials.map(({ product_id, quantity }) => {
+export function normalizePostMaterials(db, warehouseId, value, post, defaultQuantity) {
+  const materials = checkedMaterials(value, post, post ? configError : '仅后处理工序可以配置固定材料。', defaultQuantity);
+  return materials.map(({ product_id, quantity = defaultQuantity }) => {
     const product = db.prepare('SELECT id AS product_id,name,barcode,specification,unit,unit_round_up,active FROM products WHERE id=? AND warehouse_id=?').get(product_id, warehouseId);
     if (!product?.active) fail(productError);
     if (product.unit_round_up && !Number.isInteger(quantity)) fail('后处理材料每次用量须符合整单位规则。');
