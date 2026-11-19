@@ -65,6 +65,7 @@
 .registration-feedback-success { color: #116149; background: #eaf8f1; border-color: #9bd8ba; }
 .registration-feedback-error { color: #a32635; background: #fff0f0; border-color: #f0a8ad; }
 .bom-calculate-form { align-items: flex-end; }
+.bom-actions + .bom-calculate-form { margin-top: 14px; }
 :where(.bom-calculate-form > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { width: min(100%, 300px); }
 .bom-calculate-form + .bom-hint { margin-top: 16px; margin-bottom: 0; }
 .bom-calculation-result { display: grid; gap: 20px; }

@@ -194,7 +194,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     const plan = await api('/production-orders/prepare', { method: 'POST', warehouseId: data.warehouse_id,
       body: { bom_id: bom.id, schema_version: 2, bom_version: bom.version, planned_quantity: bom.planned_quantity || bom.base_quantity, supply_choices: [], post_processing_table_id: null } });
     setEditor(previous => ({ kind: 'new', note: previous?.note || '',
-      planned_quantity: String(plan.production_quantity), supply_choices: [], plan }));
+      planned_quantity: String(plan.production_quantity), supply_choices: [], plan, ...(bom.postTable ? { postTable: bom.postTable } : {}) }));
   };
   const supplyStale = editor?.kind === 'new' && editor.plan && (Number(editor.planned_quantity) !== editor.plan.production_quantity || JSON.stringify(editor.supply_choices) !== JSON.stringify(editor.plan.prepared_choices || []));
   const supplyRequest = (draft, signal) => {

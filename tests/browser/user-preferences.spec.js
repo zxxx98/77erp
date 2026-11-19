@@ -174,6 +174,7 @@ test('BOM detail drawer follows the same preference on narrow screens', async ({
     await page.goto('/#bom');
     await page.getByRole('searchbox', { name: '搜索BOM', exact: true }).fill(`偏好配方-${tag}`);
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await page.getByRole('tab', { name: '配方结构', exact: true }).click();
     await page.getByRole('button', { name: `查看详情 偏好原料-${tag}`, exact: true }).click();

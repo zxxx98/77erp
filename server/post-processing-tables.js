@@ -57,13 +57,17 @@ function preview(db, warehouseId, tableId) {
   return { ...table, operations, token };
 }
 
-export function productionPostProcessingTable(db, warehouseId, body, productId) {
-  if (body.post_processing_operations !== undefined) fail('不能同时选择后处理工序表和单独的后处理工序。');
-  if (body.post_processing_table_id === null) return [];
+export function resolvePostProcessingTable(db, warehouseId, body, productId) {
+  if (body.post_processing_table_id === null) return null;
   const table = preview(db, warehouseId, body.post_processing_table_id);
   if (body.post_processing_table_token !== table.token) fail(changed, 409);
   if (table.operations.some(row => row.materials.some(material => material.product_id === productId))) fail('成品不能作为自身的后处理材料。');
-  return table.operations;
+  return table;
+}
+
+export function productionPostProcessingTable(db, warehouseId, body, productId) {
+  if (body.post_processing_operations !== undefined) fail('不能同时选择后处理工序表和单独的后处理工序。');
+  return resolvePostProcessingTable(db, warehouseId, body, productId)?.operations ?? [];
 }
 
 export function postProcessingTableReferencesRoute(db, routeId) {

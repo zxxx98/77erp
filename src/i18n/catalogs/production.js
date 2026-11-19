@@ -75,6 +75,8 @@ export default {
   'production.removePostProcessingTable': ['删除工序表', 'Delete table', 'Xóa bảng công đoạn'],
   'production.searchPostProcessingTables': ['搜索后处理工序表', 'Search post-processing tables', 'Tìm bảng công đoạn hậu xử lý'],
   'production.choosePostProcessingTable': ['选择后处理工序表', 'Select post-processing table', 'Chọn bảng công đoạn hậu xử lý'],
+  'production.skipPostProcessingTable': ['跳过后处理', 'Skip post-processing', 'Bỏ qua hậu xử lý'],
+  'production.totalMaterialRequirement': ['总需求量（含后处理）', 'Total requirement (incl. post-processing)', 'Tổng nhu cầu (gồm hậu xử lý)'],
   'production.noPostProcessingTables': ['没有匹配的后处理工序表。请在工艺路线页面配置或启用工序表。', 'No matching post-processing tables. Configure or enable a table on the process routes page.', 'Không có bảng phù hợp. Hãy cấu hình hoặc bật bảng trên trang quy trình công nghệ.'],
   'production.noPostProcessingTableSelected': ['不使用后处理工序表', 'No post-processing table', 'Không dùng bảng công đoạn hậu xử lý'],
   'production.clearPostProcessingTable': ['取消选用工序表', 'Clear selected table', 'Bỏ chọn bảng công đoạn'],

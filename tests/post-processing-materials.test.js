@@ -128,6 +128,39 @@ test('post-processing templates validate material identity, four decimals and wh
   assert.equal(f.ok(await f.command('/products/batch/delete/preview', { ids: [extra.id] })).deletable.length, 1);
 });
 
+test('BOM calculation can skip stale legacy processing or include the selected table without counting post-processing toward scrap', async t => {
+  const f = await fixture(t);
+  const waste = await f.product('WASTE');
+  const route = f.ok(await f.route([{ product_id: f.raw.id, quantity: 2 }, { product_id: f.label.id, quantity: 1 }]));
+  const binding = { route_id: route.id, route_version: route.version, node_id: 'pack' };
+  const bom = await f.save(`/boms/${f.bom.id}`, { ...f.bom,
+    post_processing_operations: [{ ...binding, product_coefficient: 1, materials: route.graph.nodes[0].materials }],
+    scraps: [{ product_id: waste.id, method: 'input_ratio', source_product_id: f.raw.id, quantity: 10, unit: '件', note: '' }] });
+  const tableInput = { name: '通用包装', enabled: 1, operations: [{ ...binding, product_coefficient: 20 }] };
+  const table = await f.save('/post-processing-tables', tableInput);
+  const tablePath = `/post-processing-tables/${table.id}`;
+  f.db.prepare('UPDATE products SET unit_round_up=1,stock=110 WHERE id=?').run(f.raw.id);
+  const inputs = { production_quantity: 110, version: bom.version, schema_version: 2 };
+  const calculate = body => f.request(`/boms/${bom.id}/calculate`, { ...inputs, ...body });
+  assert.equal((await calculate({})).status, 409);
+  const skipped = f.ok(await calculate({ post_processing_table_id: null }));
+  assert.deepEqual(skipped.post_processing_operations, []);
+  assert.deepEqual(skipped.rows.map(row => [row.product_id, row.required, row.shortage]), [[f.raw.id, 110, 0]]);
+
+  const preview = f.ok(await f.request(`${tablePath}/preview`));
+  const choice = { post_processing_table_id: table.id, post_processing_table_token: preview.token };
+  const selected = f.ok(await calculate(choice));
+  assert.deepEqual(selected.post_processing_table, { id: table.id, name: table.name });
+  assert.deepEqual(selected.rows.map(row => [row.product_id, row.required, row.post_processing_required, row.shortage]), [
+    [f.raw.id, 122, 12, 12], [f.label.id, 6, 6, 0],
+  ]);
+  assert.equal(selected.scraps[0].planned_quantity, 11);
+  assert.notEqual(selected.structure_token, skipped.structure_token);
+  await f.save(tablePath, { ...tableInput, version: table.version, operations: [{ ...binding, product_coefficient: 25 }] });
+  assert.equal((await calculate(choice)).status, 409);
+  assert.equal(f.db.prepare('SELECT version FROM boms WHERE id=?').get(bom.id).version, bom.version);
+});
+
 test('planned post-processing demands merge with BOM rows and recalculate from the saved snapshot', async t => {
   const f = await fixture(t), route = f.ok(await f.route([{ product_id: f.raw.id, quantity: 0.3333 }, { product_id: f.label.id, quantity: 2 }]));
   let order = await f.create(route);

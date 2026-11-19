@@ -48,6 +48,44 @@ async function approveReceipts(page, f) {
 }
 
 for (const mobile of [false, true]) {
+  test(`${mobile ? 'mobile' : 'desktop'} selects or skips a post-processing table when planning materials`, async ({ page }) => {
+    if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
+    const f = await fixture(page);
+    try {
+      const label = await f.post('/products', { name: '包装标签', barcode: 'LABEL-001', unit: '张', category: '生产', cost: 1, price: 2, threshold: 0 });
+      const route = await f.post('/process-routes', { name: '包装', route_kind: 'post_processing', enabled: 1, note: '', graph: {
+        nodes: [{ id: 'pack', name: '贴标签', x: 24, y: 24, note: '', materials: [{ product_id: label.id, quantity: 2 }] }], edges: [],
+      } });
+      await f.post('/post-processing-tables', { name: '桌子包装工序表', enabled: 1, operations: [{ route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 4 }] });
+      await f.post('/boms', f.definition);
+      await page.goto(f.base + '/#bom');
+      await page.getByRole('button', { name: '测算备料', exact: true }).click();
+      const picker = page.getByRole('dialog', { name: '选择后处理工序表' });
+      await expect(picker).toBeVisible();
+      await picker.getByRole('button', { name: '跳过后处理', exact: true }).click();
+      await page.getByLabel('生产数量', { exact: true }).fill('5');
+      const calculate = page.getByRole('button', { name: '开始测算', exact: true });
+      await calculate.click();
+      const rows = page.locator('.bom-result-table tbody tr');
+      await expect(rows).toHaveCount(3);
+      await page.getByRole('button', { name: '选择后处理工序表', exact: true }).click();
+      await picker.getByRole('button', { name: '桌子包装工序表', exact: true }).click();
+      await calculate.click();
+      const labelRow = rows.filter({ hasText: '包装标签' });
+      await expect(labelRow).toContainText('后处理需求 4 张');
+      await expect(labelRow).toHaveClass('bom-shortage-row');
+      const downloaded = page.waitForEvent('download');
+      await page.getByRole('button', { name: '导出备料表', exact: true }).click();
+      const csv = parseCSV(await readFile(await (await downloaded).path(), 'utf8'));
+      expect(csv[4]).toEqual(['后处理工序表', '桌子包装工序表']);
+      expect(csv.find(row => row[0] === '包装标签').slice(4)).toEqual(['', '4', '0', '4', '', '', '4']);
+      await page.getByRole('button', { name: '按本次数量新建生产单', exact: true }).click();
+      await expect(page.locator('.post-processing-plan')).toContainText('桌子包装工序表');
+      await expect(page.locator('.post-processing-plan')).toContainText('贴标签');
+      await expect(page.getByLabel('计划产量', { exact: true })).toHaveValue('5');
+    } finally { await f.close(); }
+  });
+
   test(`${mobile ? 'mobile' : 'desktop'} confirms BOM deletion and preserves stale or referenced recipes`, async ({ page }) => {
     if (mobile) { await page.setViewportSize({ width: 390, height: 844 }); await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone); }
     const f = await fixture(page);
@@ -124,6 +162,7 @@ for (const mobile of [false, true]) {
       await page.getByRole('button', { name: '保存BOM', exact: true }).click();
       await expect(page.locator('.bom-success')).toContainText('BOM已保存');
       await page.getByRole('button', { name: '测算备料', exact: true }).click();
+      await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
       await page.getByLabel('生产数量', { exact: true }).fill('10');
       await page.getByRole('button', { name: '开始测算', exact: true }).click();
       await expect(page.locator('.bom-result-summary')).toHaveText('共 3 种材料，2 种缺料。');
@@ -262,6 +301,7 @@ async function fractionalRecipeFlow(page, pwa = false) {
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '取消', exact: true }).click();
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
     await page.getByLabel('生产数量', { exact: true }).fill('40');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     const rows = page.locator('.bom-result-table tbody tr');
@@ -369,6 +409,7 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) {
       await page.getByRole('button', { name: '保存BOM', exact: true }).click();
       const copied = page.locator('.bom-list-item').filter({ has: page.getByText('桌子配方副本', { exact: true }) });
       await copied.getByRole('button', { name: '测算备料', exact: true }).click();
+      await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
       await page.getByLabel('生产数量', { exact: true }).fill('3');
       await page.getByRole('button', { name: '开始测算', exact: true }).click();
       await expect(page.locator('.bom-result-summary')).toHaveText('共 1 种材料，0 种缺料。');

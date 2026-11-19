@@ -168,6 +168,7 @@ async function standardLossFlow(page, pwa = false, lossMethod = 'internal') {
     await page.getByRole('button', { name: '保存BOM', exact: true }).click();
     await expect(page.locator('.bom-success')).toContainText('BOM已保存');
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
     await page.getByLabel('生产数量', { exact: true }).fill('10');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await expect(page.locator('.bom-result-table tbody tr').first()).toContainText('标准损耗率 10%');
@@ -238,6 +239,7 @@ test('BOM calculation carries quantity into a production draft and navigation pr
   try {
     await page.goto(f.base + '/#bom');
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
     await page.getByLabel('生产数量', { exact: true }).fill('10');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await page.getByRole('button', { name: '按本次数量新建生产单', exact: true }).click();
@@ -319,6 +321,7 @@ async function scrapProductionFlow(page, pwa = false) {
     await expect(page.getByLabel('废料甲废料比例', { exact: true })).toHaveValue('5');
     await page.getByRole('button', { name: '返回BOM', exact: true }).click();
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
     await page.getByLabel('生产数量', { exact: true }).fill('10');
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await expect(page.locator('.scrap-output').first()).toContainText('0.75 千克');

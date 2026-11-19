@@ -6,14 +6,16 @@ const text = value => quote(/^\s*[=+\-@]/.test(String(value ?? '')) ? `'${value}
 export function bomCSV(snapshot, language = getLocale()) {
   const pt = i18n.getFixedT(language);
   const lossMethod = snapshot.loss_method ?? 'internal';
+  const postTable = snapshot.post_processing_table;
   const rows = [
     ['BOM', snapshot.name, pt("production.export.warehouse"), snapshot.warehouse.name].map(text),
     [pt("production.finishedProduct"), snapshot.product.name, pt("production.export.productCode"), snapshot.product.barcode].map(text),
     [text(pt("production.productionQuantity2")), quote(snapshot.production_quantity), text(pt("production.export.productUnit")), text(snapshot.product.unit)],
     [text(pt("production.baseOutput")), quote(snapshot.base_quantity), text(pt("production.export.stockReadTime")), text(snapshot.captured_at), text(pt("production.standardLossCalculation")), text(snapshot.multi_level ? pt("production.export.calculatedByLevelSeeStructureDetails") : pt('production.loss.' + lossMethod)), text('BOM ID'), quote(snapshot.bom_id), text(pt("production.export.editVersion")), quote(snapshot.version)],
-    [pt("production.export.materialName"), pt("production.export.code"), pt("production.export.specification"), pt("production.unit"), pt("production.baseNetUsage"), pt("production.requiredQuantityIncludingLoss"), pt("production.bookStock"), pt("production.shortageQuantity"), pt("production.note"), pt("production.standardLossRate2")].map(text),
+    ...(postTable ? [[pt('production.postProcessingTables'), postTable.name].map(text)] : []),
+    [pt("production.export.materialName"), pt("production.export.code"), pt("production.export.specification"), pt("production.unit"), pt("production.baseNetUsage"), pt(postTable ? 'production.totalMaterialRequirement' : 'production.requiredQuantityIncludingLoss'), pt("production.bookStock"), pt("production.shortageQuantity"), pt("production.note"), pt("production.standardLossRate2"), ...(postTable ? [pt('production.postProcessingPlannedRequirement')] : [])].map(text),
     ...snapshot.rows.map(row => [text(row.name), text(row.barcode), text(row.specification), text(row.unit),
-      quote(row.quantity_fraction ? pt("production.export.approximately", { v0: row.quantity_fraction, v1: row.quantity }) : row.quantity), quote(row.required), quote(row.stock), quote(row.shortage), text(snapshot.multi_level ? pt("production.export.sourcePaths", { v0: row.sources.join('、') }) : row.note), quote(snapshot.multi_level ? '' : row.loss_rate ?? 0)]),
+      quote(row.quantity_fraction ? pt("production.export.approximately", { v0: row.quantity_fraction, v1: row.quantity }) : row.quantity), quote(row.required), quote(row.stock), quote(row.shortage), text(snapshot.multi_level && row.sources?.length ? pt("production.export.sourcePaths", { v0: row.sources.join('、') }) : row.note), quote(snapshot.multi_level || row.quantity === null ? '' : row.loss_rate ?? 0), ...(postTable ? [quote(row.post_processing_required)] : [])]),
     ...((snapshot.scraps || []).length ? [
       [pt("production.export.estimatedScrapName"), pt("production.export.code"), pt("production.export.specification"), pt("production.unit"), pt("production.calculationMethod"), pt("production.export.baseQuantityOrRatio"), pt("production.export.sourceMaterialCode"), pt("production.export.estimatedOutput"), pt("production.note")].map(text),
       ...snapshot.scraps.map(row => [text(row.name), text(row.barcode), text(row.specification), text(row.unit),

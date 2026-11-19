@@ -54,6 +54,7 @@ for (const profile of ['desktop', 'iphone', 'android-pwa']) test(`${profile} nav
     if (context) await page.evaluate(() => navigator.serviceWorker.ready);
     await page.getByRole('searchbox', { name: '搜索BOM', exact: true }).fill('层级配方0');
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await expect(page.getByRole('tab', { name: '领料汇总', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('.bom-result-table tbody tr')).toHaveCount(1);
@@ -129,6 +130,7 @@ test('desktop pans a zoomed BOM list without activating material actions', async
     await page.goto(f.base + '/#bom');
     await page.getByRole('searchbox', { name: '搜索BOM', exact: true }).fill('层级配方0');
     await page.getByRole('button', { name: '测算备料', exact: true }).click();
+    await page.getByRole('button', { name: '跳过后处理', exact: true }).click();
     await page.getByRole('button', { name: '开始测算', exact: true }).click();
     await page.getByRole('tab', { name: '配方结构', exact: true }).click();
     const structure = page.locator('.bom-structure'), list = page.locator('.bom-structure-scroll');

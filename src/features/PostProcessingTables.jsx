@@ -23,11 +23,12 @@ function TableList({ data, manage = false, render }) {
   </>;
 }
 
-export function PostProcessingTablePicker({ data, onClose, onSelect }) {
+export function PostProcessingTablePicker({ data, onClose, onSelect, onSkip }) {
   const action = useBusiness();
   return <Modal title={t('production.choosePostProcessingTable')} onClose={() => { if (!action.busy) onClose(); }}>
     <div className="form-body">
       {action.error && <p className="form-error" role="alert">{action.error}</p>}
+      {onSkip && <Button disabled={action.busy} onClick={onSkip}>{t('production.skipPostProcessingTable')}</Button>}
       <TableList data={data} render={table => <Button key={table.id} disabled={action.busy} onClick={() => action.run(async () => {
         onSelect(await api(`${path}/${table.id}/preview`, { warehouseId: data.warehouse_id }));
         onClose();

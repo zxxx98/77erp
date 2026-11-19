@@ -1,4 +1,5 @@
-import { validatePostMaterialGraph } from './post-processing-materials.js';
+import { planPostMaterials, postMaterialPlanByProduct, totalPlannedMaterials, validatePostMaterialGraph } from './post-processing-materials.js';
+import { resolvePostProcessingTable } from './post-processing-tables.js';
 import { resolveBomPostProcessing, validateBomPostProcessing } from './bom-post-processing.js';
 import { migrateSortOrder, nextTopOrder, reorderRows } from './custom-order.js';
 import { buildProductionSupply } from './production-supply.js';
@@ -176,13 +177,28 @@ export function bomProcessOverview(db, warehouseId, id) {
   });
 }
 
-export function calculateBom(db, warehouse, id, productionQuantity, version, schemaVersion, supplyChoices, { inheritPostProcessing = true } = {}) {
+function includePostProcessingMaterials(rows, operations, productionQuantity) {
+  const plans = operations.map(operation => planPostMaterials({ nodes: [{ materials: operation.materials }] }, productionQuantity, operation.product_coefficient));
+  const totals = postMaterialPlanByProduct(plans);
+  const materials = new Map(rows.map(row => [row.product_id, row]));
+  for (const { post_processing_materials } of plans) for (const { planned_quantity, ...material } of post_processing_materials) {
+    if (!materials.has(material.product_id)) materials.set(material.product_id, { ...material, quantity: null, required: 0, sources: [], note: '' });
+  }
+  return [...materials.values()].map(row => {
+    const post_processing_required = totals.get(row.product_id) ?? 0;
+    const { total_planned_quantity: required } = totalPlannedMaterials({ planned_quantity: row.required }, post_processing_required);
+    return { ...row, required, post_processing_required };
+  });
+}
+
+export function calculateBom(db, warehouse, id, productionQuantity, version, schemaVersion, supplyChoices, { inheritPostProcessing = true, postProcessingChoice } = {}) {
   if (!validQuantity(productionQuantity, true)) fail('生产数量需为正数，最多 4 位小数。');
   return readSnapshot(db, () => {
     const bom = getBom(db, warehouse.id, id);
     productionQuantity = bom.product.unit_round_up ? Math.ceil(productionQuantity) : productionQuantity;
     if (version !== undefined && version !== bom.version) fail('BOM已变化，请重新打开后测算。', 409);
-    const post_processing_operations = inheritPostProcessing ? resolveBomPostProcessing(db, warehouse.id, bom.post_processing_operations, bom.product_id) : [];
+    const table = postProcessingChoice ? resolvePostProcessingTable(db, warehouse.id, postProcessingChoice, bom.product_id) : null;
+    const post_processing_operations = table?.operations ?? (inheritPostProcessing ? resolveBomPostProcessing(db, warehouse.id, bom.post_processing_operations, bom.product_id) : []);
     const cache = new Map([[bom.id, bom]]);
     const load = childId => {
       if (!cache.has(childId)) cache.set(childId, getBom(db, warehouse.id, childId));
@@ -192,7 +208,8 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
       productId => db.prepare('SELECT id,name,version,enabled FROM boms WHERE warehouse_id=? AND product_id=? ORDER BY name,id').all(warehouse.id, productId));
     const nodes = supply ? supply.nodes : buildBomNodes(bom, load), result = calculateBomNodes(nodes, productionQuantity);
     if (result.multi_level && schemaVersion !== 2) fail('此BOM包含多层配方，请刷新页面后重新测算。', 409);
-    const rows = result.rows.map(row => {
+    const requirements = table ? includePostProcessingMaterials(result.rows, table.operations, productionQuantity) : result.rows;
+    const rows = requirements.map(row => {
       const product = db.prepare('SELECT stock FROM products WHERE id=? AND warehouse_id=?').get(row.product_id, warehouse.id);
       return { ...row, stock: product.stock, shortage: bomShortage(row.required, product.stock) };
     });
@@ -208,10 +225,11 @@ export function calculateBom(db, warehouse, id, productionQuantity, version, sch
         row.product.name, row.product.barcode, row.product.specification, row.product.active, row.product.unit, row.product.unit_round_up])]);
     return { bom_id: bom.id, version: bom.version, name: bom.name, product: bom.product, base_quantity: bom.base_quantity, loss_method: bom.loss_method,
       post_processing_operations, ...(inheritPostProcessing ? {} : { legacy_post_processing: bom.post_processing_operations.length > 0 }),
+      ...(table ? { post_processing_table: { id: table.id, name: table.name } } : {}),
       schema_version: 2, supplies: supply?.supplies, multi_level: result.multi_level, nodes: withCurrentProductionTypes(db, warehouse.id, result.nodes),
-      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints, routeFingerprints, post_processing_operations, ...(supply ? [supplyChoices, supplyChoices.some(row => row.mode === 'partial') ? productionQuantity : null] : [])])).digest('hex'),
+      structure_token: createHash('sha256').update(JSON.stringify([instance, warehouse.id, fingerprints, routeFingerprints, post_processing_operations, ...(table ? [table.token] : []), ...(supply ? [supplyChoices, supplyChoices.some(row => row.mode === 'partial') ? productionQuantity : null] : [])])).digest('hex'),
       scraps: bom.scraps.map(row => ({ ...row, name: row.product.name, barcode: row.product.barcode, specification: row.product.specification,
-        planned_quantity: scrapExpectedQuantity({ ...row, unit_round_up: row.product.unit_round_up }, productionQuantity, bom.base_quantity, rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
+        planned_quantity: scrapExpectedQuantity({ ...row, unit_round_up: row.product.unit_round_up }, productionQuantity, bom.base_quantity, result.rows.map(item => ({ product_id: item.product_id, quantity: item.required }))) })),
       quantity_decimals: 4, production_quantity: productionQuantity, warehouse: { id: warehouse.id, name: warehouse.name }, captured_at: new Date().toISOString(), rows };
   });
 }
@@ -387,5 +405,9 @@ export function installBom(app, db) {
     db.prepare('DELETE FROM boms WHERE id=?').run(bom.id);
     return { ok: true };
   }, true));
-  app.post('/api/boms/:id/calculate', route(req => calculateBom(db, req.warehouse, Number(req.params.id), req.body.production_quantity, req.body.version, req.body.schema_version)));
+  app.post('/api/boms/:id/calculate', route(req => {
+    const explicitChoice = req.body.post_processing_table_id !== undefined;
+    return calculateBom(db, req.warehouse, Number(req.params.id), req.body.production_quantity, req.body.version, req.body.schema_version,
+      undefined, { inheritPostProcessing: !explicitChoice, postProcessingChoice: explicitChoice ? req.body : undefined });
+  }));
 }

@@ -13,9 +13,11 @@ import { bomLossMethodLabels, bomLossMethodFormulas } from '../i18n/production-d
 import { t as pt, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { BomResultViews } from './BomResultViews.jsx';
+import { PostProcessingTablePicker } from './PostProcessingTables.jsx';
 import { ScrapOutputs } from './ScrapOutputs.jsx';
 
 const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
+const postProcessingChoice = table => ({ post_processing_table_id: table?.id ?? null, post_processing_table_token: table?.token });
 
 export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
   const { locale } = useLocale();
@@ -24,6 +26,8 @@ export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
   const [snapshot, setSnapshot] = useState(null);
   const [stale, setStale] = useState(false);
   const [shortageOnly, setShortageOnly] = useState(false);
+  const [postTable, setPostTable] = useState(null);
+  const [postTablePicker, setPostTablePicker] = useState(true);
   const snapshotData = useRef(data);
 
   useEffect(() => {
@@ -33,7 +37,7 @@ export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
       method: 'POST',
       warehouseId: data.warehouse_id,
       signal: controller.signal,
-      body: { production_quantity: snapshot.production_quantity, version: snapshot.version, schema_version: 2 },
+      body: { production_quantity: snapshot.production_quantity, version: snapshot.version, schema_version: 2, ...postProcessingChoice(postTable) },
     })
       .then(result => {
         if (!controller.signal.aborted) {
@@ -43,16 +47,29 @@ export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
       })
       .catch(() => { if (!controller.signal.aborted) setStale(true); });
     return () => controller.abort();
-  }, [data, snapshot, bom.id]);
+  }, [data, snapshot, bom.id, postTable]);
 
   const action = useBusiness();
   const shortages = snapshot ? snapshot.rows.filter(row => row.shortage > 0).length : 0;
+  const requiredLabel = pt(snapshot?.post_processing_table ? 'production.totalMaterialRequirement' : 'production.requiredQuantityIncludingLoss');
+  const choosePostTable = table => {
+    setPostTable(table);
+    setPostTablePicker(false);
+    setSnapshot(null);
+    setShortageOnly(false);
+    action.setError('');
+  };
 
   return <>
     <PageHeading title={pt("production.materialPlanning")} description={`${bom.name} #${bom.id} · ${bom.product.name} · ${bom.product.barcode}`}>
       <Button icon={ArrowLeft} disabled={action.busy} onClick={onBack}>{pt("production.backToBom")}</Button>
     </PageHeading>
+    {postTablePicker && <PostProcessingTablePicker data={data} onClose={() => setPostTablePicker(false)} onSelect={choosePostTable} onSkip={() => choosePostTable(null)} />}
     <section className="panel bom-section">
+      <div className="bom-actions">
+        <strong>{postTable?.name ?? pt('production.noPostProcessingTableSelected')}</strong>
+        <Button disabled={action.busy} onClick={() => setPostTablePicker(true)}>{pt('production.choosePostProcessingTable')}</Button>
+      </div>
       <div className="bom-calculate-form">
         <label>
           {pt("production.productionQuantity")}{bom.product.unit}）
@@ -73,7 +90,7 @@ export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
             const result = await api(`/boms/${bom.id}/calculate`, {
               method: 'POST',
               warehouseId: data.warehouse_id,
-              body: { production_quantity, version: bom.version, schema_version: 2 },
+              body: { production_quantity, version: bom.version, schema_version: 2, ...postProcessingChoice(postTable) },
             });
             snapshotData.current = data;
             setStale(false);
@@ -99,7 +116,7 @@ export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
           </p>
         </div>
         <div className="bom-actions bom-result-actions">
-          {onCreateProduction && <Button kind="primary" disabled={stale} onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity })}>
+          {onCreateProduction && <Button kind="primary" disabled={stale} onClick={() => onCreateProduction({ ...bom, planned_quantity: snapshot.production_quantity, postTable })}>
             {pt("production.createProductionOrderForThisQuantity")}
           </Button>}
           <Select aria-label={pt("production.outputLanguage")} value={outputLanguage || locale} onChange={setOutputLanguage}>
@@ -132,7 +149,7 @@ export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
               <tr>
                 <th>{pt("production.material")}</th>
                 <th>{pt("production.baseNetUsage")}</th>
-                <th>{pt("production.requiredQuantityIncludingLoss")}</th>
+                <th>{requiredLabel}</th>
                 <th>{pt("production.bookStock")}</th>
                 <th>{pt("production.shortageQuantity")}</th>
                 <th>{pt("production.note")}</th>
@@ -152,9 +169,11 @@ export function BomCalculation({ bom, data, onBack, onCreateProduction }) {
                   <td data-label={pt("production.baseNetUsage")}>
                     {shown
                       ? <>{shown.quantity_fraction || count(shown.quantity)} {row.unit}<small>{pt("production.standardLossRate")} {count(shown.loss_rate)}%</small></>
-                      : <button type="button" className="bom-tree-action" onClick={() => showSources(row)}>{pt("production.view")} {row.sources.length} {pt("production.sources")}</button>}
+                      : row.sources.length ? <button type="button" className="bom-tree-action" onClick={() => showSources(row)}>{pt("production.view")} {row.sources.length} {pt("production.sources")}</button> : '—'}
                   </td>
-                  <td data-label={pt("production.requiredQuantityIncludingLoss")}>{count(row.required)} {row.unit}</td>
+                  <td data-label={requiredLabel}>{count(row.required)} {row.unit}
+                    {row.post_processing_required > 0 && <small>{pt('production.postProcessingPlannedRequirement')} {count(row.post_processing_required)} {row.unit}</small>}
+                  </td>
                   <td data-label={pt("production.bookStock")}>{count(row.stock)} {row.unit}</td>
                   <td data-label={pt("production.shortageQuantity")} className={row.shortage > 0 ? 'bom-shortage' : ''}>{count(row.shortage)} {row.unit}</td>
                   <td data-label={pt("production.note")}>{row.note || '—'}</td>

@@ -59,9 +59,13 @@ BOM 保存配置时的成品及材料单位。档案单位变化后，已有配�
 
 测算、生产单预览与详情的 `nodes[].current_production_type` 在读取时按当前仓库批量查询物料档案，空字符串表示未设置；不持久化到配方快照，不影响 `structure_token`。层级为 `path` 按点分段数。
 
+## 算料时选择后处理
+
+打开「测算备料」时可以选择已启用的后处理工序表，或点「跳过后处理」只算 BOM 用料。两种选择都不会继承 BOM 里旧的后处理配置，也不会改变 BOM。选择工序表后，后处理用料按各工序的计划次数和每次固定用量计算，合并到同一物料的总需求和缺料量中，并在结果和 CSV 单独标注；预计废料仍按 BOM 用料计算。从结果新建生产单会带入所选工序表。
+
 ## AI 助手
 
-同时需要「AI 助手」和「BOM」权限。`search_boms` 查找当前仓库清单，`get_bom` 读取实际配方，`calculate_bom` 使用明确的生产数量进行同一规则的备料测算。查询不生成写入卡片，也不执行领料。AI 不创建、修改或删除 BOM，删除须到 BOM 列表确认。关闭 AI 写操作后仍可使用这些查询。
+同时需要「AI 助手」和「BOM」权限。`search_boms` 查找当前仓库清单，`get_bom` 读取实际配方，`calculate_bom` 使用明确的生产数量进行备料测算。后处理工序表选择仅在 Web 算料页提供，AI 不代选。查询不生成写入卡片，也不执行领料。AI 不创建、修改或删除 BOM，删除须到 BOM 列表确认。关闭 AI 写操作后仍可使用这些查询。
 
 ## 接口
 
@@ -73,7 +77,7 @@ BOM 保存配置时的成品及材料单位。档案单位变化后，已有配�
 | POST | `/api/boms/:id` | 编辑，包含 request_id 和 version |
 | POST | `/api/boms/:id/status` | 启停，包含 request_id、version 和 enabled（0 / 1） |
 | POST | `/api/boms/:id/delete` | 删除未被引用的清单及材料、废料规则，包含 request_id 和 version |
-| POST | `/api/boms/:id/calculate` | 只读测算，包含 production_quantity，可附 version 校验当前清单 |
+| POST | `/api/boms/:id/calculate` | 只读测算，包含 production_quantity，可附 version 校验当前清单；post_processing_table_id 为 null 时跳过后处理，选用工序表时须同时传入预览 token（post_processing_table_token），省略时保留旧客户端行为 |
 
 配置包含 `name`、`product_id`、`base_quantity`、`base_unit`、`loss_method`、`note`、`enabled`，以及 `items: [{product_id, quantity, quantity_fraction, loss_rate, unit, note}]`。`quantity_fraction` 可省略或为空，表示普通小数；非空时为规范的正整数分数（如 `1/40`），`quantity` 必须等于该分数向上保留 4 位小数的数值，供既有客户端读取。共享函数 `parseBomQuantity` 可生成这两个字段。`loss_method` 为整张 BOM 的损耗计算方式，只允许 `internal`（内扣法）或 `external`（外包法）；新建省略默认为内扣法，旧客户端编辑时省略则保留原方式。`loss_rate` 为标准损耗百分数；新增时省略为 0，编辑旧客户端省略时保留同材料已有损耗率，显式传 0 才清零。服务端校验一致性，按原分数和损耗率测算，并验证物料属于当前仓库且已启用、单位未变化。测算明细同样返回原分数，不保存测算记录。
 
