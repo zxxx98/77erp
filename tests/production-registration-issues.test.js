@@ -6,6 +6,26 @@ import { productionIssuesFixture } from './helpers/production-issues.js';
 const pending = o => o.operation_registrations.filter(row => row.status === 'pending');
 const missing = (o, product) => o.registration_issues.find(row => row.product_id === product)?.missing_quantity ?? 0;
 
+for (const staged of [false,true]) test(`pending ${staged?'stage':'order'} inputs can be corrected without replacing or posting the registration`, async t => {
+  const f=await productionIssuesFixture(t,{staged});
+  let order=staged?f.ok(await f.complete(f.order,10,[['1.1',63]],{path:'1'})):f.ok(await f.complete(f.order,12,[[f.raw,24],[f.other,12]]));
+  const original=pending(order)[0];
+  const items=original.editable_inputs.map(item=>({quantity:item.quantity,variance_reason:''}));
+  items[0]={quantity:staged?60:20,variance_reason:'核对实际用量'};
+  if(!staged) items[1]={quantity:10,variance_reason:'核对实际用量'};
+  const endpoint=`/production-orders/${order.id}/operations/registrations/${original.id}/inputs`;
+  assert.equal((await f.command(endpoint,{version:order.version,items:items.map(item=>({...item,variance_reason:''}))})).status,400);
+  assert.equal((await f.command(endpoint,{version:order.version-1,items})).status,409);
+  order=f.ok(await f.command(endpoint,{version:order.version,items}));
+  const updated=pending(order)[0];
+  assert.equal(updated.id,original.id); assert.equal(updated.created_at,original.created_at);
+  assert.equal(updated.input_adjustments.length,1); assert.equal(order.batches.length,0);
+  assert.equal(order.registration_issues.length,0);
+  f.ok(await f.request('/backup/preview',{backup:f.ok(await f.request('/backup'))}));
+  order=f.ok(await f.reconcile(order)); assert.equal(order.pending_registration_count,0);
+  assert.equal((await f.command(endpoint,{version:order.version,items})).status,409);
+});
+
 test('material shortages are recorded cumulatively without posting stock, costs, output or receipts', async t => {
   const f = await productionIssuesFixture(t); let o = f.order;
   o = f.ok(await f.complete(o, 12, [[f.raw, 24], [f.other, 12]]));
@@ -207,6 +227,7 @@ test('registration staff can report shortages and cancel their own records but c
   o=f.ok(response);assert.equal(o.registration_status,'unsettled');const row=pending(o)[0];
   assert.equal(row.worker_id,worker.id);assert.equal(row.registered_by,worker.id);assert.equal(o.items[0].available_cost_cents,undefined);
   assert.equal((await f.command(`/production-orders/${o.id}/operations/registrations/${row.id}/approve`,{version:o.version},{cookie})).status,403);
+  assert.equal((await f.command(`/production-orders/${o.id}/operations/registrations/${row.id}/inputs`,{version:o.version,items:[]},{cookie})).status,403);
   assert.equal((await f.command(`/production-orders/${o.id}/operations/registrations/reconcile`,{version:o.version},{cookie})).status,403);
   const cancelled=f.ok(await f.command(`/production-orders/${o.id}/operations/registrations/${row.id}/cancel`,{version:o.version},{cookie}));
   assert.equal(cancelled.pending_registration_count,0);assert.equal(cancelled.batches.length,0);

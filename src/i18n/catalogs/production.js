@@ -1,5 +1,13 @@
 // System UI only. Stored template content, values and material identifiers are not translated.
 export default {
+  'production.registration.editInputs': ['调整本次用料', 'Adjust recorded inputs', 'Điều chỉnh vật tư lần này'],
+  'production.registration.saveInputs': ['保存用料', 'Save inputs', 'Lưu vật tư'],
+  'production.registration.cancelInputs': ['取消修改', 'Cancel changes', 'Hủy chỉnh sửa'],
+  'production.registration.inputQuantity': ['用量', 'Quantity', 'Số lượng'],
+  'production.registration.inputReason': ['差异原因', 'Reason for change', 'Lý do chênh lệch'],
+  'production.registration.inputsHint': ['请按实际用量填写，数量支持最多 4 位小数或分数；调整数量须填写差异原因。保存后仍需核对结算，不会立即扣料。', 'Enter actual consumption as a decimal with up to 4 places or a fraction, and explain quantity changes. Saving does not settle or consume materials.', 'Nhập lượng thực tế với tối đa 4 chữ số thập phân hoặc phân số và lý do thay đổi. Lưu không tự quyết toán hoặc trừ vật tư.'],
+  'production.registration.inputsSaved': ['用料已更新，请核对后结算。', 'Inputs updated; reconcile when ready.', 'Đã cập nhật vật tư; hãy đối soát khi sẵn sàng.'],
+  'production.registration.inputHistory': ['用料调整记录', 'Input adjustment history', 'Lịch sử điều chỉnh vật tư'],
   'production.registration.inspected': ['已验收合格，材料结算独立处理。', 'Inspection passed; material settlement is handled separately.', 'Đã nghiệm thu đạt; quyết toán vật tư được xử lý riêng.'],
   'production.registration.recordedInputs': ['登记用料', 'Recorded inputs', 'Vật tư đã ghi nhận'],
   'production.registration.originalIssues': ['登记时问题', 'Issues when recorded', 'Vấn đề lúc ghi nhận'],

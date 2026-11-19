@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button, Badge } from '../components/common.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { useBusiness } from '../business-api.js';
@@ -10,6 +11,7 @@ import './production-registration.css';
 export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendingOnly=false}) {
   useLocale();
   const {can,user}=usePermissions(), action=useBusiness(), acceptance=useOperationAcceptance();
+  const [editing,setEditing]=useState(null);
   const rows=(order.operation_registrations||[]).filter(row=>(path===undefined||row.path===path)&&(!pendingOnly||row.status==='pending'));
   if(!rows.length) return null;
   const reconcile=()=>action.run(async()=>{
@@ -22,6 +24,12 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
     const body=kind==='approve'&&row.kind!=='settlement'&&row.acceptance_id==null?await acceptance.enrich(endpoint,{path:row.path,operation_node_id:row.node_id,quantity:row.quantity},{warehouseId:data.warehouse_id}):{};
     const result=await action.send(endpoint,{schema_version:2,stage_schema_version:1,operation_schema_version:1,version:order.version,...body},{warehouseId:data.warehouse_id});
     await onSaved(result,t(kind==='approve'?(row.kind==='settlement'?'production.registration.settled':'route.registrationPassed'):'route.registrationCancelled'));
+  });
+  const saveInputs=()=>action.run(async()=>{
+    const items=editing.items.map(item=>({...item,quantity:item.quantity.includes('/')?item.quantity:item.quantity.trim()===''?null:Number(item.quantity)}));
+    const result=await action.send(`/production-orders/${order.id}/operations/registrations/${editing.id}/inputs`,{schema_version:2,stage_schema_version:1,operation_schema_version:1,version:editing.version,items},{warehouseId:data.warehouse_id});
+    setEditing(null);
+    await onSaved(result,t('production.registration.inputsSaved'));
   });
   return <section className="panel bom-section production-acceptance-registrations" aria-label={t('production.registration.pendingRecords')}>
     {acceptance.dialog}<h2>{t('production.registration.pendingRecords')}</h2>
@@ -41,11 +49,21 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
           {row.kind==='acceptance'&&row.acceptance_id!=null&&<p>{t('production.registration.inspected')}</p>}
           {row.note&&<p>{row.note}</p>}
           {!!row.actual_inputs?.length&&<details><summary>{t('production.registration.recordedInputs')}</summary>{row.actual_inputs.map(item=><p key={item.key}>{item.name} · {formatExactQuantity(item.quantity_fraction||item.quantity,getFormatLocale())} {item.unit}{item.path&&` · ${item.path}`}</p>)}</details>}
+          {!!row.input_adjustments?.length&&<details><summary>{t('production.registration.inputHistory')}</summary>{row.input_adjustments.map((change,index)=><div key={index}><p>{new Date(change.at).toLocaleString(getFormatLocale())} · {change.by}</p>{change.items.map((item,itemIndex)=><p key={itemIndex}>{row.editable_inputs?.[itemIndex]?.name} · {String(change.previous[itemIndex].quantity)} → {String(item.quantity)} · {item.variance_reason}</p>)}</div>)}</details>}
+          {editing?.id===row.id&&<div className="registration-input-editor">
+            <p className="bom-hint">{t('production.registration.inputsHint')}</p>
+            {row.editable_inputs.map((item,index)=><div className="registration-input-row" key={`${item.part_index}:${item.item_index}`}>
+              <label>{item.name} {item.path&&`· ${item.path}`} ({item.unit})<input aria-label={`${item.name} ${t('production.registration.inputQuantity')}`} value={editing.items[index].quantity} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,quantity:event.target.value}:entry)}))}/></label>
+              <label>{t('production.registration.inputReason')}<input aria-label={`${item.name} ${t('production.registration.inputReason')}`} maxLength={500} value={editing.items[index].variance_reason} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,variance_reason:event.target.value}:entry)}))}/></label>
+            </div>)}
+            <div className="bom-actions"><Button kind="primary" disabled={action.busy} onClick={saveInputs}>{t('production.registration.saveInputs')}</Button><Button disabled={action.busy} onClick={()=>setEditing(null)}>{t('production.registration.cancelInputs')}</Button></div>
+          </div>}
           {!!row.initial_issues?.length&&<details><summary>{t('production.registration.originalIssues')}</summary>{row.initial_issues.map(issue=><p key={issue.key}>{issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}</details>}
           {row.issues?.map(issue=><p className="bom-hint" key={issue.key}>{t(`production.registration.issue.${issue.kind}`)} · {issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}
         </div>
         {row.status==='pending'&&order.status!=='void'&&<div className="process-history-action bom-actions">
           {(row.kind==='settlement'||row.acceptance_id!=null?can('production'):can('operation_accept'))&&<Button kind="primary" disabled={action.busy} onClick={()=>resolve(row,'approve')}>{t(row.kind==='settlement'||row.acceptance_id!=null?'production.registration.reconcile':'route.inspectRegistration')}</Button>}
+          {can('production')&&row.editable_inputs?.length>0&&<Button disabled={action.busy||editing?.id===row.id} onClick={()=>setEditing({id:row.id,version:order.version,items:row.editable_inputs.map(item=>({quantity:String(item.quantity),variance_reason:item.variance_reason}))})}>{t('production.registration.editInputs')}</Button>}
           {(row.registered_by===user.id||can('production')||can('operation_accept'))&&<Button disabled={action.busy} onClick={()=>resolve(row,'cancel')}>{t('route.cancelRegistration')}</Button>}
         </div>}
       </article>;

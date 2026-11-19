@@ -284,7 +284,12 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     order.operation_registrations = registrationState.rows.sort((a,b)=>Number(b.status==='pending')-Number(a.status==='pending')||b.id-a.id).map(({body,...row}) => {
       const input = JSON.parse(body);
       const actual_inputs=registrationRequirements(order,input,row.endpoint).filter(item=>['material','semi'].includes(item.kind)).map(({key,kind,name,unit,path,quantity})=>({key,kind,name,unit,path,...quantityFields(quantity)}));
-      return {...row, actual_inputs, initial_issues:JSON.parse(row.initial_issues), quantity:input.quantity??input.completed_quantity, note:input.note||''};
+      const parts=input.auto_overflow&&row.endpoint==='stages/complete'?input.allocations:[input];
+      const editable_inputs=row.kind==='settlement'&&row.endpoint!=='operations/report' ? parts.flatMap((part,partIndex)=>(part.items||[]).map((item,itemIndex)=>{
+        const source=row.endpoint==='stages/complete'?order.stages?.find(stage=>stage.path===part.path)?.items.find(entry=>entry.path===item.path):order.items.find(entry=>entry.product_id===item.product_id);
+        return {part_index:partIndex,item_index:itemIndex,name:source?.name||'',unit:source?.unit||'',path:item.path||'',quantity:item.quantity,variance_reason:item.variance_reason||''};
+      })) : [];
+      return {...row, actual_inputs, editable_inputs, input_adjustments:input.input_adjustments||[], initial_issues:JSON.parse(row.initial_issues), quantity:input.quantity??input.completed_quantity, note:input.note||''};
     });
     order.flow_progress = productionFlowProgress(order, registrations);
     order.captured_at = new Date().toISOString();
@@ -545,6 +550,30 @@ export function installProduction(app, db, options = {}) {
     const order=current(req);version(req,order);
     const settlement_errors=reconcileRegistrations(req);
     return {...current(req),settlement_errors};
+  },true));
+  app.post('/api/production-orders/:id/operations/registrations/:registrationId/inputs',route(req=>{
+    if(!hasPermission(req.user,'production')) fail('需要生产管理权限。',403);
+    const order=current(req); version(req,order); const row=registrationRow(req);
+    if(row.status!=='pending'||row.kind!=='settlement'||row.endpoint==='operations/report') fail('只能调整待结算产出登记的用料。',409);
+    const body=JSON.parse(row.body);
+    const parts=body.auto_overflow&&row.endpoint==='stages/complete'?body.allocations:[body];
+    const entries=parts.flatMap(part=>part.items||[]);
+    if(!Array.isArray(req.body.items)||req.body.items.length!==entries.length||!entries.length) fail('请核对全部登记用料。');
+    const previous=entries.map(item=>({quantity:item.quantity,variance_reason:item.variance_reason||''}));
+    for(const [index,item] of entries.entries()) {
+      const update=req.body.items[index];
+      if(!update||typeof update.variance_reason!=='string'||update.variance_reason.length>500) fail('用料差异说明最多 500 字。');
+      const quantity=parseExactQuantity(update.quantity);
+      if(!validExactQuantity(quantity)) fail('用料数量无效。');
+      if(exactCompare(quantity,parseExactQuantity(item.quantity))!==0&&!update.variance_reason.trim()) fail('调整用料时请填写差异原因。');
+      item.quantity=update.quantity; item.variance_reason=update.variance_reason.trim();
+    }
+    const replay={...req,operationRegistrar:row,body:{...body,version:order.version}};
+    validateRegistration(replay,registrationHandlers.get(row.endpoint));
+    body.input_adjustments=[...(body.input_adjustments||[]),{at:new Date().toISOString(),by:actor(req),previous,items:entries.map(item=>({quantity:item.quantity,variance_reason:item.variance_reason||''}))}];
+    db.prepare('UPDATE production_operation_registrations SET body=? WHERE id=?').run(JSON.stringify(body),row.id);
+    db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(),actor(req),order.id);
+    return current(req);
   },true));
   app.post('/api/production-orders/:id/operations/registrations/:registrationId/cancel',route(req=>{
     const order=current(req);version(req,order);const row=registrationRow(req);
