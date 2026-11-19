@@ -11,6 +11,8 @@ import { useLocale } from '../i18n/react.jsx';
 import { IndependentOperationPicker } from './IndependentOperationPicker.jsx';
 import './post-processing-plan.css';
 
+const MAX_OPERATIONS = 50;
+
 function estimatedRuns(plannedQuantity, coefficient, graph) {
   try { return postProcessingLimit(parseQuantity(plannedQuantity, true), parseQuantity(coefficient, true), true, graph); }
   catch { return null; }
@@ -54,8 +56,8 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
         </ul>}
       </section>;
     })}
-    {!readOnly && <Button icon={Plus} disabled={disabled || rows.length >= 50} onClick={() => setPicker(true)}>{t('production.addPostProcessing')}</Button>}
+    {!readOnly && <Button icon={Plus} disabled={disabled || rows.length >= MAX_OPERATIONS} onClick={() => setPicker(true)}>{t('production.addPostProcessing')}</Button>}
     {picker && <IndependentOperationPicker data={data} routeKind="post_processing" title={t('production.addPostProcessing')} emptyMessage={t('production.noPostProcessing')}
-      rows={rows} onSelect={row => onChange([...rows, { ...row, product_coefficient: '' }])} onClose={() => setPicker(false)} />}
+      rows={rows} maxOperations={MAX_OPERATIONS} onSelect={added => onChange([...rows, ...added.map(row => ({ ...row, product_coefficient: '' }))])} onClose={() => setPicker(false)} />}
   </section>;
 }
