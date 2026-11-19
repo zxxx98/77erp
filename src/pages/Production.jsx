@@ -5,7 +5,7 @@ import { useOperationAcceptance } from '../features/OperationAcceptance.jsx';
 import { ProductPicker } from '../features/ProductPicker.jsx';
 import { ProductionSupply } from '../features/ProductionSupply.jsx';
 import { ProductionAssignments } from '../features/ProductionAssignments.jsx';
-import { PostProcessingPlan } from '../features/PostProcessingPlan.jsx';
+import { PostProcessingPlan, PostProcessingPlannedMaterials } from '../features/PostProcessingPlan.jsx';
 import { PostProcessingTablePicker } from '../features/PostProcessingTables.jsx';
 import { PostProcessingFinishNotice } from '../features/PostProcessingFinishNotice.jsx';
 import { postProcessingFinishState } from '../production-registration.js';
@@ -455,6 +455,13 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
 
   if (editor) {
     const planning = ['new', 'edit'].includes(editor.kind), source = editor.kind === 'new' ? editor.plan : detail;
+    const postProcessingRows = editor.kind === 'new' ? editor.postTable?.operations || [] : editor.kind === 'edit'
+      ? (source?.operation_routes || []).filter(route => route.product_coefficient != null).map(route => ({
+        route_id: route.id, node_id: route.operations[0].id, route_name: route.route_name, name: route.operations[0].name,
+        price_table_name: route.graph.price_table_name,
+        product_coefficient: route.product_coefficient,
+        ...(route.graph.post_processing_materials_per_unit ? { usage_basis: 'material', materials: route.graph.post_processing_materials_per_unit, materials_per_run: route.post_processing_materials } : { materials: route.post_processing_materials }),
+      })) : [];
     const correcting = ['void', 'void_batch'].includes(editor.kind);
     let rows = source?.items || source?.rows.map(row => ({ ...row, base_quantity: row.quantity, base_quantity_fraction: row.quantity_fraction, planned_quantity: row.required, product: { stock: row.stock, unit: row.unit, active: 1 } })) || [];
     let quantityError = '';
@@ -508,7 +515,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           </>}
         </section>}
         {editor.kind === 'new' && source && <ProductionSupply supplies={source.supplies || []} choices={editor.supply_choices || []} onChange={supply_choices => update({ supply_choices })} onCalculate={recalculateSupply} stale={supplyStale} disabled={action.busy} />}
-        {editor.kind === 'new' && source && <PostProcessingPlan rows={editor.postTable?.operations || []} unit={unit}
+        {editor.kind === 'new' && source && <PostProcessingPlan rows={postProcessingRows} unit={unit}
           plannedQuantity={editor.planned_quantity} readOnly hint="production.postProcessingTableSnapshot">
           {source.legacy_post_processing && !editor.postTable && <p className="bom-hint">{pt('production.legacyPostProcessingNotInherited')}</p>}
           <div className="bom-actions">
@@ -518,14 +525,9 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           </div>
           {postTablePicker && <PostProcessingTablePicker data={listData} onSelect={postTable => update({ postTable })} onClose={() => setPostTablePicker(false)} />}
         </PostProcessingPlan>}
-        {editor.kind === 'edit' && source.operation_routes?.some(route => route.product_coefficient != null) && <PostProcessingPlan
-          rows={source.operation_routes.filter(route => route.product_coefficient != null).map(route => ({
-            route_id: route.id, node_id: route.operations[0].id, route_name: route.route_name, name: route.operations[0].name,
-            price_table_name: route.graph.price_table_name,
-            product_coefficient: route.product_coefficient,
-            ...(route.graph.post_processing_materials_per_unit ? { usage_basis: 'material', materials: route.graph.post_processing_materials_per_unit, materials_per_run: route.post_processing_materials } : { materials: route.post_processing_materials }),
-          }))} unit={unit} plannedQuantity={editor.planned_quantity} readOnly hint="production.postProcessingSavedSnapshot" />}
-        {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
+        {editor.kind === 'edit' && postProcessingRows.length > 0 && <PostProcessingPlan
+          rows={postProcessingRows} unit={unit} plannedQuantity={editor.planned_quantity} readOnly hint="production.postProcessingSavedSnapshot" />}
+        {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{planning && `${pt('production.bomPlannedRequirement')} · `}{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}
           {(source.multi_level || source.snapshot_format === 2) && <details className="production-disclosure"><summary>{pt("production.recipeStructure")}</summary>
@@ -535,6 +537,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           <Materials rows={rows} issued={!!source.material_workflow && editor.kind === 'complete'} nodes={source.snapshot_format === 2 || source.multi_level ? source.nodes : undefined} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity} lossMethod={source.loss_method}
             onReason={(id, variance_reason) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, variance_reason } : item) })} complete={editor.kind === 'complete'} disabled={action.busy}
             onQuantity={(id, quantity) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, quantity } : item) })} />
+          {planning && <PostProcessingPlannedMaterials rows={postProcessingRows} plannedQuantity={editor.planned_quantity} />}
           <p className="bom-hint">{pt("production.quantitiesReadAt")} {time(source.captured_at)}{pt("production.revalidatedOnSubmission")}{source.material_workflow && editor.kind === 'complete' ? pt("production.availableIssuedBalance") : pt("production.stock")}。</p>
         </section>}
         {source && !correcting && scrapRows.length > 0 && <section className="panel bom-section"><ScrapOutputs rows={scrapRows} materials={rows} complete={editor.kind === 'complete'} disabled={action.busy}

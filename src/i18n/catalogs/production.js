@@ -74,6 +74,7 @@ export default {
   'production.settledOutput': ['完结结算产量', 'Settled output', 'Sản lượng quyết toán'],
   'production.roundingAdjustment': ['完结取整差额', 'Final rounding adjustment', 'Chênh lệch làm tròn cuối lệnh'],
   'production.postProcessing': ['后处理工序', 'Post-processing operations', 'Công đoạn hậu xử lý'],
+  'production.postProcessingPlannedMaterials': ['后处理工序计划备料', 'Planned materials for post-processing', 'Vật tư kế hoạch cho công đoạn hậu xử lý'],
   'production.postProcessingTables': ['后处理工序表', 'Post-processing tables', 'Bảng công đoạn hậu xử lý'],
   'production.postProcessingTablesHint': ['可逐道添加工序，也可导入整条后处理工艺路线；建生产单时选用整张表。', 'Add individual operations or import an entire post-processing route. Select the entire table when creating a production order.', 'Thêm từng công đoạn hoặc nhập toàn bộ quy trình hậu xử lý. Khi tạo lệnh sản xuất, hãy chọn cả bảng.'],
   'production.newPostProcessingTable': ['新建后处理工序表', 'New post-processing table', 'Tạo bảng công đoạn hậu xử lý'],

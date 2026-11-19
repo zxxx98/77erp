@@ -83,8 +83,23 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     await button('新建生产单').click();
     await page.getByRole('button', { name: /^选择配方 包装成品 ·/ }).click();
     await label('计划产量').fill('250');
-    await button('选择后处理工序表').click();
-    await button('成品包装方案', page.getByRole('dialog', { name: '选择后处理工序表' })).click();
+    const plannedMaterials = page.locator('section.bom-section').filter({ has: page.getByRole('heading', { name: '计划备料', exact: true }) });
+    const postMaterials = plannedMaterials.getByRole('region', { name: '后处理工序计划备料', exact: true });
+    const selectPostTable = async () => {
+      await button('选择后处理工序表').click();
+      await button('成品包装方案', page.getByRole('dialog', { name: '选择后处理工序表' })).click();
+    };
+    await expect(postMaterials).toHaveCount(0);
+    await selectPostTable();
+    await expect(plannedMaterials.getByText('包装材料', { exact: true })).toBeVisible();
+    await expect(postMaterials.getByRole('listitem')).toContainText('纸箱');
+    await expect(postMaterials).toContainText('预计用量 3 个');
+    await label('计划产量').fill('200');
+    await expect(postMaterials).toContainText('预计用量 2 个');
+    await button('取消选用工序表').click();
+    await expect(postMaterials).toHaveCount(0);
+    await label('计划产量').fill('250');
+    await selectPostTable();
     const plan = page.locator('.post-processing-plan');
     await expect(plan).toContainText('预计 3 次');
     await expect(plan).toContainText('预计用量 3 个');
@@ -106,6 +121,11 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     expect(snapshot.nodes[0].unit_price).toBe(3);
     expect(snapshot.nodes[0].materials[0].quantity).toBe(1);
     expect((await getOrder()).operation_routes[0].product_coefficient).toBe(100);
+    await button('编辑草稿').click();
+    await expect(postMaterials).toContainText('预计用量 3 个');
+    await label('计划产量').fill('400');
+    await expect(postMaterials).toContainText('预计用量 4 个');
+    await button('取消').click();
     await button('开始生产').click();
     await expect(page.locator('.production-material').filter({ hasText: '纸箱' }).filter({ hasText: '3' })).toBeVisible();
     await button('提交领料申请').click();

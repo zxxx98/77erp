@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { postProcessingLimit } from '../../shared/post-processing.js';
 import { parseQuantity } from '../../shared/quantity.js';
-import { exactMultiply, exactQuantity, formatExactQuantity } from '../../shared/exact-quantity.js';
+import { exactAdd, exactMultiply, exactQuantity, formatExactQuantity } from '../../shared/exact-quantity.js';
 import { Button } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { FormField } from '../ui/FormField.jsx';
@@ -13,9 +13,41 @@ import './post-processing-plan.css';
 
 const MAX_OPERATIONS = 50;
 
-function estimatedRuns(plannedQuantity, coefficient, graph) {
-  try { return postProcessingLimit(parseQuantity(plannedQuantity, true), parseQuantity(coefficient, true), true, graph); }
+function materialsPerRun(row) {
+  return (row.usage_basis === 'material' ? row.materials_per_run : row.materials) ?? [];
+}
+
+function estimatedRuns(plannedQuantity, row, perRun) {
+  const graph = { nodes: [{ materials: perRun }], ...(row.usage_basis === 'material' ? { post_processing_materials_per_unit: row.materials } : {}) };
+  try { return postProcessingLimit(parseQuantity(plannedQuantity, true), parseQuantity(row.product_coefficient, true), true, graph); }
   catch { return null; }
+}
+
+export function PostProcessingPlannedMaterials({ rows, plannedQuantity }) {
+  useLocale();
+  const headingId = useId();
+  const totals = new Map();
+  for (const row of rows) {
+    const perRun = materialsPerRun(row);
+    if (!perRun.length) continue;
+    const runs = estimatedRuns(plannedQuantity, row, perRun);
+    if (runs == null) continue;
+    for (const material of perRun) {
+      const quantity = exactMultiply(material.quantity, runs);
+      const total = exactAdd(totals.get(material.product_id)?.total ?? 0, quantity);
+      totals.set(material.product_id, { ...material, total });
+    }
+  }
+  if (!totals.size) return null;
+  return <section className="post-processing-planned-materials" aria-labelledby={headingId}>
+    <h3 id={headingId}>{t('production.postProcessingPlannedMaterials')}</h3>
+    <ul className="post-processing-material-list">
+      {[...totals.values()].map(material => <li key={material.product_id}>
+        <strong>{material.name}</strong>
+        <p className="bom-hint">{t('production.fixedMaterialPlanned', { quantity: formatExactQuantity(material.total, getFormatLocale()), unit: material.unit })}</p>
+      </li>)}
+    </ul>
+  </section>;
 }
 
 export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity, disabled, readOnly = false, hint = 'production.postProcessingPlanHint', children }) {
@@ -26,9 +58,8 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
     <p className="bom-hint">{t(hint)}</p>
     {children}
     {rows.map((row, index) => {
-      const perRun = row.usage_basis === 'material' ? row.materials_per_run || [] : row.materials;
-      const graph = { nodes: [{ materials: perRun }], ...(row.usage_basis === 'material' ? { post_processing_materials_per_unit: row.materials } : {}) };
-      const estimate = estimatedRuns(plannedQuantity, row.product_coefficient, graph);
+      const perRun = materialsPerRun(row);
+      const estimate = estimatedRuns(plannedQuantity, row, perRun);
       const label = `${t('production.productCoefficient')} ${row.name}`;
       const hasMaterials = (row.materials || []).length > 0;
       return <section key={`${row.route_id}:${row.node_id}`} className="post-processing-binding">
