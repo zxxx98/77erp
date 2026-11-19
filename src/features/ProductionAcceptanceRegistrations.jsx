@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, Badge } from '../components/common.jsx';
+import { Input } from '../ui/controls.jsx';
 import { usePermissions } from '../permissions.jsx';
 import { useBusiness } from '../business-api.js';
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
@@ -53,8 +54,8 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
           {editing?.id===row.id&&<div className="registration-input-editor">
             <p className="bom-hint">{t('production.registration.inputsHint')}</p>
             {row.editable_inputs.map((item,index)=><div className="registration-input-row" key={`${item.part_index}:${item.item_index}`}>
-              <label>{item.name} {item.path&&`· ${item.path}`} ({item.unit})<input aria-label={`${item.name} ${t('production.registration.inputQuantity')}`} value={editing.items[index].quantity} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,quantity:event.target.value}:entry)}))}/></label>
-              <label>{t('production.registration.inputReason')}<input aria-label={`${item.name} ${t('production.registration.inputReason')}`} maxLength={500} value={editing.items[index].variance_reason} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,variance_reason:event.target.value}:entry)}))}/></label>
+              <label>{item.name} {item.path&&`· ${item.path}`} ({item.unit})<Input aria-label={`${item.name} ${t('production.registration.inputQuantity')}`} inputMode="text" disabled={action.busy} value={editing.items[index].quantity} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,quantity:event.target.value}:entry)}))}/></label>
+              <label>{t('production.registration.inputReason')}<Input aria-label={`${item.name} ${t('production.registration.inputReason')}`} maxLength={500} disabled={action.busy} value={editing.items[index].variance_reason} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,variance_reason:event.target.value}:entry)}))}/></label>
             </div>)}
             <div className="bom-actions"><Button kind="primary" disabled={action.busy} onClick={saveInputs}>{t('production.registration.saveInputs')}</Button><Button disabled={action.busy} onClick={()=>setEditing(null)}>{t('production.registration.cancelInputs')}</Button></div>
           </div>}

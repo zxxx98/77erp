@@ -1,11 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 import { productionIssuesFixture } from '../helpers/production-issues.js';
 import { confirmFinishPipeline } from './production-ui-helpers.js';
 
 for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending consumption and settles without replacing the registration`,async({page,browser})=>{
-  const context=device==='pwa'?await browser.newContext({locale:'zh-CN',serviceWorkers:'allow',viewport:{width:390,height:844}}):page.context();
-  if(device==='pwa') page=await context.newPage();
-  if(device==='mobile') await page.setViewportSize({width:390,height:844});
+  const context=device==='desktop'?page.context():await browser.newContext({locale:'zh-CN',...devices[device==='mobile'?'Pixel 7':'iPhone 13'],serviceWorkers:device==='pwa'?'allow':'block'});
+  if(device!=='desktop') page=await context.newPage();
   const f=await productionIssuesFixture();
   try {
     const order=f.ok(await f.complete(f.order,12,[[f.raw,24],[f.other,12]]));
@@ -14,6 +13,11 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     await page.goto(`${f.base}/#production?order=${order.id}`);
     const records=page.getByRole('region',{name:'登记与待处理问题'});
     await records.getByRole('button',{name:'调整本次用料'}).click();
+    for(const label of ['原料 用量','原料 差异原因']) {
+      const input=records.getByLabel(label);
+      if(device==='desktop') await expect(input).toHaveClass(/ant-input/);
+      else await expect(input.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " erp-mobile-input ")]')).toBeVisible();
+    }
     await records.getByLabel('原料 用量').fill('20');
     await records.getByLabel('原料 差异原因').fill('核对实际用量');
     await records.getByLabel('辅料 用量').fill('10');
@@ -25,7 +29,7 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     const updated=await f.get();
     expect(updated.pending_registration_count).toBe(0);
     expect(updated.operation_registrations[0].id).toBe(order.operation_registrations[0].id);
-  } finally {if(device==='pwa') await context.close(); await f.close();}
+  } finally {if(device!=='desktop') await context.close(); await f.close();}
 });
 
 for (const device of ['desktop','mobile','pwa']) test(`${device} records shortages, displays live deficits and settles after actual replenishment`, async ({ page, browser }) => {
