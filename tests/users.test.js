@@ -291,6 +291,7 @@ const routeRoles = new Map(Object.entries({
   'post /api/post-processing-tables/:id/status': 'bom', 'post /api/post-processing-tables/:id/delete': 'bom',
   'get /api/production-orders/:id/operation-workers': 'production', 'get /api/production-orders/:id/operations/reports': 'production',
   'post /api/production-orders/:id/operations/registrations/reconcile': 'production',
+  'post /api/production-orders/:id/operations/registrations/:registrationId/inputs': 'production',
   'post /api/production-orders/:id/operations/registrations/:registrationId/approve': 'production',
   'post /api/production-orders/:id/operations/registrations/:registrationId/cancel': 'production',
   'post /api/production-orders/:id/operations/report': 'production', 'post /api/production-orders/:id/operations/:reportId/void': 'production',
