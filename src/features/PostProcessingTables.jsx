@@ -65,7 +65,7 @@ export function PostProcessingTables({ data, onBack }) {
               try { quantity = parseQuantity(material.quantity, true); }
               catch { throw new Error(t('production.postProcessingMaterialInvalid', { name: material.name })); }
               if (material.unit_round_up && !Number.isInteger(quantity)) throw new Error(t('production.postProcessingMaterialWhole', { name: material.name }));
-              return { product_id: material.product_id, quantity };
+              return { product_id: material.product_id, quantity, note: material.note ?? '' };
             }) }));
           await action.send(editor.id ? `${path}/${editor.id}` : path, { name: editor.name, enabled: editor.enabled, version: editor.version, operations }, options);
           close(); refresh();

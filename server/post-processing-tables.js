@@ -9,6 +9,7 @@ const id = value => Number.isSafeInteger(value) && value > 0;
 const text = (value, max) => typeof value === 'string' && value.length <= max;
 const changed = '后处理工序表已变化，请重新选择后保存。';
 const materialsRequired = '请为工序表中的每种固定材料填写有效的每次用量。';
+const validMaterialNote = note => note === undefined || text(note, 500);
 const rowKey = row => JSON.stringify([row.route_id, row.node_id]);
 
 export function migratePostProcessingTables(db) {
@@ -47,9 +48,12 @@ function resolveRow(db, warehouseId, row, mode = 'preview', saved = row) {
   const submitted = mode === 'save' ? row.materials : undefined;
   if (submitted !== undefined && (!validMaterialList(submitted) || submitted.length !== bound.length ||
       bound.some(binding => !submitted.some(material => material.product_id === binding.product_id)))) fail(materialsRequired);
+  if (submitted?.some(material => !validMaterialNote(material.note))) fail('后处理工序表的材料备注须为文本，最多 500 字。');
+  const submittedByProduct = new Map(submitted?.map(material => [material.product_id, material]));
+  const savedByProduct = new Map(saved?.materials?.map(material => [material.product_id, material]));
   const quantities = bound.map(({ product_id, quantity }) => ({ product_id, quantity: submitted !== undefined
-    ? submitted.find(material => material.product_id === product_id)?.quantity
-    : (saved && !saved.materials_configured ? quantity : undefined) ?? saved?.materials?.find(material => material.product_id === product_id)?.quantity }));
+    ? submittedByProduct.get(product_id)?.quantity
+    : (saved && !saved.materials_configured ? quantity : undefined) ?? savedByProduct.get(product_id)?.quantity }));
   if (mode !== 'edit' && quantities.some(material => material.quantity === undefined)) fail(materialsRequired, mode === 'save' ? 400 : 409);
   const materials = mode === 'edit'
     ? normalizePostMaterials(db, warehouseId, bound.map(({ product_id }) => ({ product_id })), true, { allowUnconfigured: true })
@@ -57,7 +61,10 @@ function resolveRow(db, warehouseId, row, mode = 'preview', saved = row) {
     : normalizePostMaterials(db, warehouseId, quantities, true);
   return { route_id: route.id, route_version: route.version, route_name: route.name, node_id: node.id, name: node.name,
     price_table_id: graph.price_table_id ?? null, price_table_name: graph.price_table_name ?? '',
-    product_coefficient: row.product_coefficient, materials };
+    product_coefficient: row.product_coefficient, materials: mode === 'preview' ? materials : materials.map(material => {
+      const note = (submittedByProduct.get(material.product_id)?.note ?? savedByProduct.get(material.product_id)?.note)?.trim();
+      return note ? { ...material, note } : material;
+    }) };
 }
 
 function getTable(db, warehouseId, tableId) {
@@ -179,7 +186,8 @@ export function validatePostProcessingTableBackup(data) {
       const route = routes.get(row.route_id);
       if (route?.warehouse_id !== table.warehouse_id || route.route_kind !== 'post_processing' || !text(row.name, 100) || !text(row.route_name, 100))
         fail('备份后处理工序表关联无效。');
-      if (row.materials_configured !== undefined && (row.materials_configured !== true || !validMaterialList(row.materials)))
+      if (row.materials_configured !== undefined && (row.materials_configured !== true || !validMaterialList(row.materials) ||
+          row.materials.some(material => !validMaterialNote(material.note))))
         fail('备份后处理工序表关联无效。');
     }
   }

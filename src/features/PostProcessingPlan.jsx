@@ -78,14 +78,19 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
             const values = quantity => ({ quantity: formatExactQuantity(quantity, getFormatLocale()), unit: material.unit });
             if (!readOnly) {
               const materialLabel = `${t('production.postProcessingMaterialPerRun')} ${material.name}`;
+              const updateMaterial = changes => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, materials: item.materials.map(entry =>
+                entry.product_id === material.product_id ? { ...entry, ...changes } : entry) } : item));
               return <li key={material.product_id} className="post-processing-material-editor">
                 <strong>{material.name}</strong>
                 <label>{t('production.postProcessingMaterialPerRun')} ({material.unit})
                   <FormField required value={material.quantity} label={materialLabel}>
                     <Input aria-label={materialLabel} inputMode={material.unit_round_up ? 'numeric' : 'decimal'} value={material.quantity ?? ''} disabled={disabled}
-                      onChange={event => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, materials: item.materials.map(entry =>
-                        entry.product_id === material.product_id ? { ...entry, quantity: event.target.value } : entry) } : item))} />
+                      onChange={event => updateMaterial({ quantity: event.target.value })} />
                   </FormField>
+                </label>
+                <label className="post-processing-material-note">{t('production.note')}
+                  <Input aria-label={`${t('production.note')} ${material.name}`} maxLength={500} value={material.note ?? ''} disabled={disabled}
+                    onChange={event => updateMaterial({ note: event.target.value })} />
                 </label>
               </li>;
             }

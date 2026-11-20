@@ -132,6 +132,38 @@ test('post-processing tables require their own quantities and reconcile changes 
   f.ok(await f.request('/backup/preview', { backup }));
 });
 
+test('post-processing table material notes are optional, editable and preserved in backups', async t => {
+  const f = await fixture(t);
+  const route = f.ok(await f.route([{ product_id: f.label.id }]));
+  const material = { product_id: f.label.id, quantity: 2 };
+  const input = { name: '装箱', enabled: 1, operations: [{ route_id: route.id, route_version: route.version, node_id: 'pack',
+    product_coefficient: 100, materials: [{ ...material, note: '  箱口向上  ' }] }] };
+  const path = '/post-processing-tables';
+  const table = await f.save(path, input);
+  const tablePath = `${path}/${table.id}`;
+  const getMaterial = async (suffix = '') => f.ok(await f.request(tablePath + suffix)).operations[0].materials[0];
+  assert.equal((await getMaterial()).note, '箱口向上');
+  assert.equal((await getMaterial('/preview')).note, undefined);
+  for (const note of [null, 123, '字'.repeat(501)]) {
+    input.operations[0].materials = [{ ...material, note }];
+    const response = await f.command(tablePath, { ...input, version: table.version });
+    assert.equal(response.status, 400);
+    assert.match(response.data.error, /材料备注/);
+  }
+  const backup = f.ok(await f.request('/backup'));
+  const restore = await f.save('/backup/preview', { backup });
+  await f.save('/backup/restore', { backup, ...restore, confirmation: 'RESTORE_BUSINESS_DATA' });
+  const restored = f.ok(await f.request(tablePath));
+  assert.equal(restored.operations[0].materials[0].note, '箱口向上');
+  input.operations[0].route_version = restored.operations[0].route_version;
+  input.operations[0].materials = [material];
+  const updated = await f.save(tablePath, { ...input, version: restored.version });
+  assert.equal((await getMaterial()).note, '箱口向上');
+  input.operations[0].materials = [{ ...material, note: '' }];
+  await f.save(tablePath, { ...input, version: updated.version });
+  assert.equal((await getMaterial()).note, undefined);
+});
+
 test('post-processing templates validate material identity, four decimals and whole units', async t => {
   const f = await fixture(t), raw = { product_id: f.raw.id, quantity: 0.0001 }, label = { product_id: f.label.id, quantity: 1 };
   const other = await f.save('/warehouses', { name: '隔离仓' });
