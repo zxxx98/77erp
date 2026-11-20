@@ -12,7 +12,7 @@ export default {
   'route.deletePriceTableConfirm': ['删除单价表「{{name}}」？已被 BOM 引用的表不能删除。已有生产单保留原价，但无法再同步此表。', 'Delete price table “{{name}}”? Tables used by BOMs cannot be deleted. Existing orders retain their prices but can no longer sync this table.', 'Xóa bảng đơn giá “{{name}}”? Không thể xóa bảng đang được BOM sử dụng. Lệnh hiện có giữ giá cũ nhưng không thể đồng bộ bảng này nữa.'],
   'route.priceTableMissing': ['单价表已失效，请重新选择', 'Price table unavailable; select again', 'Bảng đơn giá không còn khả dụng; hãy chọn lại'],
   'route.fixedMaterials': ['固定用料', 'Fixed materials', 'Vật tư cố định'],
-  'route.fixedMaterialsHint': ['新添加的材料每报工一次消耗 1 个库存单位，已配置的材料保留原用量。', 'Each run uses one inventory unit of each newly added material. Existing materials keep their saved quantities.', 'Mỗi lần báo công tiêu hao một đơn vị tồn kho của mỗi vật tư mới thêm. Vật tư đã cấu hình giữ nguyên lượng đã lưu.'],
+  'route.fixedMaterialsHint': ['这里只选择固定材料，每次用量在后处理工序表中填写。', 'Select fixed materials here. Enter quantities per run in the post-processing table.', 'Chọn vật tư cố định tại đây. Nhập lượng mỗi lần trong bảng công đoạn hậu xử lý.'],
   'route.materialRemove': ['移除 {{name}}', 'Remove {{name}}', 'Xóa {{name}}'],
   'route.materialDuplicate': ['已添加 {{name}}。', '{{name}} is already added.', 'Đã thêm {{name}}.'],
   'route.materialLimit': ['每道工序最多配置 100 种材料。', 'Each operation can use up to 100 materials.', 'Mỗi công đoạn có thể dùng tối đa 100 loại vật tư.'],

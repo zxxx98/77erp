@@ -1,12 +1,10 @@
 import { Trash2 } from 'lucide-react';
 import { ProductPicker } from './ProductPicker.jsx';
 import { Button } from '../components/common.jsx';
-import { getFormatLocale, t } from '../i18n/index.js';
-import { formatExactQuantity } from '../../shared/exact-quantity.js';
-import { defaultPostMaterialPerRun } from '../../shared/post-processing.js';
+import { t } from '../i18n/index.js';
 
 export function postProcessingMaterialPayload(materials) {
-  return (materials || []).map(({ product_id, quantity }) => ({ product_id, quantity }));
+  return (materials || []).map(({ product_id }) => ({ product_id }));
 }
 
 export function PostProcessingMaterialEditor({ data, materials, onChange, onError, disabled }) {
@@ -24,8 +22,7 @@ export function PostProcessingMaterialEditor({ data, materials, onChange, onErro
     {materials.length >= 100 && <p className="bom-hint">{t('route.materialLimit')}</p>}
     {materials.map(row => <div className="process-fixed-material" key={row.product_id}>
       <strong>{row.name}</strong>
-      <small>{[row.barcode, row.specification].filter(Boolean).join(' · ')}</small>
-      <span>{t('production.fixedMaterialPerRun', { quantity: formatExactQuantity(row.quantity ?? defaultPostMaterialPerRun, getFormatLocale()), unit: row.unit })}</span>
+      <small>{[row.barcode, row.specification, row.unit].filter(Boolean).join(' · ')}</small>
       <Button icon={Trash2} aria-label={t('route.materialRemove', { name: row.name })} disabled={disabled}
         onClick={() => onChange(materials.filter(item => item.product_id !== row.product_id))}>{t('route.materialRemove', { name: row.name })}</Button>
     </div>)}

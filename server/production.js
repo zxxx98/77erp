@@ -641,7 +641,7 @@ export function installProduction(app, db, options = {}) {
     }
     const order = db.prepare('SELECT * FROM production_orders WHERE id=?').get(id);
     captureProductionRoutes(db, order);
-    capturePostProcessingOperations(db, order, postOperations, { bomMaterials: legacyPostProcessing && plan.post_processing_operations.length > 0 });
+    capturePostProcessingOperations(db, order, postOperations, { bomMaterials: legacyPostProcessing && plan.post_processing_operations.length > 0, tableMaterials: !legacyPostProcessing });
     return getProductionOrder(db, req.warehouse.id, id, true);
   }, true));
   app.post('/api/production-orders/:id/assign', route(req => {

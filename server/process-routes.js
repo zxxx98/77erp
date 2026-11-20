@@ -12,7 +12,7 @@ import { saveExactQuantity } from './exact-quantity.js';
 import { reopenProductionQuantities } from './production-rounding.js';
 import { validateProcessGraph, processProgress, productionRouteProgress, processGraphWithPrices, processPriceTables } from '../shared/process-routes.js';
 import { validateOperationPrice } from '../shared/payroll.js';
-import { defaultPostMaterialPerRun, postProcessingLimit, postProcessingUnit, productionOutputCompleted } from '../shared/post-processing.js';
+import { postProcessingLimit, postProcessingUnit, productionOutputCompleted } from '../shared/post-processing.js';
 import { productionTypes } from '../shared/product-production-type.js';
 import { normalizePostMaterials, planPostMaterials, postMaterialPlanByProduct, totalPlannedMaterials, savePostMaterialItems, consumePostMaterials, readPostMaterialReport, postMaterialUsage, sumPostMaterialCosts, validatePostMaterialGraph, validatePostMaterialReport, stripLegacyPostMaterials } from './post-processing-materials.js';
 
@@ -219,7 +219,10 @@ export function installProcessRoutes(app, db, { operationRequest, saveOperationR
         const template=db.prepare('SELECT enabled,published_revision FROM quality_templates WHERE id=? AND warehouse_id=?').get(node.acceptance_template_id,req.warehouse.id);
         if(!template?.enabled || !template.published_revision) fail('请选择当前仓库已启用且已发布的验收模板。');
       }
-      const fixed = normalizePostMaterials(db, req.warehouse.id, materials, kind === 'post_processing', defaultPostMaterialPerRun);
+      const previousMaterials = old?.graph.nodes.find(row => row.id === node.id)?.materials;
+      const bindings = Array.isArray(materials) && previousMaterials?.length ? materials.map(material => material?.quantity === undefined && material?.product_id
+        ? { ...material, quantity: previousMaterials.find(saved => saved.product_id === material.product_id)?.quantity } : material) : materials;
+      const fixed = normalizePostMaterials(db, req.warehouse.id, bindings, kind === 'post_processing', { allowUnconfigured: true });
       return fixed.length ? { ...node, materials: fixed } : node;
     })};
     const at = new Date().toISOString();
@@ -264,7 +267,7 @@ function captureAcceptanceVersions(db, graph, warehouseId) {
   }
 }
 
-export function capturePostProcessingOperations(db, order, operations = [], { bomMaterials = false } = {}) {
+export function capturePostProcessingOperations(db, order, operations = [], { bomMaterials = false, tableMaterials = false } = {}) {
   if (!Array.isArray(operations) || operations.length > 50) fail('后处理工序最多 50 道。');
   const seen = new Set();
   for (const [index, input] of operations.entries()) {
@@ -279,7 +282,7 @@ export function capturePostProcessingOperations(db, order, operations = [], { bo
     const selectedGraph = processGraphWithPrices(parseGraph(route.graph), input.price_table_id);
     const node = selectedGraph.nodes.find(node => node.id === input.node_id);
     if (!node) fail('所选后处理工序不存在。');
-    const materials = normalizePostMaterials(db, order.warehouse_id, bomMaterials && input.usage_basis !== 'material' ? input.materials : node.materials, true);
+    const materials = normalizePostMaterials(db, order.warehouse_id, tableMaterials || bomMaterials && input.usage_basis !== 'material' ? input.materials : node.materials, true);
     const graph = { ...selectedGraph, nodes: [materials.length ? { ...node, materials } : node], edges: [],
       ...(bomMaterials && input.usage_basis === 'material' && materials.length ? { post_processing_materials_per_unit: input.materials } : {}) };
     savePostMaterialItems(db, order, materials);
@@ -583,7 +586,7 @@ export function validateProcessRouteBackup(data) {
     names.add(`${row.warehouse_id}:${row.name}`);
     const graph = parseGraph(row.graph);
     checkTemplates(graph,row.warehouse_id);
-    validatePostMaterialGraph(graph, row.route_kind === 'post_processing', products, row.warehouse_id);
+    validatePostMaterialGraph(graph, row.route_kind === 'post_processing', products, row.warehouse_id, undefined, { allowUnconfigured: true });
   }
   for (const [table, column] of [['products','default_route_id'], ['boms','route_override_id']]) for (const row of data[table]) {
     if (!association(row[column]) || row[column] !== null && (routes.get(row[column])?.warehouse_id !== row.warehouse_id || routes.get(row[column]).route_kind !== 'production')) fail('备份工艺路线绑定跨仓或无效。');

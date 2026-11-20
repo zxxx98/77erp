@@ -8,6 +8,8 @@ const fail = (message, status = 400) => { throw Object.assign(new Error(message)
 const id = value => Number.isSafeInteger(value) && value > 0;
 const text = (value, max) => typeof value === 'string' && value.length <= max;
 const changed = '后处理工序表已变化，请重新选择后保存。';
+const materialsRequired = '请为工序表中的每种固定材料填写有效的每次用量。';
+const rowKey = row => JSON.stringify([row.route_id, row.node_id]);
 
 export function migratePostProcessingTables(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS post_processing_tables (
@@ -23,22 +25,39 @@ function validateRows(rows) {
     if (!row || !id(row.route_id) || !id(row.route_version) || !text(row.node_id, 100) || !row.node_id.trim() ||
         !(row.price_table_id == null || text(row.price_table_id, 100)) || !validQuantity(row.product_coefficient, true))
       fail('请选择有效后处理工序并填写正数成品系数，最多 4 位小数。');
-    const key = JSON.stringify([row.route_id, row.node_id]);
+    const key = rowKey(row);
     if (keys.has(key)) fail('同一道后处理工序不能重复添加。');
     keys.add(key);
   }
 }
 
-function resolveRow(db, warehouseId, row, checkVersion = false) {
+function validMaterialList(materials) {
+  return Array.isArray(materials) && materials.length <= 100 && new Set(materials.map(row => row?.product_id)).size === materials.length &&
+    materials.every(row => id(row?.product_id) && validQuantity(row.quantity, true));
+}
+
+function resolveRow(db, warehouseId, row, mode = 'preview', saved = row) {
   const route = db.prepare('SELECT * FROM process_routes WHERE id=? AND warehouse_id=?').get(row.route_id, warehouseId);
   if (!route?.enabled || route.route_kind !== 'post_processing') fail('请选择当前仓库已启用的后处理工艺。');
-  if (checkVersion && route.version !== row.route_version) fail('后处理工艺已变化，请重新选择后保存。', 409);
+  if (mode === 'save' && route.version !== row.route_version) fail('后处理工艺已变化，请重新选择后保存。', 409);
   const graph = processGraphWithPrices(JSON.parse(route.graph), row.price_table_id);
   const node = graph.nodes.find(node => node.id === row.node_id);
   if (!node) fail('所选后处理工序不存在。');
+  const bound = node.materials ?? [];
+  const submitted = mode === 'save' ? row.materials : undefined;
+  if (submitted !== undefined && (!validMaterialList(submitted) || submitted.length !== bound.length ||
+      bound.some(binding => !submitted.some(material => material.product_id === binding.product_id)))) fail(materialsRequired);
+  const quantities = bound.map(({ product_id, quantity }) => ({ product_id, quantity: submitted !== undefined
+    ? submitted.find(material => material.product_id === product_id)?.quantity
+    : (saved && !saved.materials_configured ? quantity : undefined) ?? saved?.materials?.find(material => material.product_id === product_id)?.quantity }));
+  if (mode !== 'edit' && quantities.some(material => material.quantity === undefined)) fail(materialsRequired, mode === 'save' ? 400 : 409);
+  const materials = mode === 'edit'
+    ? normalizePostMaterials(db, warehouseId, bound.map(({ product_id }) => ({ product_id })), true, { allowUnconfigured: true })
+      .map((material, index) => ({ ...material, quantity: quantities[index].quantity }))
+    : normalizePostMaterials(db, warehouseId, quantities, true);
   return { route_id: route.id, route_version: route.version, route_name: route.name, node_id: node.id, name: node.name,
     price_table_id: graph.price_table_id ?? null, price_table_name: graph.price_table_name ?? '',
-    product_coefficient: row.product_coefficient, materials: normalizePostMaterials(db, warehouseId, node.materials, true) };
+    product_coefficient: row.product_coefficient, materials };
 }
 
 function getTable(db, warehouseId, tableId) {
@@ -110,7 +129,7 @@ export function installPostProcessingTables(app, db, { operationRequest, saveOpe
   app.get(`${path}/:id`, endpoint(req => {
     const table = current(req);
     return { ...table, operations: table.operations.map(row => {
-      try { return resolveRow(db, req.warehouse.id, row); } catch { return row; }
+      try { return resolveRow(db, req.warehouse.id, row, 'edit'); } catch { return row; }
     }) };
   }, true));
   const save = req => {
@@ -119,7 +138,8 @@ export function installPostProcessingTables(app, db, { operationRequest, saveOpe
     const { name, enabled, operations } = req.body;
     if (!text(name, 100) || !name.trim() || ![0,1].includes(enabled)) fail('后处理工序表名称或启用状态无效。');
     validateRows(operations);
-    const rows = operations.map(row => resolveRow(db, req.warehouse.id, row, true));
+    const previous = new Map((old?.operations ?? []).map(row => [rowKey(row), row]));
+    const rows = operations.map(row => ({ ...resolveRow(db, req.warehouse.id, row, 'save', previous.get(rowKey(row)) ?? null), materials_configured: true }));
     const tableId = old ? old.id : Number(db.prepare('INSERT INTO post_processing_tables(warehouse_id,name,enabled,operations) VALUES (?,?,?,?)')
       .run(req.warehouse.id, name.trim(), enabled, JSON.stringify(rows)).lastInsertRowid);
     if (old) db.prepare('UPDATE post_processing_tables SET name=?,enabled=?,operations=?,version=version+1 WHERE id=?')
@@ -158,6 +178,8 @@ export function validatePostProcessingTableBackup(data) {
     for (const row of operations) {
       const route = routes.get(row.route_id);
       if (route?.warehouse_id !== table.warehouse_id || route.route_kind !== 'post_processing' || !text(row.name, 100) || !text(row.route_name, 100))
+        fail('备份后处理工序表关联无效。');
+      if (row.materials_configured !== undefined && (row.materials_configured !== true || !validMaterialList(row.materials)))
         fail('备份后处理工序表关联无效。');
     }
   }

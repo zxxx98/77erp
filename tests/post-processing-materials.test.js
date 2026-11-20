@@ -67,12 +67,12 @@ async function fixture(t, { staged = false } = {}) {
 
 test('a reusable post-processing table overrides legacy BOM configuration and freezes multiple operations', async t => {
   const f = await fixture(t);
-  const route = f.ok(await f.route([{ product_id: f.label.id }]));
+  const route = f.ok(await f.route([{ product_id: f.label.id, quantity: 1 }]));
   assert.equal(route.graph.nodes[0].materials[0].quantity, 1);
   const second = f.ok(await f.route([], { name: '复检' }));
   const binding = (route, product_coefficient) => ({ route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient });
   const bom = await f.save(`/boms/${f.bom.id}`, { ...f.bom, post_processing_operations: [{ ...binding(route, 1), materials: [{ product_id: f.label.id, quantity: 3 }] }] });
-  const operations = [binding(route, 100), binding(second, 25)];
+  const operations = [{ ...binding(route, 100), materials: [{ product_id: f.label.id, quantity: 2 }] }, binding(second, 25)];
   const tableInput = { name: '通用包装', enabled: 1, operations };
   const basePath = '/post-processing-tables';
   assert.equal((await f.command(basePath, { ...tableInput, operations: [operations[0], operations[0]] })).status, 400);
@@ -92,7 +92,7 @@ test('a reusable post-processing table overrides legacy BOM configuration and fr
   assert.equal((await f.command('/production-orders', { ...createBody, post_processing_table_token: (await preview()).token, post_processing_operations: operations })).status, 400);
   const order = await f.save('/production-orders', { ...createBody, post_processing_table_token: (await preview()).token });
   assert.deepEqual(order.operation_routes.map(row => [row.product_coefficient, row.post_processing_planned_runs]), [[100, 3], [50, 5]]);
-  assert.equal(order.items.find(row => row.product_id === f.label.id).post_processing_planned_quantity, 3);
+  assert.equal(order.items.find(row => row.product_id === f.label.id).post_processing_planned_quantity, 6);
   const plain = await f.save('/production-orders', { ...createBody, post_processing_table_id: null });
   assert.deepEqual(plain.operation_routes, []);
   const backup = f.ok(await f.request('/backup'));
@@ -104,6 +104,32 @@ test('a reusable post-processing table overrides legacy BOM configuration and fr
   const restore = await f.save('/backup/preview', { backup });
   await f.save('/backup/restore', { backup, ...restore, confirmation: 'RESTORE_BUSINESS_DATA' });
   assert.deepEqual((await preview()).operations.map(row => row.product_coefficient), [100, 50]);
+});
+
+test('post-processing tables require their own quantities and reconcile changes to route material bindings', async t => {
+  const f = await fixture(t);
+  let route = f.ok(await f.route([{ product_id: f.label.id }]));
+  assert.equal(Object.hasOwn(route.graph.nodes[0].materials[0], 'quantity'), false);
+  const operation = { route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 100 };
+  const path = '/post-processing-tables';
+  const make = (name, materials) => ({ name, enabled: 1, operations: [{ ...operation, materials }] });
+  for (const materials of [undefined, [], [{ product_id: f.raw.id, quantity: 1 }], [{ product_id: f.label.id, quantity: 0.5 }]])
+    assert.equal((await f.command(path, make('装箱', materials))).status, 400);
+  const narrow = await f.save(path, make('小箱', [{ product_id: f.label.id, quantity: 2 }]));
+  const wide = await f.save(path, make('大箱', [{ product_id: f.label.id, quantity: 24 }]));
+  const preview = id => f.request(`${path}/${id}/preview`);
+  assert.equal(f.ok(await preview(narrow.id)).operations[0].materials[0].quantity, 2);
+  assert.equal(f.ok(await preview(wide.id)).operations[0].materials[0].quantity, 24);
+  route = f.ok(await f.route([{ product_id: f.label.id }, { product_id: f.raw.id }], { id: route.id, version: route.version }));
+  assert.equal((await preview(wide.id)).status, 409);
+  const editable = f.ok(await f.request(`${path}/${wide.id}`));
+  assert.deepEqual(editable.operations[0].materials.map(row => [row.product_id, row.quantity]), [[f.label.id, 24], [f.raw.id, undefined]]);
+  assert.equal(editable.operations[0].route_version, route.version);
+  editable.operations[0].materials[1].quantity = 1.25;
+  await f.save(`${path}/${wide.id}`, editable);
+  assert.deepEqual(f.ok(await preview(wide.id)).operations[0].materials.map(row => row.quantity), [24, 1.25]);
+  const backup = f.ok(await f.request('/backup'));
+  f.ok(await f.request('/backup/preview', { backup }));
 });
 
 test('post-processing templates validate material identity, four decimals and whole units', async t => {
@@ -137,7 +163,7 @@ test('BOM calculation can skip stale legacy processing or include the selected t
   const bom = await f.save(`/boms/${f.bom.id}`, { ...f.bom,
     post_processing_operations: [{ ...binding, product_coefficient: 1, materials: route.graph.nodes[0].materials }],
     scraps: [{ product_id: waste.id, method: 'input_ratio', source_product_id: f.raw.id, quantity: 10, unit: '件', note: '' }] });
-  const tableInput = { name: '通用包装', enabled: 1, operations: [{ ...binding, product_coefficient: 20 }] };
+  const tableInput = { name: '通用包装', enabled: 1, operations: [{ ...binding, product_coefficient: 20, materials: route.graph.nodes[0].materials }] };
   const table = await f.save('/post-processing-tables', tableInput);
   const tablePath = `/post-processing-tables/${table.id}`;
   f.db.prepare('UPDATE products SET unit_round_up=1,stock=110 WHERE id=?').run(f.raw.id);

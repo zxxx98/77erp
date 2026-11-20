@@ -76,12 +76,26 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
         {hasMaterials && <ul className="post-processing-material-list">
           {row.materials.map(material => {
             const values = quantity => ({ quantity: formatExactQuantity(quantity, getFormatLocale()), unit: material.unit });
+            if (!readOnly) {
+              const materialLabel = `${t('production.postProcessingMaterialPerRun')} ${material.name}`;
+              return <li key={material.product_id} className="post-processing-material-editor">
+                <strong>{material.name}</strong>
+                <label>{t('production.postProcessingMaterialPerRun')} ({material.unit})
+                  <FormField required value={material.quantity} label={materialLabel}>
+                    <Input aria-label={materialLabel} inputMode={material.unit_round_up ? 'numeric' : 'decimal'} value={material.quantity ?? ''} disabled={disabled}
+                      onChange={event => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, materials: item.materials.map(entry =>
+                        entry.product_id === material.product_id ? { ...entry, quantity: event.target.value } : entry) } : item))} />
+                  </FormField>
+                </label>
+              </li>;
+            }
+            const quantity = perRun.find(entry => entry.product_id === material.product_id)?.quantity ?? material.quantity;
             return <li key={material.product_id}>
               <strong>{material.name}</strong>
               <p className="bom-hint">
                 {row.usage_basis === 'material' && <>{t('production.bomPostMaterialRate', values(exactQuantity(material)))} · </>}
-                {t('production.fixedMaterialPerRun', values(perRun?.find(entry => entry.product_id === material.product_id)?.quantity ?? material.quantity))}
-                {estimate != null && ` · ${t('production.fixedMaterialPlanned', values(exactMultiply(perRun?.find(entry => entry.product_id === material.product_id)?.quantity ?? material.quantity, estimate)))}`}</p>
+                {t('production.fixedMaterialPerRun', values(quantity))}
+                {estimate != null && ` · ${t('production.fixedMaterialPlanned', values(exactMultiply(quantity, estimate)))}`}</p>
             </li>;
           })}
         </ul>}
@@ -89,6 +103,7 @@ export function PostProcessingPlan({ rows, onChange, data, unit, plannedQuantity
     })}
     {!readOnly && <Button icon={Plus} disabled={disabled || rows.length >= MAX_OPERATIONS} onClick={() => setPicker(true)}>{t('production.addPostProcessing')}</Button>}
     {picker && <IndependentOperationPicker data={data} routeKind="post_processing" title={t('production.addPostProcessing')} emptyMessage={t('production.noPostProcessing')}
-      rows={rows} maxOperations={MAX_OPERATIONS} onSelect={added => onChange([...rows, ...added.map(row => ({ ...row, product_coefficient: '' }))])} onClose={() => setPicker(false)} />}
+      rows={rows} maxOperations={MAX_OPERATIONS} onSelect={added => onChange([...rows, ...added.map(row => ({ ...row, product_coefficient: '',
+        materials: (row.materials ?? []).map(material => ({ ...material, quantity: '' })) }))])} onClose={() => setPicker(false)} />}
   </section>;
 }

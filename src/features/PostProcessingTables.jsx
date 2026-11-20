@@ -59,7 +59,14 @@ export function PostProcessingTables({ data, onBack }) {
       <div className="bom-editor-actions"><Button kind="primary" busy={action.busy} disabled={!editor.name.trim() || !editor.operations.length}
         onClick={() => action.run(async () => {
           const operations = editor.operations.map(row => ({ route_id: row.route_id, route_version: row.route_version, node_id: row.node_id,
-            price_table_id: row.price_table_id ?? null, product_coefficient: parseQuantity(row.product_coefficient, true) }));
+            price_table_id: row.price_table_id ?? null, product_coefficient: parseQuantity(row.product_coefficient, true),
+            materials: (row.materials ?? []).map(material => {
+              let quantity;
+              try { quantity = parseQuantity(material.quantity, true); }
+              catch { throw new Error(t('production.postProcessingMaterialInvalid', { name: material.name })); }
+              if (material.unit_round_up && !Number.isInteger(quantity)) throw new Error(t('production.postProcessingMaterialWhole', { name: material.name }));
+              return { product_id: material.product_id, quantity };
+            }) }));
           await action.send(editor.id ? `${path}/${editor.id}` : path, { name: editor.name, enabled: editor.enabled, version: editor.version, operations }, options);
           close(); refresh();
         })}>{t('production.savePostProcessingTable')}</Button></div>

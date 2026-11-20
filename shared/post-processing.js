@@ -1,7 +1,6 @@
 import { exactRatio, exactCompare, exactQuantity, exactDivide } from './exact-quantity.js';
 
 export const postProcessingUnit = '次';
-export const defaultPostMaterialPerRun = 1;
 
 export function productionOutputCompleted(order, quantity = exactQuantity(order, 'completed_quantity'), confirmed = order.output_completion_confirmed) {
   return order.status !== 'void' && (Boolean(confirmed) || exactCompare(quantity, order.planned_quantity) >= 0);

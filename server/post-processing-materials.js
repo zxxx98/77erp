@@ -20,22 +20,22 @@ export function stripLegacyPostMaterials(value) {
   return JSON.stringify(graph);
 }
 
-function checkedMaterials(value, post, error, defaultQuantity) {
+function checkedMaterials(value, post, error, allowUnconfigured = false) {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 100 || new Set(value.map(row => row?.product_id)).size !== value.length ||
-      value.some(row => !isId(row?.product_id) || !validQuantity(row.quantity === undefined ? defaultQuantity : row.quantity, true))) fail(error);
+      value.some(row => !isId(row?.product_id) || !(allowUnconfigured && row.quantity === undefined || validQuantity(row.quantity, true)))) fail(error);
   if (!post && value.length) fail(error);
   return value;
 }
 
-export function normalizePostMaterials(db, warehouseId, value, post, defaultQuantity) {
-  const materials = checkedMaterials(value, post, post ? configError : '仅后处理工序可以配置固定材料。', defaultQuantity);
-  return materials.map(({ product_id, quantity = defaultQuantity }) => {
+export function normalizePostMaterials(db, warehouseId, value, post, { allowUnconfigured = false } = {}) {
+  const materials = checkedMaterials(value, post, post ? configError : '仅后处理工序可以配置固定材料。', allowUnconfigured);
+  return materials.map(({ product_id, quantity }) => {
     const product = db.prepare('SELECT id AS product_id,name,barcode,specification,unit,unit_round_up,active FROM products WHERE id=? AND warehouse_id=?').get(product_id, warehouseId);
     if (!product?.active) fail(productError);
-    if (product.unit_round_up && !Number.isInteger(quantity)) fail('后处理材料每次用量须符合整单位规则。');
+    if (quantity !== undefined && product.unit_round_up && !Number.isInteger(quantity)) fail('后处理材料每次用量须符合整单位规则。');
     const { active, ...metadata } = product;
-    return { ...metadata, quantity };
+    return quantity === undefined ? metadata : { ...metadata, quantity };
   });
 }
 
@@ -134,11 +134,11 @@ export function postMaterialUsage(reports) {
   return totals;
 }
 
-export function validatePostMaterialGraph(graph, post, products, warehouseId, items) {
+export function validatePostMaterialGraph(graph, post, products, warehouseId, items, { allowUnconfigured = false } = {}) {
   validatePostMaterialBasis(graph, post, products, warehouseId);
-  for (const node of graph.nodes) for (const row of checkedMaterials(node.materials, post, backupError)) {
-    if (Object.keys(row).length !== 7 || products.get(row.product_id)?.warehouse_id !== warehouseId ||
-        ![0,1].includes(row.unit_round_up) || row.unit_round_up && !Number.isInteger(row.quantity) ||
+  for (const node of graph.nodes) for (const row of checkedMaterials(node.materials, post, backupError, allowUnconfigured)) {
+    if (Object.keys(row).length !== (row.quantity === undefined ? 6 : 7) || products.get(row.product_id)?.warehouse_id !== warehouseId ||
+        ![0,1].includes(row.unit_round_up) || row.quantity !== undefined && row.unit_round_up && !Number.isInteger(row.quantity) ||
         ['name', 'barcode', 'specification', 'unit'].some(key => typeof row[key] !== 'string' ||
           row[key].length > (key === 'specification' ? 500 : 100) || key !== 'specification' && !row[key].trim()))
       fail(backupError);

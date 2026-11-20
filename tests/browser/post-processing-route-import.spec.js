@@ -62,6 +62,9 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} imp
     await expect(coefficient('装箱')).toHaveValue('');
     await coefficient('复检').fill('50');
     await coefficient('装箱').fill('100');
+    const cartonQuantity = page.getByLabel('每次用量 纸箱', { exact: true });
+    await expect(cartonQuantity).toHaveValue('');
+    await cartonQuantity.fill('2');
 
     await openRoute('包装路线');
     await expect(importRoute).toBeDisabled();
@@ -84,7 +87,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} imp
     expect(operations).toMatchObject([
       { route_id: route.id, route_version: route.version, node_id: 'label', price_table_id: null, product_coefficient: 20 },
       { route_id: route.id, route_version: route.version, node_id: 'check', price_table_id: 'model-b', product_coefficient: 50 },
-      { route_id: route.id, route_version: route.version, node_id: 'pack', price_table_id: 'model-b', product_coefficient: 100, materials: [{ product_id: carton.id, quantity: 1 }] },
+      { route_id: route.id, route_version: route.version, node_id: 'pack', price_table_id: 'model-b', product_coefficient: 100, materials: [{ product_id: carton.id, quantity: 2 }] },
     ]);
     await expect(page.getByText('包装工序表', { exact: true })).toBeVisible();
   } finally {

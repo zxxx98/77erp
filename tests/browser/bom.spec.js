@@ -56,7 +56,7 @@ for (const mobile of [false, true]) {
       const route = await f.post('/process-routes', { name: '包装', route_kind: 'post_processing', enabled: 1, note: '', graph: {
         nodes: [{ id: 'pack', name: '贴标签', x: 24, y: 24, note: '', materials: [{ product_id: label.id, quantity: 2 }] }], edges: [],
       } });
-      await f.post('/post-processing-tables', { name: '桌子包装工序表', enabled: 1, operations: [{ route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 4 }] });
+      await f.post('/post-processing-tables', { name: '桌子包装工序表', enabled: 1, operations: [{ route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 4, materials: [{ product_id: label.id, quantity: 2 }] }] });
       await f.post('/boms', f.definition);
       await page.goto(f.base + '/#bom');
       await page.getByRole('button', { name: '测算备料', exact: true }).click();

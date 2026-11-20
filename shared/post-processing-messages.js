@@ -1,4 +1,5 @@
 export const postProcessingMessages = {
+  POST_TABLE_MATERIALS_REQUIRED: ['请为工序表中的每种固定材料填写有效的每次用量。', 'Enter a valid quantity per run for each fixed material in the table.', 'Nhập lượng dùng mỗi lần hợp lệ cho từng vật tư cố định trong bảng.'],
   POST_MATERIAL_PRODUCT: ['请选择当前仓库已启用的后处理材料。', 'Select active post-processing materials in this warehouse.', 'Chọn vật tư hậu xử lý đang hoạt động trong kho hiện tại.'],
   POST_MATERIAL_CONFIG: ['后处理材料不能重复，每次用量须为正数且最多 4 位小数。', 'Post-processing materials cannot repeat. Usage per run must be positive with at most 4 decimal places.', 'Vật tư hậu xử lý không được trùng. Lượng dùng mỗi lần phải dương, tối đa 4 chữ số thập phân.'],
   POST_MATERIAL_QUANTITY: ['后处理材料数量超出范围，请拆分生产单。', 'Post-processing material quantity is out of range. Split the production order.', 'Số lượng vật tư hậu xử lý vượt giới hạn. Hãy chia lệnh sản xuất.'],
