@@ -60,8 +60,16 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} imp
     await expect(coefficient('贴标')).toHaveValue('20');
     await expect(coefficient('复检')).toHaveValue('');
     await expect(coefficient('装箱')).toHaveValue('');
+    const quantityInput = coefficient('装箱');
+    const removeButton = button('移除后处理工序 装箱');
+    if (mode === 'desktop') {
+      const [input, remove] = await Promise.all([quantityInput.boundingBox(), removeButton.boundingBox()]);
+      expect(remove.x).toBeGreaterThan(input.x);
+      expect(remove.y).toBeCloseTo(input.y, 0);
+      expect(remove.height).toBeCloseTo(input.height, 0);
+    }
     await coefficient('复检').fill('50');
-    await coefficient('装箱').fill('100');
+    await quantityInput.fill('100');
     const cartonQuantity = page.getByLabel('每次用量 纸箱', { exact: true });
     await expect(cartonQuantity).toHaveValue('');
     await cartonQuantity.fill('2');
