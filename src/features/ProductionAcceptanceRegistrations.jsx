@@ -52,10 +52,8 @@ function RegistrationInputEditor({ inputs, draft, disabled, onChange, onSave, on
             const position = item.path.startsWith('@stock:') ? item.stage_path : item.path;
             const identity = [item.barcode, source, position].filter(Boolean);
             const inputLabel = label => [item.name, label, ...identity].join(' ');
-            return <div className="registration-input-row" key={`${item.part_index}:${item.item_index}`}>
-              {(source || position) && <div className="registration-input-source">
-                {source}{position && <span>{source && ' · '}{position}</span>}
-              </div>}
+            return <div className={`registration-input-row${source ? ' has-source' : ''}`} key={`${item.part_index}:${item.item_index}`}>
+              {source && <div className="registration-input-source">{source}</div>}
               <label className="registration-input-quantity">{quantityLabel} ({item.unit})
                 <Input aria-label={inputLabel(quantityLabel)} inputMode="text" disabled={disabled} value={draft[index].quantity}
                   onChange={event => onChange(index, { quantity: event.target.value })} />

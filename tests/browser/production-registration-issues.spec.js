@@ -76,6 +76,8 @@ for (const device of ['desktop', 'Pixel 7', 'pwa']) test(`${device} groups edita
     const heading = await semi.locator('strong').boundingBox();
     if (device === 'desktop') expect(balances.x).toBeGreaterThan(heading.x);
     else expect(balances.y).toBeGreaterThan(heading.y);
+    await expect(semi.locator('.registration-input-source')).toHaveText(['本单自制', '仓库领用']);
+    await expect(other.locator('.registration-input-source')).toHaveText(['仓库领用']);
     for (const [source, next] of [['本单自制', '8'], ['仓库领用', '5']]) {
       await expect(semi.locator('.registration-input-source').filter({ hasText: new RegExp(`^${source}`) })).toBeVisible();
       await semi.getByLabel(new RegExp(`本次用量.*${source}`)).fill(next);
