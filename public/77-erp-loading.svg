@@ -1,28 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
   <title>77 ERP loading</title>
-  <defs>
-    <linearGradient id="arc" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#93c5fd"/>
-    </linearGradient>
-  </defs>
-
-  <!-- base ring -->
-  <circle cx="48" cy="48" r="42" fill="none" stroke="#dbeafe" stroke-width="7"/>
-
-  <!-- rotating arc -->
+  <circle cx="48" cy="48" r="41" fill="none" stroke="#e4e7ec" stroke-width="5"/>
   <g>
     <animateTransform attributeName="transform" type="rotate"
-      from="0 48 48" to="360 48 48" dur="1.2s" repeatCount="indefinite"/>
-    <circle cx="48" cy="48" r="42" fill="none" stroke="url(#arc)"
-      stroke-width="7" stroke-linecap="round" stroke-dasharray="79 185"/>
+      from="0 48 48" to="360 48 48" dur="1.05s" repeatCount="indefinite"/>
+    <circle cx="48" cy="48" r="41" fill="none" stroke="#111827"
+      stroke-width="5" stroke-linecap="round" stroke-dasharray="72 190"/>
   </g>
-
-  <!-- 77 badge with soft pulse -->
-  <g>
-    <animate attributeName="opacity" values="1;.72;1" dur="1.6s" repeatCount="indefinite"/>
-    <rect x="26" y="26" width="44" height="44" rx="12" fill="#2563eb"/>
-    <path d="M35.9 39.2h11L39.2 56.8m10-17.6h11l-7.7 17.6" fill="none"
-      stroke="#ffffff" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
+  <rect x="28" y="28" width="40" height="40" rx="9" fill="#111827"/>
+  <path d="M37 40h10L40.2 56m9.6-16h10l-6.8 16" fill="none"
+    stroke="#ffffff" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="round"/>
 </svg>

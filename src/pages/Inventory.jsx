@@ -26,7 +26,6 @@ import {
   Search,
   Plus,
   Minus,
-  ShieldCheck,
 } from 'lucide-react';
 import { count, money, stockStatus, stockTone, currencySymbol } from '../app/format.js';
 
@@ -66,8 +65,8 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
       </PageHeading>
       <div className="inventory-stats">
         <div>
-          <span className="metric-icon icon-blue">
-            <Boxes size={21} />
+          <span className="metric-icon">
+            <Boxes size={16} strokeWidth={1.75} />
           </span>
           <span>
             <small>{translate("warehouse.total.quantity.in.stock")}</small>
@@ -78,8 +77,8 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           </span>
         </div>
         <div>
-          <span className="metric-icon icon-purple">
-            <Warehouse size={21} />
+          <span className="metric-icon">
+            <Warehouse size={16} strokeWidth={1.75} />
           </span>
           <span>
             <small>{translate("warehouse.inventory.cost.amount")}</small>
@@ -90,24 +89,24 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           </span>
         </div>
         <div>
-          <span className="metric-icon icon-orange">
-            <TriangleAlert size={21} />
+          <span className="metric-icon">
+            <TriangleAlert size={16} strokeWidth={1.75} />
           </span>
           <span>
             <small>{translate("warehouse.low.inventory.materials")}</small>
-            <strong>
+            <strong className={lowCount > 0 ? "orange-text" : ""}>
               {lowCount}
               <em>{" "}{translate("warehouse.types")}</em>
             </strong>
           </span>
         </div>
         <div>
-          <span className="metric-icon icon-red">
-            <Package size={21} />
+          <span className="metric-icon">
+            <Package size={16} strokeWidth={1.75} />
           </span>
           <span>
             <small>{translate("warehouse.out.of.stock.material")}</small>
-            <strong>
+            <strong className={(summary?.out_of_stock || 0) > 0 ? "red-text" : ""}>
               {summary?.out_of_stock || 0}
               <em>{" "}{translate("warehouse.types")}</em>
             </strong>
@@ -232,8 +231,6 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
         <Pagination total={total} page={page} setPage={setPage} />
       </section>
       </div>
-      <div className="page-hint">
-        <ShieldCheck size={16} />{translate("warehouse.inventory.is.automatically.updated.with.document.confirmation.and.safety.stock.can")}</div>
     </>
   );
 }

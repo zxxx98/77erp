@@ -20,7 +20,6 @@ import {
   ArrowRight,
   TriangleAlert,
   CircleCheck,
-  ShieldCheck,
   ChevronRight,
 } from 'lucide-react';
 import { CameraScanner, StockQrExecution } from '../LazyComponents.jsx';
@@ -116,10 +115,8 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             ))}
           </div>
           <div className="scan-focus-area">
-            <div className="big-scanner-icon">
-              <ScanLine size={42} strokeWidth={1.4} />
-              <span className="big-scan-corner a" />
-              <span className="big-scan-corner b" />
+            <div className="big-scanner-icon" aria-hidden="true">
+              <ScanLine size={24} strokeWidth={1.75} />
             </div>
             <h2>
               {mode === "query"
@@ -229,39 +226,6 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
           )}
         </section>
         <div className="scanner-aside">
-          <Panel title={translate("warehouse.scan.code.operation.instructions")} icon={ScanLine}>
-            <div className="scan-guide">
-              {[
-                [
-                  "01",
-                  translate("warehouse.turn.on.your.phone.camera"),
-                  translate("warehouse.click.on.your.phone.to.scan.the.qr.code.and.allow"),
-                ],
-                [
-                  "02",
-                  translate("warehouse.select.working.mode"),
-                  translate("warehouse.search.enter.or.exit.the.warehouse.and.switch.freely.according.to"),
-                ],
-                [
-                  "03",
-                  translate("warehouse.scan.and.confirm"),
-                  translate("warehouse.the.material.label.confirms.the.billing.the.business.qr.code.confirms"),
-                ],
-              ].map(([n, title, desc]) => (
-                <div key={n}>
-                  <span>{n}</span>
-                  <div>
-                    <h3>{title}</h3>
-                    <p>{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="scan-guide-note">
-              <ShieldCheck size={16} />
-              <p>{translate("warehouse.the.material.label.only.identifies.the.material.the.qr.code.for")}</p>
-            </div>
-          </Panel>
           <Panel
             title={translate("warehouse.recently.recognized")}
             extra={<span className="muted">{translate("warehouse.this.session")}</span>}
