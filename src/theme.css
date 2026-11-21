@@ -44,6 +44,13 @@
   font-size: 13px;
 }
 
+/* Desktop workspace uses a flat white canvas with hairline dividers (zero card-in-card nesting). */
+html:not(.mobile-device) body,
+html:not(.mobile-device) .app-shell,
+html:not(.mobile-device) .main-shell {
+  background: var(--surface);
+}
+
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--accent);
@@ -53,7 +60,7 @@ a:focus-visible {
 /* ---------- Sidebar ---------- */
 
 .sidebar {
-  background: var(--surface-sidebar);
+  background: #f8f9fb;
   border-right: 1px solid var(--border);
   padding: 16px 12px 0;
 }
@@ -101,25 +108,25 @@ a:focus-visible {
 
 .workspace-selector {
   gap: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 8px 10px;
-  margin-bottom: 16px;
-  min-height: 44px;
+  padding: 7px 8px;
+  margin-bottom: 14px;
+  min-height: 40px;
 }
 
 .workspace-selector:hover {
   background: var(--surface-hover);
-  border-color: var(--border-strong);
 }
 
 .workspace-icon {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border);
+  width: 24px;
+  height: 24px;
+  border: 0;
   border-radius: 5px;
-  background: var(--surface-subtle);
+  background: #eaeef4;
   color: var(--text-secondary);
 }
 
@@ -405,14 +412,15 @@ a:focus-visible {
 /* ---------- Main Canvas & Page Headings ---------- */
 
 .main-content {
-  padding: 20px 24px 0;
+  padding: 20px 28px 0;
   min-height: calc(100vh - 52px);
+  background: var(--surface);
 }
 
 .page-heading {
   gap: 16px;
-  margin-bottom: 18px;
-  min-height: 40px;
+  margin-bottom: 16px;
+  min-height: 36px;
 }
 
 .page-heading h1 {
@@ -456,25 +464,37 @@ a:focus-visible {
   color: var(--muted);
 }
 
-/* ---------- Dashboard Metrics ---------- */
+/* ---------- Dashboard Metrics (Unified Hairline Strip, Zero Card Boxes) ---------- */
 
 .metric-grid {
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 0;
+  margin-bottom: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .metric-card {
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  min-height: 112px;
+  padding: 16px 20px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  min-height: 102px;
   box-shadow: none;
+}
+
+.metric-card:first-child {
+  padding-left: 0;
+}
+
+.metric-card:last-child {
+  border-right: 0;
+  padding-right: 0;
 }
 
 .metric-card:hover {
   box-shadow: none;
-  border-color: var(--border-strong);
+  border-color: var(--border);
 }
 
 .metric-top {
@@ -484,8 +504,8 @@ a:focus-visible {
 }
 
 .metric-icon {
-  height: 24px;
-  width: 24px;
+  height: 22px;
+  width: 22px;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-subtle);
@@ -495,7 +515,7 @@ a:focus-visible {
   font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.02em;
-  margin-top: 8px;
+  margin-top: 6px;
   line-height: 1.25;
   color: var(--text);
 }
@@ -515,7 +535,7 @@ a:focus-visible {
 
 .metric-footer {
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 8px;
   font-size: 12px;
   min-height: 18px;
 }
@@ -535,18 +555,18 @@ a:focus-visible {
   font-size: 12px;
 }
 
-/* ---------- Panels & Charts ---------- */
+/* ---------- Flat Hairline Panels & Dashboard Grid ---------- */
 
 .panel {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
 }
 
 .panel-heading {
-  padding: 14px 18px 12px;
-  min-height: 48px;
+  padding: 16px 0 12px;
+  min-height: 44px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -567,12 +587,15 @@ a:focus-visible {
 }
 
 .dashboard-middle {
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .trend-panel {
-  min-height: 280px;
+  min-height: 276px;
+  padding-right: 24px;
+  border-right: 1px solid var(--border);
 }
 
 .segmented {
@@ -603,7 +626,7 @@ a:focus-visible {
 }
 
 .trend-summary {
-  padding: 12px 18px 4px;
+  padding: 12px 0 4px;
 }
 
 .trend-amount {
@@ -637,6 +660,14 @@ a:focus-visible {
   background: var(--text-subtle);
 }
 
+.chart-wrap {
+  margin: 8px 0 6px;
+}
+
+.fullscreen-chart-toolbar {
+  padding: 0;
+}
+
 .chart-tooltip {
   border: 1px solid var(--border);
   box-shadow: 0 4px 12px rgba(16, 24, 40, 0.08);
@@ -651,14 +682,14 @@ a:focus-visible {
   color: var(--text-secondary);
 }
 
-/* ---------- Restrained Quick Operations Panel ---------- */
+/* ---------- Quick Operations (Zero Box-in-Box List) ---------- */
 
 .quick-panel {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  padding: 0;
-  min-height: 280px;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0 0 0 24px;
+  min-height: 276px;
   display: flex;
   flex-direction: column;
 }
@@ -666,19 +697,20 @@ a:focus-visible {
 .quick-action-list {
   display: flex;
   flex-direction: column;
-  padding: 12px 14px;
-  gap: 8px;
+  padding: 4px 0;
+  gap: 0;
 }
 
 .quick-panel .quick-scan-button,
 .quick-panel .quick-action-item {
   width: 100%;
   margin: 0;
-  padding: 10px 12px;
+  padding: 11px 6px;
   min-height: 44px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
   color: var(--text);
   font-size: 13px;
   font-weight: 500;
@@ -690,16 +722,14 @@ a:focus-visible {
   text-align: left;
 }
 
-.quick-panel .quick-scan-button {
-  background: var(--surface-subtle);
-  border-color: var(--border-strong);
+.quick-panel .quick-action-list > button:last-child {
+  border-bottom: 0;
 }
 
 .quick-panel .quick-scan-button:hover,
 .quick-panel .quick-action-item:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-  color: var(--text);
+  background: var(--surface-subtle);
+  color: var(--accent);
 }
 
 .quick-panel .quick-action-label {
@@ -714,35 +744,48 @@ a:focus-visible {
 }
 
 .quick-panel .quick-action-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  display: grid;
-  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+}
+
+.quick-panel .quick-scan-button:hover .quick-action-icon,
+.quick-panel .quick-action-item:hover .quick-action-icon {
+  color: var(--accent);
 }
 
 .quick-panel-hint {
   margin-top: auto;
-  padding: 12px 16px;
+  padding: 12px 0 14px;
   border-top: 1px solid var(--border-subtle);
-  background: var(--surface-subtle);
+  background: transparent;
   font-size: 12px;
   line-height: 1.55;
   color: var(--muted);
 }
 
-/* ---------- Tables & Lists ---------- */
+/* ---------- Tables & Dashboard Bottom ---------- */
 
 .dashboard-bottom {
-  gap: 16px;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.recent-panel {
+  padding-right: 24px;
+  border-right: 1px solid var(--border);
 }
 
 .recent-panel .panel-heading {
-  padding-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 0;
 }
 
 .text-button {
@@ -757,8 +800,8 @@ a:focus-visible {
 
 .inline-tabs {
   gap: 18px;
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  padding: 0;
   margin-top: 0;
 }
 
@@ -766,8 +809,8 @@ a:focus-visible {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--muted);
-  padding: 10px 2px;
-  min-height: 36px !important;
+  padding: 8px 2px 10px;
+  min-height: 34px !important;
 }
 
 .inline-tabs > button.active {
@@ -781,13 +824,13 @@ a:focus-visible {
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-  padding: 10px 16px;
+  padding: 9px 14px;
   border-bottom: 1px solid var(--border);
 }
 
 .data-table td {
   font-size: 13px;
-  padding: 12px 16px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
 }
@@ -815,38 +858,40 @@ a:focus-visible {
 
 .recent-table th,
 .recent-table td {
-  padding: 10px 14px;
+  padding: 10px 12px;
 }
 
 .recent-table th:first-child,
 .recent-table td:first-child {
-  padding-left: 18px;
+  padding-left: 0;
+}
+
+.recent-table th:last-child,
+.recent-table td:last-child {
+  padding-right: 0;
 }
 
 .order-icon {
-  height: 28px;
-  width: 28px;
+  height: 26px;
+  width: 26px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface-subtle);
+  border: 0;
+  background: var(--surface-hover);
   color: var(--text-secondary);
 }
 
 .order-icon.green {
   background: var(--green-bg);
-  border-color: #bbf7d0;
   color: var(--green);
 }
 
 .order-icon.blue {
-  background: var(--surface-subtle);
-  border-color: var(--border);
+  background: var(--surface-hover);
   color: var(--text-secondary);
 }
 
 .order-icon.red {
   background: var(--red-bg);
-  border-color: #fecaca;
   color: var(--red);
 }
 
@@ -880,6 +925,10 @@ a:focus-visible {
 
 /* ---------- Stock Warnings & Product Placeholders ---------- */
 
+.warning-panel {
+  padding-left: 24px;
+}
+
 .warning-panel .panel-heading {
   padding-bottom: 12px;
 }
@@ -897,7 +946,7 @@ a:focus-visible {
 .warning-description {
   color: var(--muted);
   font-size: 12px;
-  margin: 12px 18px 4px;
+  margin: 12px 0 4px;
 }
 
 .warning-dot {
@@ -907,20 +956,20 @@ a:focus-visible {
 }
 
 .warning-list {
-  padding: 0 18px;
+  padding: 0;
 }
 
 .warning-item {
-  padding: 12px 0;
+  padding: 11px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .product-art {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface-subtle);
+  border: 0;
+  background: var(--surface-hover);
 }
 
 .product-art-placeholder {
@@ -928,30 +977,30 @@ a:focus-visible {
 }
 
 .product-art-placeholder svg {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
 }
 
 .art-small {
-  height: 30px;
-  width: 30px;
+  height: 28px;
+  width: 28px;
   border-radius: var(--radius-sm);
 }
 
 .art-small.product-art-placeholder svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
 }
 
 .art-large {
-  height: 64px;
-  width: 64px;
+  height: 60px;
+  width: 60px;
   border-radius: var(--radius-lg);
 }
 
 .art-large.product-art-placeholder svg {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
 }
 
 .warning-item-info strong {
@@ -999,8 +1048,8 @@ a:focus-visible {
 }
 
 .warning-all-button {
-  width: calc(100% - 36px);
-  margin: 12px 18px 16px;
+  width: 100%;
+  margin: 12px 0 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -1016,12 +1065,43 @@ a:focus-visible {
   color: var(--text);
 }
 
+/* ---------- Flat Split Catalog Layout (Products / Inventory) ---------- */
+
+.catalog-layout {
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--border);
+  align-items: stretch;
+}
+
+.category-sidebar {
+  padding: 14px 14px 16px 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+}
+
+.category-sidebar h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 8px;
+  margin: 0 0 8px;
+}
+
+.products-panel {
+  padding-left: 20px;
+}
+
 /* ---------- Toolbars, Filters, Product & Order Tables ---------- */
 
 .table-toolbar {
-  padding: 12px 16px;
-  min-height: 56px;
+  padding: 12px 0;
+  min-height: 52px;
   border-bottom: 1px solid var(--border);
+}
+
+.orders-panel {
+  border-top: 1px solid var(--border);
 }
 
 .filter-tabs button {
@@ -1097,8 +1177,8 @@ a:focus-visible {
 
 .product-table td,
 .orders-table td {
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding-top: 11px;
+  padding-bottom: 11px;
 }
 
 .category-tag {
@@ -1142,7 +1222,7 @@ a:focus-visible {
 }
 
 .pagination {
-  padding: 12px 16px;
+  padding: 12px 0;
   border-top: 1px solid var(--border);
   color: var(--muted);
   font-size: 12px;
@@ -1167,36 +1247,45 @@ a:focus-visible {
   color: var(--muted);
 }
 
-/* ---------- Inventory Stats, Product Grid & Order Summary ---------- */
+/* ---------- Inventory Stats, Product Grid & Order Summary (Flat Strips) ---------- */
 
 .inventory-stats {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
-  padding: 16px 6px;
-  margin-bottom: 16px;
+  padding: 14px 0;
+  margin-bottom: 0;
 }
 
 .inventory-stats > div {
-  gap: 12px;
-  padding: 0 18px;
-  border-right: 1px solid var(--border-subtle);
+  gap: 10px;
+  padding: 0 20px;
+  border-right: 1px solid var(--border);
+}
+
+.inventory-stats > div:first-child {
+  padding-left: 0;
+}
+
+.inventory-stats > div:last-child {
+  padding-right: 0;
 }
 
 .inventory-stats .metric-icon {
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-md);
+  background: transparent;
+  border: 0;
+  color: var(--text-subtle);
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
 }
 
 .inventory-stats small {
   font-size: 12px;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .inventory-stats strong {
@@ -1240,13 +1329,13 @@ a:focus-visible {
 }
 
 .product-grid {
-  gap: 14px;
-  padding: 16px;
+  gap: 12px;
+  padding: 16px 0;
 }
 
 .product-grid-card {
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: 14px;
   background: var(--surface);
 }
@@ -1298,15 +1387,16 @@ a:focus-visible {
 }
 
 .order-summary {
-  padding: 16px 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  margin-bottom: 16px;
+  padding: 14px 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  margin-bottom: 0;
 }
 
 .order-summary > div {
-  border-right: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border);
   padding-left: 22px;
 }
 
@@ -1318,7 +1408,7 @@ a:focus-visible {
 .order-summary strong {
   font-size: 20px;
   color: var(--text);
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .order-summary strong > small {
@@ -1341,24 +1431,36 @@ a:focus-visible {
   color: var(--muted);
 }
 
-/* ---------- Scanner Workspace (Restrained Industrial Terminal) ---------- */
+/* ---------- Scanner Workspace (Flat Industrial Terminal) ---------- */
 
 .scanner-layout {
-  gap: 16px;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.scanner-main {
+  padding-right: 24px;
+  border-right: 1px solid var(--border);
+}
+
+.scanner-aside {
+  padding-left: 24px;
 }
 
 .scanner-mode-tabs {
+  justify-content: flex-start;
   gap: 6px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-subtle);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
 }
 
 .scanner-mode-tabs button {
   font-size: 13px;
   font-weight: 500;
   color: var(--muted);
-  padding: 7px 14px;
+  padding: 6px 12px;
   border-radius: var(--radius-md);
 }
 
@@ -1368,25 +1470,25 @@ a:focus-visible {
 }
 
 .scanner-mode-tabs button.active {
-  background: var(--surface);
+  background: #eaeef4;
   color: var(--text);
-  border-color: var(--border-strong);
+  border-color: transparent;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  box-shadow: none;
 }
 
 .scan-focus-area {
-  padding: 28px 28px 24px;
+  padding: 28px 16px 24px;
 }
 
 .big-scanner-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-lg);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
   background: var(--surface-subtle);
   border: 1px solid var(--border);
   color: var(--text);
-  margin: 0 0 16px;
+  margin: 0 0 14px;
   box-shadow: none;
 }
 
@@ -1419,11 +1521,57 @@ a:focus-visible {
 }
 
 .scan-result {
-  margin: 0 20px 20px;
+  margin: 0 0 20px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: 16px 18px;
   background: var(--surface-subtle);
+}
+
+/* ---------- Flat Sections for Production / BOM / Payroll / Quality / Todos ---------- */
+
+.bom-section {
+  padding: 18px 0;
+  margin-bottom: 0;
+  border-top: 1px solid var(--border);
+}
+
+.payroll-filters,
+.payroll-section,
+.payroll-order-banner {
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+
+.payroll-totals {
+  gap: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.payroll-stat {
+  padding: 14px 18px;
+  border-right: 1px solid var(--border);
+}
+
+.payroll-stat:first-child {
+  padding-left: 0;
+}
+
+.payroll-stat:last-child {
+  border-right: 0;
+}
+
+.my-todos {
+  padding: 0;
+}
+
+.inspection-panel {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 14px 0;
+  margin: 0;
 }
 
 :where(.scan-result-label) {
@@ -1933,7 +2081,7 @@ html:not(.mobile-device) .business-modal .operation-tabs > .btn[aria-pressed="tr
 
 @media (max-width: 1000px) {
   .main-content {
-    padding: 18px 16px 0;
+    padding: 16px 16px 0;
   }
   .topbar {
     padding: 0 16px;
@@ -1956,9 +2104,50 @@ html:not(.mobile-device) .business-modal .operation-tabs > .btn[aria-pressed="tr
   .metric-value {
     font-size: 20px;
   }
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metric-card {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .metric-card:first-child {
+    padding-left: 14px;
+  }
+  .metric-card:nth-child(2n) {
+    border-right: 0;
+  }
+  .metric-card:nth-last-child(-n+2) {
+    border-bottom: 0;
+  }
+  .trend-panel,
+  .recent-panel,
+  .scanner-main {
+    padding-right: 0;
+    border-right: 0;
+  }
+  .quick-panel,
+  .warning-panel,
+  .scanner-aside {
+    padding-left: 0;
+    border-top: 1px solid var(--border);
+  }
   .quick-panel {
     display: flex;
     min-height: 0;
-    padding: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .catalog-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .category-sidebar {
+    padding: 12px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .products-panel {
+    padding-left: 0;
   }
 }

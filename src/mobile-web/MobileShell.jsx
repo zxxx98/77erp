@@ -14,7 +14,7 @@ import { ModeSwitch } from '../app/ModeSwitch.jsx';
 import { useQuery, usePagedQuery, queryPath } from '../queries.js';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Box, ChevronDown, FilePenLine, History, LayoutDashboard, LogOut, Megaphone, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Bot, Box, ChevronDown, FilePenLine, History, LayoutDashboard, LogOut, Megaphone, Plus, RefreshCw, ScanLine, Settings, ShieldCheck, Warehouse } from 'lucide-react';
 import { usePermissions } from '../permissions.jsx';
 import { flattenCategories } from '../catalog.js';
 import { api } from '../api.js';
@@ -335,18 +335,26 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
   useLocale();
   const { manage, can } = usePermissions();
   return <div className="mw-stack"><h1>{translate("warehouse.workspace")}</h1>
-    <section className="mw-card"><div className="mw-account"><ShieldCheck size={30} /><div><h2>{user.name || user.username}</h2><p className="mw-muted">{translate("warehouse.account")}{user.username}</p><p className="mw-muted">{user.role === 'admin' ? translate("warehouse.administrator.account") : translate("warehouse.employee.account")}</p></div></div></section>
-    {(user.role === 'admin' || user.permissions?.includes('ai')) && <section className="mw-card"><Button icon={Settings} onClick={() => openModal({ kind: 'ai' })}>{translate("warehouse.ai.assistant")}</Button></section>}
-    {mode === 'production' && can('quality') && <section className="mw-card"><Button icon={FilePenLine} onClick={() => navigate('quality')}>{translate("warehouse.quality.online.acceptance")}</Button></section>}
-    {mode === 'production' && can('finance') && <section className="mw-card"><Button onClick={() => navigate('payroll')}>{translate('payroll.title')}</Button></section>}
-    {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('process-routes')}>{translate('route.title')}</Button></section>}
-    {mode === 'production' && can('bom') && <section className="mw-card"><Button onClick={() => navigate('bom')}>{translate("warehouse.bom.material.preparation.calculation")}</Button></section>}
-    {mode === 'production' && canViewProduction(user) && <section className="mw-card"><Button onClick={() => navigate('production')}>{translate("warehouse.production.order.batch.registration")}</Button></section>}
-    <section className="mw-card mw-stack"><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p>{user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>{translate("warehouse.merchant.and.warehouse.settings")}</Button>}</section>
-    <Button icon={Settings} onClick={() => openModal({ kind: 'preferences' })}>{translate("warehouse.user.habits")}</Button>
-    <Button onClick={() => openModal({ kind: 'account', passwordOnly: true })}>{translate("warehouse.change.password")}</Button><Button onClick={() => openModal({ kind: 'businessTools' })}>{translate("warehouse.business.management")}</Button>
-    {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>{translate("warehouse.inbound.and.outbound.qr.code")}</Button>}
-    <Button icon={FilePenLine} onClick={() => openModal({ kind: 'drafts' })}>{translate("warehouse.local.draft")}</Button>
+    <section className="mw-card"><div className="mw-account"><ShieldCheck size={28} /><div><h2>{user.name || user.username}</h2><p className="mw-muted">{translate("warehouse.account")}{user.username}</p><p className="mw-muted">{user.role === 'admin' ? translate("warehouse.administrator.account") : translate("warehouse.employee.account")}</p></div></div></section>
+    <section className="mw-card mw-menu-group">
+      {(user.role === 'admin' || user.permissions?.includes('ai')) && <Button icon={Bot} onClick={() => openModal({ kind: 'ai' })}>{translate("warehouse.ai.assistant")}</Button>}
+      {mode === 'production' && can('quality') && <Button icon={FilePenLine} onClick={() => navigate('quality')}>{translate("warehouse.quality.online.acceptance")}</Button>}
+      {mode === 'production' && can('finance') && <Button onClick={() => navigate('payroll')}>{translate('payroll.title')}</Button>}
+      {mode === 'production' && can('bom') && <Button onClick={() => navigate('process-routes')}>{translate('route.title')}</Button>}
+      {mode === 'production' && can('bom') && <Button onClick={() => navigate('bom')}>{translate("warehouse.bom.material.preparation.calculation")}</Button>}
+      {mode === 'production' && canViewProduction(user) && <Button onClick={() => navigate('production')}>{translate("warehouse.production.order.batch.registration")}</Button>}
+      <Button onClick={() => openModal({ kind: 'businessTools' })}>{translate("warehouse.business.management")}</Button>
+      {manage('business') && <Button onClick={() => openModal({ kind: 'stockQr' })}>{translate("warehouse.inbound.and.outbound.qr.code")}</Button>}
+      <Button icon={FilePenLine} onClick={() => openModal({ kind: 'drafts' })}>{translate("warehouse.local.draft")}</Button>
+    </section>
+    <section className="mw-card mw-stack">
+      <div><h2>{data.settings.business_name}</h2><p className="mw-muted">{data.settings.warehouse_name}</p></div>
+      <div className="mw-menu-group">
+        {user.role === 'admin' && <Button icon={Settings} onClick={() => openModal({ kind: 'settings' })}>{translate("warehouse.merchant.and.warehouse.settings")}</Button>}
+        <Button icon={Settings} onClick={() => openModal({ kind: 'preferences' })}>{translate("warehouse.user.habits")}</Button>
+        <Button onClick={() => openModal({ kind: 'account', passwordOnly: true })}>{translate("warehouse.change.password")}</Button>
+      </div>
+    </section>
     <section className="mw-card"><p className="mw-field-label">{translate("warehouse.server.address")}</p><p className="mw-muted mw-break">{location.origin}</p></section>
     <Button danger icon={LogOut} busy={loggingOut} onClick={() => { if (window.confirm(translate("warehouse.log.out.the.local.draft.of.this.account.will.be.cleared"))) logout(); }}>{translate("warehouse.log.out")}</Button>
     <PwaActions /><p className="mw-muted mw-center">{translate("warehouse.77.erp.data.is.saved.on.the.server")}</p>
