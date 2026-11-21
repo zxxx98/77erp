@@ -751,7 +751,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
   </div>;
 
   return <div className="bom-page production-page production-list-page">
-    <PageHeading title={pt("production.productionOrders")} description={pt("production.listHint")}>
+    <PageHeading title={pt("production.productionOrders")}>
       <Button disabled={action.busy || registration.busy} onClick={registration.openScanner}>{pt("production.scanToRegister")}</Button>
       {management && <Button kind="primary" icon={Plus} disabled={action.busy} onClick={() => begin({ kind: 'new', note: '', planned_quantity: '1', plan: null })}>{pt("production.newProductionOrder")}</Button>}
     </PageHeading>{notices}

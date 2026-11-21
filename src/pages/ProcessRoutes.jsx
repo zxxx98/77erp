@@ -69,7 +69,7 @@ export function ProcessRoutes({ data }) {
   };
   const notices = <>{action.error && <p className="form-error" role="alert">{action.error}</p>}{message && <p className="bom-success" role="status">{message}</p>}</>;
   if (showPostTables) return <PostProcessingTables data={data} onBack={() => setShowPostTables(false)} />;
-  if (!editor) return <div className="bom-page process-page"><PageHeading title={t('route.title')} description={t('route.listHint')}><Button onClick={() => setShowPostTables(true)}>{t('production.postProcessingTables')}</Button><Button kind="primary" icon={Plus} onClick={() => apply({ name: '', note: '', enabled: 1, route_kind: routeKind === 'post_processing' ? routeKind : 'production', graph: { nodes: [{ id: crypto.randomUUID(), name: t('route.newNode'), note: '', x: 24, y: 24 }], edges: [] } })}>{t('route.new')}</Button></PageHeading>
+  if (!editor) return <div className="bom-page process-page"><PageHeading title={t('route.title')}><Button onClick={() => setShowPostTables(true)}>{t('production.postProcessingTables')}</Button><Button kind="primary" icon={Plus} onClick={() => apply({ name: '', note: '', enabled: 1, route_kind: routeKind === 'post_processing' ? routeKind : 'production', graph: { nodes: [{ id: crypto.randomUUID(), name: t('route.newNode'), note: '', x: 24, y: 24 }], edges: [] } })}>{t('route.new')}</Button></PageHeading>
     {notices}
     <section className="panel bom-section">
       <div className="bom-list-filters process-list-filters">

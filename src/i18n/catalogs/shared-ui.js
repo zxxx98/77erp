@@ -102,8 +102,8 @@ export default {
   ],
   "shared.material.files.verification.start.and.stop.deletion.classification.pictures.and.cross.warehouse": [
     "物料档案、校验、启停、删除、分类、图片及跨仓库同步",
-    "Material files, verification, start and stop, deletion, classification, pictures and cross-warehouse synchronization",
-    "Tệp tài liệu, xác minh, bắt đầu và dừng, xóa, phân loại, hình ảnh và đồng bộ hóa giữa các kho"
+    "Material records, inspection, activation, deletion, categories, images, and cross-warehouse sync",
+    "Hồ sơ vật tư, kiểm định, bật/tắt, xóa, danh mục, hình ảnh và đồng bộ giữa các kho"
   ],
   "shared.warehouse": [
     "入库",
@@ -112,8 +112,8 @@ export default {
   ],
   "shared.warehouse.invoicing.qr.code.warehousing.production.return.confirmation.and.finished.product.warehousing": [
     "入库开单、扫码入库、生产退料确认及成品入库审批",
-    "Warehouse invoicing, QR code warehousing, production return confirmation and finished product warehousing approval",
-    "Lập hóa đơn kho, nhập kho bằng mã QR, xác nhận hoàn trả sản phẩm và phê duyệt nhập kho thành phẩm"
+    "Stock-in orders, QR stock-in, production return confirmation, and finished-goods receipt approval",
+    "Tạo phiếu nhập, nhập kho bằng mã QR, xác nhận trả nguyên liệu sản xuất và duyệt nhập kho thành phẩm"
   ],
   "shared.out.of.warehouse": [
     "出库",
@@ -122,8 +122,8 @@ export default {
   ],
   "shared.outbound.billing.scan.code.outbound.and.production.picking.confirmation": [
     "出库开单、扫码出库及生产领料确认",
-    "Outbound billing, scan code outbound and production picking confirmation",
-    "Thanh toán đầu ra, quét mã gửi đi và xác nhận chọn hàng sản xuất"
+    "Stock-out orders, QR stock-out, and production picking confirmation",
+    "Tạo phiếu xuất, xuất kho bằng mã QR và xác nhận lĩnh nguyên liệu sản xuất"
   ],
   "shared.document.correction": [
     "单据纠正",
@@ -162,8 +162,8 @@ export default {
   ],
   "shared.contact.units.own.templates.and.warehouse.entry.and.exit.qr.code.configuration": [
     "往来单位、自己的模板及出入库二维码配置",
-    "Contact units, own templates and warehouse entry and exit QR code configuration",
-    "Đơn vị liên hệ, mẫu riêng và cấu hình xuất nhập kho bằng mã QR"
+    "Business partners, templates, and stock movement QR codes",
+    "Đối tác, mẫu riêng và cấu hình mã QR nhập xuất kho"
   ],
   "shared.quality.management": [
     "品质管理",
@@ -172,8 +172,8 @@ export default {
   ],
   "shared.desktop.acceptance.template.configuration.acceptance.form.analysis.and.material.binding.quality.charts": [
     "桌面验收模板配置、验收单解析与物料绑定、品质图表及原始 Excel 下载",
-    "Desktop acceptance template configuration, acceptance form analysis and material binding, quality charts and original Excel download",
-    "Cấu hình mẫu chấp nhận trên máy tính để bàn, phân tích biểu mẫu chấp nhận và ràng buộc tài liệu, biểu đồ chất lượng và tải xuống Excel gốc"
+    "Desktop acceptance templates, form parsing and material binding, quality charts, and original Excel downloads",
+    "Cấu hình mẫu nghiệm thu trên máy tính, phân tích phiếu nghiệm thu và gắn vật tư, biểu đồ chất lượng và tải Excel gốc"
   ],
   "shared.maintenance.start.stop.material.preparation.calculation.scrap.output.rules.and.export.of": [
     "BOM 与工艺路线的维护、启停、备料测算、废料产出规则及导出",
@@ -197,8 +197,8 @@ export default {
   ],
   "shared.only.view.the.production.orders.of.the.production.group.to.which.they": [
     "仅查看所属生产组的生产单并登记产量和耗料；未分组时没有可见生产单",
-    "Only view the production orders of the production group to which they belong and register output and material consumption; when not grouped, there is no visible production order",
-    "Chỉ xem các lệnh sản xuất của tổ sản xuất mình phụ trách và đăng ký sản lượng, tiêu hao nguyên vật liệu; khi không được nhóm lại, không có thứ tự sản xuất rõ ràng"
+    "View only their production team's orders and log output and material usage; unassigned accounts see no orders",
+    "Chỉ xem lệnh sản xuất của tổ sản xuất thuộc về mình và ghi nhận sản lượng, tiêu hao; khi chưa phân tổ sẽ không thấy lệnh sản xuất"
   ],
   "shared.financial.management": [
     "财务管理",
@@ -207,8 +207,8 @@ export default {
   ],
   "shared.receipts.payments.arrears.inventory.costs.and.gross.profit.reports": [
     "收付款、欠款、库存成本及毛利报表",
-    "Receipts, payments, arrears, inventory costs and gross profit reports",
-    "Các khoản thu, chi, nợ đọng, chi phí tồn kho và báo cáo lợi nhuận gộp"
+    "Receipts, payments, balances, inventory costs, and gross profit reports",
+    "Thu chi, công nợ, giá vốn tồn kho và báo cáo lợi nhuận gộp"
   ],
   "shared.data.import.and.export": [
     "数据导入导出",
@@ -217,8 +217,8 @@ export default {
   ],
   "shared.material.batch.import.and.document.csv.export": [
     "物料批量导入及单据 CSV 导出",
-    "Material batch import and document CSV export",
-    "Nhập hàng loạt nguyên liệu và xuất tài liệu CSV"
+    "Batch material import and document CSV export",
+    "Nhập hàng loạt vật tư và xuất chứng từ CSV"
   ],
   "shared.database.backup": [
     "数据库备份",
@@ -247,8 +247,8 @@ export default {
   ],
   "shared.inventory.changes.from.in.stock.to.zero.notice": [
     "库存从有货变为零时通知。",
-    "Inventory changes from in stock to zero notice.",
-    "Hàng tồn kho thay đổi từ trong kho sang không có thông báo."
+    "Notify when stock drops from available to zero.",
+    "Thông báo khi tồn kho giảm từ còn hàng xuống 0."
   ],
   "shared.stock.recovery": [
     "库存恢复",
@@ -257,18 +257,18 @@ export default {
   ],
   "shared.notify.when.low.inventory.or.out.of.stock.returns.above.safety.stock": [
     "低库存或缺货恢复到安全库存以上时通知。",
-    "Notify when low inventory or out-of-stock returns above safety stock.",
-    "Thông báo khi lượng hàng tồn kho thấp hoặc hết hàng trở lại mức tồn kho an toàn."
+    "Notify when low or out-of-stock items return above safety stock.",
+    "Thông báo khi tồn kho thấp hoặc hết hàng trở lại trên mức an toàn."
   ],
   "shared.you.will.be.notified.after.the.ordinary.warehousing.order.is.successfully.submitted": [
     "普通入库单提交成功后通知，包含二维码开单。",
-    "You will be notified after the ordinary warehousing order is successfully submitted, including QR code for billing.",
-    "Bạn sẽ được thông báo sau khi đơn hàng nhập kho thông thường được gửi thành công, bao gồm cả mã QR để thanh toán."
+    "Notify after a standard stock-in order is submitted, including QR orders.",
+    "Thông báo sau khi gửi phiếu nhập kho thông thường thành công, bao gồm phiếu từ mã QR."
   ],
   "shared.notification.after.successful.submission.of.ordinary.outbound.orders.including.qr.code.billing": [
     "普通出库单提交成功后通知，包含二维码开单。",
-    "Notification after successful submission of ordinary outbound orders, including QR code billing.",
-    "Thông báo sau khi gửi thành công các đơn hàng gửi đi thông thường, bao gồm cả thanh toán bằng mã QR."
+    "Notify after a standard stock-out order is submitted, including QR orders.",
+    "Thông báo sau khi gửi phiếu xuất kho thông thường thành công, bao gồm phiếu từ mã QR."
   ],
   "shared.purchase.sales.returns": [
     "采购／销售退货",
@@ -277,8 +277,8 @@ export default {
   ],
   "shared.you.will.be.notified.after.the.return.is.successful.with.the.original": [
     "退货成功后通知，附原单号和原因。",
-    "You will be notified after the return is successful, with the original order number and reason.",
-    "Sau khi đổi trả thành công bạn sẽ được thông báo kèm mã đơn hàng ban đầu và lý do."
+    "Notify after a return succeeds, including original order number and reason.",
+    "Thông báo sau khi trả hàng thành công, kèm số chứng từ gốc và lý do."
   ],
   "shared.document.invalid": [
     "单据作废",
@@ -287,8 +287,8 @@ export default {
   ],
   "shared.notified.after.the.document.is.successfully.voided": [
     "单据作废成功后通知。",
-    "Notified after the document is successfully voided.",
-    "Thông báo sau khi tài liệu được hủy thành công."
+    "Notify after a document is voided.",
+    "Thông báo sau khi chứng từ được hủy thành công."
   ],
   "shared.notification.after.the.transfer.between.warehouses.is.successful.or.canceled.including.transfers": [
     "仓库间调拨成功或撤销后通知，包含调出与调入仓库。",

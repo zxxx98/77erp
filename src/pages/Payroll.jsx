@@ -64,7 +64,7 @@ export function Payroll({ data }) {
   const chooseDates = values => { setDates(values); setOffset(0); };
 
   return <div className="payroll-page">
-    <PageHeading title={t('payroll.title')} description={t('payroll.description')} />
+    <PageHeading title={t('payroll.title')} />
     <section className="panel payroll-filters">
       <div className="payroll-mode-tabs" role="tablist" aria-label={t('payroll.title')}>
         <button type="button" role="tab" aria-selected={view === 'member'} className={`payroll-mode-tab${view === 'member' ? ' is-active' : ''}`} onClick={() => setView('member')}>{t('payroll.byMember')}</button>

@@ -86,7 +86,6 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
     <>
       <PageHeading
         title={translate("warehouse.scanning.workbench")}
-        description={translate("warehouse.use.the.mobile.phone.camera.to.identify.material.barcodes.or.qr")}
       >
         {isAdmin && <Button onClick={manageStockQr}>{translate("warehouse.manage.incoming.and.outgoing.qr.codes")}</Button>}
         <span className="scanner-ready">

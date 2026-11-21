@@ -428,22 +428,22 @@ export default {
   "system.materials.have.been.counted": [
     "，已盘点 {{v0}} 种物料",
     ", {{v0}} materials have been counted",
-    ", {{v0}} tài liệu đã được tính"
+    ", đã kiểm kê {{v0}} vật tư"
   ],
   "system.the.verification.reminders.for.materials.have.been.updated": [
     "，已更新 {{v0}} 种物料的校验提醒",
-    ", the verification reminders for {{v0}} materials have been updated",
-    ", lời nhắc xác minh cho tài liệu {{v0}} đã được cập nhật"
+    ", updated inspection reminders for {{v0}} materials",
+    ", đã cập nhật nhắc kiểm định cho {{v0}} vật tư"
   ],
   "system.materials.have.been.marked.as.verified": [
     "，已标记 {{v0}} 种物料为已校验",
-    ", {{v0}} materials have been marked as verified",
-    ", {{v0}} tài liệu đã được đánh dấu là đã xác minh"
+    ", marked {{v0}} materials as inspected",
+    ", đã đánh dấu {{v0}} vật tư là đã kiểm định"
   ],
   "system.add.items": [
     "，新增 {{v0}} 个物料",
-    ", add {{v0}} items",
-    ", thêm {{v0}} mục"
+    ", added {{v0}} materials",
+    ", đã thêm {{v0}} vật tư"
   ],
   "system.collapse.details": [
     "收起详情",
@@ -458,37 +458,37 @@ export default {
   "system.view.operation.details": [
     "查看操作详情",
     "View operation details",
-    "Xem chi tiết hoạt động"
+    "Xem chi tiết thao tác"
   ],
   "system.batch.warehouse.entry.and.exit.preview": [
     "批量出入库预览",
-    "Batch warehouse entry and exit preview",
-    "Xem trước xuất nhập kho hàng loạt"
+    "Batch stock-in / stock-out preview",
+    "Xem trước nhập / xuất kho hàng loạt"
   ],
   "system.new.material.preview": [
     "新增物料预览",
     "New material preview",
-    "Xem trước tài liệu mới"
+    "Xem trước vật tư mới"
   ],
   "system.warehouse.transfer.preview": [
     "仓库调拨预览",
     "Warehouse transfer preview",
-    "Xem trước chuyển kho"
+    "Xem trước điều chuyển kho"
   ],
   "system.inventory.count.preview": [
     "库存盘点预览",
-    "Inventory count preview",
-    "Xem trước số lượng hàng tồn kho"
+    "Stocktake preview",
+    "Xem trước kiểm kê tồn kho"
   ],
   "system.set.verification.reminder.preview": [
     "设置校验提醒预览",
-    "Set verification reminder preview",
-    "Đặt xem trước lời nhắc xác minh"
+    "Inspection reminder preview",
+    "Xem trước nhắc kiểm định"
   ],
   "system.mark.verified.preview": [
     "标记已校验预览",
-    "Mark verified preview",
-    "Đánh dấu bản xem trước đã được xác minh"
+    "Mark inspected preview",
+    "Xem trước đánh dấu đã kiểm định"
   ],
   "system.quality.chart.configuration.preview": [
     "品质图表配置预览",
@@ -568,7 +568,7 @@ export default {
   "system.preview.material": [
     "预览物料",
     "Preview material",
-    "Xem trước tài liệu"
+    "Xem trước vật tư"
   ],
   "system.loading.chart.preview": [
     "正在加载图表预览…",
@@ -633,12 +633,12 @@ export default {
   "system.quantity": [
     "数量",
     "Quantity",
-    "số lượng"
+    "Số lượng"
   ],
   "system.unit.price": [
     "单价",
-    "unit price",
-    "đơn giá"
+    "Unit price",
+    "Đơn giá"
   ],
   "system.amount": [
     "金额",
@@ -647,13 +647,13 @@ export default {
   ],
   "system.inventory.changes": [
     "库存变化",
-    "Inventory changes",
-    "Thay đổi hàng tồn kho"
+    "Stock change",
+    "Biến động tồn kho"
   ],
   "system.total": [
     "合计：",
     "Total:",
-    "Tổng số:"
+    "Tổng cộng:"
   ],
   "system.reason": [
     "· 原因：",
@@ -662,33 +662,33 @@ export default {
   ],
   "system.retrieve.materials.barcodes": [
     "调出物料 / 条码",
-    "Retrieve materials/barcodes",
-    "Truy xuất tài liệu/mã vạch"
+    "Source material / Barcode",
+    "Vật tư xuất điều chuyển / Mã vạch"
   ],
   "system.import.materials.barcodes": [
     "调入物料 / 条码",
-    "Import materials/barcodes",
-    "Nhập khẩu nguyên liệu/mã vạch"
+    "Target material / Barcode",
+    "Vật tư nhập điều chuyển / Mã vạch"
   ],
   "system.transfer.quantity": [
     "调拨数量",
     "Transfer quantity",
-    "Số lượng chuyển"
+    "Số lượng điều chuyển"
   ],
   "system.transfer.out.warehouse.inventory": [
     "调出仓库存",
-    "Transfer out warehouse inventory",
-    "Chuyển hàng tồn kho ra ngoài"
+    "Source warehouse stock",
+    "Tồn kho nguồn"
   ],
   "system.transfer.to.warehouse.inventory": [
     "调入仓库存",
-    "Transfer to warehouse inventory",
-    "Chuyển hàng tồn kho về kho"
+    "Target warehouse stock",
+    "Tồn kho đích"
   ],
   "system.target.file": [
     "目标档案",
-    "target file",
-    "tập tin mục tiêu"
+    "Target record",
+    "Hồ sơ đích"
   ],
   "system.no.specifications": [
     "无规格",
@@ -712,23 +712,23 @@ export default {
   ],
   "system.book.inventory": [
     "账面库存",
-    "book inventory",
-    "kiểm kê sách"
+    "Book stock",
+    "Tồn kho sổ sách"
   ],
   "system.actual.quantity": [
     "实盘数量",
-    "Actual quantity",
-    "Số lượng thực tế"
+    "Counted quantity",
+    "Số lượng thực kiểm"
   ],
   "system.difference": [
     "差额",
-    "difference",
-    "sự khác biệt"
+    "Variance",
+    "Chênh lệch"
   ],
   "system.after.confirmation.the.inventory.of.the.above.materials.will.be.adjusted": [
     "确认后将以上物料库存调整为实盘数量；未列出的物料不变。请确认实盘数量是总数，并非增减数量。",
-    "After confirmation, the inventory of the above materials will be adjusted to the actual quantity; unlisted materials will remain unchanged. Please confirm that the actual quantity is the total number, not an increase or decrease in quantity.",
-    "Sau khi xác nhận, lượng vật tư tồn kho trên sẽ được điều chỉnh theo số lượng thực tế; vật tư chưa niêm yết sẽ không thay đổi. Vui lòng xác nhận số lượng thực tế là tổng số chứ không phải số lượng tăng giảm."
+    "On confirmation, stock for the listed materials will be set to the counted quantity; unlisted materials remain unchanged. Confirm these are final totals, not adjustments.",
+    "Sau khi xác nhận, tồn kho các vật tư trên sẽ được điều chỉnh về số lượng thực kiểm; các vật tư không liệt kê giữ nguyên. Vui lòng xác nhận đây là tổng số thực tế, không phải số tăng giảm."
   ],
   "system.new": [
     "· 新增",
@@ -737,13 +737,13 @@ export default {
   ],
   "system.material.and.does.not.cover.existing.materials.opening.inventory.is.added": [
     "个物料，不覆盖已有物料。期初库存会直接计入库存。",
-    "material and does not cover existing materials. Opening inventory is added directly to inventory.",
-    "vật tư và không bao gồm các vật tư hiện có. Khoảng không quảng cáo mở được thêm trực tiếp vào khoảng không quảng cáo."
+    "materials without overwriting existing ones. Opening stock is added directly to inventory.",
+    "vật tư, không ghi đè vật tư hiện có. Tồn kho đầu kỳ sẽ được cộng trực tiếp vào tồn kho."
   ],
   "system.column.correspondence": [
     "列对应：",
-    "Column correspondence:",
-    "Cột tương ứng:"
+    "Column mapping:",
+    "Ánh xạ cột:"
   ],
   "system.rows.without.mapped.categories.are.unified.into.existing.categories": [
     "未映射分类的行统一归入已有分类：",
@@ -797,28 +797,28 @@ export default {
   ],
   "system.set.verification.reminder.materials": [
     "设置校验提醒 · {{v0}} 种物料",
-    "Set verification reminder · {{v0}} materials",
-    "Đặt lời nhắc xác minh · {{v0}} tài liệu"
+    "Set inspection reminder · {{v0}} materials",
+    "Đặt nhắc kiểm định · {{v0}} vật tư"
   ],
   "system.mark.verified.verification.date": [
     "标记已校验 · 校验日 {{v0}}",
-    "Mark verified · Verification date {{v0}}",
-    "Đánh dấu đã xác minh · Ngày xác minh {{v0}}"
+    "Mark inspected · Date {{v0}}",
+    "Đánh dấu đã kiểm định · Ngày {{v0}}"
   ],
   "system.original.verification.date": [
     "原校验日期",
-    "Original verification date",
-    "Ngày xác minh ban đầu"
+    "Previous inspection date",
+    "Ngày kiểm định trước"
   ],
   "system.new.verification.date": [
     "新校验日期",
-    "New verification date",
-    "Ngày xác minh mới"
+    "New inspection date",
+    "Ngày kiểm định mới"
   ],
   "system.next.verification.date": [
     "下次校验日期",
-    "Next verification date",
-    "Ngày xác minh tiếp theo"
+    "Next inspection date",
+    "Ngày kiểm định kế tiếp"
   ],
   "system.inspection.cycle": [
     "校验周期",
@@ -857,13 +857,13 @@ export default {
   ],
   "system.after.confirmation.the.verification.reminder.will.be.updated.according.to.the": [
     "确认后按以上日期和周期更新校验提醒。",
-    "After confirmation, the verification reminder will be updated according to the above date and period.",
-    "Sau khi xác nhận, lời nhắc xác minh sẽ được cập nhật theo ngày và thời gian trên."
+    "On confirmation, inspection reminders will be updated using the dates and cycle above.",
+    "Sau khi xác nhận, nhắc kiểm định sẽ được cập nhật theo ngày và chu kỳ trên."
   ],
   "system.after.confirmation.the.last.verification.date.will.be.recorded.as.and": [
     "确认后将上次校验日期记为 {{v0}}，有周期的物料从该日期按配置周期顺延。",
-    "After confirmation, the last verification date will be recorded as {{v0}}, and periodic materials will be postponed from this date according to the configured cycle.",
-    "Sau khi xác nhận, ngày xác minh cuối cùng sẽ được ghi là {{v0}} và các tài liệu định kỳ sẽ bị hoãn lại kể từ ngày này theo chu kỳ đã định cấu hình."
+    "On confirmation, the last inspection date will be set to {{v0}}, and scheduled items will advance by their configured cycle.",
+    "Sau khi xác nhận, ngày kiểm định gần nhất sẽ ghi nhận là {{v0}} và các vật tư định kỳ sẽ tự động tính kỳ tiếp theo theo chu kỳ đã cấu hình."
   ],
   "system.the.operator.is.the.currently.logged.in.user.confirm.after.checking": [
     "操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，业务数据变化需重新生成。继续聊天会取消本批未确认预览。",
@@ -917,63 +917,63 @@ export default {
   ],
   "system.the.table.contains.date.format.please.change.the.material.field.to": [
     "表格含日期格式，请将物料字段改为文本或数字格式。",
-    "The table contains date format, please change the material field to text or number format.",
-    "Bảng chứa định dạng ngày, vui lòng thay đổi trường tài liệu sang định dạng văn bản hoặc số."
+    "The sheet contains date-formatted cells. Change material fields to text or number format.",
+    "Bảng tính có định dạng ngày. Vui lòng đổi cột vật tư sang định dạng văn bản hoặc số."
   ],
   "system.a.maximum.of.pictures.can.be.added.at.a.time.please": [
     "每次最多添加 {{v0}} 张图片，请先移除多余图片。",
-    "A maximum of {{v0}} pictures can be added at a time. Please remove excess pictures first.",
-    "Có thể thêm tối đa {{v0}} ảnh cùng một lúc. Vui lòng loại bỏ hình ảnh dư thừa trước."
+    "You can attach up to {{v0}} images at a time. Remove extra images first.",
+    "Chỉ có thể đính kèm tối đa {{v0}} ảnh mỗi lần. Vui lòng xóa ảnh thừa trước."
   ],
   "system.unable.to.copy.please.select.reply.text.to.copy.manually": [
     "无法复制，请选择回复文字手动复制。",
-    "Unable to copy, please select reply text to copy manually.",
-    "Không thể sao chép, vui lòng chọn văn bản trả lời để sao chép thủ công."
+    "Unable to copy. Select the reply text and copy manually.",
+    "Không thể sao chép. Vui lòng chọn nội dung trả lời để sao chép thủ công."
   ],
   "system.conversation.history": [
     "对话历史",
     "Conversation history",
-    "Lịch sử cuộc trò chuyện"
+    "Lịch sử trò chuyện"
   ],
   "system.close.historical.conversation": [
     "关闭历史对话",
-    "Close historical conversation",
-    "Kết thúc cuộc trò chuyện lịch sử"
+    "Close history",
+    "Đóng lịch sử"
   ],
   "system.start.a.new.conversation": [
     "开始新对话",
-    "Start a new conversation",
-    "Bắt đầu cuộc trò chuyện mới"
+    "New chat",
+    "Cuộc trò chuyện mới"
   ],
   "system.recent.conversations.all.repositories": [
     "最近对话 · 所有仓库",
-    "Recent conversations · All repositories",
-    "Cuộc trò chuyện gần đây · Tất cả kho lưu trữ"
+    "Recent chats · All warehouses",
+    "Trò chuyện gần đây · Tất cả kho"
   ],
   "system.reload": [
     "重新加载",
-    "reload",
-    "tải lại"
+    "Reload",
+    "Tải lại"
   ],
   "system.once.you.start.a.chat.the.conversation.is.saved.here": [
     "开始聊天后，对话会保存在这里。",
-    "Once you start a chat, the conversation is saved here.",
-    "Khi bạn bắt đầu trò chuyện, cuộc trò chuyện sẽ được lưu ở đây."
+    "Chats appear here once you start a conversation.",
+    "Các cuộc trò chuyện sẽ được lưu tại đây sau khi bạn bắt đầu."
   ],
   "system.your.business.assistant": [
     "你的业务助手",
-    "your business assistant",
-    "trợ lý kinh doanh của bạn"
+    "Business assistant",
+    "Trợ lý nghiệp vụ"
   ],
   "system.inquire.organize.and.assist.with.daily.work": [
     "查询、整理，协助日常工作",
-    "Inquire, organize, and assist with daily work",
-    "Tìm hiểu, sắp xếp và hỗ trợ công việc hàng ngày"
+    "Query data, organize records, and assist daily tasks",
+    "Tra cứu, tổng hợp và hỗ trợ công việc hàng ngày"
   ],
   "system.ai.conversation": [
     "AI 对话",
-    "AI conversation",
-    "cuộc trò chuyện AI"
+    "AI chat",
+    "Trò chuyện AI"
   ],
   "system.current.warehouse": [
     "当前仓库",
@@ -992,68 +992,68 @@ export default {
   ],
   "system.inventory.and.business.feel.free.to.ask.me": [
     "库存与业务，随时问我",
-    "Inventory and business, feel free to ask me",
-    "Hàng tồn kho và kinh doanh, hãy hỏi tôi"
+    "Ask about inventory or operations",
+    "Hỏi về tồn kho hoặc nghiệp vụ"
   ],
   "system.view.historical.conversations": [
     "查看历史对话",
-    "View historical conversations",
-    "Xem các cuộc trò chuyện lịch sử"
+    "View history",
+    "Xem lịch sử"
   ],
   "system.today.what.is.there": [
     "今天，有什么",
-    "Today, what is there?",
-    "Hôm nay có gì nhỉ?"
+    "How can I",
+    "Hôm nay tôi có thể"
   ],
   "system.can.i.help.you": [
     "可以帮你？",
-    "Can I help you?",
-    "Tôi có thể giúp gì cho bạn?"
+    " help you?",
+    " giúp gì?"
   ],
   "system.query.batch.completion.progress.analyze.material.consumption.differences.and.calculate.material": [
     "查询分批完工进度、分析耗料差异、测算备料和废料。",
-    "Query batch completion progress, analyze material consumption differences, and calculate material preparation and waste.",
-    "Truy vấn tiến độ hoàn thành lô, phân tích sự khác biệt về mức tiêu thụ nguyên liệu và tính toán việc chuẩn bị và lãng phí nguyên liệu."
+    "Check batch progress, material variance, requirements, and scrap.",
+    "Tra tiến độ lô, chênh lệch tiêu hao, dự trù nguyên liệu và phế liệu."
   ],
   "system.check.inventory.organize.documents.and.import.materials": [
     "查库存、整理单据、导入物料。",
-    "Check inventory, organize documents, and import materials.",
-    "Kiểm tra tồn kho, sắp xếp chứng từ, nhập nguyên vật tư."
+    "Query stock, review documents, and import materials.",
+    "Tra tồn kho, tổng hợp chứng từ và nhập vật tư."
   ],
   "system.tell.me.your.requirements.and.we.ll.do.the.rest.together": [
     "把需求告诉我，剩下的一起完成。",
-    "Tell me your requirements and we'll do the rest together.",
-    "Hãy cho tôi biết yêu cầu của bạn và chúng tôi sẽ cùng nhau làm phần còn lại."
+    "Describe what you need to get started.",
+    "Nhập yêu cầu của bạn để bắt đầu."
   ],
   "system.query.bom": [
     "查询BOM",
-    "Query BOM",
-    "Truy vấn BOM"
+    "Query BOMs",
+    "Tra cứu BOM"
   ],
   "system.what.boms.are.currently.in.the.warehouse.please.list.finished.product": [
     "当前仓库有哪些BOM？请列出成品和基准产量。",
-    "What BOMs are currently in the warehouse? Please list finished product and baseline production volumes.",
-    "Những BOM nào hiện đang có trong kho? Vui lòng liệt kê thành phẩm và khối lượng sản xuất cơ bản."
+    "Which BOMs are in the current warehouse? List finished products and base output.",
+    "Kho hiện tại có những BOM nào? Liệt kê thành phẩm và sản lượng chuẩn."
   ],
   "system.query.material.quantity": [
     "查询物料数量",
-    "Query material quantity",
-    "Truy vấn số lượng vật tư"
+    "Count materials",
+    "Đếm số vật tư"
   ],
   "system.how.many.materials.are.currently.in.the.warehouse": [
     "当前仓库有多少种物料？",
-    "How many materials are currently in the warehouse?",
-    "Hiện tại trong kho có bao nhiêu nguyên liệu?"
+    "How many materials are in the current warehouse?",
+    "Kho hiện tại có bao nhiêu loại vật tư?"
   ],
   "system.query.tasks.to.be.produced": [
     "查询待生产任务",
-    "Query tasks to be produced",
-    "Nhiệm vụ truy vấn sẽ được tạo ra"
+    "Pending production orders",
+    "Lệnh sản xuất chờ thực hiện"
   ],
   "system.what.production.orders.are.currently.in.the.warehouse.to.be.produced": [
     "当前仓库有哪些待生产的生产单？请列出成品、计划产量和单号。",
-    "What production orders are currently in the warehouse to be produced? Please list the finished product, planned output and order number.",
-    "Những đơn hàng sản xuất nào hiện có trong kho để sản xuất? Vui lòng liệt kê thành phẩm, sản lượng dự kiến ​​và số đơn hàng."
+    "Which pending production orders are in the current warehouse? List finished product, planned quantity, and order number.",
+    "Kho hiện tại có những lệnh sản xuất nào đang chờ thực hiện? Liệt kê thành phẩm, sản lượng kế hoạch và mã lệnh."
   ],
   "system.query.cross.warehouse.inventory": [
     "查询跨仓库库存",
@@ -1072,18 +1072,18 @@ export default {
   ],
   "system.please.check.the.acceptance.data.saved.in.the.current.warehouse.recommend": [
     "请查看当前仓库已保存的验收数据，推荐可以生成哪些品质图表，并说明统计口径。",
-    "Please check the acceptance data saved in the current warehouse, recommend which quality charts can be generated, and explain the statistical caliber.",
-    "Vui lòng kiểm tra dữ liệu chấp nhận được lưu trong kho hiện tại, đề xuất những biểu đồ chất lượng nào có thể được tạo và giải thích tầm cỡ thống kê."
+    "Review saved acceptance records in the current warehouse, recommend quality charts to generate, and explain the aggregation rules.",
+    "Xem dữ liệu nghiệm thu đã lưu trong kho hiện tại, đề xuất các biểu đồ chất lượng có thể tạo và giải thích cách tính."
   ],
   "system.upload.the.form.and.add.new.materials": [
     "上传表格，新增物料",
-    "Upload the form and add new materials",
-    "Tải biểu mẫu lên và thêm tài liệu mới"
+    "Upload sheet to add materials",
+    "Tải bảng để thêm vật tư"
   ],
   "system.i.want.to.upload.a.table.to.add.a.new.material": [
     "我想上传表格新增物料档案，请帮我核对列对应关系。",
-    "I want to upload a table to add a new material file. Please help me check the column correspondence.",
-    "Tôi muốn tải lên một bảng để thêm tệp tài liệu mới. Xin hãy giúp tôi kiểm tra sự tương ứng của cột."
+    "I want to upload a spreadsheet to add material records. Help me check the column mapping.",
+    "Tôi muốn tải lên bảng tính để thêm hồ sơ vật tư mới. Hãy giúp tôi kiểm tra ánh xạ cột."
   ],
   "system.query.results": [
     "查询结果",
@@ -1292,48 +1292,48 @@ export default {
   ],
   "system.there.is.currently.no.alternative.unit.to.choose.from": [
     "暂无可选往来单位",
-    "There is currently no alternative unit to choose from.",
-    "Hiện tại không có đơn vị thay thế để lựa chọn."
+    "No business partners available.",
+    "Chưa có đối tác để lựa chọn."
   ],
   "system.no.matching.correspondent.unit": [
     "没有匹配的往来单位",
-    "No matching correspondent unit",
-    "Không có đơn vị phóng viên phù hợp"
+    "No matching business partner",
+    "Không có đối tác phù hợp"
   ],
   "system.loading.correspondence.units": [
     "正在加载往来单位…",
-    "Loading correspondence units...",
-    "Đang tải đơn vị thư từ..."
+    "Loading business partners...",
+    "Đang tải danh sách đối tác..."
   ],
   "system.the.image.bed.configuration.has.been.saved.and.is.shared.by": [
     "图床配置已保存，所有仓库共用。",
-    "The image bed configuration has been saved and is shared by all warehouses.",
-    "Cấu hình giường hình ảnh đã được lưu và được chia sẻ bởi tất cả các kho."
+    "Image host settings saved and shared across all warehouses.",
+    "Đã lưu cấu hình lưu trữ ảnh và dùng chung cho tất cả các kho."
   ],
   "system.picture.bed.configuration": [
     "图床配置",
-    "Picture bed configuration",
-    "Cấu hình giường hình ảnh"
+    "Image hosting",
+    "Cấu hình lưu trữ ảnh"
   ],
   "system.use.cloudflare.imgbed.to.store.material.images.and.the.material.file": [
     "使用 Cloudflare ImgBed 存储物料图片，物料档案只保存图片 URL。所有仓库共用此配置。",
-    "Use Cloudflare ImgBed to store material images, and the material file only saves the image URL. All repositories share this configuration.",
-    "Sử dụng Cloudflare ImgBed để lưu trữ hình ảnh vật tư và tệp vật tư chỉ lưu URL hình ảnh. Tất cả các kho lưu trữ đều chia sẻ cấu hình này."
+    "Store material images in Cloudflare ImgBed; material records keep only the image URL. Shared across all warehouses.",
+    "Dùng Cloudflare ImgBed để lưu hình ảnh vật tư; hồ sơ vật tư chỉ lưu URL ảnh. Dùng chung cho tất cả các kho."
   ],
   "system.picture.bed.address": [
     "图床地址",
-    "Picture bed address",
-    "Hình ảnh địa chỉ giường ngủ"
+    "Image host URL",
+    "Địa chỉ lưu trữ ảnh"
   ],
   "system.fill.in.the.https.image.bed.domain.name.excluding.upload.leave": [
     "填写 HTTPS 图床域名，不包含 /upload。留空并保存可停用新图片上传。",
-    "Fill in the HTTPS image bed domain name, excluding /upload. Leave blank and save to disable new image uploads.",
-    "Điền vào tên miền nền hình ảnh HTTPS, ngoại trừ /upload. Để trống và lưu để tắt tải lên hình ảnh mới."
+    "Enter the HTTPS image host domain without /upload. Leave blank and save to disable new image uploads.",
+    "Nhập tên miền HTTPS lưu trữ ảnh (không gồm /upload). Để trống và lưu để tắt tải ảnh mới."
   ],
   "system.upload.channel": [
     "上传渠道",
     "Upload channel",
-    "Tải kênh lên"
+    "Kênh tải lên"
   ],
   "system.channel.name.optional": [
     "渠道名称（选填）",
@@ -1342,13 +1342,13 @@ export default {
   ],
   "system.leave.this.blank.to.use.the.default.r2.channel.of.the": [
     "留空使用图床默认的 R2 渠道",
-    "Leave this blank to use the default R2 channel of the chart.",
-    "Để trống phần này để sử dụng kênh R2 mặc định của biểu đồ."
+    "Leave blank to use the image host's default R2 channel",
+    "Để trống để dùng kênh R2 mặc định của dịch vụ lưu ảnh"
   ],
   "system.upload.directory": [
     "上传目录",
     "Upload directory",
-    "Tải lên thư mục"
+    "Thư mục tải lên"
   ],
   "system.authentication.method": [
     "认证方式",
@@ -1358,42 +1358,42 @@ export default {
   "system.api.token.recommended": [
     "API Token（推荐）",
     "API Token (recommended)",
-    "Mã thông báo API (được khuyến nghị)"
+    "API Token (khuyến nghị)"
   ],
   "system.upload.authentication.code.authcode": [
     "上传认证码（authCode）",
-    "Upload authentication code (authCode)",
-    "Tải lên mã xác thực (authCode)"
+    "Upload auth code (authCode)",
+    "Mã xác thực tải lên (authCode)"
   ],
   "system.no.certification.required": [
     "无需认证",
-    "No certification required",
-    "Không cần chứng nhận"
+    "No authentication",
+    "Không cần xác thực"
   ],
   "system.upload.credentials": [
     "上传凭据",
     "Upload credentials",
-    "Tải thông tin xác thực lên"
+    "Thông tin xác thực tải lên"
   ],
   "system.saved.leave.blank.to.retain.existing.credentials": [
     "已保存，留空保留现有凭据",
-    "Saved, leave blank to retain existing credentials",
-    "Đã lưu, để trống để giữ lại thông tin xác thực hiện có"
+    "Saved. Leave blank to keep existing credentials",
+    "Đã lưu. Để trống để giữ thông tin xác thực hiện có"
   ],
   "system.fill.in.the.token.or.verification.code.with.upload.permission": [
     "填写有上传权限的 Token 或认证码",
-    "Fill in the Token or verification code with upload permission",
-    "Điền Token hoặc mã xác minh có quyền tải lên"
+    "Enter a Token or auth code with upload permission",
+    "Nhập Token hoặc mã xác thực có quyền tải lên"
   ],
   "system.credentials.are.only.saved.on.the.server.and.will.not.be": [
     "凭据仅保存在服务器，不会随物料数据或业务备份返回。",
-    "Credentials are only saved on the server and will not be returned with material data or business backup.",
-    "Thông tin xác thực chỉ được lưu trên máy chủ và sẽ không được trả về cùng với dữ liệu quan trọng hoặc bản sao lưu doanh nghiệp."
+    "Credentials stay on the server and are never included in material data or business backups.",
+    "Thông tin xác thực chỉ lưu trên máy chủ, không đi kèm dữ liệu vật tư hay bản sao lưu nghiệp vụ."
   ],
   "system.clear.saved.credentials.you.need.to.disable.uploading.at.the.same": [
     "清除已保存凭据（需同时停用上传或改为无需认证）",
-    "Clear saved credentials (you need to disable uploading at the same time or change to no authentication)",
-    "Xóa thông tin xác thực đã lưu (bạn cần tắt tính năng tải lên cùng lúc hoặc chuyển sang không xác thực)"
+    "Clear saved credentials (also disable uploads or switch to no authentication)",
+    "Xóa thông tin xác thực đã lưu (cần tắt tải lên hoặc chuyển sang không xác thực)"
   ],
   "system.processing": [
     "处理中…",
@@ -1402,33 +1402,33 @@ export default {
   ],
   "system.save.image.bed.configuration": [
     "保存图床配置",
-    "Save image bed configuration",
-    "Lưu cấu hình giường hình ảnh"
+    "Save image host settings",
+    "Lưu cấu hình lưu trữ ảnh"
   ],
   "system.upload.test.image": [
     "上传测试图片",
     "Upload test image",
-    "Tải lên hình ảnh thử nghiệm"
+    "Tải ảnh thử nghiệm"
   ],
   "system.the.test.upload.was.successful.and.the.image.has.been.written": [
     "测试上传成功，图片已写入图床。",
-    "The test upload was successful and the image has been written to the image bed.",
-    "Quá trình tải lên thử nghiệm đã thành công và hình ảnh đã được ghi vào khung hình ảnh."
+    "Test upload succeeded. The image has been saved to the image host.",
+    "Tải thử thành công. Ảnh đã được lưu lên dịch vụ lưu trữ ảnh."
   ],
   "system.save.the.configuration.first.then.select.the.image.to.test.test": [
     "先保存配置，再选择图片测试。测试图片会保留在图床中。",
-    "Save the configuration first, then select the image to test. Test images will remain in the image bed.",
-    "Lưu cấu hình trước, sau đó chọn ảnh để test. Hình ảnh thử nghiệm sẽ vẫn còn trên nền hình ảnh."
+    "Save settings first, then choose an image to test. Test images remain on the image host.",
+    "Lưu cấu hình trước, sau đó chọn ảnh để thử. Ảnh thử nghiệm sẽ được giữ lại trên dịch vụ lưu ảnh."
   ],
   "system.picture.bed.test.pictures": [
     "图床测试图片",
-    "Picture bed test pictures",
-    "Hình ảnh giường thử nghiệm"
+    "Image host test photo",
+    "Ảnh thử nghiệm lưu trữ ảnh"
   ],
   "system.reading.image.bed.configuration": [
     "正在读取图床配置…",
-    "Reading image bed configuration...",
-    "Đọc cấu hình giường hình ảnh..."
+    "Loading image host settings...",
+    "Đang tải cấu hình lưu trữ ảnh..."
   ],
   "system.notification.settings": [
     "通知设置",
@@ -2012,8 +2012,8 @@ export default {
   ],
   "system.full.sqlite.online.backup.including.all.repositories.accounts.and.system.credentials": [
     "完整 SQLite 在线备份，包含所有仓库、账号和系统凭据。请使用私有存储桶；图片文件仍需在图床保留。",
-    "Full SQLite online backup, including all repositories, accounts and system credentials. Please use a private bucket; image files must still be retained in the image bed.",
-    "Sao lưu trực tuyến SQLite đầy đủ, bao gồm tất cả các kho lưu trữ, tài khoản và thông tin xác thực hệ thống. Vui lòng sử dụng thùng riêng; các tập tin hình ảnh vẫn phải được giữ lại trong giường hình ảnh."
+    "Full SQLite online backup including all warehouses, accounts, and system credentials. Use a private bucket; images remain on the image host.",
+    "Sao lưu trực tuyến SQLite đầy đủ gồm tất cả kho, tài khoản và thông tin xác thực hệ thống. Hãy dùng bucket riêng tư; ảnh vẫn cần lưu trên dịch vụ lưu ảnh."
   ],
   "system.enable.scheduled.backup": [
     "启用定时备份",
@@ -2028,12 +2028,12 @@ export default {
   "system.r2.bucket": [
     "R2 存储桶",
     "R2 bucket",
-    "Xô R2"
+    "Bucket R2"
   ],
   "system.pre.created.private.bucket": [
     "预先创建的私有存储桶",
     "Pre-created private bucket",
-    "Nhóm riêng được tạo trước"
+    "Bucket riêng tư đã tạo sẵn"
   ],
   "system.backup.directory.prefix": [
     "备份目录前缀",
@@ -2042,8 +2042,8 @@ export default {
   ],
   "system.cron.expression.five.paragraphs": [
     "Cron 表达式（五段）",
-    "Cron expression (five paragraphs)",
-    "Biểu thức cron (năm đoạn)"
+    "Cron expression (5 fields)",
+    "Biểu thức cron (5 trường)"
   ],
   "system.execution.time.zone": [
     "执行时区",
@@ -2157,13 +2157,13 @@ export default {
   ],
   "system.current.password": [
     "当前密码",
-    "current password",
-    "mật khẩu hiện tại"
+    "Current password",
+    "Mật khẩu hiện tại"
   ],
   "system.new.password": [
     "新密码",
-    "new password",
-    "mật khẩu mới"
+    "New password",
+    "Mật khẩu mới"
   ],
   "system.confirm.new.password": [
     "确认新密码",
@@ -2172,17 +2172,17 @@ export default {
   ],
   "system.modifying": [
     "正在修改…",
-    "Modifying…",
-    "Đang sửa đổi…"
+    "Saving…",
+    "Đang cập nhật…"
   ],
   "system.confirm.password.change": [
     "确认修改密码",
     "Confirm password change",
-    "Xác nhận thay đổi mật khẩu"
+    "Xác nhận đổi mật khẩu"
   ],
   "system.account.has.been.updated": [
     "账号已更新",
-    "Account has been updated",
+    "Account updated",
     "Tài khoản đã được cập nhật"
   ],
   "system.user.management": [
@@ -2197,13 +2197,13 @@ export default {
   ],
   "system.all.repositories.are.shared.by.all.users.employees.obtain.business.permissions": [
     "所有用户共享全部仓库。员工通过岗位取得业务权限，修改权限请前往岗位配置；管理员拥有全部权限。",
-    "All repositories are shared by all users. Employees obtain business permissions through their positions. To modify permissions, please go to job configuration; administrators have all permissions.",
-    "Tất cả các kho lưu trữ được chia sẻ bởi tất cả người dùng. Nhân viên có được quyền kinh doanh thông qua vị trí của họ. Để sửa đổi quyền, vui lòng vào cấu hình công việc; quản trị viên có tất cả các quyền."
+    "All warehouses are shared across users. Employees inherit permissions from their roles in Role Settings; administrators have full access.",
+    "Tất cả người dùng dùng chung toàn bộ kho. Nhân viên nhận quyền nghiệp vụ theo vị trí trong Cấu hình vị trí; quản trị viên có toàn quyền."
   ],
   "system.new.account": [
     "新账号",
-    "new account",
-    "tài khoản mới"
+    "New account",
+    "Tài khoản mới"
   ],
   "system.account.name": [
     "账号名称",
@@ -2297,8 +2297,8 @@ export default {
   ],
   "system.please.go.to.the.post.configuration.to.add.a.new.position": [
     "请先到岗位配置新增岗位。",
-    "Please go to the post configuration to add a new position first.",
-    "Vui lòng vào cấu hình bài đăng để thêm vị trí mới trước."
+    "Add a position in Role Settings first.",
+    "Vui lòng vào Cấu hình vị trí để thêm vị trí mới trước."
   ],
   "system.please.select.the.new.employee.s.position": [
     "请选择新员工的岗位。",
@@ -2542,13 +2542,13 @@ export default {
   ],
   "system.are.you.sure.you.want.to.delete.the.warehouse.the.warehouse": [
     "确定删除仓库「{{v0}}」？该仓库的物料档案、分类、全部历史单据（含退货和作废单据）、盘点／报损记录、收付款记录、模板及出入库二维码（含使用记录）将一并永久删除，无法恢复。所有物料库存均为 0 时才可删除。{{v1}}",
-    "Are you sure you want to delete the warehouse \"{{v0}}\"? The warehouse's material files, classifications, all historical documents (including returns and voided documents), inventory/loss reporting records, receipt and payment records, templates, and QR codes for entry and exit (including usage records) will be permanently deleted and cannot be restored. All materials can be deleted only when their inventory is 0. {{v1}}",
-    "Bạn có chắc chắn muốn xóa kho \"{{v0}}\" không? Các tệp chứng từ, phân loại, tất cả chứng từ lịch sử của kho (bao gồm cả chứng từ trả lại và chứng từ bị hủy), hồ sơ báo cáo tồn kho/tổn thất, hồ sơ nhận và thanh toán, mẫu và mã QR để ra vào (bao gồm cả hồ sơ sử dụng) sẽ bị xóa vĩnh viễn và không thể khôi phục được. Tất cả nguyên liệu chỉ có thể bị xóa khi lượng tồn kho của chúng bằng 0. {{v1}}"
+    "Delete warehouse \"{{v0}}\"? Its material records, categories, historical documents (including returns and voided orders), stocktake/loss records, payment records, templates, and stock QR codes (with usage logs) will be permanently deleted. Deletion is only allowed when all material stock is 0. {{v1}}",
+    "Xác nhận xóa kho \"{{v0}}\"? Toàn bộ hồ sơ vật tư, danh mục, chứng từ lịch sử (gồm trả hàng và đã hủy), kiểm kê/hao hụt, thu chi, mẫu và mã QR nhập xuất kho (gồm lịch sử dùng) sẽ bị xóa vĩnh viễn. Chỉ xóa được khi toàn bộ tồn kho vật tư bằng 0. {{v1}}"
   ],
   "system.warehouse.management": [
     "仓库管理",
-    "warehouse management",
-    "quản lý kho"
+    "Warehouse management",
+    "Quản lý kho"
   ],
   "system.processing.warehouse": [
     "正在处理仓库…",
@@ -2582,13 +2582,13 @@ export default {
   ],
   "system.reuse.classification.and.material.information": [
     "复用分类和物料信息",
-    "Reuse classification and material information",
-    "Tái sử dụng phân loại và thông tin tài liệu"
+    "Reuse categories and materials",
+    "Tái sử dụng danh mục và thông tin vật tư"
   ],
   "system.reuse.all.classification.and.material.files.including.deactivated.status.the.new": [
     "复用全部分类及物料档案（含停用状态），新仓库库存为 0，不复制单据、盘点记录、模板和出入库二维码。后续修改独立保存，可手动选择跨仓库同步。",
-    "Reuse all classification and material files (including deactivated status), the new warehouse inventory is 0, and do not copy documents, inventory records, templates, and warehouse entry and exit QR codes. Subsequent modifications are saved independently, and you can manually choose to synchronize across warehouses.",
-    "Tái sử dụng tất cả các tệp phân loại và chứng từ (bao gồm cả trạng thái ngừng hoạt động), lượng tồn kho mới là 0 và không sao chép chứng từ, hồ sơ kiểm kê, mẫu và mã QR ra vào kho. Các sửa đổi tiếp theo được lưu độc lập và bạn có thể chọn đồng bộ hóa giữa các kho theo cách thủ công."
+    "Copy all categories and material records (including inactive items) with 0 stock; documents, stocktakes, templates, and stock QR codes are not copied. Future edits remain independent and can be synced across warehouses manually.",
+    "Tái sử dụng toàn bộ danh mục và hồ sơ vật tư (kể cả trạng thái ngừng dùng) với tồn kho bằng 0; không sao chép chứng từ, kiểm kê, mẫu và mã QR nhập xuất kho. Chỉnh sửa về sau được lưu độc lập và có thể đồng bộ giữa các kho thủ công."
   ],
   "system.add.new.warehouse": [
     "新增仓库",
@@ -2702,13 +2702,13 @@ export default {
   ],
   "system.open.the.qr.code.scanning.workbench": [
     "打开扫码工作台",
-    "Open the QR code scanning workbench",
-    "Mở bàn làm việc quét mã QR"
+    "Open scanner",
+    "Mở trang quét mã"
   ],
   "system.business.management": [
     "业务管理",
-    "business management",
-    "quản lý kinh doanh"
+    "Business management",
+    "Quản lý nghiệp vụ"
   ],
   "system.system.settings": [
     "系统设置",
@@ -2743,7 +2743,7 @@ export default {
   "system.search.materials.barcodes": [
     "搜索物料、条码…",
     "Search materials, barcodes…",
-    "Tìm kiếm tài liệu, mã vạch…"
+    "Tìm kiếm vật tư, mã vạch…"
   ],
   "system.inventory.reminder": [
     "库存提醒",
@@ -2837,18 +2837,18 @@ export default {
   ],
   "system.scan.the.code.to.find.the.material": [
     "扫码，找到物料",
-    "Scan the code to find the material",
-    "Quét mã để tìm tài liệu"
+    "Scan barcode to find material",
+    "Quét mã để tìm vật tư"
   ],
   "system.turn.on.the.mobile.phone.camera.on.the.code.scanning.workbench": [
     "在扫码工作台打开手机摄像头，将物料条码放入取景框。也可手动输入条码查询。",
-    "Turn on the mobile phone camera on the code scanning workbench and put the material barcode into the viewfinder. You can also manually enter the barcode query.",
-    "Bật camera điện thoại di động trên bàn làm việc quét mã và đặt mã vạch vật tư vào kính ngắm. Bạn cũng có thể nhập truy vấn mã vạch theo cách thủ công."
+    "Open the phone camera in the Scanner and align the material barcode, or enter the barcode manually.",
+    "Mở camera điện thoại ở trang Quét mã và đưa mã vạch vật tư vào khung ngắm, hoặc nhập mã vạch thủ công."
   ],
   "system.confirm.entry.or.exit": [
     "确认入库或出库",
-    "Confirm entry or exit",
-    "Xác nhận nhập hoặc thoát"
+    "Confirm stock-in or stock-out",
+    "Xác nhận nhập kho hoặc xuất kho"
   ],
   "system.add.quantities.and.confirm.documents.the.inventory.is.automatically.updated.and": [
     "添加数量并确认单据，库存自动更新，每一笔操作都有记录。",
@@ -2998,7 +2998,7 @@ export default {
   "system.new.records.will.appear.here": [
     "新的记录会出现在这里。",
     "New records will appear here.",
-    "Những kỷ lục mới sẽ xuất hiện ở đây."
+    "Các bản ghi mới sẽ xuất hiện tại đây."
   ],
   "system.reading.data": [
     "正在读取数据…",
@@ -3037,28 +3037,28 @@ export default {
   ],
   "system.fold": [
     "折叠",
-    "fold",
-    "gấp lại"
+    "Collapse",
+    "Thu gọn"
   ],
   "system.material.classification.tree": [
     "物料分类树",
-    "Material classification tree",
-    "Cây phân loại vật tư"
+    "Material categories",
+    "Cây danh mục vật tư"
   ],
   "system.all.materials": [
     "全部物料",
     "All materials",
-    "Tất cả các vật tư"
+    "Tất cả vật tư"
   ],
   "system.there.is.no.category.yet.please.add.a.category": [
     "暂无分类，请添加分类。",
-    "There is no category yet, please add a category.",
+    "No categories yet. Add a category.",
     "Chưa có danh mục nào, vui lòng thêm danh mục."
   ],
   "system.view.material.details": [
     "查看 {{v0}} 物料详情",
     "View {{v0}} material details",
-    "Xem chi tiết tài liệu {{v0}}"
+    "Xem chi tiết vật tư {{v0}}"
   ],
   "system.loading.2": [
     "正在加载",
@@ -3197,8 +3197,8 @@ export default {
   ],
   "system.application.status": [
     "应用状态",
-    "Application status",
-    "Trạng thái đơn đăng ký"
+    "App status",
+    "Trạng thái ứng dụng"
   ],
   "system.update.app": [
     "更新应用",
@@ -3262,18 +3262,18 @@ export default {
   ],
   "system.view.team.announcements.shared.by.all.repositories": [
     "查看团队公告，所有仓库共用。",
-    "View team announcements, shared by all repositories.",
-    "Xem thông báo của nhóm, được chia sẻ bởi tất cả các kho lưu trữ."
+    "Team announcements shared across all warehouses.",
+    "Thông báo nhóm dùng chung cho tất cả các kho."
   ],
   "system.make.an.announcement": [
     "发布公告",
-    "Make an announcement",
-    "Thực hiện một thông báo"
+    "New announcement",
+    "Đăng thông báo"
   ],
   "system.announcement.screening": [
     "公告筛选",
-    "Announcement screening",
-    "Sàng lọc thông báo"
+    "Filter announcements",
+    "Lọc thông báo"
   ],
   "system.all.announcements": [
     "全部公告",
@@ -3282,22 +3282,22 @@ export default {
   ],
   "system.see.only.unread": [
     "只看未读",
-    "See only unread",
-    "Chỉ xem chưa đọc"
+    "Unread only",
+    "Chỉ chưa đọc"
   ],
   "system.refresh.announcement": [
     "刷新公告",
-    "Refresh announcement",
+    "Refresh announcements",
     "Làm mới thông báo"
   ],
   "system.reading.announcement": [
     "正在读取公告…",
-    "Reading announcement…",
-    "Đang đọc thông báo…"
+    "Loading announcements…",
+    "Đang tải thông báo…"
   ],
   "system.pin.to.top": [
     "置顶",
-    "pin to top",
+    "Pin to top",
     "ghim lên trên"
   ],
   "system.unread": [

@@ -32,7 +32,7 @@ export function Announcements({ data, openModal }) {
     if (result && offset > 0 && !result.announcements.length) setOffset(Math.max(0, offset - 20));
   }, [result, offset]);
   return <div className="announcements-page">
-    <PageHeading title={translate("system.announcements")} description={translate("system.view.team.announcements.shared.by.all.repositories")}>
+    <PageHeading title={translate("system.announcements")}>
       {user.role === 'admin' && <Button kind="primary" icon={Plus} onClick={() => openModal({ kind: 'announcementEditor' })}>{translate("system.make.an.announcement")}</Button>}
     </PageHeading>
     <div className="announcement-toolbar">

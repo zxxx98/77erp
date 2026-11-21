@@ -50,7 +50,6 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
       <QueryStatus query={list} /><QueryStatus query={stats} />
       <PageHeading
         title={translate("warehouse.inventory.management")}
-        description={translate("warehouse.view.on.hand.inventory.inventory.costs.and.replenishment.alerts")}
       >
         <span className="warehouse-chip">
           <Warehouse size={15} />

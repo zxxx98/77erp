@@ -63,7 +63,7 @@ function BomList({
 }) {
   useLocale();
   return <div className="bom-page">
-    <PageHeading title="BOM" description={pt("production.maintainProductRecipesAndCalculateRequirementsAndShortages")}>
+    <PageHeading title="BOM">
       <Button kind="primary" icon={Plus} disabled={action.busy} onClick={onNew}>{pt("production.newBom")}</Button>
     </PageHeading>
     {message && <p className="bom-success" role="status">{productionMessage(message)}</p>}

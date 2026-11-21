@@ -329,7 +329,6 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
     <>
       <PageHeading
         title={translate("warehouse.material.management")}
-        description={translate("warehouse.maintain.material.pictures.specifications.and.models.prices.and.remarks.by.category")}
       >
         <Button permission="products" kind="primary" icon={Plus} onClick={() => edit(null)}>{translate("warehouse.add.new.material")}</Button>
       </PageHeading>

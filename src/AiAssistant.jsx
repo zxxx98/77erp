@@ -16,7 +16,7 @@ import { readProductImage } from './catalog.js';
 import { usePermissions } from './permissions.jsx';
 import { ProductImage } from './ProductImage.jsx';
 import { AI_IMAGE_TYPES, AI_IMAGE_MAX_COUNT, AI_IMAGE_ONLY_MESSAGE } from '../shared/ai-images.js';
-import { Sparkles, Plus, ImagePlus, ArrowUp, ArrowUpRight, PackageSearch, ChartColumn, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
+import { Bot, Plus, ImagePlus, ArrowUp, ArrowUpRight, PackageSearch, ChartColumn, ArrowLeftRight, FileSpreadsheet, Copy, Check, X, History, LoaderCircle, ShieldCheck } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import './ai.css';
@@ -313,29 +313,29 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
   return <div className="ai-assistant">
     <aside className={`ai-sidebar ${showHistory ? 'is-open' : ''}`} aria-label={translate("system.conversation.history")}>
       <div className="ai-brand"><span>77</span>ERP <AntButton type="text" htmlType="button" className="ai-icon ai-history-close" aria-label={translate("system.close.historical.conversation")} onClick={() => setShowHistory(false)}><X size={18} /></AntButton></div>
-      <AntButton type="text" htmlType="button" className="ai-new" disabled={busy} onClick={newThread}><Plus size={16} />{translate("system.start.a.new.conversation")}</AntButton>
+      <AntButton type="text" htmlType="button" className="ai-new" disabled={busy} onClick={newThread}><Plus size={15} />{translate("system.start.a.new.conversation")}</AntButton>
       <div className="ai-sidebar-caption">{translate("system.recent.conversations.all.repositories")}</div>
       <div className="ai-history-list">
         {historyError ? <p className="ai-history-error" role="status">{historyError}<AntButton type="text" htmlType="button" className="ai-new" onClick={refreshHistory}>{translate("system.reload")}</AntButton></p> : history.length ? history.map(h => <AntButton type="text" htmlType="button" key={h.id} className={`ai-history-item ${thread.conversation_id === h.id ? 'active' : ''}`} disabled={busy} onClick={() => openThread(h.id)} title={h.title} aria-current={thread.conversation_id === h.id ? 'true' : undefined}><span>{h.title}</span><small>{new Date(h.created_at).toLocaleDateString(getFormatLocale())}</small></AntButton>) : <p className="ai-history-empty">{translate("system.once.you.start.a.chat.the.conversation.is.saved.here")}</p>}
       </div>
-      <div className="ai-sidebar-footer"><Sparkles size={15} />{translate("system.your.business.assistant")}<p>{translate("system.inquire.organize.and.assist.with.daily.work")}</p></div>
     </aside>
     <section className="ai-chat" aria-label={translate("system.ai.conversation")}>
-      <div className="ai-context"><span className="ai-context-title"><Sparkles size={17} />{warehouseName || translate("system.current.warehouse")} · {mode === 'production' ? translate("system.production") : translate("system.warehouse")}</span><span className="ai-context-note">{translate("system.inventory.and.business.feel.free.to.ask.me")}</span><div className="ai-mobile-tools"><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.view.historical.conversations")} aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></AntButton><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.start.a.new.conversation")} disabled={busy} onClick={newThread}><Plus size={19} /></AntButton></div></div>
+      <div className="ai-context"><span className="ai-context-title"><Bot size={15} />{warehouseName || translate("system.current.warehouse")} · {mode === 'production' ? translate("system.production") : translate("system.warehouse")}</span><div className="ai-mobile-tools"><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.view.historical.conversations")} aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></AntButton><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.start.a.new.conversation")} disabled={busy} onClick={newThread}><Plus size={19} /></AntButton></div></div>
       <div className="ai-feed" ref={feed}>
         {!thread.messages.length && !busy && <div className="ai-welcome">
-          <div className="ai-welcome-icon"><Sparkles size={30} /></div><h3>{translate("system.today.what.is.there")}<br />{translate("system.can.i.help.you")}</h3><p>{mode === 'production' ? translate("system.query.batch.completion.progress.analyze.material.consumption.differences.and.calculate.material") : translate("system.check.inventory.organize.documents.and.import.materials")}<br />{translate("system.tell.me.your.requirements.and.we.ll.do.the.rest.together")}</p>
+          <h3>{translate("system.today.what.is.there")}{" "}{translate("system.can.i.help.you")}</h3>
+          <p>{mode === 'production' ? translate("system.query.batch.completion.progress.analyze.material.consumption.differences.and.calculate.material") : translate("system.check.inventory.organize.documents.and.import.materials")}</p>
           <div className="ai-suggestions">{[
             mode === 'production' ? [PackageSearch, translate("system.query.bom"), translate("system.what.boms.are.currently.in.the.warehouse.please.list.finished.product")] : [PackageSearch, translate("system.query.material.quantity"), translate("system.how.many.materials.are.currently.in.the.warehouse")],
             mode === 'production' ? [ArrowLeftRight, translate("system.query.tasks.to.be.produced"), translate("system.what.production.orders.are.currently.in.the.warehouse.to.be.produced")] : [ArrowLeftRight, translate("system.query.cross.warehouse.inventory"), translate("system.i.want.to.compare.the.material.inventory.of.different.warehouses.please")],
             [ChartColumn, translate("system.recommended.quality.chart"), translate("system.please.check.the.acceptance.data.saved.in.the.current.warehouse.recommend")],
             [FileSpreadsheet, translate("system.upload.the.form.and.add.new.materials"), translate("system.i.want.to.upload.a.table.to.add.a.new.material")],
-          ].sort((a, b) => mode === 'production' ? Number(b[0] === ChartColumn) - Number(a[0] === ChartColumn) : 0).map(([Icon, label, value]) => <AntButton type="default" htmlType="button" key={label} onClick={() => suggest(value)}><Icon size={19} /><span>{label}</span><ArrowUpRight size={15} /></AntButton>)}</div>
+          ].sort((a, b) => mode === 'production' ? Number(b[0] === ChartColumn) - Number(a[0] === ChartColumn) : 0).map(([Icon, label, value]) => <AntButton type="text" htmlType="button" key={label} onClick={() => suggest(value)}><Icon size={16} strokeWidth={1.75} /><span>{label}</span><ArrowUpRight size={14} /></AntButton>)}</div>
         </div>}
         <div className="ai-messages" aria-live="polite" aria-busy={busy}>
           {turns.map((turn, turnIndex) => <div className="ai-turn" key={turnIndex}>
           {turn.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
-            {m.role !== 'user' && <div className="ai-avatar"><Sparkles size={17} /></div>}
+            {m.role !== 'user' && <div className="ai-avatar"><Bot size={15} /></div>}
             <div className="ai-message-body">{m.role !== 'user' && <div className="ai-author">{translate("system.ai.assistant")}</div>}
               {m.role === 'user' ? <UserMessage content={m.content} attachment={m.attachment} images={m.images} /> : <><div className="ai-markdown"><Markdown skipHtml urlTransform={url => /^https?:\/\//i.test(url) ? url : undefined} remarkPlugins={[remarkGfm]} components={{ table: ({ children }) => <div className="ai-table" tabIndex={0} aria-label={translate("system.query.results")}><table>{children}</table></div>, a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>, img: ({ alt }) => <span>{alt}</span> }}>{m.content}</Markdown></div><AntButton type="text" htmlType="button" className="ai-copy" onClick={() => copy(m.content, `${turnIndex}:${i}`)}>{copied === `${turnIndex}:${i}` ? <Check size={13} /> : <Copy size={13} />}{copied === `${turnIndex}:${i}` ? translate("system.copied") : translate("system.copy")}</AntButton></>}
             </div>

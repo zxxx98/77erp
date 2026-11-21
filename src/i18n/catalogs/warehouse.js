@@ -1421,8 +1421,8 @@ export default {
   ],
   "warehouse.customers.correspondence.units": [
     "客户 / 往来单位",
-    "Customers/business partner",
-    "Khách hàng/Đơn vị phản hồi"
+    "Customer / Business partner",
+    "Khách hàng / Đối tác"
   ],
   "warehouse.internal.transfers.only.adjust.inventory.and.do.not.include.purchases.sales": [
     "内部流转仅调整库存，不计入采购额、销售额、利润及应收应付。入库单价用于库存计价。",
@@ -1781,8 +1781,8 @@ export default {
   ],
   "warehouse.search.document.number.dealing.unit.or.material": [
     "搜索单据号、往来单位或物料",
-    "Search document number, business partner or material",
-    "Tìm kiếm số vật tư, đối tác hoặc vật tư"
+    "Search document number, business partner, or material",
+    "Tìm số chứng từ, đối tác hoặc vật tư"
   ],
   "warehouse.document.type": [
     "单据类型",
@@ -2326,8 +2326,8 @@ export default {
   ],
   "warehouse.optional.record.the.supplementary.information.of.this.entry.and.exit": [
     "选填，记录本次入出库的补充信息",
-    "Optional, record the supplementary information of this entry and exit.",
-    "Tùy chọn, ghi lại thông tin bổ sung của mục nhập và xuất này."
+    "Optional notes for this stock movement.",
+    "Tùy chọn, ghi chú bổ sung cho phiếu nhập xuất này."
   ],
   "warehouse.submitting": [
     "正在提交…",
@@ -2956,13 +2956,13 @@ export default {
   ],
   "warehouse.picture.bed.configuration": [
     "图床配置",
-    "Picture bed configuration",
-    "Cấu hình giường hình ảnh"
+    "Image hosting",
+    "Cấu hình lưu trữ ảnh"
   ],
   "warehouse.material.picture.upload.and.certification": [
     "物料图片上传与认证",
-    "Material picture upload and certification",
-    "Tải lên và chứng nhận hình ảnh vật tư"
+    "Material image uploads and auth",
+    "Tải ảnh vật tư và xác thực"
   ],
   "warehouse.notification.settings": [
     "通知设置",
@@ -3231,13 +3231,13 @@ export default {
   ],
   "warehouse.edit.the.qr.code.for.incoming.and.outgoing.warehouses": [
     "编辑出入库二维码",
-    "Edit the QR code for incoming and outgoing warehouses",
-    "Chỉnh sửa mã QR kho xuất nhập"
+    "Edit stock QR code",
+    "Chỉnh sửa mã QR nhập xuất kho"
   ],
   "warehouse.create.a.new.entry.and.exit.qr.code": [
     "新建出入库二维码",
-    "Create a new entry and exit QR code",
-    "Tạo mã QR nhập và xuất mới"
+    "New stock QR code",
+    "Tạo mã QR nhập xuất kho"
   ],
   "warehouse.usage.records": [
     "使用记录",
@@ -3551,8 +3551,8 @@ export default {
   ],
   "warehouse.the.result.of.the.last.qr.code.submission.is.unknown.please": [
     "上次扫码提交结果未知，请重试同一请求，避免重复出入库。",
-    "The result of the last QR code submission is unknown. Please retry the same request to avoid repeated entry and exit.",
-    "Kết quả của lần gửi mã QR cuối cùng là không xác định. Vui lòng thử lại yêu cầu tương tự để tránh việc vào và ra lặp lại."
+    "The last QR submission result is unknown. Retry the same request to avoid duplicate stock movements.",
+    "Kết quả gửi mã QR trước chưa xác định. Vui lòng thử lại cùng yêu cầu đó để tránh nhập xuất kho trùng lặp."
   ],
   "warehouse.retry.the.original.scan.code.request": [
     "重试原扫码请求",
@@ -3946,8 +3946,8 @@ export default {
   ],
   "warehouse.after.restoration.the.qr.code.for.entry.and.exit.will.be": [
     "恢复后出入库二维码将停用，旧标签失效，需核对、启用并重新打印。备份时间：",
-    "After restoration, the QR code for entry and exit will be deactivated, and the old label will become invalid and needs to be checked, enabled and reprinted. Backup time:",
-    "Sau khi khôi phục, mã QR vào và ra sẽ bị vô hiệu hóa, nhãn cũ sẽ không còn hiệu lực và cần được kiểm tra, kích hoạt và in lại. Thời gian dự phòng:"
+    "After restoring, stock QR codes will be disabled and old labels invalidated; verify, re-enable, and reprint them. Backup time:",
+    "Sau khi khôi phục, mã QR nhập xuất kho sẽ bị tắt và nhãn cũ hết hiệu lực; cần kiểm tra, bật lại và in lại. Thời gian sao lưu:"
   ],
   "warehouse.warehouse.3": [
     "；仓库",
@@ -4311,8 +4311,8 @@ export default {
   ],
   "warehouse.names.cannot.be.repeated.under.the.same.type.editing.does.not": [
     "同一类型下名称不可重复。编辑不改写历史单据名称；停用后不能再开新单。未关联单据、模板或出入库二维码的单位可删除。支持供应商、客户和内部单位；内部单位可用于入库和出库，不计入采购销售及应收应付。",
-    "Names cannot be repeated under the same type. Editing does not rewrite historical document names; no new orders can be opened after deactivation. Units that are not associated with documents, templates or warehouse entry and exit QR codes can be deleted. Supports suppliers, customers and internal units; internal units can be used for warehousing and outgoing, and are not included in purchases, sales and accounts receivable and payable.",
-    "Tên không thể được lặp lại dưới cùng một loại. Việc chỉnh sửa không viết lại tên chứng từ lịch sử; không có lệnh mới nào có thể được mở sau khi hủy kích hoạt. Các đơn vị không được liên kết với chứng từ, mẫu hoặc mã QR xuất nhập kho có thể bị xóa. Hỗ trợ nhà cung cấp, khách hàng và các đơn vị nội bộ; các đơn vị nội bộ có thể được sử dụng để nhập kho và xuất hàng, và không được bao gồm trong mua hàng, bán hàng và các khoản phải thu và phải trả."
+    "Names must be unique within the same type. Edits do not overwrite historical documents, and inactive partners cannot be used on new orders. Partners unlinked from documents, templates, or stock QR codes can be deleted. Supports suppliers, customers, and internal units (internal units track stock only and are excluded from sales, purchases, and receivables/payables).",
+    "Tên không được trùng trong cùng loại. Chỉnh sửa không ghi đè chứng từ cũ; đối tác ngừng dùng không thể tạo đơn mới. Có thể xóa đối tác chưa liên kết với chứng từ, mẫu hoặc mã QR nhập xuất kho. Hỗ trợ nhà cung cấp, khách hàng và đơn vị nội bộ (đơn vị nội bộ chỉ dùng cho nhập xuất kho, không tính vào mua bán hay công nợ)."
   ],
   "warehouse.search.for.entities.you.are.dealing.with": [
     "搜索往来单位",
@@ -4376,8 +4376,8 @@ export default {
   ],
   "warehouse.are.you.sure.you.want.to.delete.it.cannot.be.restored": [
     "确定删除「{{v0}}」？删除后无法恢复，已关联单据、模板或出入库二维码的单位不能删除。",
-    "Are you sure you want to delete \"{{v0}}\"? It cannot be restored after deletion. Units that have associated documents, templates or warehouse entry and exit QR codes cannot be deleted.",
-    "Bạn có chắc chắn muốn xóa \"{{v0}}\" không? Nó không thể được phục hồi sau khi xóa. Không thể xóa các đơn vị có chứng từ, mẫu liên quan hoặc mã QR xuất nhập kho."
+    "Delete \"{{v0}}\"? This cannot be undone. Partners linked to documents, templates, or stock QR codes cannot be deleted.",
+    "Xác nhận xóa \"{{v0}}\"? Không thể khôi phục sau khi xóa. Không thể xóa đối tác đã liên kết với chứng từ, mẫu hoặc mã QR nhập xuất kho."
   ],
   "warehouse.delete.the.corresponding.unit": [
     "删除往来单位",
@@ -5071,8 +5071,8 @@ export default {
   ],
   "warehouse.the.current.warehouse.s.entry.and.exit.returns.and.invalidation.records": [
     "当前仓库的出入库、退货、作废记录，以及有权限查看的生产、盘点／报损／退料、改价记录，按时间倒序显示。",
-    "The current warehouse's entry and exit, returns, and invalidation records, as well as the production, inventory/loss report/return, and price change records that you have permission to view, are displayed in reverse chronological order.",
-    "Các bản ghi nhập và xuất, trả lại và vô hiệu của kho hiện tại, cũng như các bản ghi sản xuất, tồn kho/tổn thất/trả lại và thay đổi giá mà bạn có quyền xem, được hiển thị theo trình tự thời gian đảo ngược."
+    "Stock-in/out, returns, and voided records for the current warehouse, plus authorized production, stocktake/loss/return, and price-change logs, newest first.",
+    "Bản ghi nhập xuất kho, trả hàng, hủy chứng từ của kho hiện tại cùng lịch sử sản xuất, kiểm kê/hao hụt/trả liệu và đổi giá được phép xem, sắp xếp mới nhất trước."
   ],
   "warehouse.already.carried.forward.at.the.beginning.of.the.period": [
     "期初已结转",

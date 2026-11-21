@@ -81,7 +81,7 @@ function Orders(props) {
   const type = page === 'purchases' ? 'in' : page === 'sales' ? 'out' : null;
   const title = type === 'in' ? translate("warehouse.stock.in") : type === 'out' ? translate("warehouse.stock.out") : translate("warehouse.activity.history");
   return <>
-    <PageHeading title={title} description={type === 'in' ? translate('stockApproval.inDescription') : type === 'out' ? translate('stockApproval.outDescription') : translate("warehouse.view.all.inbound.and.outbound.documents.and.trace.materials.quantities.and")}>
+    <PageHeading title={title} description={type === 'in' ? translate('stockApproval.inDescription') : type === 'out' ? translate('stockApproval.outDescription') : undefined}>
       {type && <Button permission={type === 'in' ? 'purchase' : 'sale'} kind="primary" icon={Plus} onClick={() => openOrder(type)}>{translate("warehouse.new")}{title}</Button>}
     </PageHeading>
     <OrderApprovalWorkspace key={`${data.warehouse_id}:${page}`} data={data} type={type} onChanged={onChanged} onCopy={order => openOrder(order.type, null, { ...order, resubmitted_from_id: order.id, id: undefined, name: '' })}>
