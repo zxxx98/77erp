@@ -455,6 +455,8 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
     if (value.version < 59) data.post_processing_tables = [];
+    if (Array.isArray(data.post_processing_tables)) for (const row of data.post_processing_tables)
+      if (row && typeof row === 'object' && !Object.hasOwn(row, 'note')) row.note = '';
     if (value.version < 57) for (const bom of data.boms || []) bom.post_processing_operations = '[]';
     if (value.version < 56) for (const row of data.production_operation_registrations || []) {row.kind = 'acceptance';row.initial_issues='[]';}
     if (value.version < 55) for (const bom of data.boms || []) bom.route_price_table_id = null;

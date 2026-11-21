@@ -87,6 +87,7 @@ export default {
   'production.postProcessingTablesHint': ['可逐道添加工序，也可导入整条后处理工艺路线；建生产单时选用整张表。', 'Add individual operations or import an entire post-processing route. Select the entire table when creating a production order.', 'Thêm từng công đoạn hoặc nhập toàn bộ quy trình hậu xử lý. Khi tạo lệnh sản xuất, hãy chọn cả bảng.'],
   'production.newPostProcessingTable': ['新建后处理工序表', 'New post-processing table', 'Tạo bảng công đoạn hậu xử lý'],
   'production.postProcessingTableName': ['工序表名称', 'Table name', 'Tên bảng công đoạn'],
+  'production.postProcessingTableNote': ['工序表备注', 'Table note', 'Ghi chú bảng công đoạn'],
   'production.savePostProcessingTable': ['保存工序表', 'Save table', 'Lưu bảng công đoạn'],
   'production.editPostProcessingTable': ['编辑工序表', 'Edit table', 'Sửa bảng công đoạn'],
   'production.removePostProcessingTable': ['删除工序表', 'Delete table', 'Xóa bảng công đoạn'],

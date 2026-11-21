@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { createApp } from '../server/app.js';
 import { allocate } from '../server/commerce.js';
 import { migrateProcessRoutes } from '../server/process-routes.js';
+import { migratePostProcessingTables } from '../server/post-processing-tables.js';
 
 async function fixture(t, { staged = false } = {}) {
   const { app, db } = createApp(':memory:');
@@ -162,6 +163,42 @@ test('post-processing table material notes are optional, editable and preserved 
   input.operations[0].materials = [{ ...material, note: '' }];
   await f.save(tablePath, { ...input, version: updated.version });
   assert.equal((await getMaterial()).note, undefined);
+});
+
+test('post-processing table notes appear in lists, survive restores and can be cleared', async t => {
+  const f = await fixture(t);
+  const route = f.ok(await f.route([]));
+  const path = '/post-processing-tables';
+  const input = { name: '海运包装', enabled: 1, operations: [{ route_id: route.id, route_version: route.version, node_id: 'pack', product_coefficient: 100 }] };
+  const note = '海运外箱加固\n托盘贴标签';
+  const table = await f.save(path, { ...input, note: `  ${note}  ` });
+  const detail = `${path}/${table.id}`;
+  const get = () => f.request(detail).then(f.ok);
+  assert.equal((await get()).note, note);
+  for (const scope of ['', '?scope=manage'])
+    assert.equal(f.ok(await f.request(path + scope)).tables[0].note, note);
+  const updated = await f.save(detail, { ...input, version: table.version });
+  assert.equal(updated.note, note);
+  for (const invalid of [null, 123, '字'.repeat(501)])
+    assert.equal((await f.command(detail, { ...input, version: updated.version, note: invalid })).status, 400);
+
+  const backup = f.ok(await f.request('/backup'));
+  assert.equal(backup.data.post_processing_tables[0].note, note);
+  const restore = async backup => {
+    const preview = await f.save('/backup/preview', { backup });
+    await f.save('/backup/restore', { backup, ...preview, confirmation: 'RESTORE_BUSINESS_DATA' });
+  };
+  assert.equal((await f.save(detail, { ...input, version: updated.version, note: '  ' })).note, '');
+  await restore(backup);
+  assert.equal((await get()).note, note);
+  delete backup.data.post_processing_tables[0].note;
+  await restore(backup);
+  assert.equal((await get()).note, '');
+
+  f.db.exec('ALTER TABLE post_processing_tables DROP COLUMN note');
+  migratePostProcessingTables(f.db);
+  assert.equal((await get()).name, input.name);
+  assert.equal((await get()).note, '');
 });
 
 test('post-processing templates validate material identity, four decimals and whole units', async t => {

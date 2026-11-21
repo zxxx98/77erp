@@ -1,4 +1,5 @@
 export const postProcessingMessages = {
+  POST_TABLE_NOTE: ['工序表备注须为文本，最多 500 字。', 'The post-processing table note must be text of at most 500 characters.', 'Ghi chú bảng công đoạn hậu xử lý phải là văn bản không quá 500 ký tự.'],
   POST_TABLE_MATERIALS_REQUIRED: ['请为工序表中的每种固定材料填写有效的每次用量。', 'Enter a valid quantity per run for each fixed material in the table.', 'Nhập lượng dùng mỗi lần hợp lệ cho từng vật tư cố định trong bảng.'],
   POST_TABLE_MATERIAL_NOTE: ['后处理工序表的材料备注须为文本，最多 500 字。', 'A material note in a post-processing table must be text of at most 500 characters.', 'Ghi chú vật tư trong bảng công đoạn hậu xử lý phải là văn bản không quá 500 ký tự.'],
   POST_MATERIAL_PRODUCT: ['请选择当前仓库已启用的后处理材料。', 'Select active post-processing materials in this warehouse.', 'Chọn vật tư hậu xử lý đang hoạt động trong kho hiện tại.'],

@@ -64,6 +64,8 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     await button('后处理工序表').click();
     await button('新建后处理工序表').click();
     await label('工序表名称').fill('成品包装方案');
+    const tableNote = label('工序表备注');
+    await tableNote.fill('外箱标注型号');
     await button('添加后处理工序').click();
     const picker = page.getByRole('dialog', { name: '添加后处理工序' });
     await button('固定包装模板', picker).click();
@@ -86,14 +88,19 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     await materialNote.fill('箱口向上');
     await expectPageFits();
     await button('保存工序表').click();
-    await expect(page.getByText('成品包装方案', { exact: true })).toBeVisible();
+    const tableItem = page.getByRole('article').filter({ hasText: '成品包装方案' });
+    await expect(tableItem.getByText('外箱标注型号', { exact: true })).toBeVisible();
     await button('编辑工序表').click();
+    await expect(tableNote).toHaveValue('外箱标注型号');
+    const updatedNote = `海运外箱加固\n${'EXPORTLABEL'.repeat(12)}`;
+    await tableNote.fill(updatedNote);
     await expect(label('每次处理成品数量 包装')).toHaveValue('100');
     await expect(label('每次用量 纸箱')).toHaveValue('1');
     await expect(materialNote).toHaveValue('箱口向上');
     await materialNote.fill('箱口向外');
     await button('保存工序表').click();
-    await expect(page.getByText('成品包装方案', { exact: true })).toBeVisible();
+    await expect(tableItem).toContainText(updatedNote);
+    await expectPageFits();
     await button('编辑工序表').click();
     await expect(materialNote).toHaveValue('箱口向外');
     await page.goto(`${base}/#production`);
@@ -104,7 +111,11 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     const postMaterials = plannedMaterials.getByRole('region', { name: '后处理工序计划备料', exact: true });
     const selectPostTable = async () => {
       await button('选择后处理工序表').click();
-      await button('成品包装方案', page.getByRole('dialog', { name: '选择后处理工序表' })).click();
+      const item = button('成品包装方案', page.getByRole('dialog', { name: '选择后处理工序表' }));
+      await expect(item).toContainText(updatedNote);
+      await expect(item).toHaveAccessibleDescription(/海运外箱加固/);
+      await expect.poll(() => item.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+      await item.click();
     };
     await expect(postMaterials).toHaveCount(0);
     await selectPostTable();

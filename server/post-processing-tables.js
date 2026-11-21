@@ -16,7 +16,9 @@ export function migratePostProcessingTables(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS post_processing_tables (
     id INTEGER PRIMARY KEY AUTOINCREMENT, warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
     name TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), version INTEGER NOT NULL DEFAULT 1,
-    operations TEXT NOT NULL, UNIQUE(warehouse_id,name))`);
+    operations TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', UNIQUE(warehouse_id,name))`);
+  if (!db.prepare('PRAGMA table_info(post_processing_tables)').all().some(column => column.name === 'note'))
+    db.exec("ALTER TABLE post_processing_tables ADD COLUMN note TEXT NOT NULL DEFAULT ''");
 }
 
 function validateRows(rows) {
@@ -127,7 +129,7 @@ export function installPostProcessingTables(app, db, { operationRequest, saveOpe
     const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
     const limit = 30;
     const search = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
-    const tables = db.prepare(`SELECT id,name,version,enabled,json_array_length(operations) operation_count
+    const tables = db.prepare(`SELECT id,name,note,version,enabled,json_array_length(operations) operation_count
       FROM post_processing_tables WHERE warehouse_id=? ${manage ? '' : 'AND enabled=1'} AND instr(lower(name),lower(?))>0
       ORDER BY name,id LIMIT ? OFFSET ?`).all(req.warehouse.id, search, limit + 1, offset);
     return { tables: tables.slice(0, limit), has_more: tables.length > limit, next_offset: offset + limit };
@@ -142,15 +144,16 @@ export function installPostProcessingTables(app, db, { operationRequest, saveOpe
   const save = req => {
     const old = req.params.id ? current(req) : null;
     if (old) checkVersion(req, old);
-    const { name, enabled, operations } = req.body;
+    const { name, enabled, operations, note = old?.note ?? '' } = req.body;
     if (!text(name, 100) || !name.trim() || ![0,1].includes(enabled)) fail('后处理工序表名称或启用状态无效。');
+    if (!text(note, 500)) fail('工序表备注须为文本，最多 500 字。');
     validateRows(operations);
     const previous = new Map((old?.operations ?? []).map(row => [rowKey(row), row]));
     const rows = operations.map(row => ({ ...resolveRow(db, req.warehouse.id, row, 'save', previous.get(rowKey(row)) ?? null), materials_configured: true }));
-    const tableId = old ? old.id : Number(db.prepare('INSERT INTO post_processing_tables(warehouse_id,name,enabled,operations) VALUES (?,?,?,?)')
-      .run(req.warehouse.id, name.trim(), enabled, JSON.stringify(rows)).lastInsertRowid);
-    if (old) db.prepare('UPDATE post_processing_tables SET name=?,enabled=?,operations=?,version=version+1 WHERE id=?')
-      .run(name.trim(), enabled, JSON.stringify(rows), tableId);
+    const tableId = old ? old.id : Number(db.prepare('INSERT INTO post_processing_tables(warehouse_id,name,enabled,operations,note) VALUES (?,?,?,?,?)')
+      .run(req.warehouse.id, name.trim(), enabled, JSON.stringify(rows), note.trim()).lastInsertRowid);
+    if (old) db.prepare('UPDATE post_processing_tables SET name=?,enabled=?,operations=?,note=?,version=version+1 WHERE id=?')
+      .run(name.trim(), enabled, JSON.stringify(rows), note.trim(), tableId);
     return getTable(db, req.warehouse.id, tableId);
   };
   app.post(path, endpoint(save, true, true));
@@ -177,7 +180,7 @@ export function validatePostProcessingTableBackup(data) {
   const names = new Set();
   for (const table of data.post_processing_tables) {
     const key = JSON.stringify([table.warehouse_id, table.name]);
-    if (!warehouses.has(table.warehouse_id) || !text(table.name, 100) || !table.name || table.name !== table.name.trim() ||
+    if (!warehouses.has(table.warehouse_id) || !text(table.name, 100) || !table.name || table.name !== table.name.trim() || !text(table.note, 500) ||
         !id(table.version) || ![0,1].includes(table.enabled) || names.has(key)) fail('备份后处理工序表无效。');
     names.add(key);
     const operations = JSON.parse(table.operations);

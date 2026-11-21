@@ -1,11 +1,16 @@
 .post-processing-binding { padding: 16px; border: 1px solid #e4eaf3; border-radius: 12px; background: #fbfcfe; margin: 12px 0; }
-.post-processing-row, .post-processing-table-card { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.post-processing-row, .post-processing-table-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .post-processing-name { display: grid; flex: 1 1 170px; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .post-processing-row > label { flex: 1 1 170px; min-width: 0; align-self: flex-end; }
 .post-processing-row > label .ant-input { min-height: 36px; }
 .post-processing-row > .btn { align-self: flex-end; }
 .mobile-device .post-processing-row > .btn { min-height: 48px; }
-.post-processing-row > .btn, .post-processing-table-card > .bom-actions { margin: 0; }
+.post-processing-row > .btn, .post-processing-table-row > .bom-actions { margin: 0; }
+.post-processing-table-fields { display: grid; gap: 12px; }
+.post-processing-table-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.post-processing-table-option.btn { width: 100%; height: auto; min-height: 44px; justify-content: flex-start; text-align: start; white-space: normal; }
+.post-processing-table-option-label { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.post-processing-table-note { color: var(--muted); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .post-processing-material-list .post-processing-material-editor { display: grid; grid-template-columns: minmax(0, 9rem) minmax(0, 12rem) minmax(0, 22rem); align-items: center; gap: 12px; }
 @media (max-width: 600px) {
   .post-processing-material-list .post-processing-material-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
