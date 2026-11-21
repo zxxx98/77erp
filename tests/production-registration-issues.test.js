@@ -95,6 +95,24 @@ test('cancelling a pending record releases its cumulative claim and preserves an
   assert.equal(o.items[0].available_quantity, 16);
 });
 
+test('individual settlement recalculates the remaining real shortage of a later registration', async t => {
+  const f = await productionIssuesFixture(t);
+  let order = f.ok(await f.complete(f.order, 12, [[f.raw, 24], [f.other, 12]]));
+  const first = pending(order)[0];
+  order = f.ok(await f.complete(order, 11, [[f.raw, 22], [f.other, 11]]));
+  const second = pending(order)[0];
+  assert.equal(missing(order, f.raw), 26);
+  const added = await f.supplement(order, [[f.raw, 4], [f.other, 2]]);
+  order = await f.confirm(added.doc);
+  const settle = (row, version) => f.command(`/production-orders/${order.id}/operations/registrations/${row.id}/approve`, { version });
+  order = f.ok(await settle(first, order.version));
+  assert.deepEqual(order.registration_counts, [{ path: '', total: 2, pending: 1 }]);
+  assert.equal(missing(order, f.raw), 22);
+  const result = await settle(second, order.version);
+  assert.equal(result.status, 409);
+  assert.match(result.data.error, /原料缺少 22 kg/);
+});
+
 test('upper layers can be recorded before semi-finished production and settle with exact FIFO cost', async t => {
   const f = await productionIssuesFixture(t, { staged: true }); let o = f.order;
   o = f.ok(await f.complete(o, 5, [['1', 10]]));

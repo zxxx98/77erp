@@ -6,6 +6,9 @@ import { createApp } from '../../server/app.js';
 import { productionRegistrationUrl } from '../../shared/production-link.js';
 
 async function fixture(page) {
+  await page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
+    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
+  });
   const objects=new Map(),storage={async head(c,key){if(!objects.has(key))throw new Error('missing');},async put(c,key,bytes){objects.set(key,Buffer.from(bytes));},async get(c,key){if(!objects.has(key))throw new Error('missing');return objects.get(key);},async remove(c,key){objects.delete(key);}};
   const {app,db,notifications,r2Backup}=createApp(':memory:',{qualityStorage:storage});
   const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
@@ -41,6 +44,8 @@ for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} registers f
   const context=await browser.newContext({locale:'zh-CN',...(['desktop','drawer'].includes(mode)?{}:devices['iPhone 13']),serviceWorkers:mode==='pwa'?'allow':'block'});
   if(mode==='pwa') await context.addInitScript(()=>{const match=window.matchMedia.bind(window);window.matchMedia=query=>{const result=match(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
   const page=await context.newPage(),f=await fixture(page),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const records=page.getByRole('region',{name:'登记与待处理问题'});
+  const openRecord=name=>records.locator('summary.registration-record-summary').filter({hasText:name}).click();
   const openRegistration=async()=>{
     await page.goto(mode==='drawer'?`${f.base}/#production?order=${f.draft.id}`:f.link);
     if(mode==='drawer'){
@@ -69,6 +74,7 @@ for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} registers f
     expect(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n).toBe(0);
     f.db.prepare('UPDATE positions SET permissions=? WHERE id=?').run(JSON.stringify(['production_register','operation_accept']),f.position.id);
     await openRegistration();
+    await openRecord('下料');
     await page.getByRole('button',{name:'验收',exact:true}).click();
     let modal=page.getByRole('dialog',{name:'工序验收单',exact:true});await expect(modal).toBeVisible();
     await modal.getByRole('button',{name:'取消',exact:true}).click();await expect(modal).toHaveCount(0);
@@ -86,6 +92,7 @@ for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} registers f
     await page.getByRole('button',{name:'提交登记',exact:true}).click();
     await expect(page.getByRole('status').filter({hasText:'登记已提交'})).toBeVisible();
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(0);
+    await openRecord('最终检验');
     await page.getByRole('button',{name:'验收',exact:true}).click();await fillAcceptance('11');
     await expect.poll(()=>f.db.prepare('SELECT COUNT(*) n FROM production_batches').get().n).toBe(1);
     expect(f.db.prepare('SELECT COUNT(*) n FROM quality_acceptances').get().n).toBe(2);
@@ -127,7 +134,9 @@ for(const mode of ['desktop','mobile','pwa']) test(`${mode} inspector passes a m
     if(mode==='pwa')await page.evaluate(()=>navigator.serviceWorker.ready);
     const records=page.getByRole('region',{name:'登记与待处理问题'});
     for(const name of ['下料','最终检验']) {
-      await records.locator('article').filter({has:page.locator('strong').filter({hasText:name})}).getByRole('button',{name:'验收',exact:true}).click();
+      const row=records.locator('.registration-record').filter({has:page.locator('summary.registration-record-summary').filter({hasText:name})});
+      await row.locator('summary.registration-record-summary').click();
+      await row.getByRole('button',{name:'验收',exact:true}).click();
       const modal=page.getByRole('dialog',{name:'工序验收单',exact:true});
       await modal.getByRole('button',{name:'字段填写',exact:true}).click();
       await modal.getByRole('textbox',{name:'测量值 · B1',exact:true}).fill('12');

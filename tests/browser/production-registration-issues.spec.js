@@ -11,6 +11,7 @@ function dismissApprovalNotices(page) {
 for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending consumption and settles without replacing the registration`,async({page,browser})=>{
   const context=device==='desktop'?page.context():await browser.newContext({locale:'zh-CN',...devices[device==='mobile'?'Pixel 7':'iPhone 13'],serviceWorkers:device==='pwa'?'allow':'block'});
   if(device!=='desktop') page=await context.newPage();
+  await dismissApprovalNotices(page);
   const f=await productionIssuesFixture();
   try {
     const order=f.ok(await f.complete(f.order,12,[[f.raw,24],[f.other,12]]));
@@ -18,6 +19,9 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     await context.addCookies([{name:f.cookie.slice(0,split),value:f.cookie.slice(split+1),url:f.base}]);
     await page.goto(`${f.base}/#production?order=${order.id}`);
     const records=page.getByRole('region',{name:'登记与待处理问题'});
+    await expect(records.getByRole('heading')).toContainText('未核对/总数 1/1');
+    await expect(records.getByRole('button',{name:'调整本次用料'})).toHaveCount(0);
+    await records.locator('.registration-record-summary').click();
     await records.getByRole('button',{name:'调整本次用料'}).click();
     for(const label of ['原料 本次用量','原料 差异原因']) {
       const input=records.getByLabel(label);
@@ -32,6 +36,7 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     await expect(records).toContainText('用料调整记录');
     await records.getByRole('button',{name:'核对并结算',exact:true}).click();
     await expect(records).toContainText('已结算');
+    await expect(records.getByRole('heading')).toContainText('未核对/总数 0/1');
     const updated=await f.get();
     expect(updated.pending_registration_count).toBe(0);
     expect(updated.operation_registrations[0].id).toBe(order.operation_registrations[0].id);
@@ -58,6 +63,7 @@ for (const device of ['desktop', 'Pixel 7', 'pwa']) test(`${device} groups edita
     await context.addCookies([{ name, value, url: f.base }]);
     await page.goto(`${f.base}/#production?order=${order.id}`);
     if (device === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.locator('.registration-record-summary').click();
     await page.getByRole('button', { name: '调整本次用料', exact: true }).click();
     const editor = page.getByRole('region', { name: '调整本次用料', exact: true });
     const semi = editor.getByRole('region', { name: `半成品 · ${semiCode}`, exact: true });
@@ -81,6 +87,44 @@ for (const device of ['desktop', 'Pixel 7', 'pwa']) test(`${device} groups edita
     expect(registration.editable_inputs.map(({ path, quantity }) => [path, quantity])).toEqual([['1', 8], [otherPath, 1], [stockPath, 5]]);
   } finally {
     if (device !== 'desktop') await context.close();
+    await f.close();
+  }
+});
+
+test('settling a semi-finished registration updates the next record without reloading', async ({ page }) => {
+  await dismissApprovalNotices(page);
+  const f = await productionIssuesFixture(undefined, { staged: true });
+  try {
+    let order = f.ok(await f.complete(f.order, 24, [['1.1', 72]], { path: '1' }));
+    order = f.ok(await f.complete(order, 12, [['1', 24]]));
+    order = f.ok(await f.complete(order, 25, [['1.1', 75]], { path: '1' }));
+    order = f.ok(await f.cancel(order, order.operation_registrations[0]));
+    const added = await f.supplement(order, [[f.raw, 12]]);
+    order = await f.confirm(added.doc);
+    const [name, value] = f.cookie.split('=');
+    await page.context().addCookies([{ name, value, url: f.base }]);
+    await page.goto(`${f.base}/#production?order=${order.id}`);
+    const section = page.getByRole('region', { name: '登记与待处理问题' });
+    const heading = section.getByRole('heading');
+    const rows = section.locator('.registration-record');
+    const summaries = rows.locator('summary.registration-record-summary');
+    const settle = row => row.getByRole('button', { name: '核对并结算', exact: true });
+    const shortage = section.locator(':scope > p.bom-hint').filter({ hasText: '半成品 · 还缺 24 kg' });
+    await expect(heading).toContainText('未核对/总数 2/3');
+    await expect(summaries.locator('strong')).toHaveText(['半成品 · 24 kg', '成品 · 12 kg', '半成品 · 25 kg']);
+    await expect(summaries.locator('.registration-record-number')).toHaveText(['1', '2', '3']);
+    await expect(section.locator('.registration-record[open]')).toHaveCount(0);
+    await expect(shortage).toBeVisible();
+    await summaries.nth(0).click();
+    await settle(rows.nth(0)).click();
+    await expect(heading).toContainText('未核对/总数 1/3');
+    await expect(summaries.nth(0)).toContainText('成品 · 12 kg');
+    await expect(shortage).toHaveCount(0);
+    await summaries.nth(0).click();
+    await settle(rows.nth(0)).click();
+    await expect(heading).toContainText('未核对/总数 0/3');
+    expect((await f.get()).completed_quantity).toBe(12);
+  } finally {
     await f.close();
   }
 });
@@ -195,7 +239,7 @@ for(const device of ['desktop','mobile']) test(`${device} registration drawer sc
   const f=await productionIssuesFixture(undefined,{routed:true});
   try {
     let order=f.order;
-    for(let i=0;i<6;i++) order=f.ok(await f.complete(order,12,[[f.raw,24],[f.other,12]]));
+    for(let i=0;i<16;i++) order=f.ok(await f.complete(order,12,[[f.raw,24],[f.other,12]]));
     const split=f.cookie.indexOf('=');
     await page.context().addCookies([{name:f.cookie.slice(0,split),value:f.cookie.slice(split+1),url:f.base,httpOnly:true,sameSite:'Lax'}]);
     await page.goto(`${f.base}/#production?order=${order.id}`);
@@ -207,9 +251,9 @@ for(const device of ['desktop','mobile']) test(`${device} registration drawer sc
     const scrollMetrics=await body.evaluate(el=>({scrollHeight:el.scrollHeight,clientHeight:el.clientHeight,scrollWidth:el.scrollWidth,clientWidth:el.clientWidth}));
     expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
     expect(scrollMetrics.scrollWidth).toBeLessThanOrEqual(scrollMetrics.clientWidth+1);
-    const cards=drawer.locator('.process-history-card');
-    await expect(cards).toHaveCount(6);
-    const firstMain=await cards.first().locator('.process-history-main').boundingBox();
+    const cards=drawer.locator('.registration-record');
+    await expect(cards).toHaveCount(16);
+    const firstMain=await cards.first().locator('summary.registration-record-summary').boundingBox();
     expect(firstMain.width).toBeGreaterThanOrEqual(device==='desktop'?260:200);
     await cards.last().scrollIntoViewIfNeeded();
     const scrolledTop=await body.evaluate(el=>el.scrollTop);

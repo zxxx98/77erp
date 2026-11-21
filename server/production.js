@@ -304,6 +304,8 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     const registrationState = registrationIssueState(order, registrations);
     order.registration_issues = registrationState.issues;
     order.pending_registration_count = registrations.filter(row => row.status === 'pending').length;
+    order.registration_counts = db.prepare(`SELECT path, COUNT(*) AS total, SUM(status='pending') AS pending
+      FROM production_operation_registrations WHERE production_id=? GROUP BY path`).all(order.id);
     const orderItems = new Map(order.items.map(item => [item.product_id, item]));
     const stockProducts = new Map(order.items.map(item => [item.product_id, item.product]));
     const readStockProduct = productId => {

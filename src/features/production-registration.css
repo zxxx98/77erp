@@ -41,19 +41,37 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   margin-top: 20px;
   margin-bottom: 0;
 }
-.production-acceptance-registrations .process-history-list {
-  margin-top: 14px;
+.production-acceptance-registrations.bom-section { padding-inline: 0; }
+.registration-records-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; }
+.registration-records-header h2 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 0; }
+.registration-record-count,
+.registration-record-title time { color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; }
+.registration-record-count { font-weight: 400; }
+.registration-records { list-style: none; padding: 0; margin: 14px 0 0; border-top: 1px solid var(--border); }
+.registration-records > li { border-bottom: 1px solid var(--border); }
+.registration-record-summary {
+  display: grid;
+  grid-template-columns: auto 3ch minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 0;
+  list-style: none;
+  cursor: pointer;
 }
-.production-acceptance-registrations .process-history-main > p {
-  margin: 4px 0;
-}
-.production-acceptance-registrations .process-history-main > details {
-  margin: 6px 0;
-  overflow-wrap: anywhere;
-}
-.production-acceptance-registrations .process-history-main > details p {
-  margin: 4px 0 0 12px;
-}
+.registration-record-summary::-webkit-details-marker { display: none; }
+.registration-record-summary::marker { content: ''; }
+.registration-record-summary:hover { background: var(--surface-hover); }
+.registration-record-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.registration-record[open] > summary > svg { transform: rotate(90deg); }
+.registration-record-number { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.registration-record-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; min-width: 0; overflow-wrap: anywhere; }
+.registration-record-title strong { font-variant-numeric: tabular-nums; }
+.registration-record-body { min-width: 0; padding: 4px 0 14px; overflow-wrap: anywhere; }
+.registration-record-body > p { margin: 4px 0; }
+.registration-record-body > details { margin: 6px 0; }
+.registration-record-body > details p { margin: 4px 0 0 12px; }
+.registration-record-actions { margin-top: 12px; }
 .registration-input-editor { display: grid; gap: 12px; margin-top: 16px; min-width: 0; container: registration-inputs / inline-size; }
 .registration-input-editor > .bom-hint { margin: 0; }
 .registration-input-materials { border-block: 1px solid var(--border); }
@@ -77,13 +95,6 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   .registration-input-source { grid-column: 1 / -1; padding: 0; }
   .registration-input-quantity { grid-column: 1; }
   .registration-input-row + .registration-input-row { border-top: 1px solid var(--border-subtle); padding-top: 8px; }
-}
-@media (max-width: 760px) {
-  .production-acceptance-registrations .process-history-main { width: 100%; }
-}
-.production-acceptance-registrations .process-history-action.bom-actions {
-  flex-direction: column;
-  align-items: stretch;
 }
 .production-registration-drawer .registration-drawer-footer { justify-content: flex-end; gap: 12px; }
 .registration-inline-picker { display: grid; gap: 12px; margin-top: 12px; min-width: 0; }

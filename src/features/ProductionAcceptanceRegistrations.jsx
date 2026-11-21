@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { Button, Badge } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { usePermissions } from '../permissions.jsx';
@@ -81,12 +82,23 @@ function registrationInputValue(order, item) {
   return fraction ? String(item.quantity) : registrationQuantityInput(item.quantity);
 }
 
+const awaitsSettlement = row => row.status === 'pending' && (row.kind === 'settlement' || row.acceptance_id != null);
+const registrationPriority = row => awaitsSettlement(row) ? 0 : row.status === 'pending' ? 1 : 2;
+
 export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendingOnly=false}) {
   useLocale();
   const {can,user}=usePermissions(), action=useBusiness(), acceptance=useOperationAcceptance();
   const [editing,setEditing]=useState(null);
-  const rows=(order.operation_registrations||[]).filter(row=>(path===undefined||row.path===path)&&(!pendingOnly||row.status==='pending'));
-  if(!rows.length) return null;
+  const matchesPath = row => path === undefined || row.path === path;
+  const scoped = (order.operation_registrations || []).filter(matchesPath);
+  const counts = order.registration_counts?.filter(matchesPath).reduce((sum, row) => ({
+    pending: sum.pending + row.pending, total: sum.total + row.total,
+  }), { pending: 0, total: 0 }) ?? { pending: scoped.filter(row => row.status === 'pending').length, total: scoped.length };
+  const rows = (pendingOnly ? scoped.filter(row => row.status === 'pending') : scoped).sort((a, b) =>
+    registrationPriority(a) - registrationPriority(b) || (a.status === 'pending' ? a.id - b.id : b.id - a.id));
+  if (!counts.total || (pendingOnly && !rows.length)) return null;
+  const locale = getFormatLocale();
+  const formatNumber = new Intl.NumberFormat(locale);
   const reconcile=()=>action.run(async()=>{
     const result=await action.send(`/production-orders/${order.id}/operations/registrations/reconcile`,{schema_version:2,stage_schema_version:1,operation_schema_version:1,version:order.version},{warehouseId:data.warehouse_id});
     await onSaved(result,t(result.pending_registration_count?'production.registration.stillPending':'production.registration.settled'));
@@ -104,21 +116,39 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
     setEditing(null);
     await onSaved(result,t('production.registration.inputsSaved'));
   });
-  return <section className="panel bom-section production-acceptance-registrations" aria-label={t('production.registration.pendingRecords')}>
-    {acceptance.dialog}<h2>{t('production.registration.pendingRecords')}</h2>
+  return <section className="bom-section production-acceptance-registrations" aria-label={t('production.registration.pendingRecords')}>
+    {acceptance.dialog}
+    <header className="registration-records-header">
+      <h2>{t('production.registration.pendingRecords')} <span className="registration-record-count" aria-live="polite">{t('production.registration.recordCounts', {
+        pending: formatNumber.format(counts.pending), total: formatNumber.format(counts.total),
+      })}</span></h2>
+      {can('production') && rows.some(awaitsSettlement) && <Button disabled={action.busy} onClick={reconcile}>{t('production.registration.reconcileAll')}</Button>}
+    </header>
     <p className="bom-hint">{t('production.registration.pendingHint')}</p>
-    {can('production')&&rows.some(row=>(row.kind==='settlement'||row.acceptance_id!=null)&&row.status==='pending')&&<Button disabled={action.busy} onClick={reconcile}>{t('production.registration.reconcileAll')}</Button>}
     {(order.registration_issues||[]).map(issue=><p className="bom-hint" key={issue.key}>{t(`production.registration.issue.${issue.kind}`)} · {issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}
-    <div className="process-history-list">
-    {rows.map(row=>{
-      const route=order.operation_routes.find(r=>r.path===row.path),node=route?.operations.find(n=>n.id===row.node_id);
-      const status=row.status==='pending'?(row.kind==='settlement'||row.acceptance_id!=null?'production.registration.unsettled':'route.acceptancePending'):row.status==='approved'?(row.kind==='settlement'?'production.registration.settled':'route.registrationPassed'):'route.registrationCancelled';
-      return <article className="process-operation process-history-card" key={row.id}>
-        <div className="process-history-main">
-          <div className="production-list-title"><strong>{node?.name||order.stages?.find(s=>s.path===row.path)?.name||order.product_name} · {formatExactQuantity(row.quantity,getFormatLocale())} {route?.unit||order.stages?.find(s=>s.path===row.path)?.unit||order.unit}</strong><Badge tone={row.status==='pending'?'orange':row.status==='approved'?'green':'gray'}>{t(status)}</Badge></div>
-          <p>{order.stages?.find(s=>s.path===row.path)?.name||order.product_name}{row.path&&` · ${row.path}`}</p>
+    {!pendingOnly && rows.length < counts.total && <p className="bom-hint">{t('production.registration.recordsShown', { shown: formatNumber.format(rows.length) })}</p>}
+    {rows.length > 0 && <ol className="registration-records" role="list">
+    {rows.map((row, index)=>{
+      const route = order.operation_routes.find(route => route.path === row.path);
+      const node = route?.operations.find(node => node.id === row.node_id);
+      const stage = order.stages?.find(stage => stage.path === row.path);
+      const settlement = awaitsSettlement(row);
+      const status = row.status === 'pending' ? (settlement ? 'production.registration.unsettled' : 'route.acceptancePending')
+        : row.status === 'approved' ? (row.kind === 'settlement' ? 'production.registration.settled' : 'route.registrationPassed') : 'route.registrationCancelled';
+      return <li key={row.id}><details className="registration-record">
+        <summary className="registration-record-summary">
+          <ChevronRight size={16} aria-hidden="true" />
+          <span className="registration-record-number">{formatNumber.format(index + 1)}</span>
+          <span className="registration-record-title">
+            <strong>{node?.name || stage?.name || order.product_name} · {formatExactQuantity(row.quantity, locale)} {route?.unit || stage?.unit || order.unit}</strong>
+            <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString(locale)}</time>
+          </span>
+          <Badge tone={row.status === 'pending' ? 'orange' : row.status === 'approved' ? 'green' : 'gray'}>{t(status)}</Badge>
+        </summary>
+        <div className="registration-record-body">
+          <p>{stage?.name || order.product_name}{row.path&&` · ${row.path}`}</p>
           <p>{t('route.worker')}: {row.worker_name} · {t('route.recorder')}: {row.registered_by_name}</p>
-          <p>{new Date(row.created_at).toLocaleString(getFormatLocale())}{row.resolved_by_name&&` · ${row.resolved_by_name}`}</p>
+          {row.resolved_by_name && <p>{t('production.registration.resolvedBy', { name: row.resolved_by_name })}</p>}
           {row.kind==='acceptance'&&row.acceptance_id!=null&&<p>{t('production.registration.inspected')}</p>}
           {row.note&&<p>{row.note}</p>}
           {!!row.actual_inputs?.length&&<details><summary>{t('production.registration.recordedInputs')}</summary>{row.actual_inputs.map(item=><p key={item.key}>{item.name} · {formatExactQuantity(item.quantity_fraction||item.quantity,getFormatLocale())} {item.unit}{item.path&&` · ${item.path}`}</p>)}</details>}
@@ -128,15 +158,15 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
             onSave={saveInputs} onCancel={() => setEditing(null)} />}
           {!!row.initial_issues?.length&&<details><summary>{t('production.registration.originalIssues')}</summary>{row.initial_issues.map(issue=><p key={issue.key}>{issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}</details>}
           {row.issues?.map(issue=><p className="bom-hint" key={issue.key}>{t(`production.registration.issue.${issue.kind}`)} · {issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}
+          {row.status==='pending'&&order.status!=='void'&&<div className="registration-record-actions bom-actions">
+            {(settlement?can('production'):can('operation_accept'))&&<Button kind="primary" disabled={action.busy} onClick={()=>resolve(row,'approve')}>{t(settlement?'production.registration.reconcile':'route.inspectRegistration')}</Button>}
+            {can('production')&&row.editable_inputs?.length>0&&<Button disabled={action.busy||editing?.id===row.id} onClick={()=>setEditing({id:row.id,version:order.version,items:row.editable_inputs.map(item=>({quantity:registrationInputValue(order,item),initialQuantity:registrationInputValue(order,item),originalQuantity:item.quantity,variance_reason:item.variance_reason}))})}>{t('production.registration.editInputs')}</Button>}
+            {(row.registered_by===user.id||can('production')||can('operation_accept'))&&<Button disabled={action.busy} onClick={()=>resolve(row,'cancel')}>{t('route.cancelRegistration')}</Button>}
+          </div>}
         </div>
-        {row.status==='pending'&&order.status!=='void'&&<div className="process-history-action bom-actions">
-          {(row.kind==='settlement'||row.acceptance_id!=null?can('production'):can('operation_accept'))&&<Button kind="primary" disabled={action.busy} onClick={()=>resolve(row,'approve')}>{t(row.kind==='settlement'||row.acceptance_id!=null?'production.registration.reconcile':'route.inspectRegistration')}</Button>}
-          {can('production')&&row.editable_inputs?.length>0&&<Button disabled={action.busy||editing?.id===row.id} onClick={()=>setEditing({id:row.id,version:order.version,items:row.editable_inputs.map(item=>({quantity:registrationInputValue(order,item),initialQuantity:registrationInputValue(order,item),originalQuantity:item.quantity,variance_reason:item.variance_reason}))})}>{t('production.registration.editInputs')}</Button>}
-          {(row.registered_by===user.id||can('production')||can('operation_accept'))&&<Button disabled={action.busy} onClick={()=>resolve(row,'cancel')}>{t('route.cancelRegistration')}</Button>}
-        </div>}
-      </article>;
+      </details></li>;
     })}
-    </div>
+    </ol>}
     {action.error&&<p role="alert" className="form-error">{action.error}</p>}
   </section>;
 }
