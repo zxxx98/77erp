@@ -86,7 +86,6 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
   return (
     <>
       <PageHeading
-        eyebrow="SCAN WORKSPACE"
         title={translate("warehouse.scanning.workbench")}
         description={translate("warehouse.use.the.mobile.phone.camera.to.identify.material.barcodes.or.qr")}
       >

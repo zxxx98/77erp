@@ -328,7 +328,6 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
   return (
     <>
       <PageHeading
-        eyebrow="MATERIALS"
         title={translate("warehouse.material.management")}
         description={translate("warehouse.maintain.material.pictures.specifications.and.models.prices.and.remarks.by.category")}
       >

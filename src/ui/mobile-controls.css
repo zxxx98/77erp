@@ -1,11 +1,11 @@
 .mobile-device {
-  --adm-color-primary:#2563eb;
-  --adm-color-success:#16866d;
-  --adm-color-warning:#a56b12;
-  --adm-color-danger:#c63f4a;
-  --adm-color-text:#17243c;
-  --adm-color-text-secondary:#647084;
-  --adm-color-border:#e9ecf1;
+  --adm-color-primary:#1d4ed8;
+  --adm-color-success:#15803d;
+  --adm-color-warning:#b45309;
+  --adm-color-danger:#b91c1c;
+  --adm-color-text:#111827;
+  --adm-color-text-secondary:#667085;
+  --adm-color-border:#e4e7ec;
   --adm-color-background:#fff;
   --adm-font-size-main:15px;
   --adm-font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
@@ -38,7 +38,7 @@ html:not(.mobile-device) a:active {opacity:unset;}
 .mobile-device .erp-mobile-popup {--z-index:1000;}
 .mobile-device .erp-mobile-popup-body {top:var(--mw-viewport-top,0px);bottom:auto;height:var(--mw-viewport-height,100dvh);background:transparent;}
 .mobile-device .erp-mobile-popup-layout {position:relative;top:auto;bottom:auto;height:100%;background:transparent;backdrop-filter:none;}
-.mobile-device .erp-mobile-popup-mask {background:rgba(15,23,42,.42);backdrop-filter:blur(5px);}
+.mobile-device .erp-mobile-popup-mask {background:rgba(17,24,39,.46);backdrop-filter:none;}
 .mobile-device .erp-mobile-popup .modal {animation:none;}
 .mobile-device .mw-product-copy>span {display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:4px;}
 .mobile-device .mw-order-summary>span {display:flex;flex-direction:column;align-items:stretch;gap:10px;}

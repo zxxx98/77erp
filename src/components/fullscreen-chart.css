@@ -1,5 +1,6 @@
 .fullscreen-chart { min-width: 0; }
-.fullscreen-chart-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.fullscreen-chart-toolbar { display: flex; justify-content: flex-end; padding: 0 18px; margin-bottom: 6px; }
+.fullscreen-chart-toolbar .ant-btn { min-height: 28px; padding: 2px 10px; font-size: 12px; color: var(--muted, #667085); }
 /* Mobile Popup portals the dialog outside the original chart layer. */
 .modal-backdrop:has(> .chart-fullscreen-modal) { padding: 0; }
 .modal-backdrop > .modal.chart-fullscreen-modal {

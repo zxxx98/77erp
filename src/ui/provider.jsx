@@ -15,12 +15,30 @@ export function UiProvider({ children }) {
   const { locale } = useLocale();
   return <ConfigProvider locale={{ 'zh-CN': zhCN, en: enUS, vi: viVN }[locale]} button={{ autoInsertSpace: false }} theme={{
     token: {
-      colorPrimary: '#2563eb', colorSuccess: '#16a383', colorWarning: '#e59a2f',
-      colorError: '#e45b64', colorText: '#17243c', borderRadius: 8,
+      colorPrimary: '#1d4ed8',
+      colorSuccess: '#15803d',
+      colorWarning: '#b45309',
+      colorError: '#b91c1c',
+      colorText: '#111827',
+      colorTextSecondary: '#4b5563',
+      colorTextTertiary: '#667085',
+      colorBorder: '#d0d5dd',
+      colorBorderSecondary: '#e4e7ec',
+      colorBgLayout: '#f5f6f8',
+      colorBgContainer: '#ffffff',
+      borderRadius: 6,
+      borderRadiusSM: 4,
+      borderRadiusLG: 8,
       fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif',
-      fontSize: 14, controlHeight: mobileDevice ? 44 : 36,
+      fontSize: 13,
+      controlHeight: mobileDevice ? 44 : 34,
+      boxShadowSecondary: '0 4px 12px rgba(16, 24, 40, 0.08)',
       zIndexPopupBase: 1200,
     },
-    components: { Select: { optionHeight: mobileDevice ? 44 : 36 } },
+    components: {
+      Select: { optionHeight: mobileDevice ? 44 : 34 },
+      Button: { primaryShadow: 'none', defaultShadow: 'none', dangerShadow: 'none' },
+      Tag: { borderRadiusSM: 4 },
+    },
   }}><MobileConfigProvider locale={{ 'zh-CN': mobileZhCN, en: mobileEnUS, vi: mobileViVN }[locale]}><App>{children}</App></MobileConfigProvider></ConfigProvider>;
 }

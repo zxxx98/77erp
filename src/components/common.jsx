@@ -43,151 +43,10 @@ function Badge({ children, tone = 'green' }) {
 function ProductArt({ product, size = "normal", preview = true }) {
   useLocale();
   if (product.image) return <ProductImage src={product.image} alt={product.name} preview={preview} thumbnailSize={size === 'large' ? 200 : 100} className={`product-art art-${size}`} />;
-  const n = product.name;
-  const type = /杯/.test(n)
-    ? /保温/.test(n)
-      ? "bottle"
-      : "cup"
-    : /笔记本/.test(n)
-      ? "book"
-      : /线/.test(n)
-        ? "cable"
-        : /袋|毛巾/.test(n)
-          ? "bag"
-          : /笔/.test(n)
-            ? "pen"
-            : /音箱|鼠标/.test(n)
-              ? "speaker"
-              : "box";
+  const iconSize = size === 'large' ? 26 : size === 'small' ? 15 : 18;
   return (
-    <span className={`product-art art-${product.color || "blue"} art-${size}`}>
-      <svg viewBox="0 0 48 48" aria-hidden="true">
-        {type === "cup" && (
-          <>
-            <path
-              d="M13 15h23v17c0 6-23 6-23 0z"
-              fill="#f1e6d7"
-              stroke="#bcaa91"
-              strokeWidth="1.5"
-            />
-            <ellipse
-              cx="24.5"
-              cy="15"
-              rx="11.5"
-              ry="3.5"
-              fill="#f9f4ec"
-              stroke="#bcaa91"
-              strokeWidth="1.5"
-            />
-            <ellipse cx="24.5" cy="15" rx="8" ry="1.8" fill="#d3c1a8" />
-            <path
-              d="M36 19h3c7 0 7 12-3 12"
-              fill="none"
-              stroke="#bcaa91"
-              strokeWidth="2.5"
-            />
-            <path d="M17 20v11" stroke="#fff" strokeWidth="2" opacity=".8" />
-          </>
-        )}
-        {type === "bottle" && (
-          <>
-            <rect x="18" y="8" width="14" height="5" rx="2" fill="#8fadb7" />
-            <rect x="17" y="13" width="16" height="28" rx="5" fill="#aec3cb" />
-            <path d="M20 17v18" stroke="#e9f4f7" strokeWidth="2" />
-            <path d="M17 32h16" stroke="#93aeb8" strokeWidth="1.5" />
-          </>
-        )}
-        {type === "book" && (
-          <>
-            <path d="M12 12l22-3 3 28-22 3z" fill="#819b85" />
-            <path
-              d="M14 10l22-3 3 28-22 3z"
-              fill="#a9bfa8"
-              stroke="#748e78"
-              strokeWidth="1"
-            />
-            <path d="M18 10l3 28" stroke="#64856c" strokeWidth="2" />
-            <path
-              d="M23 17l11-1m-10 5 11-1"
-              stroke="#e5eee3"
-              strokeWidth="1.5"
-            />
-            <path d="M16 39l22-3" stroke="#e9eee5" strokeWidth="2" />
-          </>
-        )}
-        {type === "cable" && (
-          <>
-            <path
-              d="M29 13c-18-5-20 15-9 20 10 5 18-6 12-11-8-7-18 6-8 12"
-              fill="none"
-              stroke="#9c91bb"
-              strokeWidth="2.5"
-            />
-            <rect x="27" y="9" width="8" height="7" rx="2" fill="#8373a8" />
-            <rect x="26" y="33" width="6" height="7" rx="1.5" fill="#8373a8" />
-            <path d="M30 8v-3m-2 36v3" stroke="#b3adbc" strokeWidth="3" />
-          </>
-        )}
-        {type === "bag" && (
-          <>
-            <path
-              d="M13 18h23l3 22H10z"
-              fill="#d4c3a6"
-              stroke="#b4a389"
-              strokeWidth="1"
-            />
-            <path
-              d="M18 21v-8a6 6 0 0 1 12 0v8"
-              fill="none"
-              stroke="#b4a389"
-              strokeWidth="2"
-            />
-            <path d="M22 28h8m-8 3h5" stroke="#af9b7c" strokeWidth="1.5" />
-          </>
-        )}
-        {type === "pen" && (
-          <>
-            <path d="M15 35 30 9l5 3-15 26-6 3z" fill="#7e9a91" />
-            <path d="m29 10 3-5 5 3-3 5" fill="#bbcfc7" />
-            <path d="m18 35 14-23" stroke="#d2e1da" strokeWidth="1.5" />
-            <path d="m14 41 2-7 4 3z" fill="#445d54" />
-          </>
-        )}
-        {type === "speaker" && (
-          <>
-            <rect x="10" y="15" width="30" height="23" rx="7" fill="#819ca8" />
-            <rect x="12" y="17" width="26" height="18" rx="5" fill="#a8bec8" />
-            {[18, 23, 28, 33].map((x) => (
-              <path
-                key={x}
-                d={`M${x} 21v10`}
-                stroke="#6e8c9b"
-                strokeWidth="1"
-                strokeDasharray="1 2"
-              />
-            ))}
-            <path
-              d="M23 12h5"
-              stroke="#819ca8"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            />
-          </>
-        )}
-        {type === "box" && (
-          <>
-            <path d="m11 17 14-7 14 7-14 8z" fill="#dfbfc5" stroke="#b99098" />
-            <path d="m11 17 14 8v16l-14-8z" fill="#d3a9b1" />
-            <path d="m25 25 14-8v16l-14 8z" fill="#c799a3" />
-            <path
-              d="m18 13 14 8v8"
-              fill="none"
-              stroke="#f8e6e9"
-              strokeWidth="3"
-            />
-          </>
-        )}
-      </svg>
+    <span className={`product-art product-art-placeholder art-${size}`} aria-hidden="true">
+      <Package size={iconSize} strokeWidth={1.65} />
     </span>
   );
 }
@@ -327,14 +186,13 @@ function Empty({ title = translate("system.no.records"), description = translate
   return <AntEmpty description={<><h3>{title}</h3><p>{description}</p></>}>{action}</AntEmpty>;
 }
 
-function PageHeading({ eyebrow, title, description, children }) {
+function PageHeading({ title, description, children }) {
   useLocale();
   return (
     <div className="page-heading">
       <div>
-        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
-        <p>{description}</p>
+        {description && <p>{description}</p>}
       </div>
       <div className="heading-actions">{children}</div>
     </div>

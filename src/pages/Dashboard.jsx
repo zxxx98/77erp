@@ -16,13 +16,10 @@ import {
   CalendarDays,
   Plus,
   ScanLine,
-  Camera,
-  Check,
   ArrowRight,
   ArrowDownToLine,
   ChevronRight,
   ArrowUpFromLine,
-  ShieldCheck,
 } from 'lucide-react';
 import { Badge, QueryStatus, PageHeading, Button, Panel, Empty, ProductArt } from '../components/common.jsx';
 import { orderLabel, orderIconTone } from '../order-utils.js';
@@ -101,8 +98,8 @@ function TrendChart({ orders, days, fullscreen = false }) {
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2563eb" stopOpacity=".13" />
-            <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+            <stop offset="0%" stopColor="#1d4ed8" stopOpacity=".08" />
+            <stop offset="100%" stopColor="#1d4ed8" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0, 1, 2, 3, 4].map((n) => (
@@ -112,15 +109,15 @@ function TrendChart({ orders, days, fullscreen = false }) {
               x2={W - R}
               y1={y(floor + ((cap - floor) * n) / 4)}
               y2={y(floor + ((cap - floor) * n) / 4)}
-              stroke="#edf0f5"
+              stroke="#eef0f3"
               strokeDasharray={n === 0 ? "0" : "3 4"}
             />
             <text
-              x={L - 12}
+              x={L - 10}
               y={y(floor + ((cap - floor) * n) / 4) + 4}
               textAnchor="end"
-              fill="#929aaa"
-              fontSize="10"
+              fill="#667085"
+              fontSize="11"
             >
               {floor + ((cap - floor) * n) / 4 >= 1000
                 ? `${(floor + ((cap - floor) * n) / 4 / 1000).toFixed(1)}k`
@@ -135,15 +132,15 @@ function TrendChart({ orders, days, fullscreen = false }) {
         <path
           d={incoming}
           fill="none"
-          stroke="#91b7ed"
-          strokeWidth="2"
-          strokeDasharray="5 5"
+          stroke="#98a2b3"
+          strokeWidth="1.75"
+          strokeDasharray="4 4"
         />
         <path
           d={out}
           fill="none"
-          stroke="#3478ee"
-          strokeWidth="2.8"
+          stroke="#1d4ed8"
+          strokeWidth="2.2"
           strokeLinecap="round"
         />
         {labels.map((i) => (
@@ -151,9 +148,9 @@ function TrendChart({ orders, days, fullscreen = false }) {
             key={i}
             className="trend-chart-x-label"
             x={x(i)}
-            y={H - 7}
-            fontSize="10"
-            fill="#929aaa"
+            y={H - 6}
+            fontSize="11"
+            fill="#667085"
             textAnchor="middle"
           >
             {shortDate(series[i].date)}
@@ -177,22 +174,22 @@ function TrendChart({ orders, days, fullscreen = false }) {
               x2={x(hover)}
               y1={T}
               y2={y(0)}
-              stroke="#adc8ef"
+              stroke="#d0d5dd"
               strokeDasharray="3 3"
             />
             <circle
               cx={x(hover)}
               cy={y(series[hover].out)}
-              r="4"
-              fill="#2563eb"
+              r="3.5"
+              fill="#1d4ed8"
               stroke="white"
               strokeWidth="2"
             />
             <circle
               cx={x(hover)}
               cy={y(series[hover].in)}
-              r="3.5"
-              fill="#91b7ed"
+              r="3"
+              fill="#667085"
               stroke="white"
               strokeWidth="2"
             />
@@ -272,9 +269,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
       tone: "green",
       footer: (
         <>
-          <Badge tone="green" dot={false}>
-            <ArrowDownLeft size={12} />
-            {summary?.today.purchase_count || 0}{translate("warehouse.stock.in.documents")}</Badge>
+          <strong>{summary?.today.purchase_count || 0}{translate("warehouse.stock.in.documents")}</strong>
           <span className="metric-info">{translate("warehouse.completed")}</span>
         </>
       ),
@@ -287,9 +282,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
       tone: "orange",
       footer: (
         <>
-          <Badge tone="blue" dot={false}>
-            <ArrowUpRight size={12} />
-            {summary?.today.sales_count || 0}{translate("warehouse.stock.out.documents")}</Badge>
+          <strong>{summary?.today.sales_count || 0}{translate("warehouse.stock.out.documents")}</strong>
           <span className="metric-info">{translate("warehouse.completed")}</span>
         </>
       ),
@@ -300,10 +293,9 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
       <QueryStatus query={summaryQuery} /><QueryStatus query={recentQuery} />
       <PageHeading
         title={translate("warehouse.dashboard")}
-        description={translate("warehouse.overview.of.materials.inventory.and.today.s.incoming.and.outgoing.data")}
       >
         <span className="date-chip">
-          <CalendarDays size={15} />
+          <CalendarDays size={14} />
           {new Date().toLocaleDateString(getFormatLocale(), {
             year: "numeric",
             month: "long",
@@ -320,8 +312,8 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
           <section className="metric-card" key={m.label}>
             <div className="metric-top">
               <span>{m.label}</span>
-              <span className={`metric-icon icon-${m.tone}`}>
-                <m.icon size={18} />
+              <span className="metric-icon">
+                <m.icon size={15} strokeWidth={1.75} />
               </span>
             </div>
             <div className="metric-value">
@@ -365,46 +357,38 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             <TrendChart orders={reporting} days={days} fullscreen={fullscreen}/>
           </>}</FullscreenChart>
         </Panel>
-        <section className="quick-panel">
-          <div className="quick-panel-heading">
-            <span className="quick-label">
-              <ScanLine size={13} />{translate("warehouse.quick.operation")}</span>
-          </div>
-          <div className="quick-hero">
-            <div>
-              <h2>{translate("warehouse.scan.code.with.mobile.phone")}</h2>
-              <p>{translate("warehouse.use.the.mobile.phone.camera.to.check.materials.and.process.incoming")}</p>
-            </div>
-            <div className="phone-scan-illustration" aria-hidden="true">
-              <div className="phone-scan-frame">
-                <Camera size={20} />
-                <ScanLine size={36} />
-              </div>
-              <span className="phone-scan-check">
-                <Check size={14} />
+        <Panel
+          title={translate("warehouse.quick.operation")}
+          className="quick-panel"
+        >
+          <div className="quick-action-list">
+            <AntButton type="text" htmlType="button"
+              className="quick-scan-button"
+              onClick={() => navigate("scanner")}
+            >
+              <span className="quick-action-icon">
+                <ScanLine size={16} strokeWidth={1.75} />
               </span>
-            </div>
-          </div>
-          <AntButton type="text" htmlType="button"
-            className="quick-scan-button"
-            onClick={() => navigate("scanner")}
-          >
-            <ScanLine size={18} />{translate("warehouse.open.the.qr.code.scanning.workbench")}<ArrowRight size={16} />
-          </AntButton>
-          <div className="quick-action-row">
-            <AntButton type="text" htmlType="button" hidden={!can("purchase")} onClick={() => openOrder("in")}>
-              <span className="quick-action-icon green">
-                <ArrowDownToLine size={17} />
-              </span>{translate("warehouse.stock.in")}<ChevronRight size={13} />
+              <span className="quick-action-label">{translate("warehouse.open.the.qr.code.scanning.workbench")}</span>
+              <ArrowRight size={14} />
             </AntButton>
-            <i />
-            <AntButton type="text" htmlType="button" hidden={!can("sale")} onClick={() => openOrder("out")}>
-              <span className="quick-action-icon blue">
-                <ArrowUpFromLine size={17} />
-              </span>{translate("warehouse.stock.out")}<ChevronRight size={13} />
+            <AntButton type="text" htmlType="button" className="quick-action-item" hidden={!can("purchase")} onClick={() => openOrder("in")}>
+              <span className="quick-action-icon">
+                <ArrowDownToLine size={16} strokeWidth={1.75} />
+              </span>
+              <span className="quick-action-label">{translate("warehouse.new.stock.in")}</span>
+              <ChevronRight size={14} />
+            </AntButton>
+            <AntButton type="text" htmlType="button" className="quick-action-item" hidden={!can("sale")} onClick={() => openOrder("out")}>
+              <span className="quick-action-icon">
+                <ArrowUpFromLine size={16} strokeWidth={1.75} />
+              </span>
+              <span className="quick-action-label">{translate("warehouse.stock.out")}</span>
+              <ChevronRight size={14} />
             </AntButton>
           </div>
-        </section>
+          <p className="quick-panel-hint">{translate("warehouse.use.the.mobile.phone.camera.to.check.materials.and.process.incoming")}</p>
+        </Panel>
       </div>
       <div className="dashboard-bottom">
         <Panel
@@ -542,8 +526,6 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
             onClick={() => navigate("inventory", "warning")}
           >{translate("warehouse.view.inventory.alerts")}<ArrowRight size={14} />
           </AntButton>
-          <div className="warning-bottom">
-            <ShieldCheck size={13} />{translate("warehouse.after.the.data.is.changed.you.will.be.prompted.to.refresh")}</div>
         </Panel>
       </div>
     </>

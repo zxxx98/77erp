@@ -10,6 +10,7 @@ import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import {
   Box,
+  Bot,
   ArrowDownToLine,
   ArrowUpFromLine,
   Warehouse,
@@ -396,13 +397,10 @@ function StandardApp({ admin, onLogout }) {
               className={`nav-item ${page === id ? "active" : ""}`}
               onClick={event => { event.preventDefault(); navigate(id); }}
             >
-              <Icon size={19} strokeWidth={1.8} />
+              <Icon size={16} strokeWidth={1.75} />
               <span>{name}</span>
               {id === "inventory" && low.length > 0 && (
                 <b className="nav-count">{low.length}</b>
-              )}
-              {id === "overview" && page === id && (
-                <i className="nav-active-dot" />
               )}
             </a>
           ))}
@@ -418,28 +416,19 @@ function StandardApp({ admin, onLogout }) {
               className={`nav-item ${page === id ? "active" : ""}`}
               onClick={event => { event.preventDefault(); navigate(id); }}
             >
-              <Icon size={19} strokeWidth={1.8} />
+              <Icon size={16} strokeWidth={1.75} />
               <span>{name}</span>
               {id === 'announcements' && announcementCount > 0 && <span className="announcement-entry-count" aria-label={translate("system.unread.announcements", { v0: announcementCount })}>{announcementCount > 99 ? '99+' : announcementCount}</span>}
             </a>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          {mode === 'warehouse' && can('basic_view') && <div className="sidebar-tip">
-            <span className="tip-icon">
-              <ScanLine size={19} />
-            </span>
-            <strong>{translate("system.scan.code.management")}</strong>
-            <p>{translate("system.use.your.phone.camera.to.identify.material.barcodes")}</p>
-            <AntButton type="text" htmlType="button" onClick={() => navigate("scanner")}>{translate("system.open.the.qr.code.scanning.workbench")}<ArrowRight size={13} />
-            </AntButton>
-          </div>}
           <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'businessTools' })}>
-            <History size={18} /><span>{translate("system.business.management")}</span>
+            <History size={16} strokeWidth={1.75} /><span>{translate("system.business.management")}</span>
           </AntButton>
-          {can('ai') && <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'ai' })}><Settings size={18} /><span>{translate("system.ai.assistant")}</span></AntButton>}
+          {can('ai') && <AntButton type="text" htmlType="button" className="nav-item" onClick={() => setModal({ kind: 'ai' })}><Bot size={16} strokeWidth={1.75} /><span>{translate("system.ai.assistant")}</span></AntButton>}
           {isAdmin && <AntButton type="text" htmlType="button" className="nav-item" aria-label={translate("system.system.settings")} title={translate("system.system.settings")} onClick={() => setModal({ kind: 'settings' })}>
-            <Settings size={18} /><span>{translate("system.system.settings")}</span>
+            <Settings size={16} strokeWidth={1.75} /><span>{translate("system.system.settings")}</span>
           </AntButton>}
           <AntButton type="text" htmlType="button"
             className="user-profile"
@@ -530,16 +519,9 @@ function StandardApp({ admin, onLogout }) {
               aria-label={translate("system.help")}
               onClick={() => setModal({ kind: "help" })}
             >
-              <CircleHelp size={19} />
+              <CircleHelp size={17} />
             </AntButton>
             <span className="topbar-divider" />
-            <AntButton type="text" htmlType="button"
-              className="avatar avatar-small"
-              aria-label={isAdmin ? translate("system.merchant.settings") : translate("system.account.settings")}
-              onClick={() => setModal({ kind: isAdmin ? "settings" : "account" })}
-            >
-              {(user.name || user.username).slice(0, 1).toUpperCase()}
-            </AntButton>
             <AntButton type="text" htmlType="button"
               className="icon-button logout-button"
               aria-label={translate("system.sign.out")}
@@ -548,7 +530,7 @@ function StandardApp({ admin, onLogout }) {
               disabled={loggingOut}
               aria-busy={loggingOut}
             >
-              {loggingOut ? <LoadingIndicator size={20} /> : <LogOut size={18} />}
+              {loggingOut ? <LoadingIndicator size={18} /> : <LogOut size={17} />}
             </AntButton>
             <LanguageSwitcher />
           </div>
