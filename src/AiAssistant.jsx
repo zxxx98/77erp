@@ -323,7 +323,7 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
       <div className="ai-context"><span className="ai-context-title"><Bot size={15} />{warehouseName || translate("system.current.warehouse")} · {mode === 'production' ? translate("system.production") : translate("system.warehouse")}</span><div className="ai-mobile-tools"><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.view.historical.conversations")} aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></AntButton><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.start.a.new.conversation")} disabled={busy} onClick={newThread}><Plus size={19} /></AntButton></div></div>
       <div className="ai-feed" ref={feed}>
         {!thread.messages.length && !busy && <div className="ai-welcome">
-          <h3>{translate("system.today.what.is.there")}{" "}{translate("system.can.i.help.you")}</h3>
+          <h3>{translate("system.today.what.is.there")}{translate("system.can.i.help.you")}</h3>
           <p>{mode === 'production' ? translate("system.query.batch.completion.progress.analyze.material.consumption.differences.and.calculate.material") : translate("system.check.inventory.organize.documents.and.import.materials")}</p>
           <div className="ai-suggestions">{[
             mode === 'production' ? [PackageSearch, translate("system.query.bom"), translate("system.what.boms.are.currently.in.the.warehouse.please.list.finished.product")] : [PackageSearch, translate("system.query.material.quantity"), translate("system.how.many.materials.are.currently.in.the.warehouse")],
