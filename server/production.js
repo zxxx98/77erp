@@ -55,13 +55,13 @@ export function productionWithoutCosts(value) {
 
 export function nextProductionOrderNumber(db, at = new Date().toISOString()) {
   const dateStr = at instanceof Date ? at.toISOString() : String(at);
-  const prefix = dateStr.slice(0, 10).replaceAll('-', '');
+  const prefix = `SC${dateStr.slice(0, 10).replaceAll('-', '')}`;
   const last = db.prepare('SELECT MAX(CAST(substr(number, ?) AS INTEGER)) AS sequence FROM production_orders WHERE number LIKE ?').get(prefix.length + 1, `${prefix}%`);
   let seq = (last?.sequence || 0) + 1;
-  let number = `${prefix}${String(seq).padStart(3, '0')}`;
+  let number = `${prefix}${String(seq).padStart(6, '0')}`;
   while (db.prepare('SELECT 1 FROM production_orders WHERE number=?').get(number)) {
     seq += 1;
-    number = `${prefix}${String(seq).padStart(3, '0')}`;
+    number = `${prefix}${String(seq).padStart(6, '0')}`;
   }
   return number;
 }
@@ -952,7 +952,7 @@ export function validateProductionBackup(data, postPlans = new Map()) {
     validateBomLossMethod(order.loss_method);
     if (![0, 1].includes(order.batch_tracking) || (batches.length && order.batch_tracking !== 1) || (order.batch_tracking === 1 && completed && !batches.length) ||
         !['draft', 'completed', 'void'].includes(order.status) || !isId(order.version) || !isId(order.bom_version) ||
-        !text(order.number, 100, true) || !/^(?:SC\d{8}-[a-f0-9]{12}|\d{8}\d{3,})$/.test(order.number) || numbers.has(order.number) || !text(order.bom_name, 100, true) ||
+        !text(order.number, 100, true) || !/^(?:SC\d{8}-[a-f0-9]{12}|SC\d{8}\d{6,}|\d{8}\d{3,})$/.test(order.number) || numbers.has(order.number) || !text(order.bom_name, 100, true) ||
         boms.get(order.bom_id)?.warehouse_id !== order.warehouse_id || products.get(order.product_id)?.warehouse_id !== order.warehouse_id ||
         !text(order.product_name, 100, true) || !text(order.barcode, 100, true) || !text(order.specification, 500) || !text(order.unit, 100, true) ||
         ![4,6].includes(order.quantity_decimals) || ![0,1].includes(order.unit_round_up) || !validQuantity(order.base_quantity, true) || !rows.length || recipeRows.length > (expanded ? 500 : 100) ||

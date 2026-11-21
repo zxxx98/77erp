@@ -120,7 +120,7 @@ test('production drafts preserve exact BOM snapshots, rescale batches and never 
   const order = f.ok(await f.request('/production-orders', body));
   assert.deepEqual((await f.request('/production-orders', body)).data, order);
   const expectedDate = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-  assert.equal(order.number, `${expectedDate}001`);
+  assert.equal(order.number, `SC${expectedDate}000001`);
   assert.equal(order.status, 'draft'); assert.equal(order.bom_version, f.bom.version);
   assert.deepEqual(order.items.map(row => row.planned_quantity), [15, 1]);
   assert.ok(order.items.every(row => row.actual_quantity === null && row.cost_cents === null));
@@ -1089,40 +1089,32 @@ test('multilevel orders retain supported root waste rules and do not infer alloc
   f.ok(await f.request('/backup/preview', { backup }));
 });
 
-test('production order numbering uses date plus 3-digit sequence starting from 001 and increments sequentially', async t => {
+test('production order numbers use SC, date and a six-digit daily sequence', async t => {
   const f = await fixture(t);
-  const datePrefix = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  const datePrefix = `SC${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`;
+  const first = await f.create();
+  const second = await f.create();
+  assert.equal(first.number, `${datePrefix}000001`);
+  assert.equal(second.number, `${datePrefix}000002`);
 
-  // First order of today
-  const order1 = await f.create();
-  assert.equal(order1.number, `${datePrefix}001`);
+  const backup = f.ok(await f.request('/backup'));
+  f.ok(await f.request('/backup/preview', { backup }));
+  const legacyBackup = structuredClone(backup);
+  legacyBackup.data.production_orders[0].number = '20261103001';
+  legacyBackup.data.production_orders[1].number = 'SC20261103-abcdef123456';
+  f.ok(await f.request('/backup/preview', { backup: legacyBackup }));
 
-  // Second order of today
-  const order2 = await f.create();
-  assert.equal(order2.number, `${datePrefix}002`);
+  const at = '2026-11-03T12:00:00.000Z';
+  const insert = f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
+    VALUES (?,1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u',?,?)`);
+  insert.run('20261103999', at, at);
+  insert.run('SC20261103-abcdef123456', at, at);
+  assert.equal(nextProductionOrderNumber(f.db, at), 'SC20261103000001');
+  insert.run('SC20261103000001', at, at);
+  insert.run('SC20261103000999', at, at);
+  assert.equal(nextProductionOrderNumber(f.db, at), 'SC20261103001000');
+  assert.equal(nextProductionOrderNumber(f.db, '2026-11-04T00:00:00.000Z'), 'SC20261104000001');
 
-  // Third order of today
-  const order3 = await f.create();
-  assert.equal(order3.number, `${datePrefix}003`);
-
-  // Direct helper test with arbitrary dates, sequence padding, and rollover past 999
-  const arbitraryDate = '2026-11-03T12:00:00.000Z';
-  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '20261103001');
-
-  // Insert mock order on 20261103 to test sequence continuation
-  f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
-    VALUES ('20261103001',1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u','${arbitraryDate}','${arbitraryDate}')`).run();
-  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '20261103002');
-
-  // Test sequence > 999
-  f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
-    VALUES ('20261103999',1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u','${arbitraryDate}','${arbitraryDate}')`).run();
-  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '202611031000');
-
-  // Test gap safety: if 202611031000 already exists, next is 1001
-  f.db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,created_by_name,updated_by_name,created_at,updated_at)
-    VALUES ('202611031000',1,1,1,'BOM',1,'P','B','S','U',1,1,'internal','','u','u','${arbitraryDate}','${arbitraryDate}')`).run();
-  assert.equal(nextProductionOrderNumber(f.db, arbitraryDate), '202611031001');
 });
 
 test('net planned requirements remove all layer losses, preserve supply splits, fractions, rounding and post-processing plans', () => {
