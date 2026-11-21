@@ -43,7 +43,7 @@ for (const accessMode of ['standard', 'production_only']) for (const {width, pwa
     for (const name of ['新建生产单', '系统设置', 'AI 助手', '打开扫码工作台', '公告中心']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
     await expect(page.getByText('生产小组：装配一组', { exact: true })).toBeVisible();
-    for (const name of ['编辑草稿', '开始生产', '结束生产', '申请补料', '申请退料', '派工']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+    for (const name of ['编辑生产单', '开始生产', '结束生产', '申请补料', '申请退料', '派工']) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: '登记', exact: true }).click();
     await page.getByLabel('本次数量', { exact: true }).fill('2');
     await adjustUsage(page);

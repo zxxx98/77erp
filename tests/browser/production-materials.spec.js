@@ -29,6 +29,35 @@ async function fixture(page) {
   } };
 }
 
+for (const device of ['desktop', 'mobile', 'PWA']) test(`${device} edits the production plan before requesting materials`, async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'zh-CN', serviceWorkers: device === 'PWA' ? 'allow' : 'block',
+    ...(device === 'desktop' ? {} : { viewport: { width: 390, height: 844 }, userAgent: iphone }) });
+  const page = await context.newPage();
+  const f = await fixture(page);
+  try {
+    await page.goto(`${f.base}/#production`);
+    if (device === 'PWA') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: `查看生产单 ${f.order.number}`, exact: true }).click();
+    const editOrder = page.locator('.production-primary-actions').getByRole('button', { name: '编辑生产单', exact: true });
+    await expect(editOrder).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await editOrder.click();
+    await expect(page.getByRole('heading', { name: '编辑生产单', exact: true })).toBeVisible();
+    await expect(page.getByLabel('计划产量', { exact: true })).toHaveValue('5');
+    await page.getByLabel('计划产量', { exact: true }).fill('7');
+    await page.getByLabel('生产备注', { exact: true }).fill('开工前已核对');
+    await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
+    await expect(page.locator('.production-summary')).toContainText('7 件');
+    await expect(page.getByText('开工前已核对', { exact: true })).toBeVisible();
+    expect(f.stock()).toBe(100);
+    await page.getByRole('button', { name: '开始生产', exact: true }).click();
+    await expect(page.getByLabel('生产原料领料数量', { exact: true })).toHaveValue('14');
+    await page.getByRole('button', { name: '提交领料申请', exact: true }).click();
+    await expect(page.getByText('待领料', { exact: true })).toBeVisible();
+    await expect(editOrder).toHaveCount(0);
+  } finally { await f.close(); await context.close(); }
+});
+
 for (const mobile of [false, true, 'pwa']) test(`${mobile === 'pwa' ? 'PWA' : mobile ? 'mobile' : 'desktop'} production issue approval, registration and material return`, async ({ page, browser }) => {
   test.setTimeout(90000);
   const context = mobile === 'pwa' ? await browser.newContext({ locale: 'zh-CN', serviceWorkers: 'allow', viewport: { width: 390, height: 844 }, userAgent: iphone }) : null;

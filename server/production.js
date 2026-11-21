@@ -23,7 +23,7 @@ import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { validateBomLossRate, validateBomLossMethod } from '../shared/bom.js';
-import { validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionNetPlannedItems, productionMaterialAnalysis } from '../shared/production.js';
+import { canEditProductionPlan, validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionNetPlannedItems, productionMaterialAnalysis } from '../shared/production.js';
 import { productionBatchSummary } from '../shared/production-batches.js';
 import { productionRegistrationUrl } from '../shared/production-link.js';
 import { renderProductionPdf } from './production-pdf.js';
@@ -467,7 +467,6 @@ export function installProduction(app, db, options = {}) {
     if (order.snapshot_format === 2 && req.body.schema_version !== 2) fail('此生产单使用多层配方，请刷新页面后操作。', 409);
     if (!isId(req.body.version) || req.body.version !== order.version) fail('生产单已变化，请重新读取后核对。当前填写内容已保留。', 409);
   };
-  const draft = (req, order) => { version(req, order); if (order.status !== 'draft' || order.batches.length) fail('仅尚未登记批次的待生产单据可以编辑。', 409); };
   const stockBefore = order => [order.product_id, ...order.items.map(item => item.product_id), ...order.scraps.map(row => row.product_id)]
     .map(id => db.prepare('SELECT * FROM products WHERE id=?').get(id));
   const units = (order, active = true) => {
@@ -690,19 +689,25 @@ export function installProduction(app, db, options = {}) {
     return current(req);
   }, true));
   app.post('/api/production-orders/:id', route(req => {
-    const order = current(req); draft(req, order); validateProductionPlan(req.body);
-    req.body.planned_quantity = materialQuantity(req.body.planned_quantity, order);
-    const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, req.body.planned_quantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
-    for (const item of order.items) db.prepare('UPDATE production_items SET planned_quantity=? WHERE id=?')
-      .run(productionItemQuantity(item, req.body.planned_quantity, order, standards), item.id);
-    const plannedMaterials = order.items.map(item => ({ product_id: item.product_id,
-      quantity: productionItemQuantity(item, req.body.planned_quantity, order, standards) }));
-    for (const row of order.scraps) db.prepare('UPDATE production_scraps SET planned_quantity=? WHERE id=?')
-      .run(scrapExpectedQuantity(row, req.body.planned_quantity, order.base_quantity, plannedMaterials, order.quantity_decimals), row.id);
+    const order = current(req); version(req, order);
+    if (!canEditProductionPlan(order)) fail('仅未开工、未领料的待生产单可以编辑。', 409);
+    const unchanged = req.body.planned_quantity === order.planned_quantity;
+    validateProductionPlan(req.body, unchanged);
+    const plannedQuantity = unchanged ? order.planned_quantity : materialQuantity(req.body.planned_quantity, order);
+    if (plannedQuantity !== order.planned_quantity) {
+      const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, plannedQuantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
+      const plannedMaterials = order.items.map(item => {
+        const quantity = productionItemQuantity(item, plannedQuantity, order, standards);
+        db.prepare('UPDATE production_items SET planned_quantity=? WHERE id=?').run(quantity, item.id);
+        return { product_id: item.product_id, quantity };
+      });
+      for (const row of order.scraps) db.prepare('UPDATE production_scraps SET planned_quantity=? WHERE id=?')
+        .run(scrapExpectedQuantity(row, plannedQuantity, order.base_quantity, plannedMaterials, order.quantity_decimals), row.id);
+      if (order.stage_workflow) for (const stage of deriveProductionStages({ ...order, planned_quantity: plannedQuantity }))
+        db.prepare('UPDATE production_stages SET planned_quantity=? WHERE production_id=? AND path=?').run(stage.planned_quantity, order.id, stage.path);
+    }
     db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
-      .run(req.body.planned_quantity, req.body.note.trim(), actor(req), new Date().toISOString(), order.id);
-    if (order.stage_workflow) for (const stage of deriveProductionStages({...order,planned_quantity:req.body.planned_quantity}))
-      db.prepare('UPDATE production_stages SET planned_quantity=? WHERE production_id=? AND path=?').run(stage.planned_quantity,order.id,stage.path);
+      .run(plannedQuantity, req.body.note.trim(), actor(req), new Date().toISOString(), order.id);
     return current(req);
   }, true));
   const checkOpen = (req, order) => {

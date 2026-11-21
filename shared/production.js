@@ -39,6 +39,14 @@ export function productionActualDefault(item, quantity, order) {
 }
 
 export const productionStatusLabels = { draft: '待生产', awaiting_materials: '待领料', in_progress: '生产中', completed: '已完工', void: '已作废' };
+
+export function canEditProductionPlan(order) {
+  return order.status === 'draft' && !order.completed_at && !order.batches.length &&
+    !order.material_documents.some(doc => doc.status !== 'cancelled' || doc.issues.length) &&
+    !order.receipt_documents.length && !order.operation_routes.some(route => route.report_count) &&
+    !order.registration_counts.length;
+}
+
 export const productionPlannedQuantity = bomRequiredQuantity;
 export function productionItemQuantity(item, quantity, order, standards) {
   if (item.base_quantity === 0) return 0;

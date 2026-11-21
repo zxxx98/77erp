@@ -263,6 +263,7 @@ for (const lossMethod of ['internal', 'external']) test(`${lossMethod} productio
   assert.match(prompt, /receipt_documents中kind=stage/);
   assert.match(prompt, /后续生产实际领用时归集数量和成本/);
   assert.match(prompt, /不能重复相加/);
+  assert.match(prompt, /未开工、未领料的待生产单可在详情顶部点击“编辑生产单”/);
   assert.match(prompt, /AI不创建、修改、完工、作废或删除生产单/);
   assert.match(prompt, /删除会清理耗料、废料、批次、配方快照和相关物料操作历史，不再次变动库存和成本/);
   assert.match(prompt, /绝不能用采购入库、销售出库、盘点等工具代替生产记账/);

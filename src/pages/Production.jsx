@@ -34,7 +34,7 @@ import { Select } from '../Dropdown.jsx';
 import { parseQuantity, quantityUnits, QUANTITY_SCALE, materialQuantity, validQuantity } from '../../shared/quantity.js';
 import { parseExactQuantity, exactQuantity, exactCompare, formatExactQuantity, quantityInput } from '../../shared/exact-quantity.js';
 import { bomShortage } from '../../shared/bom.js';
-import { productionActualDefault, productionItemQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
+import { canEditProductionPlan, productionActualDefault, productionItemQuantity, validateProductionPlan, validateProductionCompletion, productionMaterialAnalysis } from '../../shared/production.js';
 import { scrapExpectedQuantity, validateScrapActuals } from '../../shared/scrap.js';
 import { MaterialVariance } from '../features/MaterialVariance.jsx';
 import { ScrapOutputs } from '../features/ScrapOutputs.jsx';
@@ -348,14 +348,15 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     setFinishPipelineOpen(true);
   };
   const submitter = useRef(null);
+  const unchangedPlanQuantity = editor?.kind === 'edit' && editor.planned_quantity.trim() === String(detail.planned_quantity);
   const submit = () => {
 
     const finishOrder = management && submitter.current === 'finish';
     action.run(async () => {
       const options = { warehouseId: data.warehouse_id };
       if (editor.kind === 'new' || editor.kind === 'edit') {
-        const body = { planned_quantity: parseQuantity(editor.planned_quantity, true), note: editor.note };
-        validateProductionPlan(body);
+        const body = { planned_quantity: unchangedPlanQuantity ? detail.planned_quantity : parseQuantity(editor.planned_quantity, true), note: editor.note };
+        validateProductionPlan(body, unchangedPlanQuantity);
         const path = editor.kind === 'new' ? '/production-orders' : `/production-orders/${detail.id}`;
         if (editor.kind === 'new') {
           let prepared = editor;
@@ -465,20 +466,24 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     const correcting = ['void', 'void_batch'].includes(editor.kind);
     let rows = source?.items || source?.rows.map(row => ({ ...row, base_quantity: row.quantity, base_quantity_fraction: row.quantity_fraction, planned_quantity: row.required, product: { stock: row.stock, unit: row.unit, active: 1 } })) || [];
     let quantityError = '';
+    let plannedQuantity = editor.planned_quantity;
     if (planning && source) {
       rows = rows.filter(row => !row.is_post_processing_only);
       try {
-        const quantity = parseQuantity(editor.planned_quantity, true);
-        const standards = source.snapshot_format === 2 || source.multi_level ? new Map(calculateBomNodes(source.nodes, quantity, source.quantity_decimals ?? 4).rows.map(row => [row.product_id, row.required])) : null;
-        rows = rows.map(row => ({ ...row, planned_quantity: productionItemQuantity(row, quantity, source, standards) }));
+        plannedQuantity = unchangedPlanQuantity ? source.planned_quantity : parseQuantity(editor.planned_quantity, true);
+        if (editor.kind === 'edit' && !unchangedPlanQuantity) plannedQuantity = materialQuantity(plannedQuantity, source);
+        if (!unchangedPlanQuantity) {
+          const standards = source.snapshot_format === 2 || source.multi_level ? new Map(calculateBomNodes(source.nodes, plannedQuantity, source.quantity_decimals ?? 4).rows.map(row => [row.product_id, row.required])) : null;
+          rows = rows.map(row => ({ ...row, planned_quantity: productionItemQuantity(row, plannedQuantity, source, standards) }));
+        }
       } catch (error) { quantityError = error.message; }
     }
     if (editor.kind === 'complete') rows = rows.filter(row => !row.is_post_processing_only).map(row => ({ ...row, ...editor.items.find(item => item.product_id === row.product_id) }));
     const scrapRows = (source?.scraps || []).map(row => {
       let planned_quantity = row.planned_quantity, expected_quantity = null;
       try {
-        if (planning) planned_quantity = scrapExpectedQuantity(row, parseQuantity(editor.planned_quantity, true), source.base_quantity,
-          rows.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity })));
+        if (planning && !unchangedPlanQuantity && !quantityError) planned_quantity = scrapExpectedQuantity(row, plannedQuantity, source.base_quantity,
+          rows.map(item => ({ product_id: item.product_id, quantity: item.planned_quantity })), source.quantity_decimals);
         if (editor.kind === 'complete') expected_quantity = scrapExpectedQuantity(row, parseExactQuantity(editor.completed_quantity, true), source.base_quantity,
           editor.items.map(item => ({ product_id: item.product_id, quantity: parseExactQuantity(item.quantity) })));
       } catch { planned_quantity = null; }
@@ -487,7 +492,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     });
     const name = editor.kind === 'new' ? source?.product.name : detail.product_name, unit = editor.kind === 'new' ? source?.product.unit : detail.unit;
     return <div className="bom-page production-page">{acceptance.dialog}
-      {heading({ new: pt("production.newProductionOrder"), edit: pt("production.editProductionDraft"), complete: pt("production.productionRegistration"), void: pt("production.voidProductionOrder"), void_batch: pt("production.voidCompletionBatch") }[editor.kind], planning ? pt("production.selectARecipeAndPlannedOutputThenSave") : `${detail.number} · ${detail.product_name}`, detail ? pt("production.backToOrderDetails") : pt("production.backToProductionOrders"))}
+      {heading({ new: pt("production.newProductionOrder"), edit: pt("production.editProductionOrder"), complete: pt("production.productionRegistration"), void: pt("production.voidProductionOrder"), void_batch: pt("production.voidCompletionBatch") }[editor.kind], editor.kind === 'new' ? pt("production.selectARecipeAndPlannedOutputThenSave") : `${detail.number} · ${detail.product_name}`, detail ? pt("production.backToOrderDetails") : pt("production.backToProductionOrders"))}
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onSubmitCapture={event => { submitter.current = event.nativeEvent.submitter?.value; }} onFinish={submit}>
         {editor.kind === 'new' && <BomPicker data={listData} disabled={action.busy} onSelect={bom => action.run(() => chooseBom(bom))} />}
         {source && <section className="panel bom-section">
@@ -526,18 +531,18 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           {postTablePicker && <PostProcessingTablePicker data={listData} onSelect={postTable => update({ postTable })} onClose={() => setPostTablePicker(false)} />}
         </PostProcessingPlan>}
         {editor.kind === 'edit' && postProcessingRows.length > 0 && <PostProcessingPlan
-          rows={postProcessingRows} unit={unit} plannedQuantity={editor.planned_quantity} readOnly hint="production.postProcessingSavedSnapshot" />}
+          rows={postProcessingRows} unit={unit} plannedQuantity={plannedQuantity} readOnly hint="production.postProcessingSavedSnapshot" />}
         {source && !correcting && <section className="panel bom-section"><div className="bom-section-heading"><h2>{editor.kind === 'complete' ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}</h2><span className="bom-hint">{planning && `${pt('production.bomPlannedRequirement')} · `}{pt("production.total")} {rows.length} {pt("production.materials2")}</span></div>
           {quantityError && <p className="form-error" role="alert">{productionMessage(quantityError)}</p>}
           {editor.kind === 'complete' && <p className="bom-hint">{pt("production.standardUsageIsCalculatedFromThisOrderS")}</p>}
           {(source.multi_level || source.snapshot_format === 2) && <details className="production-disclosure"><summary>{pt("production.recipeStructure")}</summary>
             <p className="bom-hint">{pt(editor.kind === 'new' ? "production.supplySnapshotHint" : "production.expandedByGrossRequirementsWithoutDeductingIntermediateStock")}</p>
-            <BomStructure nodes={source.nodes} quantity={planning ? editor.planned_quantity : editor.completed_quantity || source.planned_quantity} isSnapshot={source.snapshot_format === 2} />
+            <BomStructure nodes={source.nodes} quantity={planning ? plannedQuantity : editor.completed_quantity || source.planned_quantity} isSnapshot={source.snapshot_format === 2} />
           </details>}
           <Materials rows={rows} issued={!!source.material_workflow && editor.kind === 'complete'} nodes={source.snapshot_format === 2 || source.multi_level ? source.nodes : undefined} completedQuantity={editor.completed_quantity} baseQuantity={source.base_quantity} lossMethod={source.loss_method}
             onReason={(id, variance_reason) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, variance_reason } : item) })} complete={editor.kind === 'complete'} disabled={action.busy}
             onQuantity={(id, quantity) => update({ items: editor.items.map(item => item.product_id === id ? { ...item, quantity } : item) })} />
-          {planning && <PostProcessingPlannedMaterials rows={postProcessingRows} plannedQuantity={editor.planned_quantity} />}
+          {planning && <PostProcessingPlannedMaterials rows={postProcessingRows} plannedQuantity={plannedQuantity} />}
           <p className="bom-hint">{pt("production.quantitiesReadAt")} {time(source.captured_at)}{pt("production.revalidatedOnSubmission")}{source.material_workflow && editor.kind === 'complete' ? pt("production.availableIssuedBalance") : pt("production.stock")}。</p>
         </section>}
         {source && !correcting && scrapRows.length > 0 && <section className="panel bom-section"><ScrapOutputs rows={scrapRows} materials={rows} complete={editor.kind === 'complete'} disabled={action.busy}
@@ -567,6 +572,7 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
       </div>
       <div className="bom-actions production-primary-actions">
         {management && detail.material_workflow === 1 && detail.status === 'draft' && <Button kind="primary" disabled={action.busy} onClick={startProduction}>{pt("production.startProduction")}</Button>}
+        {management && canEditProductionPlan(detail) && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt('production.editProductionOrder')}</Button>}
         {(detail.status === 'in_progress' || !detail.material_workflow && detail.status === 'draft') && <Button kind="primary" icon={Check} disabled={action.busy} onClick={() => beginCompletion()}>{pt("production.register")}</Button>}
         {detail.status === 'awaiting_materials' && <Button kind="primary" onClick={() => setDetailTab('materials')}>{pt('production.viewMaterialRequest')}</Button>}
         {detail.status === 'completed' && detail.pending_receipt_quantity > 0 && <Button kind="primary" onClick={() => setDetailTab('records')}>{pt('production.viewPendingReceipts')}</Button>}
@@ -576,7 +582,6 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     {moreOpen && <Modal title={pt('production.moreActions')} className="production-more-modal" onClose={() => { if (!action.busy) setMoreOpen(false); }}>
       <div className="form-body production-more-actions">
         <div className="production-more-controls">
-          {management && detail.status === 'draft' && !detail.batches?.length && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt("production.editDraft")}</Button>}
           {management && detail.status === 'in_progress' && <>
             <Button disabled={action.busy || !canOpenFinish} onClick={finishOrder}>{pt("production.endProduction")}</Button>
             <PostProcessingFinishNotice state={finishState} />
@@ -642,7 +647,6 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     <section className="panel bom-section production-next-steps" aria-label={pt('production.nextSteps')}>
       <h2>{pt('production.nextSteps')}</h2>
       <p className="production-state-hint">{pt(`production.next_${detail.status}`)}</p>
-      {detail.status === 'draft' && management && <Button disabled={action.busy} onClick={() => begin({ kind: 'edit', planned_quantity: String(detail.planned_quantity), note: detail.note })}>{pt('production.editDraft')}</Button>}
       {detail.status !== 'void' && detail.material_documents?.some(doc => doc.status === 'pending') && <div className="production-task"><span>{pt('production.materialRequestPending')}</span><Button onClick={() => setDetailTab('materials')}>{pt('production.viewMaterialRequest')}</Button></div>}
       {detail.status !== 'void' && detail.pending_receipt_quantity > 0 && <div className="production-task"><span>{pt('production.receiptPendingHint', { quantity: count(detail.pending_receipt_quantity), unit: detail.unit })}</span><Button onClick={() => setDetailTab('records')}>{pt('production.viewPendingReceipts')}</Button></div>}
       {detail.status === 'completed' && detail.material_workflow === 1 && detail.items.some(item => item.available_quantity > 0) && <div className="production-task"><span>{pt('production.unusedMaterialsRemainVerifyAndRequestAReturn')}</span><Button onClick={() => setDetailTab('materials')}>{pt('production.materialsTab')}</Button></div>}

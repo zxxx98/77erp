@@ -62,7 +62,7 @@ async function productionFlow(page, pwa = false) {
     await expect(page.locator('.bom-success')).toContainText('库存未变动');
     await expect(page.getByRole('button', { name: '删除生产单', exact: true })).toHaveCount(0);
     expect(f.inventory()).toEqual(before);
-    await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
+    await page.getByRole('button', { name: '编辑生产单', exact: true }).click();
     await page.getByLabel('计划产量', { exact: true }).fill('12');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
     await expect(page.locator('.production-summary')).toContainText('12 件');
@@ -183,7 +183,7 @@ async function standardLossFlow(page, pwa = false, lossMethod = 'internal') {
     const live = f.db.prepare('SELECT * FROM boms WHERE id=?').get(f.bom.id);
     await f.post(`/boms/${live.id}`, { ...f.definition, version: live.version, loss_method: external ? 'internal' : 'external',
       items: [{ ...f.definition.items[0], quantity: 9, loss_rate: 25 }, f.definition.items[1]] });
-    await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
+    await page.getByRole('button', { name: '编辑生产单', exact: true }).click();
     await page.getByText('查看用量计算规则', { exact: true }).click();
     await expect(page.getByText(`标准损耗计算方式：${methodLabel}`, { exact: false })).toBeVisible();
     await page.getByLabel('计划产量', { exact: true }).fill('6');

@@ -72,20 +72,30 @@ test('start requests whole-order materials; warehouse approval deducts once; reg
 
 test('new orders cannot register before approval; cancellation reopens start, version/retries prevent duplicate posting', async t => {
   const f = await fixture(t), order = await f.create(), initial = f.stock(f.material);
+  const edit = version => f.command(`/production-orders/${order.id}`, { version, planned_quantity: 12, note: '调整计划' });
   assert.equal((await f.complete(order)).status, 409);
   let active = await f.start(order), doc = active.material_documents[0];
   assert.equal((await f.complete(active)).status, 409);
+  assert.equal((await edit(active.version)).status, 409);
   assert.equal((await f.command(`/production-orders/${order.id}/start`, { version: active.version })).status, 409);
   assert.equal((await f.command(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason: '' })).status, 400);
   doc = f.ok(await f.command(`/production-material-documents/${doc.id}/cancel`, { version: doc.version, reason: '重新核对' }));
   assert.equal(doc.status, 'cancelled'); assert.equal((await f.get(order.id)).status, 'draft');
+  assert.equal((await edit(order.version)).status, 409);
+  const edited = f.ok(await edit((await f.get(order.id)).version));
+  assert.equal(edited.planned_quantity, 12);
+  assert.equal(edited.note, '调整计划');
+  assert.deepEqual(edited.items.map(row => row.planned_quantity), [24, 12]);
+  assert.deepEqual(edited.material_documents[0].items.map(row => row.quantity), [20, 10]);
   assert.deepEqual(f.stock(f.material), initial);
-  active = await f.start(await f.get(order.id)); doc = active.material_documents.at(-1);
+  active = await f.start(edited); doc = active.material_documents.at(-1);
+  assert.deepEqual(doc.items.map(row => row.quantity), [24, 12]);
   const body = { version: doc.version, request_id: randomUUID() };
   const result = f.ok(await f.request(`/production-material-documents/${doc.id}/confirm`, body));
   assert.deepEqual(f.ok(await f.request(`/production-material-documents/${doc.id}/confirm`, body)), result);
   assert.equal((await f.command(`/production-material-documents/${doc.id}/confirm`, { version: doc.version })).status, 409);
-  assert.equal(f.stock(f.material).stock, 80);
+  assert.equal((await edit((await f.get(order.id)).version)).status, 409);
+  assert.equal(f.stock(f.material).stock, 76);
 });
 
 test('supplements, finished-order returns and batch reversal conserve the pool cost and never directly return raw stock', async t => {

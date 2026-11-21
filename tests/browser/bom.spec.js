@@ -318,7 +318,7 @@ async function fractionalRecipeFlow(page, pwa = false) {
     await expect(page.getByRole('heading', { name: '新建生产单', exact: true })).toBeVisible();
     await expect(page.locator('.production-material').nth(1)).toContainText('计划用量1 米');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();
-    await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
+    await page.getByRole('button', { name: '编辑生产单', exact: true }).click();
     await page.getByLabel('计划产量', { exact: true }).fill('6');
     await expect(page.locator('.production-material').nth(1)).toContainText('计划用量2 米');
     await page.getByRole('button', { name: '保存生产草稿', exact: true }).click();

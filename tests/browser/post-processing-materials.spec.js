@@ -138,7 +138,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     expect(snapshot.nodes[0].unit_price).toBe(3);
     expect(snapshot.nodes[0].materials[0].quantity).toBe(1);
     expect((await getOrder()).operation_routes[0].product_coefficient).toBe(100);
-    await button('编辑草稿').click();
+    await button('编辑生产单').click();
     await expect(postMaterials).toContainText('预计用量 3 个');
     await label('计划产量').fill('400');
     await expect(postMaterials).toContainText('预计用量 4 个');

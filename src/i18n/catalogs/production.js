@@ -1570,10 +1570,15 @@ export default {
     " request",
     " yêu cầu"
   ],
-  "production.editProductionDraft": [
-    "编辑生产草稿",
-    "Edit production draft",
-    "Sửa nháp sản xuất"
+  "production.editProductionOrder": [
+    "编辑生产单",
+    "Edit production order",
+    "Chỉnh sửa lệnh sản xuất"
+  ],
+  "production.editProductionOrderUnavailable": [
+    "仅未开工、未领料的待生产单可以编辑。",
+    "Only production orders awaiting start and without issued materials can be edited.",
+    "Chỉ có thể chỉnh sửa lệnh đang chờ sản xuất và chưa được cấp vật tư."
   ],
   "production.productionRegistration": [
     "生产登记",
@@ -1894,11 +1899,6 @@ export default {
     "作废原因：",
     "Void reason: ",
     "Lý do hủy: "
-  ],
-  "production.editDraft": [
-    "编辑草稿",
-    "Edit draft",
-    "Sửa nháp"
   ],
   "production.startProduction": [
     "开始生产",
