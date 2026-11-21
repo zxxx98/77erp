@@ -7,11 +7,14 @@
   --text: #111827;
   --text-secondary: #374151;
   --muted: #667085;
+  --text-muted: #667085;
   --text-subtle: #98a2b3;
 
+  --bg: #f5f6f8;
   --background: #f5f6f8;
   --surface: #ffffff;
   --surface-subtle: #f9fafb;
+  --bg-subtle: #f2f4f7;
   --surface-hover: #f2f4f7;
   --surface-sidebar: #fbfbfc;
 
@@ -20,6 +23,7 @@
   --border-subtle: #eef0f3;
 
   --accent: #1d4ed8;
+  --primary: #1d4ed8;
   --accent-hover: #1e40af;
   --accent-light: #eff4ff;
   --accent-border: #c7d7fe;

@@ -17,7 +17,7 @@ export default {
 
   "system.currently.offline.please.log.in.after.connecting.to.the.internet": [
     "当前离线，请联网后登录。",
-    "Currently offline, please log in after connecting to the Internet.",
+    "You're offline. Connect to the internet to sign in.",
     "Hiện đang ngoại tuyến, vui lòng đăng nhập sau khi kết nối Internet."
   ],
   "system.login.has.expired.please.log.in.again": [
@@ -27,7 +27,7 @@ export default {
   ],
   "system.logged.out.local.draft.cleanup.failed.please.check.browser.storage.settings": [
     "已退出登录，本地草稿清理失败，请检查浏览器存储设置。",
-    "Logged out, local draft cleanup failed, please check browser storage settings.",
+    "Signed out, but local drafts could not be cleared. Check your browser storage settings.",
     "Đã đăng xuất, không thể dọn dẹp bản nháp cục bộ, vui lòng kiểm tra cài đặt bộ nhớ của trình duyệt."
   ],
   "system.reconnect": [

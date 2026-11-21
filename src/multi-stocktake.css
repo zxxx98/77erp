@@ -1,20 +1,20 @@
 .business-modal .operation-panel { grid-template-columns: minmax(0, 1fr); }
-.multi-stocktake { min-width: 0; color: var(--text, #17243c); }
-.multi-stocktake-heading h3 { font-size: 20px; font-weight: 500; margin: 4px 0; }
-.multi-stocktake-heading p { margin: 0; color: #647084; font-size: 13px; }
-.multi-stocktake-steps { display: flex; gap: 10px; align-items: center; margin: 24px 0; }
-.operation-panel .multi-stocktake-steps button { border: 0; margin: 0; background: transparent; display: flex; gap: 8px; align-items: center; padding: 4px 0; color: #647084; font: inherit; font-size: 13px; white-space: nowrap; }
-.multi-stocktake-steps button > span { display: grid; place-items: center; border-radius: 50%; width: 26px; height: 26px; border: 1px solid var(--border, #e9ecf1); background: white; font-size: 12px; }
-.operation-panel .multi-stocktake-steps button[aria-current="step"] { color: var(--accent, #2563eb); }
-.multi-stocktake-steps button[aria-current="step"] > span { background: var(--accent, #2563eb); color: white; border-color: var(--accent, #2563eb); }
-.multi-stocktake-steps button.done > span { color: var(--accent, #2563eb); background: #eff5ff; border-color: #eff5ff; }
+.multi-stocktake { min-width: 0; color: var(--text, #111827); }
+.multi-stocktake-heading h3 { font-size: 18px; font-weight: 600; margin: 4px 0; }
+.multi-stocktake-heading p { margin: 0; color: var(--muted, #667085); font-size: 13px; }
+.multi-stocktake-steps { display: flex; gap: 10px; align-items: center; margin: 18px 0; }
+.operation-panel .multi-stocktake-steps button { border: 0; margin: 0; background: transparent; display: flex; gap: 8px; align-items: center; padding: 4px 0; color: var(--muted, #667085); font: inherit; font-size: 13px; white-space: nowrap; }
+.multi-stocktake-steps button > span { display: grid; place-items: center; border-radius: 50%; width: 24px; height: 24px; border: 1px solid var(--border, #e4e7ec); background: white; font-size: 12px; }
+.operation-panel .multi-stocktake-steps button[aria-current="step"] { color: var(--text, #111827); font-weight: 600; }
+.multi-stocktake-steps button[aria-current="step"] > span { background: var(--text, #111827); color: white; border-color: var(--text, #111827); }
+.multi-stocktake-steps button.done > span { color: var(--accent, #1d4ed8); background: var(--accent-light, #eff4ff); border-color: var(--accent-border, #c7d7fe); }
 .multi-stocktake-steps button:disabled { cursor: default; opacity: .5; }
-.multi-stocktake-connector { flex: 1; min-width: 4px; height: 1px; background: var(--border, #e9ecf1); }
-.multi-stocktake-stage { padding: 22px; border: 1px solid var(--border, #e9ecf1); border-radius: 12px; background: white; min-width: 0; }
-.multi-stocktake-stage h4 { font-size: 15px; font-weight: 500; margin: 0; }
-.multi-stocktake-warehouses { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 20px 0 0; }
-.operation-panel .multi-stocktake-warehouse { display: flex; align-items: flex-start; align-self: stretch; width: auto; max-width: none; gap: 11px; padding: 16px 14px; margin: 0; border: 1px solid var(--border, #e9ecf1); border-radius: 9px; color: var(--text, #17243c); }
-.multi-stocktake-warehouse.selected { border-color: var(--accent, #2563eb); background: #eff5ff; }
+.multi-stocktake-connector { flex: 1; min-width: 4px; height: 1px; background: var(--border, #e4e7ec); }
+.multi-stocktake-stage { padding: 18px; border: 1px solid var(--border, #e4e7ec); border-radius: 8px; background: white; min-width: 0; }
+.multi-stocktake-stage h4 { font-size: 14.5px; font-weight: 600; margin: 0; }
+.multi-stocktake-warehouses { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 16px 0 0; }
+.operation-panel .multi-stocktake-warehouse { display: flex; align-items: flex-start; align-self: stretch; width: auto; max-width: none; gap: 11px; padding: 14px; margin: 0; border: 1px solid var(--border, #e4e7ec); border-radius: 8px; color: var(--text, #111827); }
+.multi-stocktake-warehouse.selected { border-color: var(--accent-border, #c7d7fe); background: var(--accent-light, #eff4ff); }
 :where(.operation-panel .multi-stocktake-warehouse > input) { margin: 3px 0 0; }
 .operation-panel .multi-stocktake-warehouse > span { color: inherit; font-size: 13px; min-width: 0; }
 .multi-stocktake-warehouse strong { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-weight: 500; overflow-wrap: anywhere; }

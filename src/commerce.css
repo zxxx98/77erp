@@ -23,7 +23,7 @@
 .template-card-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .template-type { border-radius: 5px; padding: 4px 7px; font-size: 11px; line-height: 1.4; font-weight: 500; }
 .template-type-in { color: #16816b; background: #eaf7f2; }
-.template-type-out { color: #2563eb; background: var(--accent-light); }
+.template-type-out { color: var(--accent, #1d4ed8); background: var(--accent-light, #eff4ff); }
 .template-number { color: #94a0b1; font-size: 12px; font-variant-numeric: tabular-nums; }
 .template-active { margin-left: auto; font-size: 11px; color: var(--accent); }
 .template-card h4 { margin: 12px 0 9px; color: #304563; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }

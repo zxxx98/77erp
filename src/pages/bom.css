@@ -1,9 +1,9 @@
 .bom-page { min-width: 0; }
-.bom-section { padding: 24px; margin-bottom: 20px; min-width: 0; }
-.bom-section h2 { font-size: 16px; margin: 0 0 16px; }
-.bom-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 16px; }
+.bom-section { padding: 20px; margin-bottom: 16px; min-width: 0; }
+.bom-section h2 { font-size: 15px; font-weight: 600; color: var(--text, #111827); margin: 0 0 14px; }
+.bom-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
 .bom-section-heading h2 { margin-bottom: 0; }
-.bom-hint, .bom-page small { color: #647084; font-size: 12px; line-height: 1.65; }
+.bom-hint, .bom-page small { color: var(--muted, #667085); font-size: 12px; line-height: 1.6; }
 .bom-page small { display: block; overflow-wrap: anywhere; }
 .bom-page strong { overflow-wrap: anywhere; }
 .bom-hint { margin: 12px 0; }
@@ -18,13 +18,13 @@
 .bom-note { margin-top: 20px; }
 .bom-loss-method { max-width: 320px; }
 .bom-loss-method .dropdown { width: 100%; min-width: 0; }
-.bom-selected-product { padding: 12px 14px; background: #eff5ff; border-radius: 8px; margin-bottom: 14px; }
+.bom-selected-product { padding: 10px 14px; background: var(--surface-subtle, #f9fafb); border: 1px solid var(--border, #e4e7ec); border-radius: 6px; margin-bottom: 14px; }
 .bom-search-row, .bom-actions, .bom-list-filters, .bom-calculate-form, .bom-editor-actions, .bom-filter-product { display: flex; align-items: center; gap: 10px; }
 :where(.bom-search-row > input) { flex: 1; }
 :where(.bom-search-row > .btn) { flex-shrink: 0; }
 .bom-picker { margin: 16px 0; }
-.bom-search-results { margin-top: 10px; border: 1px solid #e9ecf1; border-radius: 9px; padding: 0 14px; }
-.bom-search-product { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e9ecf1; }
+.bom-search-results { margin-top: 10px; border: 1px solid var(--border, #e4e7ec); border-radius: 8px; padding: 0 14px; }
+.bom-search-product { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle, #eef0f3); }
 .bom-search-product > div { min-width: 0; }
 :where(.bom-search-product > .btn) { flex-shrink: 0; }
 .bom-search-results > .bom-actions { padding: 12px 0; }
@@ -42,7 +42,7 @@
 .bom-warning, .bom-shortage { color: #b45309; }
 .bom-warning { font-size: 12px; display: block; margin-top: 5px; }
 .bom-error { padding: 0 2px 14px; }
-.bom-editor-actions { justify-content: flex-end; flex-wrap: wrap; padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; z-index: 20; background: #f7f8fa; border-top: 1px solid #e9ecf1; }
+.bom-editor-actions { justify-content: flex-end; flex-wrap: wrap; padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; z-index: 20; background: var(--background, #f5f6f8); border-top: 1px solid var(--border, #e4e7ec); }
 .mobile-device .bom-editor-actions { bottom: calc(68px + env(safe-area-inset-bottom)); padding-bottom: 12px; }
 .bom-selected-product { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .bom-more-actions { display: flex; flex-direction: column; gap: 12px; }
@@ -80,8 +80,8 @@
 .bom-result-actions { justify-content: flex-end; }
 .bom-result-table { width: 100%; overflow-x: auto; }
 .bom-result-table table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 13px; }
-.bom-result-table th { background: #f7f8fa; color: #647084; font-weight: 500; }
-.bom-result-table td, .bom-result-table th { padding: 14px 12px; text-align: right; border-bottom: 1px solid #e9ecf1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bom-result-table th { background: var(--surface-subtle, #f9fafb); color: var(--muted, #667085); font-weight: 500; font-size: 12px; }
+.bom-result-table td, .bom-result-table th { padding: 11px 12px; text-align: right; border-bottom: 1px solid var(--border-subtle, #eef0f3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bom-result-table td:first-child, .bom-result-table th:first-child, .bom-result-table td:last-child, .bom-result-table th:last-child { text-align: left; white-space: normal; min-width: 160px; overflow-wrap: anywhere; }
 @media (max-width: 1100px) {
   .bom-list-item { align-items: flex-start; flex-direction: column; gap: 16px; }

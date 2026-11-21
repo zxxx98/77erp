@@ -70,12 +70,12 @@ export function PayrollDailyChart({ daily, currencies, startDate, endDate }) {
         <svg viewBox={`0 0 ${width} ${height}`} style={{ minWidth: scrollable ? width : undefined }} role="group" aria-label={`${t('payroll.daily')} · ${currency}`}>
           <defs>
             <linearGradient id={barGradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#60a5fa" />
-              <stop offset="100%" stopColor="#3b82f6" />
+              <stop offset="0%" stopColor="#64748b" />
+              <stop offset="100%" stopColor="#475569" />
             </linearGradient>
             <linearGradient id={activeGradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#2563eb" />
-              <stop offset="100%" stopColor="#1d4ed8" />
+              <stop offset="0%" stopColor="#1d4ed8" />
+              <stop offset="100%" stopColor="#1e40af" />
             </linearGradient>
           </defs>
           {Array.from({ length: 5 }, (_, i) => ceiling * i / 4).map(value => <g key={value} aria-hidden="true">

@@ -56,17 +56,17 @@ export default {
   ],
   "warehouse.statistics.by.purchase.cost": [
     "按采购成本统计",
-    "Statistics by purchase cost",
+    "Valued at purchase cost",
     "Thống kê theo chi phí mua hàng"
   ],
   "warehouse.today.s.purchase": [
     "今日采购",
-    "Today's purchase",
+    "Today's purchases",
     "Mua hàng ngày hôm nay"
   ],
   "warehouse.stock.in.documents": [
     "笔入库",
-    "stock-in documents",
+    "stock-in orders",
     "phiếu nhập kho"
   ],
   "warehouse.completed": [
@@ -81,7 +81,7 @@ export default {
   ],
   "warehouse.stock.out.documents": [
     "笔出库",
-    "stock-out documents",
+    "stock-out orders",
     "phiếu xuất kho"
   ],
   "warehouse.dashboard": [
@@ -91,7 +91,7 @@ export default {
   ],
   "warehouse.overview.of.materials.inventory.and.today.s.incoming.and.outgoing.data": [
     "物料、库存及今日入出库数据概览。",
-    "Overview of materials, stock and today’s stock movements.",
+    "Overview of materials, inventory, and today's stock movements.",
     "Tổng quan vật tư, tồn kho và xuất nhập kho hôm nay."
   ],
   "warehouse.new.stock.in": [
@@ -101,12 +101,12 @@ export default {
   ],
   "warehouse.purchasing.and.sales.trends": [
     "采购与销售趋势",
-    "Purchasing and Sales Trends",
+    "Purchase & sales trend",
     "Xu hướng mua hàng và bán hàng"
   ],
   "warehouse.statistics.of.purchase.and.sales.amounts.by.date": [
     "按日期统计采购与销售金额",
-    "Purchase and sales amounts by date",
+    "Daily purchase and sales totals",
     "Giá trị mua và bán theo ngày"
   ],
   "warehouse.last.7.days": [
@@ -121,12 +121,12 @@ export default {
   ],
   "warehouse.sales.during.the.period": [
     "期间销售额",
-    "Sales during the period",
+    "Period sales",
     "Doanh số bán hàng trong kỳ"
   ],
   "warehouse.quick.operation": [
     "快捷操作",
-    "Quick operation",
+    "Quick actions",
     "Thao tác nhanh"
   ],
   "warehouse.scan.code.with.mobile.phone": [

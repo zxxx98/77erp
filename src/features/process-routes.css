@@ -6,9 +6,10 @@
   align-items: center;
   height: 22px;
   padding: 0 8px;
-  border-radius: 6px;
-  background: #f1f5f9;
-  color: #475569;
+  border-radius: 4px;
+  background: var(--surface-subtle, #f9fafb);
+  border: 1px solid var(--border, #e4e7ec);
+  color: var(--text-secondary, #374151);
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -19,12 +20,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 26px;
+  min-width: 24px;
   height: 22px;
   padding: 0 6px;
-  border-radius: 6px;
-  background: var(--accent-light, #eff5ff);
-  color: var(--accent, #2563eb);
+  border-radius: 4px;
+  background: var(--surface-hover, #f2f4f7);
+  border: 1px solid var(--border, #e4e7ec);
+  color: var(--text, #111827);
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -37,9 +39,9 @@
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px 12px;
-  border-radius: 9px;
-  background: #f8fafc;
-  border: 1px solid #edf1f7;
+  border-radius: 6px;
+  background: var(--surface-subtle, #f9fafb);
+  border: 1px solid var(--border, #e4e7ec);
   min-width: 0;
 }
 .process-flow-step-wrap {
@@ -50,7 +52,7 @@
   max-width: 100%;
 }
 .process-flow-arrow {
-  color: #94a3b8;
+  color: var(--text-subtle, #98a2b3);
   flex-shrink: 0;
 }
 .process-flow-pill {
@@ -58,17 +60,17 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px 4px 6px;
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--surface, #fff);
-  border: 1px solid var(--border, #e9ecf1);
+  border: 1px solid var(--border, #e4e7ec);
   font-size: 12px;
-  color: #1e293b;
+  color: var(--text, #111827);
   min-width: 0;
   max-width: 100%;
 }
 .process-flow-pill.is-output {
-  border-color: #bfdbfe;
-  background: #f5f9ff;
+  border-color: var(--accent-border, #c7d7fe);
+  background: var(--accent-light, #eff4ff);
 }
 .process-flow-index {
   display: inline-flex;
@@ -76,9 +78,9 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: 5px;
-  background: #f1f5f9;
-  color: #475569;
+  border-radius: 4px;
+  background: var(--surface-hover, #f2f4f7);
+  color: var(--text-secondary, #374151);
   font-style: normal;
   font-size: 11px;
   font-weight: 600;
@@ -86,7 +88,7 @@
   flex-shrink: 0;
 }
 .process-flow-pill.is-output .process-flow-index {
-  background: var(--accent, #2563eb);
+  background: var(--accent, #1d4ed8);
   color: #fff;
 }
 .process-flow-name {
@@ -100,26 +102,28 @@
   display: inline-block !important;
   padding: 1px 6px;
   border-radius: 4px;
-  background: #eff5ff;
-  color: var(--accent, #2563eb);
+  background: var(--surface-subtle, #f9fafb);
+  border: 1px solid var(--border, #e4e7ec);
+  color: var(--text, #111827);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .process-flow-tag {
   font-style: normal;
   font-size: 11px;
-  color: var(--accent, #2563eb);
-  background: #e0ecff;
+  color: var(--accent, #1d4ed8);
+  background: var(--accent-light, #eff4ff);
+  border: 1px solid var(--accent-border, #c7d7fe);
   padding: 1px 6px;
   border-radius: 4px;
   white-space: nowrap;
 }
 .process-flow-more {
   font-size: 12px;
-  color: #647084;
+  color: var(--muted, #667085);
   padding: 2px 8px;
-  border-radius: 6px;
-  background: #eef2f6;
+  border-radius: 4px;
+  background: var(--surface-hover, #f2f4f7);
 }
 
 .process-price-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
