@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exactAdd, exactSubtract, exactMultiply, exactDivide, exactCompare, exactCeil, exactQuantity, quantityFields, parseExactQuantity, quantityInput } from '../shared/exact-quantity.js';
+import { exactAdd, exactSubtract, exactMultiply, exactDivide, exactCompare, exactCeil, exactQuantity, quantityFields, parseExactQuantity, quantityInput, registrationQuantityInput } from '../shared/exact-quantity.js';
 
 test('fraction batches and partial consumption conserve exact quantities', () => {
   assert.equal(exactAdd(exactAdd('1/3', '1/3'), '1/3'), 1);
@@ -41,4 +41,9 @@ test('calculated fractions fill inputs with equivalent decimal numerators where 
   assert.equal(quantityInput('2430729/125000000'), '0.0195');
   assert.equal(quantityInput('270081/125000000'), '0.0022');
   assert.equal(parseExactQuantity(quantityInput('2430729/125000000')), 0.0195);
+});
+
+test('registration input rounds decimal and fractional defaults half up', () => {
+  for (const [value, expected] of [[2968.30534, '2968.3053'], ['14841.5267/5', '2968.3053'], ['1/3', '0.3333'], ['2/3', '0.6667'], [0.00005, '0.0001'], [0, '0']])
+    assert.equal(registrationQuantityInput(value), expected);
 });

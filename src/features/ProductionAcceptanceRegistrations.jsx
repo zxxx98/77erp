@@ -6,8 +6,15 @@ import { useBusiness } from '../business-api.js';
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
-import { formatExactQuantity } from '../../shared/exact-quantity.js';
+import { productionUsesFraction } from '../../shared/production.js';
+import { formatExactQuantity, registrationQuantityInput } from '../../shared/exact-quantity.js';
 import './production-registration.css';
+
+function registrationInputValue(order, item) {
+  const node = order.nodes?.find(node => node.path === item.path);
+  const fraction = node ? node.quantity_fraction : !order.stage_workflow && (order.items || []).some(row => (item.product_id != null ? row.product_id === item.product_id : row.name === item.name) && productionUsesFraction(order, row));
+  return fraction ? String(item.quantity) : registrationQuantityInput(item.quantity);
+}
 
 export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendingOnly=false}) {
   useLocale();
@@ -27,7 +34,7 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
     await onSaved(result,t(kind==='approve'?(row.kind==='settlement'?'production.registration.settled':'route.registrationPassed'):'route.registrationCancelled'));
   });
   const saveInputs=()=>action.run(async()=>{
-    const items=editing.items.map(item=>({...item,quantity:item.quantity.includes('/')?item.quantity:item.quantity.trim()===''?null:Number(item.quantity)}));
+    const items=editing.items.map(item=>({quantity:item.quantity === item.initialQuantity ? item.originalQuantity : item.quantity.includes('/')?item.quantity:item.quantity.trim()===''?null:Number(item.quantity),variance_reason:item.variance_reason}));
     const result=await action.send(`/production-orders/${order.id}/operations/registrations/${editing.id}/inputs`,{schema_version:2,stage_schema_version:1,operation_schema_version:1,version:editing.version,items},{warehouseId:data.warehouse_id});
     setEditing(null);
     await onSaved(result,t('production.registration.inputsSaved'));
@@ -64,7 +71,7 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
         </div>
         {row.status==='pending'&&order.status!=='void'&&<div className="process-history-action bom-actions">
           {(row.kind==='settlement'||row.acceptance_id!=null?can('production'):can('operation_accept'))&&<Button kind="primary" disabled={action.busy} onClick={()=>resolve(row,'approve')}>{t(row.kind==='settlement'||row.acceptance_id!=null?'production.registration.reconcile':'route.inspectRegistration')}</Button>}
-          {can('production')&&row.editable_inputs?.length>0&&<Button disabled={action.busy||editing?.id===row.id} onClick={()=>setEditing({id:row.id,version:order.version,items:row.editable_inputs.map(item=>({quantity:String(item.quantity),variance_reason:item.variance_reason}))})}>{t('production.registration.editInputs')}</Button>}
+          {can('production')&&row.editable_inputs?.length>0&&<Button disabled={action.busy||editing?.id===row.id} onClick={()=>setEditing({id:row.id,version:order.version,items:row.editable_inputs.map(item=>({quantity:registrationInputValue(order,item),initialQuantity:registrationInputValue(order,item),originalQuantity:item.quantity,variance_reason:item.variance_reason}))})}>{t('production.registration.editInputs')}</Button>}
           {(row.registered_by===user.id||can('production')||can('operation_accept'))&&<Button disabled={action.busy} onClick={()=>resolve(row,'cancel')}>{t('route.cancelRegistration')}</Button>}
         </div>}
       </article>;

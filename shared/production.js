@@ -6,6 +6,23 @@ import { productionFlowView } from './production-flow.js';
 import { pooledProductionStages, productionPoolPathMap } from './production-pools.js';
 import { stageInputCanBeZero } from './production-stages.js';
 
+// A material in an exploded BOM inherits fractional quantities from its ancestors.
+export function productionUsesFraction(order, item) {
+  if (item.base_quantity_fraction) return true;
+  const nodes = order.nodes || [];
+  const byPath = new Map(nodes.map(node => [node.path, node]));
+  return nodes.some(node => {
+    if (node.product_id !== item.product_id || node.usage_mode !== 'stock') return false;
+    const visited = new Set();
+    while (node && !visited.has(node.path)) {
+      if (node.quantity_fraction) return true;
+      visited.add(node.path);
+      node = byPath.get(node.parent_path);
+    }
+    return false;
+  });
+}
+
 export function productionActualDefault(item, quantity, order) {
   if (item.base_quantity === 0) return 0;
   if (order.snapshot_format !== 2 && !order.multi_level)

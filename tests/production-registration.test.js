@@ -41,7 +41,7 @@ test('operation names expand through route, BOM and layer without mixing identic
   assert.equal(branched.find(row => row.path === '7.2.2.1').context, '103绞铜工艺图 · 绞铜 BOM · 芯线 白色');
 });
 
-test('layers without routes retain exact fractional usage until order settlement', () => {
+test('layers without routes retain BOM fractional usage', () => {
   const item = { path: '1.1', product_id: 3, quantity: 0.3334, quantity_fraction: '1/3', bom_base_quantity: 1, loss_rate: 0, loss_method: 'internal', unit_round_up: 1 };
   const order = { stage_workflow: 1, stages: [{ path: '1', name: '半成品', unit: '件', bom_name: '半成品配方', items: [item] }], scraps: [{ product_id: 9, method: 'output', quantity: 1 }] };
   const [target] = registrationTargets(order);
@@ -121,4 +121,10 @@ test('finish requires completed output and reports every outstanding post-proces
   order.operation_routes = [postRoute('@post:1', '包装', 6, 6), postRoute('@post:2', '贴标', 6, 6)];
   assert.equal(registration.postProcessingFinishState(order).blocked, false);
   assert.equal(registration.postProcessingFinishState({ output_completed: false }).blocked, false);
+});
+
+test('registration rounds calculated PVC consumption to four decimal places', () => {
+  const item = { path: '4.1', product_id: 54, quantity: 0.0413, bom_base_quantity: 1, loss_rate: 0.1, loss_method: 'external', usage_mode: 'stock' };
+  const target = { output: true, path: '4', layer: { items: [item] } };
+  assert.equal(registrationDefaults({ stage_workflow: 1, items: [] }, target, 71800).items[0].quantity, '2968.3053');
 });

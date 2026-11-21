@@ -106,6 +106,14 @@ export function formatExactQuantity(value, locale) {
   return Number(value ?? 0).toLocaleString(locale, { maximumFractionDigits: 6 });
 }
 
+// Registration defaults use ordinary four-decimal quantities, rounded half up.
+export function registrationQuantityInput(value) {
+  const [numerator, denominator] = exactRatio(value);
+  const scaled = (numerator * 10000n * 2n + denominator) / (denominator * 2n);
+  const digits = (scaled % 10000n).toString().padStart(4, '0').replace(/0+$/, '');
+  return `${scaled / 10000n}${digits ? `.${digits}` : ''}`;
+}
+
 export function quantityInput(value) {
   if (validQuantity(value)) return String(value);
   if (typeof value === 'string') {

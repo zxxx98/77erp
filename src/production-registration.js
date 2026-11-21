@@ -1,10 +1,10 @@
 import { calculateBomNodes } from '../shared/bom-expansion.js';
-import { productionItemQuantity, productionActualDefault } from '../shared/production.js';
+import { productionItemQuantity, productionActualDefault, productionUsesFraction } from '../shared/production.js';
 import { stageInputDefaults } from '../shared/production-stages.js';
 import { pooledProductionStages } from '../shared/production-pools.js';
 import { t } from './i18n/index.js';
 import { scrapExpectedQuantity } from '../shared/scrap.js';
-import { quantityInput } from '../shared/exact-quantity.js';
+import { quantityInput, registrationQuantityInput } from '../shared/exact-quantity.js';
 import { postProcessingUnit } from '../shared/post-processing.js';
 
 export function postProcessingFinishState(order) {
@@ -89,7 +89,7 @@ export function registrationDefaults(order, target, quantity) {
       const source = target.layer.items.find(item => item.path === row.path);
       return source.is_supplemental_input && postOnly.has(source.product_id) ? [] : [{ ...row, product_id: source.product_id }];
     })
-    : target.layer.items.filter(item => !postOnly.has(item.product_id)).map(item => ({ product_id: item.product_id, quantity: quantityInput(productionActualDefault(item, quantity, order)), variance_reason: '' }));
+    : target.layer.items.filter(item => !postOnly.has(item.product_id)).map(item => ({ product_id: item.product_id, quantity: (productionUsesFraction(order, item) ? quantityInput : registrationQuantityInput)(productionActualDefault(item, quantity, order)), variance_reason: '' }));
   const scraps = target.path ? [] : (order.scraps || []).map(row => ({ product_id: row.product_id,
     quantity: quantityInput(scrapExpectedQuantity(row, quantity, order.base_quantity,
       items.map(item => ({ product_id: item.product_id, quantity: item.quantity })), order.quantity_decimals)), disposition: 'stock' }));

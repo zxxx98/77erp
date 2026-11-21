@@ -1,7 +1,7 @@
 import { bomRequiredQuantity } from './bom.js';
 import { materialQuantity } from './quantity.js';
 import { calculateBomNodes, supplyFraction } from './bom-expansion.js';
-import { exactBomQuantity, exactMultiply, exactQuantity, exactMin, exactMax, exactSubtract, exactAdd, quantityInput, exactNumber } from './exact-quantity.js';
+import { exactBomQuantity, exactMultiply, exactQuantity, exactMin, exactMax, exactSubtract, exactAdd, exactNumber, quantityInput, registrationQuantityInput } from './exact-quantity.js';
 
 export function stageExactStandardQuantity(item, outputQuantity) {
   if (item.is_supplemental_input) return 0;
@@ -71,5 +71,5 @@ export function stageInputDefaults(items, quantity) {
     replacement.quantity = exactAdd(replacement.quantity, replace);
     remaining.set(item.product_id, exactMax(0, exactSubtract(available, replace)));
   }
-  return rows.map(row => ({ ...row, quantity: quantityInput(row.quantity) }));
+  return rows.map(row => ({ ...row, quantity: (items.find(item => item.path === row.path)?.quantity_fraction ? quantityInput : registrationQuantityInput)(row.quantity) }));
 }
