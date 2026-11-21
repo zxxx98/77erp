@@ -349,10 +349,10 @@ export function installProduction(app, db, options = {}) {
         if (path.startsWith('/api/production-orders')) {
           const read = ['GET','HEAD'].includes(req.method) && /^\/api\/production-orders(?:\/\d+(?:\/stages\/batches|\/operation-workers|\/operations\/(?:reports|acceptance-template|acceptances\/\d+))?)?$/.test(path);
           const operationReport = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/report$/.test(path);
-          const acceptanceAction = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/registrations\/\d+\/(?:approve|cancel)$/.test(path);
+          const registrationAction = req.method === 'POST' && /^\/api\/production-orders\/\d+\/operations\/registrations\/\d+\/(?:approve|cancel|inputs)$/.test(path);
           const register = operationReport || req.method === 'POST' && /^\/api\/production-orders\/\d+\/(?:stages\/)?complete$/.test(path);
           if (!hasPermission(req.user, 'production')) {
-            if (!isGroupProductionWorker(req.user) || (!read && !register && !acceptanceAction && !operationPrices && !syncPrices)) fail('需要生产管理权限。', 403);
+            if (!isGroupProductionWorker(req.user) || (!read && !register && !registrationAction && !operationPrices && !syncPrices)) fail('需要生产管理权限。', 403);
             if (req.params.id) {
               const order = db.prepare('SELECT * FROM production_orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id), req.warehouse.id);
               if (!order) fail('生产单不存在或不属于当前仓库。', 404);
@@ -579,9 +579,8 @@ export function installProduction(app, db, options = {}) {
     return {...current(req),settlement_errors};
   },true));
   app.post('/api/production-orders/:id/operations/registrations/:registrationId/inputs',route(req=>{
-    if(!hasPermission(req.user,'production')) fail('需要生产管理权限。',403);
     const order=current(req); version(req,order); const row=registrationRow(req);
-    if(row.status!=='pending'||row.kind!=='settlement'||row.endpoint==='operations/report') fail('只能调整待结算产出登记的用料。',409);
+    if(order.status==='void'||row.status!=='pending'||row.kind!=='settlement'||row.endpoint==='operations/report') fail('只能调整待结算产出登记的用料。',409);
     const body=JSON.parse(row.body);
     const parts=body.auto_overflow&&row.endpoint==='stages/complete'?body.allocations:[body];
     const entries=parts.flatMap(part=>part.items||[]);
@@ -601,7 +600,9 @@ export function installProduction(app, db, options = {}) {
     db.prepare('UPDATE production_operation_registrations SET body=? WHERE id=?').run(JSON.stringify(body),row.id);
     db.prepare('UPDATE production_orders SET updated_at=?,updated_by_name=? WHERE id=?').run(new Date().toISOString(),actor(req),order.id);
     return current(req);
-  },true));
+  },true,req=>{
+    if(!hasPermission(req.user,'production_registration_edit')) fail('需要编辑员工登记信息权限。',403);
+  }));
   app.post('/api/production-orders/:id/operations/registrations/:registrationId/cancel',route(req=>{
     const order=current(req);version(req,order);const row=registrationRow(req);
     if(row.registered_by!==req.user.id&&!hasPermission(req.user,'production')&&!hasPermission(req.user,'operation_accept')) fail('仅登记人或有权限的人员可以取消登记。',403);

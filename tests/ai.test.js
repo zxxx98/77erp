@@ -1731,6 +1731,7 @@ test('production AI exposes real pending deficits and their original snapshot wi
   assert.ok(!/cost|inventory_value|price/.test(JSON.stringify(result)));
   assert.match(f.calls.at(-1).body.tools.find(tool=>tool.function.name==='get_production_order').function.description,/missing_quantity/);
   assert.match(f.calls.at(-1).body.messages[0].content,/所有待处理登记解决前不能结束生产/);
+  assert.match(f.calls.at(-1).body.messages[0].content,/编辑员工登记信息权限.*待结算产出登记的用料和差异原因/);
   assert.ok(!f.calls.at(-1).body.tools.some(tool=>/settle|reconcile/.test(tool.function.name)));
   assert.deepEqual(f.db.prepare('SELECT * FROM products ORDER BY id').all(),before);
 });

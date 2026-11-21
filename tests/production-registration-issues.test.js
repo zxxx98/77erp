@@ -40,6 +40,44 @@ test('pending self-made input shows exact warehouse stock separately from settle
   assert.equal(input.issued_available, 0);
 });
 
+test('editing employee registrations requires a separate grant and respects production order scope on retries', async t => {
+  const f = await productionIssuesFixture(t);
+  const group = f.ok(await f.command('/production-groups', { name: '登记复核组' }));
+  const groupPermissions = ['production_register', 'production_registration_edit'];
+  const editor = f.ok(await f.command('/positions', { name: '登记复核员', access_mode: 'production_only', permissions: groupPermissions }));
+  const manager = f.ok(await f.command('/positions', { name: '生产主管', permissions: ['production'] }));
+  const login = async (username, position_id, production_group_id = null) => {
+    const password = 'Worker-test-123';
+    f.ok(await f.command('/users', { username, employee_no: username, password, position_id, production_group_id }));
+    return (await f.request('/auth/login', { username, password }, { cookie: '' })).cookie;
+  };
+  const groupCookie = await login('reviewworker', editor.id, group.id);
+  const managerCookie = await login('reviewmanager', manager.id);
+  let order = f.ok(await f.complete(f.order, 12, [[f.raw, 24], [f.other, 12]]));
+  const original = pending(order)[0];
+  const endpoint = `/production-orders/${order.id}/operations/registrations/${original.id}/inputs`;
+  const items = [{ quantity: 20, variance_reason: '复核原料' }, { quantity: 10, variance_reason: '复核辅料' }];
+  const denied = await f.command(endpoint, { version: order.version, items }, { cookie: managerCookie });
+  assert.equal(denied.status, 403);
+  assert.match(denied.data.error, /编辑员工登记信息权限/);
+  assert.equal((await f.command(endpoint, { version: order.version, items }, { cookie: groupCookie })).status, 404);
+
+  order = f.ok(await f.command(`/production-orders/${order.id}/assign`, { version: order.version, production_group_ids: [group.id] }));
+  const body = { request_id: randomUUID(), schema_version: 2, version: order.version, items };
+  const edited = f.ok(await f.request(endpoint, body, { cookie: groupCookie }));
+  const revised = pending(edited)[0];
+  assert.equal(revised.registered_by, original.registered_by);
+  assert.equal(revised.input_adjustments[0].by, 'reviewworker');
+  assert.equal(revised.editable_inputs[0].stock, undefined);
+  assert.deepEqual(f.ok(await f.request(endpoint, body, { cookie: groupCookie })), edited);
+  assert.equal((await f.command(`/production-orders/${order.id}/operations/registrations/${original.id}/approve`,
+    { version: edited.version }, { cookie: groupCookie })).status, 403);
+  f.ok(await f.request(`/positions/${editor.id}`, { ...editor, permissions: ['production_register'] }, { method: 'PUT' }));
+  assert.equal((await f.request(endpoint, body, { cookie: groupCookie })).status, 403);
+  assert.equal(f.ok(await f.command(`/production-orders/${order.id}/operations/registrations/${original.id}/approve`,
+    { version: edited.version }, { cookie: managerCookie })).pending_registration_count, 0);
+});
+
 test('material shortages are recorded cumulatively without posting stock, costs, output or receipts', async t => {
   const f = await productionIssuesFixture(t); let o = f.order;
   o = f.ok(await f.complete(o, 12, [[f.raw, 24], [f.other, 12]]));

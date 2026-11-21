@@ -14,15 +14,16 @@ export const permissionOptions = [
   { key: 'production', label: '生产管理', description: '查看全部生产单、派单、生产草稿、领料补料退料申请、分批登记及结束生产' },
   { key: 'operation_accept', label: '工序验收', description: '填写绑定工序的验收单并确认放行，仍需相应生产单登记权限' },
   { key: 'production_register', label: '本组生产登记', description: '仅查看派给所属生产组或本人的生产单，并登记产量和耗料' },
+  { key: 'production_registration_edit', label: '编辑员工登记信息', description: '调整有权查看的生产单中待结算产出登记的用料和差异原因' },
   { key: 'finance', label: '财务管理', description: '收付款、欠款、库存成本及毛利报表' },
   { key: 'data_io', label: '数据导入导出', description: '物料批量导入及单据 CSV 导出' },
 ];
 export const permissionKeys = permissionOptions.map(option => option.key);
 export const legacyPermissions = ['products', 'purchase', 'sale', 'data_io'];
-// Grants are additive. Restricted positions contribute registration and acceptance; legacy
-// grants retain their old rules even when combined with standard positions.
+export const productionOnlyPermissions = ['production_register', 'operation_accept', 'production_registration_edit'];
+// Grants are additive. Legacy grants retain their rules alongside standard positions.
 export function combinePositionAuthorization(positions) {
-  const grants = position => position.access_mode === 'production_only' ? position.permissions.filter(key => ['production_register','operation_accept'].includes(key)) : position.permissions;
+  const grants = position => position.access_mode === 'production_only' ? position.permissions.filter(key => productionOnlyPermissions.includes(key)) : position.permissions;
   return {
     permissions: permissionKeys.filter(key => positions.some(position => grants(position).includes(key))),
     standard_permissions: permissionKeys.filter(key => positions.some(position => !position.legacy_permissions && grants(position).includes(key))),
@@ -31,7 +32,7 @@ export function combinePositionAuthorization(positions) {
   };
 }
 export function hasPermission(user, key) {
-  return user?.role === 'admin' || ((!isProductionOnly(user) || ['production_register','operation_accept'].includes(key)) && !!user?.permissions?.includes(key));
+  return user?.role === 'admin' || ((!isProductionOnly(user) || productionOnlyPermissions.includes(key)) && !!user?.permissions?.includes(key));
 }
 export function isProductionOnly(user) { return user?.role !== 'admin' && user?.access_mode === 'production_only'; }
 export function canViewProduction(user) { return hasPermission(user, 'production') || hasPermission(user, 'production_register'); }
@@ -43,9 +44,9 @@ export function canManageTemplates(user) {
   return hasPermission(user, 'business') || !!user?.legacy_permissions;
 }
 
-// Positions limited to group registration and acceptance use the isolated workspace.
+// Positions limited to group production use the isolated workspace.
 export function usesProductionWorkspace(user) {
-  return isProductionOnly(user) || (user?.role !== 'admin' && user?.permissions?.includes('production_register') && user.permissions.every(key => ['production_register','operation_accept'].includes(key)));
+  return isProductionOnly(user) || (user?.role !== 'admin' && user?.permissions?.includes('production_register') && user.permissions.every(key => productionOnlyPermissions.includes(key)));
 }
 
 export function canViewStock(user, type) { return hasPermission(user,'basic_view') || hasPermission(user,'stock_approve') || hasPermission(user,type === 'in' ? 'purchase' : 'sale'); }

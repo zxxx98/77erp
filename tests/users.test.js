@@ -291,7 +291,7 @@ const routeRoles = new Map(Object.entries({
   'post /api/post-processing-tables/:id/status': 'bom', 'post /api/post-processing-tables/:id/delete': 'bom',
   'get /api/production-orders/:id/operation-workers': 'production', 'get /api/production-orders/:id/operations/reports': 'production',
   'post /api/production-orders/:id/operations/registrations/reconcile': 'production',
-  'post /api/production-orders/:id/operations/registrations/:registrationId/inputs': 'production',
+  'post /api/production-orders/:id/operations/registrations/:registrationId/inputs': 'production_registration_edit',
   'post /api/production-orders/:id/operations/registrations/:registrationId/approve': 'production',
   'post /api/production-orders/:id/operations/registrations/:registrationId/cancel': 'production',
   'post /api/production-orders/:id/operations/report': 'production', 'post /api/production-orders/:id/operations/:reportId/void': 'production',
@@ -344,7 +344,7 @@ test('every API route declares its role, and employee access matches that declar
     const [method, path] = key.split(' ');
     const probePath = path.replace(/^\/api/, '').replace(':id', '1').replace(':announcementId', '1').replace(':barcode', 'TEAM-001').replace(':qr_id', 'a08f04e0-6420-4c84-9c07-189e70c95539');
     const response = await f.request(employee.cookie, probePath, method === 'get' ? undefined : {}, method.toUpperCase());
-    assert.equal(response.status === 403, ['admin', 'ai', 'bom', 'bom_or_production', 'production', 'stock_approve', 'submitter'].includes(role), `${key} 返回 ${response.status}`);
+    assert.equal(response.status === 403, ['admin', 'ai', 'bom', 'bom_or_production', 'production', 'production_registration_edit', 'stock_approve', 'submitter'].includes(role), `${key} 返回 ${response.status}`);
   }
   assert.deepEqual(counts(), before, '权限探测不应改动业务数据');
   assert.equal((await f.request(employee.cookie, '/auth/logout', {}, 'POST')).status, 200);

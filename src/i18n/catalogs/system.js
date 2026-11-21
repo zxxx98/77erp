@@ -1636,9 +1636,9 @@ export default {
     "Kế thừa các quyền của nhân viên cũ: giữ lại các hạn chế hoạt động lịch sử. Các mô-đun sau không có nghĩa là bạn có tất cả các hoạt động của mô-đun này. Quản trị viên có thể chuyển đổi rõ ràng sang quyền mô-đun tiêu chuẩn trong cấu hình công việc."
   ],
   "system.production.operations.only.only.view.the.production.orders.and.registration.batches": [
-    "仅生产作业：仅查看本组生产单和登记批次，可修改自己的密码。",
-    "Production operations only: Only view the production orders and registration batches of this group, and you can modify your own password.",
-    "Chỉ hoạt động sản xuất: Chỉ xem các đơn đặt hàng sản xuất và lô đăng ký của nhóm này và bạn có thể sửa đổi mật khẩu của riêng mình."
+    "可查看和登记派给本组或本人的生产单，也可修改自己的密码。",
+    "View and report on orders assigned to your group or to you, and change your own password.",
+    "Xem và ghi nhận các lệnh sản xuất giao cho tổ hoặc cho mình, và đổi mật khẩu cá nhân."
   ],
   "system.materials.inventory.historical.documents.and.qr.code.queries.can.be.viewed": [
     "勾选「查看基础页面」后可查看物料、库存、历史单据及扫码查询；修改自己的密码始终开放。",
@@ -1821,9 +1821,9 @@ export default {
     "Chỉ công việc sản xuất"
   ],
   "system.only.production.orders.and.batch.registration.for.this.group.are.open": [
-    "只开放本组生产单与批次登记，权限固定为生产登记，不开放其他业务页面。",
-    "Only production orders and batch registration for this group are open. The permissions are fixed to production registration, and other business pages are not open.",
-    "Chỉ có đơn đặt hàng sản xuất và đăng ký lô cho nhóm này mới được mở. Các quyền được cố định đối với đăng ký sản xuất và các trang kinh doanh khác không được mở."
+    "可查看和登记派给本组或本人的生产单，也可额外授予工序验收和编辑员工登记信息权限。",
+    "Users can view and report on orders assigned to their group or to them. Operation acceptance and registration editing are optional permissions.",
+    "Nhân viên có thể xem và ghi nhận các lệnh giao cho tổ hoặc cho mình. Có thể cấp thêm quyền nghiệm thu công đoạn và chỉnh sửa ghi nhận sản xuất."
   ],
   "system.when.the.business.module.is.not.checked.this.position.is.a": [
     "仅勾选「查看基础页面」时，该岗位为只读岗位；全部不勾选时不开放业务页面。",

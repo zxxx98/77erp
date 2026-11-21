@@ -15,14 +15,25 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
   const f=await productionIssuesFixture();
   try {
     const order=f.ok(await f.complete(f.order,12,[[f.raw,24],[f.other,12]]));
-    const split=f.cookie.indexOf('=');
-    await context.addCookies([{name:f.cookie.slice(0,split),value:f.cookie.slice(split+1),url:f.base}]);
-    await page.goto(`${f.base}/#production?order=${order.id}`);
+    const position=f.ok(await f.command('/positions',{name:'登记主管',permissions:['production']}));
+    const credentials={username:'registrationmanager',password:'Worker-test-123'};
+    f.ok(await f.command('/users',{...credentials,employee_no:credentials.username,position_id:position.id}));
+    const {cookie}=await f.request('/auth/login',credentials,{cookie:''});
+    const [name,value]=cookie.split('=');
+    await context.addCookies([{name,value,url:f.base}]);
+    const url=`${f.base}/#production?order=${order.id}`;
+    await page.goto(url);
     const records=page.getByRole('region',{name:'登记与待处理问题'});
     await expect(records.getByRole('heading')).toContainText('未核对/总数 1/1');
-    await expect(records.getByRole('button',{name:'调整本次用料'})).toHaveCount(0);
+    const edit=records.getByRole('button',{name:'调整本次用料'});
     await records.locator('.registration-record-summary').click();
-    await records.getByRole('button',{name:'调整本次用料'}).click();
+    await expect(edit).toHaveCount(0);
+    await expect(records.getByRole('button',{name:'核对并结算',exact:true})).toBeVisible();
+    f.ok(await f.request(`/positions/${position.id}`,{...position,permissions:['production','production_registration_edit']},{method:'PUT'}));
+    await page.reload();
+    await page.goto(url);
+    await records.locator('.registration-record-summary').click();
+    await edit.click();
     for(const label of ['原料 本次用量','原料 差异原因']) {
       const input=records.getByLabel(label);
       if(device==='desktop') await expect(input).toHaveClass(/ant-input/);

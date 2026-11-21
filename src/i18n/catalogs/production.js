@@ -199,6 +199,9 @@ export default {
   "production.registrationTools": ["重新读取单据", "Reload options", "Tải lại lệnh"],
 
   "production.registrationPermissionDescription": ["仅查看派给所属生产组或本人的生产单，并登记产量和耗料", "View orders assigned to your group or you, and register output and material usage.", "Xem lệnh giao cho tổ hoặc cá nhân bạn và ghi nhận sản lượng, tiêu hao nguyên liệu."],
+  "production.editRegistrationPermission": ["编辑员工登记信息", "Edit employee production registrations", "Chỉnh sửa ghi nhận sản xuất của nhân viên"],
+  "production.editRegistrationPermissionDescription": ["调整有权查看的生产单中待结算产出登记的用料和差异原因", "Adjust material usage and reasons on pending output registrations for orders you can access.", "Điều chỉnh lượng vật tư và lý do chênh lệch trong ghi nhận sản lượng chờ quyết toán của các lệnh bạn có quyền xem."],
+  "production.editRegistrationPermissionRequired": ["需要编辑员工登记信息权限。", "Permission to edit employee production registrations is required.", "Cần quyền chỉnh sửa ghi nhận sản xuất của nhân viên."],
   "production.manageAssignments": ["生产指派", "Production assignments", "Phân công sản xuất"],
   "production.assignProductionUsers": ["指派生产人员", "Assign people", "Phân công nhân viên"],
   "production.assignedUsers": ["指派人员：", "Assigned people: ", "Nhân viên được phân công: "],

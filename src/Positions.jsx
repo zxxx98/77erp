@@ -6,6 +6,7 @@ import { Select } from './Dropdown.jsx';
 import { Input, Button, Checkbox } from './ui/controls.jsx';
 import { api } from './api.js';
 import { permissionOptions } from './i18n/display.js';
+import { productionOnlyPermissions } from '../shared/permissions.js';
 import { LoadingStatus } from './Loading.jsx';
 import './users.css';
 
@@ -81,7 +82,7 @@ export function PositionManager({ Modal, onChanged }) {
       }}>{translate("system.i.confirm.switching.to.standard.module.permissions")}</Checkbox></div>}
       <label>{translate("system.access.mode")}<Select aria-label={translate("system.access.mode")} value={editor.access_mode || 'standard'} disabled={busy || (editor.legacy_permissions && !editor.convert_legacy)} onChange={value => setEditor(current => ({ ...current, access_mode: value, permissions: value === 'production_only' ? ['production_register'] : current.permissions }))}><option value="standard">{translate("system.standard.workspace")}</option><option value="production_only">{translate("system.production.jobs.only")}</option></Select></label>
       {editor.access_mode === 'production_only' && <p className="info-box">{translate("system.only.production.orders.and.batch.registration.for.this.group.are.open")}</p>}
-      <div className="permission-options">{permissionOptions.map(option => <Checkbox key={option.key} checked={editor.permissions.includes(option.key)} disabled={busy || (editor.access_mode === 'production_only' && option.key !== 'operation_accept') || (editor.legacy_permissions && !editor.convert_legacy)} onChange={e => setEditor(current => ({ ...current, permissions: e.target.checked ? [...current.permissions, option.key] : current.permissions.filter(key => key !== option.key) }))}><span><strong>{option.label}</strong><small>{option.description}</small></span></Checkbox>)}</div>
+      <div className="permission-options">{permissionOptions.map(option => <Checkbox key={option.key} checked={editor.permissions.includes(option.key)} disabled={busy || (editor.access_mode === 'production_only' && (option.key === 'production_register' || !productionOnlyPermissions.includes(option.key))) || (editor.legacy_permissions && !editor.convert_legacy)} onChange={e => setEditor(current => ({ ...current, permissions: e.target.checked ? [...current.permissions, option.key] : current.permissions.filter(key => key !== option.key) }))}><span><strong>{option.label}</strong><small>{option.description}</small></span></Checkbox>)}</div>
       {!editor.permissions.length && <p className="muted">{translate("system.when.the.business.module.is.not.checked.this.position.is.a")}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}

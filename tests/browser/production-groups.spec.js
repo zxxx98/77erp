@@ -76,6 +76,9 @@ for (const accessMode of ['standard', 'production_only']) for (const {width, pwa
 
 async function choose(page, control, name) { await control.click(); await page.getByRole('option', { name, exact: true }).click(); }
 test('admin configures groups, strict positions, optional employee membership and dispatch', async ({ page }) => {
+  await page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
+    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
+  });
   const f = await fixture(page);
   try {
     await page.request.post(f.base + '/api/auth/logout');
@@ -94,11 +97,16 @@ test('admin configures groups, strict positions, optional employee membership an
     await editor.getByLabel('岗位名称', { exact: true }).fill('新增登记岗位');
     await choose(page, editor.getByRole('combobox', { name: '访问模式', exact: true }), '仅生产作业');
     await expect(editor.getByRole('checkbox', { name: /^工序验收/ })).toBeEnabled();
-    const checks = editor.getByRole('checkbox', { name: /^(?!工序验收)/ });
+    const editRegistration = editor.getByRole('checkbox', { name: /^编辑员工登记信息/ });
+    await expect(editRegistration).toBeEnabled();
+    await expect(editRegistration).not.toBeChecked();
+    await editRegistration.check();
+    const checks = editor.getByRole('checkbox', { name: /^(?!工序验收|编辑员工登记信息)/ });
     for (const check of await checks.all()) await expect(check).toBeDisabled();
     await expect(editor.getByRole('checkbox', { name: /^本组生产登记/ })).toBeChecked();
     await editor.getByRole('button', { name: '保存岗位', exact: true }).click();
     await expect(editor).toHaveCount(0);
+    await expect(page.locator('.position-row').filter({ hasText: '新增登记岗位' })).toContainText('编辑员工登记信息');
     await nav.getByRole('button', { name: /用户管理/ }).click();
     await page.getByLabel('新账号', { exact: true }).fill('newworker');
     await page.getByLabel('初始密码', { exact: true }).fill('Worker-password-123');

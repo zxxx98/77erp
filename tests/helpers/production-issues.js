@@ -9,7 +9,7 @@ export async function productionIssuesFixture(t, { staged = false, routed = fals
   const base = `http://127.0.0.1:${server.address().port}`;
   let cookie;
   const request = async (path, body, options = {}) => {
-    const response = await fetch(`${base}/api${path}`, { method: body === undefined ? 'GET' : 'POST',
+    const response = await fetch(`${base}/api${path}`, { method: options.method || (body === undefined ? 'GET' : 'POST'),
       headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': String(options.warehouseId ?? 1), Cookie: options.cookie ?? cookie ?? '' },
       body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
