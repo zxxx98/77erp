@@ -54,9 +54,33 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
 .production-acceptance-registrations .process-history-main > details p {
   margin: 4px 0 0 12px;
 }
-.registration-input-editor { display: grid; gap: 12px; margin-top: 12px; }
-.registration-input-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+.registration-input-editor { display: grid; gap: 12px; margin-top: 16px; min-width: 0; container: registration-inputs / inline-size; }
+.registration-input-editor > .bom-hint { margin: 0; }
+.registration-input-materials { border-block: 1px solid var(--border); }
+.registration-input-material { padding: 12px 0; }
+.registration-input-material + .registration-input-material { border-top: 1px solid var(--border); }
+.registration-input-material-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(275px, .95fr); gap: 8px 16px; align-items: start; }
+.registration-input-material-header strong { overflow-wrap: anywhere; }
+.registration-input-code { display: inline-block; max-width: 100%; }
+.registration-input-code, .registration-input-source span, .registration-input-balances dt { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.registration-input-balances { display: grid; grid-template-columns: minmax(0, .8fr) repeat(2, minmax(0, 1fr)); gap: 2px 8px; margin: 0; }
+.registration-input-balances dd { margin: 0; font-variant-numeric: tabular-nums; }
+.registration-input-balances > div { display: grid; grid-row: span 2; grid-template-rows: subgrid; min-width: 0; overflow-wrap: anywhere; }
+.registration-input-row { display: grid; grid-template-columns: minmax(104px, .52fr) minmax(0, .8fr) minmax(0, 1fr); align-items: end; gap: 12px; margin-top: 8px; }
+.registration-input-quantity { grid-column: 2; }
+.registration-input-quantity input { font-variant-numeric: tabular-nums; }
+.registration-input-source { align-self: end; padding-block: 8px; overflow-wrap: anywhere; }
 .registration-input-row label { display: grid; gap: 6px; min-width: 0; margin: 0; }
+@container registration-inputs (max-width: 520px) {
+  .registration-input-material-header { grid-template-columns: minmax(0, 1fr); }
+  .registration-input-row { grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); gap: 6px 10px; }
+  .registration-input-source { grid-column: 1 / -1; padding: 0; }
+  .registration-input-quantity { grid-column: 1; }
+  .registration-input-row + .registration-input-row { border-top: 1px solid var(--border-subtle); padding-top: 8px; }
+}
+@media (max-width: 760px) {
+  .production-acceptance-registrations .process-history-main { width: 100%; }
+}
 .production-acceptance-registrations .process-history-action.bom-actions {
   flex-direction: column;
   align-items: stretch;

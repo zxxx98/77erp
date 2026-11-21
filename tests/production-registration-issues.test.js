@@ -26,6 +26,20 @@ for (const staged of [false,true]) test(`pending ${staged?'stage':'order'} input
   assert.equal((await f.command(endpoint,{version:order.version,items})).status,409);
 });
 
+test('pending self-made input shows exact warehouse stock separately from settled and issued balances', async t => {
+  const f = await productionIssuesFixture(t, { staged: true });
+  f.db.prepare("UPDATE products SET stock=?, stock_fraction='61/3' WHERE id=?").run(61 / 3, f.semi);
+  const order = f.ok(await f.complete(f.order, 5, [['1', 10]]));
+  assert.equal(order.items.some(item => item.product_id === f.semi), false);
+  const [input] = pending(order)[0].editable_inputs;
+  assert.equal(input.product_id, f.semi);
+  assert.equal(input.barcode, order.nodes.find(node => node.path === '1').barcode);
+  assert.equal(input.source, 'production');
+  assert.equal(input.stock, '61/3');
+  assert.equal(input.self_produced_available, 0);
+  assert.equal(input.issued_available, 0);
+});
+
 test('material shortages are recorded cumulatively without posting stock, costs, output or receipts', async t => {
   const f = await productionIssuesFixture(t); let o = f.order;
   o = f.ok(await f.complete(o, 12, [[f.raw, 24], [f.other, 12]]));

@@ -2,6 +2,12 @@ import { test, expect, devices } from '@playwright/test';
 import { productionIssuesFixture } from '../helpers/production-issues.js';
 import { confirmFinishPipeline } from './production-ui-helpers.js';
 
+function dismissApprovalNotices(page) {
+  return page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
+    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
+  });
+}
+
 for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending consumption and settles without replacing the registration`,async({page,browser})=>{
   const context=device==='desktop'?page.context():await browser.newContext({locale:'zh-CN',...devices[device==='mobile'?'Pixel 7':'iPhone 13'],serviceWorkers:device==='pwa'?'allow':'block'});
   if(device!=='desktop') page=await context.newPage();
@@ -13,14 +19,14 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     await page.goto(`${f.base}/#production?order=${order.id}`);
     const records=page.getByRole('region',{name:'登记与待处理问题'});
     await records.getByRole('button',{name:'调整本次用料'}).click();
-    for(const label of ['原料 用量','原料 差异原因']) {
+    for(const label of ['原料 本次用量','原料 差异原因']) {
       const input=records.getByLabel(label);
       if(device==='desktop') await expect(input).toHaveClass(/ant-input/);
       else await expect(input.locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " erp-mobile-input ")]')).toBeVisible();
     }
-    await records.getByLabel('原料 用量').fill('20');
+    await records.getByLabel('原料 本次用量').fill('20');
     await records.getByLabel('原料 差异原因').fill('核对实际用量');
-    await records.getByLabel('辅料 用量').fill('10');
+    await records.getByLabel('辅料 本次用量').fill('10');
     await records.getByLabel('辅料 差异原因').fill('核对实际用量');
     await records.getByRole('button',{name:'保存用料'}).click();
     await expect(records).toContainText('用料调整记录');
@@ -30,6 +36,53 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     expect(updated.pending_registration_count).toBe(0);
     expect(updated.operation_registrations[0].id).toBe(order.operation_registrations[0].id);
   } finally {if(device!=='desktop') await context.close(); await f.close();}
+});
+
+for (const device of ['desktop', 'Pixel 7', 'pwa']) test(`${device} groups editable inputs by material and preserves the original input order on save`, async ({ page, browser }) => {
+  const context = device === 'desktop' ? page.context() : await browser.newContext({ locale: 'zh-CN',
+    ...devices[device === 'pwa' ? 'iPhone 13' : device], serviceWorkers: device === 'pwa' ? 'allow' : 'block' });
+  if (device !== 'desktop') page = await context.newPage();
+  await dismissApprovalNotices(page);
+  const f = await productionIssuesFixture(undefined, { staged: true });
+  try {
+    f.db.prepare('UPDATE products SET stock=20, inventory_value_cents=2000 WHERE id=?').run(f.semi);
+    f.db.prepare("UPDATE products SET name='半成品' WHERE id=?").run(f.other);
+    let order = f.ok(await f.complete(f.order, 8, [['1.1', 24]], { path: '1' }));
+    const supplement = await f.supplement(order, [[f.semi, 5], [f.other, 2]]);
+    order = await f.confirm(supplement.doc);
+    const stockPath = `@stock:root:${f.semi}`, otherPath = `@stock:root:${f.other}`;
+    order = f.ok(await f.complete(order, 7, [['1', 12], [otherPath, 1], [stockPath, 6]]));
+    const semiCode = order.nodes.find(node => node.path === '1').barcode;
+    const otherCode = order.items.find(item => item.product_id === f.other).barcode;
+    const [name, value] = f.cookie.split('=');
+    await context.addCookies([{ name, value, url: f.base }]);
+    await page.goto(`${f.base}/#production?order=${order.id}`);
+    if (device === 'pwa') await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.getByRole('button', { name: '调整本次用料', exact: true }).click();
+    const editor = page.getByRole('region', { name: '调整本次用料', exact: true });
+    const semi = editor.getByRole('region', { name: `半成品 · ${semiCode}`, exact: true });
+    const other = editor.getByRole('region', { name: `半成品 · ${otherCode}`, exact: true });
+    await expect(semi.locator('dt')).toHaveText(['仓库余量', '本单自制可用', '本单已领可用']);
+    await expect(semi.locator('dd')).toHaveText(['15 kg', '8 kg', '5 kg']);
+    await expect(other.locator('dd')).toHaveText(['998 kg', '—', '2 kg']);
+    expect(await editor.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    const balances = await semi.locator('.registration-input-balances').boundingBox();
+    const heading = await semi.locator('strong').boundingBox();
+    if (device === 'desktop') expect(balances.x).toBeGreaterThan(heading.x);
+    else expect(balances.y).toBeGreaterThan(heading.y);
+    for (const [source, next] of [['本单自制', '8'], ['仓库领用', '5']]) {
+      await expect(semi.locator('.registration-input-source').filter({ hasText: new RegExp(`^${source}`) })).toBeVisible();
+      await semi.getByLabel(new RegExp(`本次用量.*${source}`)).fill(next);
+      await semi.getByLabel(new RegExp(`差异原因.*${source}`)).fill('核对实际用量');
+    }
+    await editor.getByRole('button', { name: '保存用料', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    const [registration] = (await f.get()).operation_registrations;
+    expect(registration.editable_inputs.map(({ path, quantity }) => [path, quantity])).toEqual([['1', 8], [otherPath, 1], [stockPath, 5]]);
+  } finally {
+    if (device !== 'desktop') await context.close();
+    await f.close();
+  }
 });
 
 for (const device of ['desktop','mobile','pwa']) test(`${device} records shortages, displays live deficits and settles after actual replenishment`, async ({ page, browser }) => {
@@ -84,6 +137,7 @@ for (const device of ['desktop','mobile','pwa']) test(`${device} records shortag
 
 test('mobile predecessor with zero available quantity can be selected and recorded for later settlement',async({page})=>{
   await page.setViewportSize({width:390,height:844});
+  await dismissApprovalNotices(page);
   const f=await productionIssuesFixture(undefined,{routed:true});
   try {
     const split=f.cookie.indexOf('=');await page.context().addCookies([{name:f.cookie.slice(0,split),value:f.cookie.slice(split+1),url:f.base}]);

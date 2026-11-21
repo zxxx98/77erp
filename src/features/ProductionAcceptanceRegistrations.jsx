@@ -10,6 +10,71 @@ import { productionUsesFraction } from '../../shared/production.js';
 import { formatExactQuantity, registrationQuantityInput } from '../../shared/exact-quantity.js';
 import './production-registration.css';
 
+function RegistrationInputEditor({ inputs, draft, disabled, onChange, onSave, onCancel }) {
+  const groups = new Map();
+  const sourcesByName = new Map();
+  inputs.forEach((item, index) => {
+    const key = item.product_id == null ? `row:${index}` : `${item.part_index}:${item.product_id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ item, index });
+    if (item.source) {
+      if (!sourcesByName.has(item.name)) sourcesByName.set(item.name, new Set());
+      sourcesByName.get(item.name).add(item.source);
+    }
+  });
+  const locale = getFormatLocale();
+  const quantityLabel = t('production.registration.inputQuantity');
+  const reasonLabel = t('production.registration.inputReason');
+  const balances = [
+    ['stock', t('production.registration.warehouseBalance')],
+    ['self_produced_available', t('production.registration.selfProducedBalance')],
+    ['issued_available', t('production.registration.issuedBalance')],
+  ];
+  return <section className="registration-input-editor" aria-label={t('production.registration.editInputs')}>
+    <p className="bom-hint">{t('production.registration.inputsHint')}</p>
+    <div className="registration-input-materials">
+      {[...groups].map(([key, rows]) => {
+        const { item: material } = rows[0];
+        return <section key={key} className="registration-input-material" aria-label={[material.name, material.barcode].filter(Boolean).join(' · ')}>
+          <header className="registration-input-material-header">
+            <strong>{material.name}{material.barcode && <> <span className="registration-input-code">· {material.barcode}</span></>}</strong>
+            <dl className="registration-input-balances">
+              {balances.map(([field, label]) => <div key={field}>
+                <dt>{label}</dt>
+                <dd>{material[field] == null ? '—' : `${formatExactQuantity(material[field], locale)} ${material.unit}`}</dd>
+              </div>)}
+            </dl>
+          </header>
+          {rows.map(({ item, index }) => {
+            const source = item.source && sourcesByName.get(item.name)?.size > 1
+              ? t(item.source === 'production' ? 'production.registration.sourceProduction' : 'production.registration.sourceStock') : '';
+            const position = item.path.startsWith('@stock:') ? item.stage_path : item.path;
+            const identity = [item.barcode, source, position].filter(Boolean);
+            const inputLabel = label => [item.name, label, ...identity].join(' ');
+            return <div className="registration-input-row" key={`${item.part_index}:${item.item_index}`}>
+              {(source || position) && <div className="registration-input-source">
+                {source}{position && <span>{source && ' · '}{position}</span>}
+              </div>}
+              <label className="registration-input-quantity">{quantityLabel} ({item.unit})
+                <Input aria-label={inputLabel(quantityLabel)} inputMode="text" disabled={disabled} value={draft[index].quantity}
+                  onChange={event => onChange(index, { quantity: event.target.value })} />
+              </label>
+              <label>{reasonLabel}
+                <Input aria-label={inputLabel(reasonLabel)} maxLength={500} disabled={disabled} value={draft[index].variance_reason}
+                  onChange={event => onChange(index, { variance_reason: event.target.value })} />
+              </label>
+            </div>;
+          })}
+        </section>;
+      })}
+    </div>
+    <div className="bom-actions">
+      <Button kind="primary" disabled={disabled} onClick={onSave}>{t('production.registration.saveInputs')}</Button>
+      <Button disabled={disabled} onClick={onCancel}>{t('production.registration.cancelInputs')}</Button>
+    </div>
+  </section>;
+}
+
 function registrationInputValue(order, item) {
   const node = order.nodes?.find(node => node.path === item.path);
   const fraction = node ? node.quantity_fraction : !order.stage_workflow && (order.items || []).some(row => (item.product_id != null ? row.product_id === item.product_id : row.name === item.name) && productionUsesFraction(order, row));
@@ -58,14 +123,9 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
           {row.note&&<p>{row.note}</p>}
           {!!row.actual_inputs?.length&&<details><summary>{t('production.registration.recordedInputs')}</summary>{row.actual_inputs.map(item=><p key={item.key}>{item.name} · {formatExactQuantity(item.quantity_fraction||item.quantity,getFormatLocale())} {item.unit}{item.path&&` · ${item.path}`}</p>)}</details>}
           {!!row.input_adjustments?.length&&<details><summary>{t('production.registration.inputHistory')}</summary>{row.input_adjustments.map((change,index)=><div key={index}><p>{new Date(change.at).toLocaleString(getFormatLocale())} · {change.by}</p>{change.items.map((item,itemIndex)=><p key={itemIndex}>{row.editable_inputs?.[itemIndex]?.name} · {String(change.previous[itemIndex].quantity)} → {String(item.quantity)} · {item.variance_reason}</p>)}</div>)}</details>}
-          {editing?.id===row.id&&<div className="registration-input-editor">
-            <p className="bom-hint">{t('production.registration.inputsHint')}</p>
-            {row.editable_inputs.map((item,index)=><div className="registration-input-row" key={`${item.part_index}:${item.item_index}`}>
-              <label>{item.name} {item.path&&`· ${item.path}`} ({item.unit})<Input aria-label={`${item.name} ${t('production.registration.inputQuantity')}`} inputMode="text" disabled={action.busy} value={editing.items[index].quantity} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,quantity:event.target.value}:entry)}))}/></label>
-              <label>{t('production.registration.inputReason')}<Input aria-label={`${item.name} ${t('production.registration.inputReason')}`} maxLength={500} disabled={action.busy} value={editing.items[index].variance_reason} onChange={event=>setEditing(previous=>({...previous,items:previous.items.map((entry,entryIndex)=>entryIndex===index?{...entry,variance_reason:event.target.value}:entry)}))}/></label>
-            </div>)}
-            <div className="bom-actions"><Button kind="primary" disabled={action.busy} onClick={saveInputs}>{t('production.registration.saveInputs')}</Button><Button disabled={action.busy} onClick={()=>setEditing(null)}>{t('production.registration.cancelInputs')}</Button></div>
-          </div>}
+          {editing?.id===row.id&&<RegistrationInputEditor inputs={row.editable_inputs} draft={editing.items} disabled={action.busy}
+            onChange={(index, changes) => setEditing(previous => ({ ...previous, items: previous.items.map((item, i) => i === index ? { ...item, ...changes } : item) }))}
+            onSave={saveInputs} onCancel={() => setEditing(null)} />}
           {!!row.initial_issues?.length&&<details><summary>{t('production.registration.originalIssues')}</summary>{row.initial_issues.map(issue=><p key={issue.key}>{issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}</details>}
           {row.issues?.map(issue=><p className="bom-hint" key={issue.key}>{t(`production.registration.issue.${issue.kind}`)} · {issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}
         </div>

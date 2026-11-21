@@ -223,6 +223,29 @@ export function listProductionOrders(db, warehouseId, query = {}, costs = false,
   });
 }
 
+function editableRegistrationInputs(order, row, input, orderItems, readStockProduct) {
+  if (row.kind !== 'settlement' || row.endpoint === 'operations/report') return [];
+  const staged = row.endpoint === 'stages/complete';
+  const parts = staged && input.auto_overflow ? input.allocations : [input];
+  return parts.flatMap((part, partIndex) => {
+    const stage = staged ? order.stages?.find(stage => stage.path === part.path) : undefined;
+    const producedInputs = new Map(stage?.items.filter(item => item.usage_mode === 'explode').map(item => [item.product_id, item]));
+    return (part.items || []).map((item, itemIndex) => {
+      const source = staged ? stage?.items.find(entry => entry.path === item.path) : orderItems.get(item.product_id);
+      const entry = { part_index: partIndex, item_index: itemIndex, name: source?.name || '', unit: source?.unit || '',
+        path: item.path || '', quantity: item.quantity, variance_reason: item.variance_reason || '' };
+      if (!source || row.status !== 'pending') return entry;
+      const { product_id, barcode, unit } = source;
+      const product = readStockProduct(product_id);
+      const produced = producedInputs.get(product_id);
+      return { ...entry, product_id, barcode, stage_path: stage?.path, source: source.usage_mode === 'explode' ? 'production' : 'stock',
+        stock: product?.unit === unit ? exactQuantity(product, 'stock') : null,
+        self_produced_available: produced ? exactQuantity(produced, 'available_quantity') : null,
+        issued_available: order.material_workflow ? exactQuantity(orderItems.get(product_id), 'available_quantity') : null };
+    });
+  });
+}
+
 export function getProductionOrder(db, warehouseId, id, costs = false, user) {
   assertProductionReader(user);
   if (!isId(id)) fail('生产单编号无效。');
@@ -281,14 +304,17 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     const registrationState = registrationIssueState(order, registrations);
     order.registration_issues = registrationState.issues;
     order.pending_registration_count = registrations.filter(row => row.status === 'pending').length;
+    const orderItems = new Map(order.items.map(item => [item.product_id, item]));
+    const stockProducts = new Map(order.items.map(item => [item.product_id, item.product]));
+    const readStockProduct = productId => {
+      if (!stockProducts.has(productId)) stockProducts.set(productId,
+        db.prepare('SELECT unit, stock, stock_fraction FROM products WHERE warehouse_id=? AND id=?').get(warehouseId, productId));
+      return stockProducts.get(productId);
+    };
     order.operation_registrations = registrationState.rows.sort((a,b)=>Number(b.status==='pending')-Number(a.status==='pending')||b.id-a.id).map(({body,...row}) => {
       const input = JSON.parse(body);
       const actual_inputs=registrationRequirements(order,input,row.endpoint).filter(item=>['material','semi'].includes(item.kind)).map(({key,kind,name,unit,path,quantity})=>({key,kind,name,unit,path,...quantityFields(quantity)}));
-      const parts=input.auto_overflow&&row.endpoint==='stages/complete'?input.allocations:[input];
-      const editable_inputs=row.kind==='settlement'&&row.endpoint!=='operations/report' ? parts.flatMap((part,partIndex)=>(part.items||[]).map((item,itemIndex)=>{
-        const source=row.endpoint==='stages/complete'?order.stages?.find(stage=>stage.path===part.path)?.items.find(entry=>entry.path===item.path):order.items.find(entry=>entry.product_id===item.product_id);
-        return {part_index:partIndex,item_index:itemIndex,name:source?.name||'',unit:source?.unit||'',path:item.path||'',quantity:item.quantity,variance_reason:item.variance_reason||''};
-      })) : [];
+      const editable_inputs = editableRegistrationInputs(order, row, input, orderItems, readStockProduct);
       return {...row, actual_inputs, editable_inputs, input_adjustments:input.input_adjustments||[], initial_issues:JSON.parse(row.initial_issues), quantity:input.quantity??input.completed_quantity, note:input.note||''};
     });
     order.flow_progress = productionFlowProgress(order, registrations);
