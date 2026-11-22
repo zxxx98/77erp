@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Calculator, Copy, Network, Plus, Power, Trash2 } from 'lucide-react';
+import { Copy, Network, Plus, Power, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { useBusiness } from '../business-api.js';
 import { useQuery, queryPath } from '../queries.js';
-import { PageHeading, Button, Badge, Modal, QueryStatus } from '../components/common.jsx';
+import { PageHeading, Button, Modal, QueryStatus } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
-import { SortHandle, useSortableList } from '../components/SortableList.jsx';
+import { useSortableList } from '../components/SortableList.jsx';
 import { Input as AntInput } from '../ui/controls.jsx';
 import { parseQuantity } from '../../shared/quantity.js';
 import { parseBomQuantity, validateBom } from '../../shared/bom.js';
@@ -14,13 +14,11 @@ import { BomProcessOverview } from '../features/ProcessOverview.jsx';
 import { BomCalculation } from '../features/BomCalculation.jsx';
 import { BomEditor, parseLossRate } from '../features/BomEditor.jsx';
 import { BomListTable } from '../features/BomListTable.jsx';
-import { BomViewModeSwitch, useBomLayoutMode } from '../features/bom-layout-mode.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
-import { t as pt, getFormatLocale } from '../i18n/index.js';
+import { t as pt } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import './bom.css';
 
-const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const editable = bom => ({
   ...bom,
   items: bom.items.map(item => ({ ...item, quantity: item.quantity_fraction || item.quantity })),
@@ -64,10 +62,8 @@ function BomList({
   onDelete,
 }) {
   useLocale();
-  const [layoutMode] = useBomLayoutMode();
   return <div className="bom-page">
     <PageHeading title="BOM">
-      <BomViewModeSwitch />
       <Button kind="primary" icon={Plus} disabled={action.busy} onClick={onNew}>{pt("production.newBom")}</Button>
     </PageHeading>
     {message && <p className="bom-success" role="status">{productionMessage(message)}</p>}
@@ -105,7 +101,7 @@ function BomList({
       </div>
       <QueryStatus query={list} />
       {!!list.result?.boms.length && <p className="bom-hint sort-hint">{pt(sort === 'custom' ? 'production.dragSortHint' : 'production.dragSortDisabledHint')}</p>}
-      {layoutMode === 'table' ? (sortable.ordered.length > 0 && <BomListTable
+      {sortable.ordered.length > 0 && <BomListTable
         items={sortable.ordered}
         sort={sort}
         sortable={sortable}
@@ -113,29 +109,7 @@ function BomList({
         onOpen={open}
         onCreateProduction={onCreateProduction}
         onMore={setMoreBom}
-      />) : <div className="bom-list">
-        {sortable.ordered.map(bom => <article className="bom-list-item" key={bom.id} {...sortable.itemProps(bom.id)}>
-          <div className="bom-list-info">
-            <div className="bom-list-heading">
-              {sort === 'custom' && <SortHandle sortable={sortable} id={bom.id} label={pt('production.dragToSort')} />}
-              <strong>{bom.name}</strong>
-            </div>
-            <small>BOM #{bom.id} {pt("production.revision")} {bom.version}</small>
-            <p>{bom.product_name} · {bom.barcode}</p>
-            <small>{pt("production.baseOutput")} {count(bom.base_quantity)} {bom.base_unit} · {bom.item_count} {pt("production.materialsUpdatedBy")} {bom.updated_by_name}</small>
-            <div>
-              <Badge tone={bom.enabled ? 'green' : 'orange'}>{bom.enabled ? pt("production.enabled") : pt("production.disabled2")}</Badge>
-              {!bom.product_active && <Badge tone="orange">{pt("production.productDisabled")}</Badge>}
-            </div>
-          </div>
-          <div className="bom-actions">
-            <Button icon={Calculator} disabled={action.busy || !bom.enabled} onClick={() => open(bom.id, 'calculate')}>{pt("production.planMaterials")}</Button>
-            {onCreateProduction && <Button disabled={action.busy || !bom.enabled || !bom.product_active} onClick={() => onCreateProduction(bom)}>{pt("production.newProductionOrder")}</Button>}
-            <Button disabled={action.busy} onClick={() => open(bom.id, 'edit')}>{pt("production.edit")}</Button>
-            <Button disabled={action.busy} onClick={() => setMoreBom(bom)}>{pt('production.moreActions')}</Button>
-          </div>
-        </article>)}
-      </div>}
+      />}
       {list.result && !list.result.boms.length && <p className="bom-empty">{pt("production.noMatchingBomsCreateAProductRecipeTo")}</p>}
       {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination">
         <Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>{pt("production.previous")}</Button>

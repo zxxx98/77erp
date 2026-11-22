@@ -148,16 +148,43 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       </section>
       <section className="panel bom-section"><h2>{pt("production.verifyInputsForThisLevel")}</h2><p className="bom-hint">{pt("production.rawMaterialsUseTheIssuedBalanceSemiFinished")}</p>
         {standardError && <p className="bom-warning">{productionMessage(standardError)}</p>}
-        {stage.items.map(item => {
-          const actual = form.items.find(row => row.path === item.path), standard = standards.get(item.path);
-          return <article className="stage-input" key={item.path}>
-            <div><strong>{item.name}</strong><p className="bom-hint">{item.usage_mode === 'explode' ? pt("production.semiFinishedInThisOrder") : pt("production.issuedRawMaterials")} · {item.is_supplemental_input ? pt('production.supplementalInput') : item.usage_mode === 'explode' ? pathLabel(byPath.get(item.path)) : item.path}</p></div>
-            <div className="stage-input-numbers"><span>{pt("production.standardInput2")} <strong>{standard === undefined ? '—' : count(standard)} {item.unit}</strong></span><span>{pt("production.available")} <strong>{count(exactQuantity(item, 'available_quantity'))} {item.unit}</strong></span></div>
-            <label>{pt("production.actualInput")}{item.unit}）<Input aria-label={pt("production.actualInput2", { v0: item.name })} inputMode="text" disabled={locked} value={actual.quantity} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, quantity: event.target.value } : row) })} /></label>
-            {Number(actual.quantity) > item.available_quantity && <p className="bom-warning">{pt("production.insufficientAvailableQuantityFirst")}{item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials")}。</p>}
-            <label>{pt("production.usageVarianceReason2")}<Input aria-label={pt("production.usageVarianceReason", { v0: item.name })} maxLength={500} value={actual.variance_reason} disabled={locked} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, variance_reason: event.target.value } : row) })} /></label>
-          </article>;
-        })}
+        <div className="erp-table-wrap erp-table-mobile-stack">
+          <table className="erp-table stage-input-table" aria-label={pt("production.verifyInputsForThisLevel")}>
+            <thead>
+              <tr>
+                <th scope="col">{pt("production.material2")}</th>
+                <th scope="col" className="erp-col-num">{pt("production.standardInput2")}</th>
+                <th scope="col" className="erp-col-num">{pt("production.available")}</th>
+                <th scope="col">{pt("production.actualInputCol")}</th>
+                <th scope="col">{pt("production.usageVarianceReason2")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stage.items.map(item => {
+                const actual = form.items.find(row => row.path === item.path), standard = standards.get(item.path);
+                return <tr className="stage-input" key={item.path}>
+                  <td className="erp-cell-main">
+                    <div className="erp-cell-stack">
+                      <strong>{item.name}</strong>
+                      <small>{item.usage_mode === 'explode' ? pt("production.semiFinishedInThisOrder") : pt("production.issuedRawMaterials")} · {item.is_supplemental_input ? pt('production.supplementalInput') : item.usage_mode === 'explode' ? pathLabel(byPath.get(item.path)) : item.path}</small>
+                      {Number(actual.quantity) > item.available_quantity && <p className="bom-warning">{pt("production.insufficientAvailableQuantityFirst")}{item.usage_mode === 'explode' ? pt("production.registerLowerLevelSemiFinishedOutput") : pt("production.supplementMaterials")}。</p>}
+                    </div>
+                  </td>
+                  <td className="erp-col-num" data-label={pt("production.standardInput2")}><strong>{standard === undefined ? '—' : `${count(standard)} ${item.unit}`}</strong></td>
+                  <td className="erp-col-num" data-label={pt("production.available")}><strong>{count(exactQuantity(item, 'available_quantity'))} {item.unit}</strong></td>
+                  <td className="erp-cell-full" data-label={`${pt("production.actualInput")}${item.unit}）`}>
+                    <div className="erp-inline-field">
+                      <Input aria-label={pt("production.actualInput2", { v0: item.name })} inputMode="text" disabled={locked} value={actual.quantity} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, quantity: event.target.value } : row) })} />
+                    </div>
+                  </td>
+                  <td className="erp-cell-full" data-label={pt("production.usageVarianceReason2")}>
+                    <Input aria-label={pt("production.usageVarianceReason", { v0: item.name })} maxLength={500} value={actual.variance_reason} disabled={locked} onChange={event => patch({ items: form.items.map(row => row.path === item.path ? { ...row, variance_reason: event.target.value } : row) })} />
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
       {scrapRows.length > 0 && <section className="panel bom-section"><ScrapOutputs rows={scrapRows} materials={stage.items} complete disabled={locked}
         onChange={(id, changes) => patch({ scraps: form.scraps.map(row => row.product_id === id ? { ...row, ...changes } : row) })} /></section>}
@@ -177,16 +204,37 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
         <div className="bom-section-heading"><strong>{pt("production.batch")} {batch.batch_number} {pt("production.batchSuffix")} {count(exactQuantity(batch, 'completed_quantity'))} {byPath.get(history.path)?.unit}</strong><Badge tone={batch.status === 'active' ? 'green' : 'gray'}>{batch.status === 'active' ? pt("production.valid") : pt("production.voided2")}</Badge></div>
         <p className="bom-hint">{batch.created_by_name} · {time(batch.created_at)}</p>
         {batch.note && <p className="production-note">{batch.note}</p>}
-        <details><summary>{pt("production.viewBatchInputs")}</summary>{batch.items?.map(item => {
-          const source = order.stages.find(s => s.path === batch.path)?.items.find(input => input.path === item.path);
-          let standard = null;
-          try { if (source) standard = stageDisplayStandardQuantity(source, batch.completed_quantity); } catch { /* Show actual records if standards exceed limits. */ }
-          return <div className="production-batch-material" key={item.path ?? item.id}><strong>{item.name}</strong>
-            <p>{pt("production.actualInput3")} {count(exactQuantity(item, item.quantity != null ? 'quantity' : 'actual_quantity'))} {item.unit}{standard !== null && pt("production.standard", { v0: count(standard), v1: item.unit })}</p>
-            {item.variance_reason && <p>{pt("production.varianceReason")}{item.variance_reason}</p>}
-            {item.allocations?.map(allocation => <p className="bom-hint" key={allocation.id}>{pt("production.sourceLevel")} {allocation.source_path} {pt("production.batch3")} {allocation.source_batch_number} {pt("production.batchSuffix")} {count(exactQuantity(allocation))} {item.unit}</p>)}
-          </div>;
-        })}</details>
+        <details><summary>{pt("production.viewBatchInputs")}</summary>
+          {batch.items?.length > 0 && <div className="erp-table-wrap erp-table-mobile-stack">
+            <table className="erp-table production-batch-table">
+              <thead>
+                <tr>
+                  <th scope="col">{pt("production.material2")}</th>
+                  <th scope="col" className="erp-col-num">{pt("production.actualInputCol")}</th>
+                  <th scope="col" className="erp-col-num">{pt("production.standardRefCol")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batch.items.map(item => {
+                  const source = order.stages.find(s => s.path === batch.path)?.items.find(input => input.path === item.path);
+                  let standard = null;
+                  try { if (source) standard = stageDisplayStandardQuantity(source, batch.completed_quantity); } catch { /* Show actual records if standards exceed limits. */ }
+                  return <tr className="production-batch-material" key={item.path ?? item.id}>
+                    <td className="erp-cell-main">
+                      <div className="erp-cell-stack">
+                        <strong>{item.name}</strong>
+                        {item.variance_reason && <small>{pt("production.varianceReason")}{item.variance_reason}</small>}
+                        {item.allocations?.map(allocation => <small key={allocation.id}>{pt("production.sourceLevel")} {allocation.source_path} {pt("production.batch3")} {allocation.source_batch_number} {pt("production.batchSuffix")} {count(exactQuantity(allocation))} {item.unit}</small>)}
+                      </div>
+                    </td>
+                    <td className="erp-col-num" data-label={pt("production.actualInputCol")}><span>{count(exactQuantity(item, item.quantity != null ? 'quantity' : 'actual_quantity'))} {item.unit}</span></td>
+                    <td className="erp-col-num" data-label={pt("production.standardRefCol")}><span>{standard !== null ? `${count(standard)} ${item.unit}` : '—'}</span></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>}
+        </details>
         {batch.status === 'void' && <p className="bom-hint">{pt("production.voidReason2")}{batch.void_reason}</p>}
         {canVoid && batch.status === 'active' && order.status !== 'void' && (requiresReceiptPermission(batch) && !canReceive
           ? <p className="bom-hint">{pt("production.thisProductBatchIsReceivedVoidingAlsoRequires")}</p>
@@ -208,24 +256,74 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       <Input type="search" aria-label={pt("production.searchProductionLevels")} placeholder={pt("production.searchProductSemiFinishedItemOrLevelPath")} value={search} disabled={locked} onChange={event => setSearch(event.target.value)} />
       {scope && !search && <div className="bom-actions"><Button icon={ArrowLeft} disabled={locked} onClick={() => setScope(byPath.get(scope)?.parent_path || '')}>{pt("production.backToParent2")}</Button><span className="stage-path">{pathLabel(byPath.get(scope))}</span></div>}
       {!visible.length && <p className="bom-hint">{pt("production.noMatchingProductionLevels")}</p>}
-      {visible.map(item => <article className="stage-row" key={item.path}>
-        <div className="stage-row-heading"><div><strong>{item.name}</strong><p className="stage-path">{item.path ? pt("production.path", { v0: pathLabel(item), v1: item.path }) : pt("production.finalProduct")}</p></div><Badge tone={item.completed_quantity >= item.planned_quantity ? 'green' : item.completed_quantity ? 'blue' : 'gray'}>{item.completed_quantity >= item.planned_quantity ? pt("production.planReached") : item.completed_quantity ? pt("production.registered2") : pt("production.notRegistered")}</Badge></div>
-        <dl className="stage-progress"><div><dt>{pt("production.planned")}</dt><dd>{count(item.planned_quantity)} {item.unit}</dd></div><div><dt>{pt("production.completed")}</dt><dd>{count(exactQuantity(item, 'completed_quantity'))} {item.unit}</dd></div>
-          <div><dt>{pt("production.remainingPlan2")}</dt><dd>{count(Math.max(0, addQuantity(item.planned_quantity, -item.completed_quantity)))} {item.unit}</dd></div>
-          {item.path !== '' && <><div><dt>{pt("production.suppliedToParent")}</dt><dd>{count(item.consumed_quantity)} {item.unit}</dd></div><div><dt>{pt("production.availableInOrder")}</dt><dd>{count(exactQuantity(item, 'available_quantity'))} {item.unit}</dd></div></>}
-        </dl>
-        <details><summary>{pt("production.viewCumulativeInputVariance")}</summary><p className="bom-hint">{pt("production.standardIsCalculatedOnceFromThisLevelS")}</p>
-          {item.items.map(input => <div className="stage-cumulative-input" key={input.path}>
-            <strong>{input.name}</strong><p>{pt("production.cumulativeActual")} {count(input.actual_quantity)} {input.unit} {pt("production.cumulativeStandard")} {input.standard_quantity == null ? pt("production.outsideCalculationRange") : `${count(input.standard_quantity)} ${input.unit}`}</p>
-            {input.standard_quantity != null && <p>{pt("production.variance")} {count(addQuantity(input.actual_quantity, -input.standard_quantity))} {input.unit}</p>}
-          </div>)}
-        </details><div className="bom-actions">
-          {canRegister && <Button kind="primary" disabled={locked || outputRegistrationLocked(order, { path: item.path, output: true })} aria-label={pt("production.register4", { v0: item.name })} onClick={() => onRegister ? onRegister(JSON.stringify([item.path, null])) : begin(item)}>{pt("production.register")}</Button>}
-          {order.operation_routes?.some(route => route.path === item.path) && <Button disabled={locked} onClick={() => setOperationPath(item.path)}>{pt('route.viewProgress')}</Button>}
-          <Button disabled={locked} aria-label={pt("production.viewBatches", { v0: item.name })} onClick={() => { setHistory({ path: item.path, offset: 0 }); action.setError(''); }}>{pt("production.batchRecords")}</Button>
-          {item.path !== scope && item.items.some(input => input.usage_mode === 'explode') && <Button disabled={locked} icon={ChevronRight} aria-label={pt("production.viewChildLevel", { v0: item.name })} onClick={() => { setScope(item.path); setSearch(''); }}>{pt("production.viewChildLevel2")}</Button>}
-        </div>
-      </article>)}{notices}
+      {visible.length > 0 && <div className="erp-table-wrap erp-table-mobile-stack">
+        <table className="erp-table stage-list-table" aria-label={pt("production.productionByLevel")}>
+          <thead>
+            <tr>
+              <th scope="col">{pt("production.levelCol")}</th>
+              <th scope="col">{pt("production.statusCol")}</th>
+              <th scope="col" className="erp-col-num">{pt("production.planned")}</th>
+              <th scope="col" className="erp-col-num">{pt("production.completed")}</th>
+              <th scope="col" className="erp-col-num">{pt("production.remainingPlan2")}</th>
+              <th scope="col" className="erp-col-num">{pt("production.suppliedToParent")}</th>
+              <th scope="col" className="erp-col-num">{pt("production.availableInOrder")}</th>
+              <th scope="col" className="erp-col-actions">{pt("production.actionsCol")}</th>
+            </tr>
+          </thead>
+          {visible.map(item => <tbody className="stage-row" key={item.path}>
+            <tr>
+              <td className="erp-cell-main">
+                <div className="erp-cell-stack">
+                  <strong>{item.name}</strong>
+                  <small className="stage-path">{item.path ? pt("production.path", { v0: pathLabel(item), v1: item.path }) : pt("production.finalProduct")}</small>
+                </div>
+              </td>
+              <td data-label={pt("production.statusCol")}>
+                <Badge tone={item.completed_quantity >= item.planned_quantity ? 'green' : item.completed_quantity ? 'blue' : 'gray'}>{item.completed_quantity >= item.planned_quantity ? pt("production.planReached") : item.completed_quantity ? pt("production.registered2") : pt("production.notRegistered")}</Badge>
+              </td>
+              <td className="erp-col-num" data-label={pt("production.planned")}>{count(item.planned_quantity)} {item.unit}</td>
+              <td className="erp-col-num" data-label={pt("production.completed")}>{count(exactQuantity(item, 'completed_quantity'))} {item.unit}</td>
+              <td className="erp-col-num" data-label={pt("production.remainingPlan2")}>{count(Math.max(0, addQuantity(item.planned_quantity, -item.completed_quantity)))} {item.unit}</td>
+              <td className="erp-col-num" data-label={pt("production.suppliedToParent")}>{item.path !== '' ? `${count(item.consumed_quantity)} ${item.unit}` : '—'}</td>
+              <td className="erp-col-num" data-label={pt("production.availableInOrder")}>{item.path !== '' ? `${count(exactQuantity(item, 'available_quantity'))} ${item.unit}` : '—'}</td>
+              <td className="erp-col-actions">
+                <div className="bom-actions">
+                  {canRegister && <Button kind="primary" disabled={locked || outputRegistrationLocked(order, { path: item.path, output: true })} aria-label={pt("production.register4", { v0: item.name })} onClick={() => onRegister ? onRegister(JSON.stringify([item.path, null])) : begin(item)}>{pt("production.register")}</Button>}
+                  {order.operation_routes?.some(route => route.path === item.path) && <Button disabled={locked} onClick={() => setOperationPath(item.path)}>{pt('route.viewProgress')}</Button>}
+                  <Button disabled={locked} aria-label={pt("production.viewBatches", { v0: item.name })} onClick={() => { setHistory({ path: item.path, offset: 0 }); action.setError(''); }}>{pt("production.batchRecords")}</Button>
+                  {item.path !== scope && item.items.some(input => input.usage_mode === 'explode') && <Button disabled={locked} icon={ChevronRight} aria-label={pt("production.viewChildLevel", { v0: item.name })} onClick={() => { setScope(item.path); setSearch(''); }}>{pt("production.viewChildLevel2")}</Button>}
+                </div>
+              </td>
+            </tr>
+            {item.items.length > 0 && <tr className="erp-subrow">
+              <td colSpan={8}>
+                <details><summary>{pt("production.viewCumulativeInputVariance")}</summary><p className="bom-hint">{pt("production.standardIsCalculatedOnceFromThisLevelS")}</p>
+                  <div className="erp-table-wrap erp-table-mobile-stack">
+                    <table className="erp-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">{pt("production.material2")}</th>
+                          <th scope="col" className="erp-col-num">{pt("production.cumulativeActual")}</th>
+                          <th scope="col" className="erp-col-num">{pt("production.cumulativeStandard")}</th>
+                          <th scope="col" className="erp-col-num">{pt("production.variance")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {item.items.map(input => <tr className="stage-cumulative-input" key={input.path}>
+                          <td className="erp-cell-main"><strong>{input.name}</strong></td>
+                          <td className="erp-col-num" data-label={pt("production.cumulativeActual")}>{count(input.actual_quantity)} {input.unit}</td>
+                          <td className="erp-col-num" data-label={pt("production.cumulativeStandard")}>{input.standard_quantity == null ? pt("production.outsideCalculationRange") : `${count(input.standard_quantity)} ${input.unit}`}</td>
+                          <td className="erp-col-num" data-label={pt("production.variance")}>{input.standard_quantity != null ? `${count(addQuantity(input.actual_quantity, -input.standard_quantity))} ${input.unit}` : '—'}</td>
+                        </tr>)}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </td>
+            </tr>}
+          </tbody>)}
+        </table>
+      </div>}{notices}
     </section>}
   </div>;
 }

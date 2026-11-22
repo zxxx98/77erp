@@ -87,32 +87,68 @@ function Materials({ rows, complete, disabled, onQuantity, onReason, completedQu
     try { standards = new Map(calculateBomNodes(nodes, Number(completedQuantity)).rows.map(row => [row.product_id, row.required])); }
     catch { standards = new Map(); }
   }
-  return <div className="production-materials">{rows.map(row => {
-    const raw = complete ? row.quantity : showActual ? row.actual_quantity : row.planned_quantity;
-    const value = Number(raw), valid = raw !== '' && Number.isFinite(value) && value >= 0;
-    const shortage = valid && row.product ? bomShortage(value, issued ? row.available_quantity : row.product.stock) : 0;
-    let analysis = row;
-    if (complete) {
-      try { analysis = productionMaterialAnalysis(row, parseExactQuantity(completedQuantity, true), baseQuantity, parseExactQuantity(row.quantity), lossMethod, standards); }
-      catch { analysis = { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: pt("production.enterValidAcceptedOutputAndActualMaterialUsage") }; }
-    }
-    return <article className="production-material" key={row.product_id}>
-      <div className="production-material-name"><strong>{row.name}</strong><small>{row.barcode}{row.specification && ` · ${row.specification}`}</small>
-        {row.base_quantity === null ? <small>{pt("production.multiLevelRecipeSummarySeeStructureSourcesFor")}</small> : <small>{pt("production.baseNetUsage")} {row.base_quantity_fraction || count(row.base_quantity)} {row.unit} {pt("production.standardLossRate4")} {count(row.loss_rate ?? 0)}%</small>}
-        {row.note && <small>{row.note}</small>}
-        {row.product && row.unit !== row.product.unit && <p className="bom-warning">{pt("production.currentUnitChangedTo")} {row.product.unit}{pt("production.thisOrderRetains")} {row.unit}。</p>}
-        {row.product && !row.product.active && <p className="bom-warning">{pt("production.materialDisabled")}</p>}</div>
-      {showNetPlan && <div><small>{pt("production.netPlannedRequirement")}</small><span data-field="net_planned_quantity">{count(row.net_planned_quantity)} {row.unit}</span></div>}
-      <div><small>{pt("production.plannedUsage")}</small><span>{count(row.planned_quantity)} {row.unit}</span></div>
-      {complete ? <label>{pt("production.actualUsage")}{row.unit}）<FormField value={row.quantity} required label={pt("production.actualUsage2", { v0: row.name })}><AntInput aria-label={pt("production.actualUsage2", { v0: row.name })} inputMode="text"  disabled={disabled} value={row.quantity}
-
-        onChange={e => onQuantity(row.product_id, e.target.value)} /></FormField></label> : showActual && <div><small>{pt("production.actualUsage3")}</small><span>{count(row.actual_quantity)} {row.unit}</span></div>}
-      {!showActual && row.product && (issued || row.product.stock !== undefined) && <div><small>{issued ? pt("production.issuedBalance") : pt("production.bookStock")}</small><span>{count(issued ? row.available_quantity : row.product.stock)} {row.unit}</span>
-        {shortage > 0 && <strong className="bom-shortage">{issued ? pt("production.supplementNeeded") : pt("production.shortage")} {count(shortage)} {row.unit}</strong>}</div>}
-      {costs && showActual && <div><small>{pt("production.materialCost")}</small><span>{money(row.cost_cents)}</span></div>}
-      {(complete || showActual) && <MaterialVariance row={row} analysis={analysis} complete={complete} disabled={disabled} onReason={onReason} />}
-    </article>;
-  })}</div>;
+  const hasStockCol = !showActual && rows.some(row => row.product && (issued || row.product.stock !== undefined));
+  const hasVarianceRow = complete || showActual;
+  const colSpan = 2 + (showNetPlan ? 1 : 0) + (complete || showActual ? 1 : 0) + (hasStockCol ? 1 : 0) + (costs && showActual ? 1 : 0);
+  return <div className="production-materials erp-table-wrap erp-table-mobile-stack">
+    <table className="erp-table production-material-table" aria-label={complete ? pt("production.verifyActualUsage") : pt("production.plannedMaterials")}>
+      <thead>
+        <tr>
+          <th scope="col">{pt("production.material2")}</th>
+          {showNetPlan && <th scope="col" className="erp-col-num">{pt("production.netPlannedRequirement")}</th>}
+          <th scope="col" className="erp-col-num">{pt("production.plannedUsage")}</th>
+          {(complete || showActual) && <th scope="col" className={complete ? undefined : "erp-col-num"}>{pt("production.actualUsageCol")}</th>}
+          {hasStockCol && <th scope="col" className="erp-col-num">{issued ? pt("production.issuedBalance") : pt("production.bookStock")}</th>}
+          {costs && showActual && <th scope="col" className="erp-col-num">{pt("production.materialCost")}</th>}
+        </tr>
+      </thead>
+      {rows.map(row => {
+        const raw = complete ? row.quantity : showActual ? row.actual_quantity : row.planned_quantity;
+        const value = Number(raw), valid = raw !== '' && Number.isFinite(value) && value >= 0;
+        const shortage = valid && row.product ? bomShortage(value, issued ? row.available_quantity : row.product.stock) : 0;
+        let analysis = row;
+        if (complete) {
+          try { analysis = productionMaterialAnalysis(row, parseExactQuantity(completedQuantity, true), baseQuantity, parseExactQuantity(row.quantity), lossMethod, standards); }
+          catch { analysis = { standard_quantity: null, variance_quantity: null, variance_rate: null, analysis_error: pt("production.enterValidAcceptedOutputAndActualMaterialUsage") }; }
+        }
+        return <tbody className="production-material" key={row.product_id}>
+          <tr>
+            <td className="erp-cell-main production-material-name">
+              <div className="erp-cell-stack">
+                <strong>{row.name}</strong>
+                <small>{row.barcode}{row.specification && ` · ${row.specification}`}</small>
+                {row.base_quantity === null ? <small>{pt("production.multiLevelRecipeSummarySeeStructureSourcesFor")}</small> : <small>{pt("production.baseNetUsage")} {row.base_quantity_fraction || count(row.base_quantity)} {row.unit} {pt("production.standardLossRate4")} {count(row.loss_rate ?? 0)}%</small>}
+                {row.note && <small>{row.note}</small>}
+                {row.product && row.unit !== row.product.unit && <p className="bom-warning">{pt("production.currentUnitChangedTo")} {row.product.unit}{pt("production.thisOrderRetains")} {row.unit}。</p>}
+                {row.product && !row.product.active && <p className="bom-warning">{pt("production.materialDisabled")}</p>}
+              </div>
+            </td>
+            {showNetPlan && <td className="erp-col-num" data-label={pt("production.netPlannedRequirement")}><span data-field="net_planned_quantity">{count(row.net_planned_quantity)} {row.unit}</span></td>}
+            <td className="erp-col-num" data-label={pt("production.plannedUsage")}><span>{count(row.planned_quantity)} {row.unit}</span></td>
+            {complete && <td className="erp-cell-full" data-label={`${pt("production.actualUsage")}${row.unit}）`}>
+              <div className="erp-inline-field">
+                <FormField value={row.quantity} required label={pt("production.actualUsage2", { v0: row.name })}>
+                  <AntInput aria-label={pt("production.actualUsage2", { v0: row.name })} inputMode="text" disabled={disabled} value={row.quantity}
+                    onChange={e => onQuantity(row.product_id, e.target.value)} />
+                </FormField>
+              </div>
+            </td>}
+            {!complete && showActual && <td className="erp-col-num" data-label={pt("production.actualUsage3")}><span>{count(row.actual_quantity)} {row.unit}</span></td>}
+            {hasStockCol && <td className="erp-col-num" data-label={issued ? pt("production.issuedBalance") : pt("production.bookStock")}>
+              {row.product && (issued || row.product.stock !== undefined) ? <div className="erp-cell-stack">
+                <span>{count(issued ? row.available_quantity : row.product.stock)} {row.unit}</span>
+                {shortage > 0 && <strong className="bom-shortage">{issued ? pt("production.supplementNeeded") : pt("production.shortage")} {count(shortage)} {row.unit}</strong>}
+              </div> : '—'}
+            </td>}
+            {costs && showActual && <td className="erp-col-num" data-label={pt("production.materialCost")}><span>{money(row.cost_cents)}</span></td>}
+          </tr>
+          {hasVarianceRow && <tr className="erp-subrow">
+            <td colSpan={colSpan}><MaterialVariance row={row} analysis={analysis} complete={complete} disabled={disabled} onReason={onReason} /></td>
+          </tr>}
+        </tbody>;
+      })}
+    </table>
+  </div>;
 }
 
 function ProductionBatches({ order, costs, canVoid, canReceive, disabled, onVoid }) {
@@ -135,7 +171,27 @@ function ProductionBatches({ order, costs, canVoid, canReceive, disabled, onVoid
         {canVoid && (!batchReceived(batch) || canReceive) && batch.status === 'active' && order.status !== 'void' && <Button disabled={disabled} onClick={() => onVoid(batch)}>{pt("production.voidBatch")} {batch.batch_number} {pt("production.batch2")}</Button>}</div>
       {canVoid && !canReceive && batch.status === 'active' && batchReceived(batch) && <p className="bom-hint">{pt("production.voidingAReceivedBatchAlsoRequiresReceiptPermission")}</p>}
       {expanded === batch.id && <div className="production-batch-detail">
-        {batch.items.map(item => <div className="production-batch-material" key={item.product_id}><strong>{item.name}</strong><p>{pt("production.actualUsage3")} {count(item.actual_quantity)} {item.unit}{costs && pt("production.materialCost2", { v0: money(item.cost_cents) })}</p><MaterialVariance row={item} analysis={item} /></div>)}
+        {batch.items.length > 0 && <div className="erp-table-wrap erp-table-mobile-stack">
+          <table className="erp-table production-batch-table">
+            <thead>
+              <tr>
+                <th scope="col">{pt("production.material2")}</th>
+                <th scope="col" className="erp-col-num">{pt("production.actualUsageCol")}</th>
+                {costs && <th scope="col" className="erp-col-num">{pt("production.materialCost")}</th>}
+              </tr>
+            </thead>
+            {batch.items.map(item => <tbody className="production-batch-material" key={item.product_id}>
+              <tr>
+                <td className="erp-cell-main"><strong>{item.name}</strong></td>
+                <td className="erp-col-num" data-label={pt("production.actualUsage3")}><span>{count(item.actual_quantity)} {item.unit}</span></td>
+                {costs && <td className="erp-col-num" data-label={pt("production.materialCost")}><span>{money(item.cost_cents)}</span></td>}
+              </tr>
+              <tr className="erp-subrow">
+                <td colSpan={costs ? 3 : 2}><MaterialVariance row={item} analysis={item} /></td>
+              </tr>
+            </tbody>)}
+          </table>
+        </div>}
         <ScrapOutputs rows={batch.scraps} materials={batch.items} completed showPlan={false} receiptStatus={batch.status === 'void' ? 'void' : batchReceived(batch) ? 'confirmed' : 'pending'} />
       </div>}
     </article>)}
@@ -443,12 +499,33 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
           if (editor.items.some(item => item.product_id === product.id)) return;
           update({ items: [...editor.items, { ...product, product_id: product.id, planned_quantity: 0, available_quantity: 0, quantity: '0' }] });
         }} />}
-        {(editor.initial ? detail.items : editor.items).map(item => <div className="production-material" key={item.product_id}><div className="production-material-name"><strong>{item.name}</strong><small>{item.barcode}</small></div>
-          <div><small>{pt("production.plannedRequirement")}</small><span>{count(item.total_planned_quantity ?? item.planned_quantity)} {item.unit}</span></div>
-          <div><small>{pt("production.issuedBalance")}</small><span>{count(item.available_quantity)} {item.unit}</span></div>
-          <label>{label}{pt("production.quantity")}{item.unit}）<AntInput aria-label={pt("production.quantity2", { v0: item.name, v1: label })} inputMode="text" value={editor.items.find(row => row.product_id === item.product_id).quantity} disabled={action.busy}
-            onChange={event => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: event.target.value } : row) })} /></label>
-        </div>)}
+        <div className="erp-table-wrap erp-table-mobile-stack">
+          <table className="erp-table production-request-table" aria-label={`${label}${pt("production.material")}`}>
+            <thead>
+              <tr>
+                <th scope="col">{pt("production.material2")}</th>
+                <th scope="col" className="erp-col-num">{pt("production.plannedRequirement")}</th>
+                <th scope="col" className="erp-col-num">{pt("production.issuedBalance")}</th>
+                <th scope="col">{label}{pt("production.quantity")}）</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(editor.initial ? detail.items : editor.items).map(item => <tr className="production-material" key={item.product_id}>
+                <td className="erp-cell-main production-material-name">
+                  <div className="erp-cell-stack"><strong>{item.name}</strong><small>{item.barcode}</small></div>
+                </td>
+                <td className="erp-col-num" data-label={pt("production.plannedRequirement")}><span>{count(item.total_planned_quantity ?? item.planned_quantity)} {item.unit}</span></td>
+                <td className="erp-col-num" data-label={pt("production.issuedBalance")}><span>{count(item.available_quantity)} {item.unit}</span></td>
+                <td className="erp-cell-full" data-label={`${label}${pt("production.quantity")}${item.unit}）`}>
+                  <div className="erp-inline-field">
+                    <AntInput aria-label={pt("production.quantity2", { v0: item.name, v1: label })} inputMode="text" value={editor.items.find(row => row.product_id === item.product_id).quantity} disabled={action.busy}
+                      onChange={event => update({ items: editor.items.map(row => row.product_id === item.product_id ? { ...row, quantity: event.target.value } : row) })} />
+                  </div>
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>
         <label className="bom-note">{pt("production.requestNote")}<AntInput.TextArea aria-label={pt("production.materialRequestNote")} maxLength={500} rows={2} value={editor.note} disabled={action.busy} onChange={event => update({ note: event.target.value })} /></label>
       </section>{notices}<div className="bom-editor-actions"><Button disabled={action.busy} onClick={back}>{pt("production.cancel")}</Button><Button type="submit" kind="primary" busy={action.busy}>{pt("production.submit")}{label}{pt("production.request2")}</Button></div></form>
     </div>;
@@ -764,16 +841,46 @@ export function Production({ data, initialBom, onChanged, onNavigate, onSwitchWa
     </div><div className="bom-list-filters production-order-filters">
       <AntInput type="search" aria-label={pt("production.searchProductionOrders")} placeholder={pt("production.searchOrderNumberProductCodeOrRecipe")} maxLength={100} value={q} onChange={e => { setQ(e.target.value); setOffset(0); }} />
     </div><QueryStatus query={list} />
-      <div className="production-list">{list.result?.orders.map(order => <article className="bom-list-item" key={order.id}>
-        <div className="bom-list-info">
-          <div className="production-list-title"><strong>{order.product_name}</strong>{statusBadge(order.status)}</div>
-          <small>{order.number} · {productionAssignmentNames(order) || pt("production.ungrouped")}</small>
-          <p className="production-list-output">{pt('production.cumulativeOutput')} <strong>{count(order.completed_quantity ?? 0)}</strong> / {count(order.planned_quantity)} {order.unit}</p>
-          <small className="production-list-next">{order.status !== 'void' && order.pending_receipt_quantity > 0 ? pt('production.receiptPendingHint', { quantity: count(order.pending_receipt_quantity), unit: order.unit }) : pt(`production.next_${order.status}`)}</small>
-        </div>
-        <div className="bom-actions"><Button icon={ClipboardList} disabled={action.busy} onClick={() => open(order.id)} aria-label={pt("production.viewProductionOrder", { v0: order.number })}>{pt("production.viewDetails")}</Button>
-          {management && order.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(order)}>{pt("production.deleteProductionOrder")}</Button>}</div>
-      </article>)}</div>
+      <div className="production-list">
+        {!!list.result?.orders.length && <div className="erp-table-wrap erp-table-mobile-stack">
+          <table className="erp-table production-orders-table" aria-label={pt("production.productionOrders")}>
+            <thead>
+              <tr>
+                <th scope="col">{pt("payroll.orderCol")}</th>
+                <th scope="col">{pt("production.statusCol")}</th>
+                <th scope="col">{pt("production.groupAssignmentCol")}</th>
+                <th scope="col" className="erp-col-num">{pt("payroll.outputProgressCol")}</th>
+                <th scope="col">{pt("production.nextSteps")}</th>
+                <th scope="col" className="erp-col-actions">{pt("production.actionsCol")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.result.orders.map(order => <tr className="bom-list-item production-order-row" key={order.id}>
+                <td className="erp-cell-main">
+                  <div className="erp-cell-stack">
+                    <strong>{order.product_name}</strong>
+                    <small>{order.number}</small>
+                  </div>
+                </td>
+                <td data-label={pt("production.statusCol")}>{statusBadge(order.status)}</td>
+                <td data-label={pt("production.groupAssignmentCol")}>{productionAssignmentNames(order) || pt("production.ungrouped")}</td>
+                <td className="erp-col-num" data-label={pt("production.cumulativeOutput")}>
+                  <span className="production-list-output"><strong>{count(order.completed_quantity ?? 0)}</strong> / {count(order.planned_quantity)} {order.unit}</span>
+                </td>
+                <td data-label={pt("production.nextSteps")}>
+                  <small className="production-list-next">{order.status !== 'void' && order.pending_receipt_quantity > 0 ? pt('production.receiptPendingHint', { quantity: count(order.pending_receipt_quantity), unit: order.unit }) : pt(`production.next_${order.status}`)}</small>
+                </td>
+                <td className="erp-col-actions">
+                  <div className="bom-actions">
+                    <Button icon={ClipboardList} disabled={action.busy} onClick={() => open(order.id)} aria-label={pt("production.viewProductionOrder", { v0: order.number })}>{pt("production.viewDetails")}</Button>
+                    {management && order.status === 'void' && can('corrections') && <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => remove(order)}>{pt("production.deleteProductionOrder")}</Button>}
+                  </div>
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>}
+      </div>
       {list.result && !list.result.orders.length && <p className="bom-empty">{management ? pt("production.noMatchingProductionOrdersSelectAnExistingBom") : pt("production.noAssignedOrders")}</p>}
       {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination"><Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>{pt("production.previous")}</Button><span>{pt("production.total")} {list.result.total} {pt("production.orders")}</span><Button disabled={!list.result.has_more} onClick={() => setOffset(n => n + 30)}>{pt("production.next")}</Button></div>}
     </section>

@@ -8,6 +8,7 @@ import { ChildBomPicker } from './ChildBomPicker.jsx';
 import { bomRequiredQuantity, parseBomQuantity, validateBomLossRate } from '../../shared/bom.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
+import './bom-table.css';
 
 const formatCount = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 

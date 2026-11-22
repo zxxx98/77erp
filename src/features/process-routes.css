@@ -128,14 +128,8 @@
 
 .process-price-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .process-price-tools label { display: grid; gap: 6px; flex: 1 1 200px; min-width: 0; }
-.process-price-rows { display: grid; gap: 12px; margin-top: 16px; }
-.process-price-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 1fr) minmax(100px, .6fr); gap: 12px; align-items: center; }
-.process-price-row strong { overflow-wrap: anywhere; }
-.process-price-row label { display: grid; gap: 6px; min-width: 0; }
-@media (max-width: 600px) {
-  .process-price-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .process-price-row strong { grid-column: 1 / -1; }
-}
+.process-price-rows { margin-top: 16px; }
+.process-price-row .dropdown { width: 100%; min-width: 0; }
 
 /* ─── 1. 工艺路线列表页 ─── */
 .process-list-filters {
@@ -875,51 +869,20 @@
 
 /* ─── 工序登记记录 ─── */
 .process-history-list {
-  display: grid;
-  gap: 0;
-  border-top: 1px solid var(--border);
+  margin-top: 12px;
 }
-.process-history-card {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 0;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-}
-.process-history-card.is-void {
-  background: transparent;
+.process-history-card.is-void td {
   opacity: 0.72;
 }
-.process-history-main {
-  min-width: 0;
-  flex: 1;
+.process-history-extra {
+  display: grid;
+  gap: 8px;
 }
-.bom-section-heading.process-history-head {
-  margin-bottom: 6px;
-  justify-content: flex-start;
-  gap: 10px;
-}
-.process-history-head strong {
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-.process-history-people {
-  margin: 4px 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-.process-history-main > .bom-hint {
-  margin: 2px 0;
-}
-:where(.process-history-main > .btn) {
-  margin: 8px 0 4px;
+.process-history-extra > .btn {
+  justify-self: start;
 }
 .process-history-note {
-  margin: 6px 0 0;
+  margin: 0;
   padding: 6px 10px;
   border-radius: var(--radius-md);
   background: var(--surface-subtle);
@@ -927,13 +890,9 @@
   color: var(--text-secondary);
 }
 .process-history-void-reason {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--red);
   font-size: 12px;
-}
-.process-history-action {
-  flex-shrink: 0;
-  align-self: center;
 }
 
 /* ─── 4. 物料与 BOM 路线选择器 (RoutePicker) ─── */
@@ -1038,16 +997,6 @@
   }
   .process-operations-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .process-history-card {
-    flex-direction: column;
-  }
-  .process-history-action {
-    align-self: stretch;
-  }
-  .process-history-action .btn {
-    width: 100%;
-    justify-content: center;
   }
   .process-node {
     min-height: 82px;

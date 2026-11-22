@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Save } from 'lucide-react';
 import { Form as AntForm } from 'antd';
 import { PageHeading, Button } from '../components/common.jsx';
 import { Select } from '../Dropdown.jsx';
@@ -6,17 +6,13 @@ import { Input as AntInput, Checkbox as AntCheckbox } from '../ui/controls.jsx';
 import { FormField } from '../ui/FormField.jsx';
 import { ProductPicker } from './ProductPicker.jsx';
 import { RoutePicker } from './RoutePicker.jsx';
-import { ChildBomPicker } from './ChildBomPicker.jsx';
 import { BomMaterialTable, BomScrapTable } from './BomEditorTables.jsx';
-import { BomViewModeSwitch, useBomLayoutMode } from './bom-layout-mode.jsx';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
-import { BOM_MAX_ITEMS, parseBomQuantity, bomRequiredQuantity, validateBomLossRate } from '../../shared/bom.js';
+import { BOM_MAX_ITEMS, parseBomQuantity, validateBomLossRate } from '../../shared/bom.js';
 import { productionMessage } from '../i18n/production-errors.js';
 import { bomLossMethodLabels, bomLossMethodFormulas } from '../i18n/production-display.js';
-import { t as pt, getFormatLocale } from '../i18n/index.js';
+import { t as pt } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
-
-const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 
 export const parseLossRate = value => {
   const rate = Number(value);
@@ -34,173 +30,6 @@ function incrementUsage(value) {
   return next;
 }
 
-function UsagePreview({ value, unit, lossRate, lossMethod }) {
-  useLocale();
-  try {
-    const parsed = parseBomQuantity(value);
-    const rate = parseLossRate(lossRate);
-    const gross = bomRequiredQuantity(parsed.quantity, 1, 1, parsed.quantity_fraction, rate, lossMethod);
-    return <small className="bom-hint bom-usage-preview">
-      {parsed.quantity_fraction && <>{pt("production.approximately")} {count(parsed.quantity)} {unit}{pt("production.calculatedUsingTheOriginalFraction")} </>}
-      {pt("production.standardInputIncludingLoss")} {count(gross)} {unit}{pt("production.forTheBaseOutput")}
-    </small>;
-  } catch { return null; }
-}
-
-export function BomMaterialRow({ item, lossMethod, queryData, busy, onPatch, onRemove }) {
-  useLocale();
-  return <div className="bom-material">
-    <div className="bom-material-name">
-      <strong>{item.product.name}</strong>
-      <small>{item.product.barcode} · {item.product.specification || pt("production.noSpecification")}{!item.product.active && pt("production.disabled")}</small>
-      {item.unit !== item.product.unit && <span className="bom-warning">{pt("production.unitChangedFrom")} {item.unit} {pt("production.to")} {item.product.unit}{pt("production.verifyUsage")}</span>}
-    </div>
-    <label>
-      {pt("production.netUsage")}{item.product.unit}）
-      <FormField value={item.quantity} required maxLength={60} label={pt("production.usage", { v0: item.product.name })}>
-        <AntInput
-          aria-label={pt("production.usage", { v0: item.product.name })}
-          aria-describedby="bom-usage-help bom-loss-help"
-          inputMode="text"
-          placeholder={pt("production.eG0025Or140")}
-          maxLength={60}
-          spellCheck={false}
-          value={item.quantity}
-          disabled={busy}
-          onChange={e => onPatch({ quantity: e.target.value })}
-        />
-      </FormField>
-    </label>
-    <label>
-      {pt("production.standardLossRate2")}
-      <FormField value={item.loss_rate} required maxLength={20} label={pt("production.standardLossRate3", { v0: item.product.name })}>
-        <AntInput
-          aria-label={pt("production.standardLossRate3", { v0: item.product.name })}
-          aria-describedby="bom-loss-help"
-          inputMode="decimal"
-          maxLength={20}
-          value={item.loss_rate}
-          disabled={busy}
-          onChange={e => onPatch({ loss_rate: e.target.value })}
-        />
-      </FormField>
-    </label>
-    <label className="bom-material-note">
-      {pt("production.materialNote")}
-      <FormField value={item.note} maxLength={200} label={pt("production.note2", { v0: item.product.name })}>
-        <AntInput
-          aria-label={pt("production.note2", { v0: item.product.name })}
-          maxLength={200}
-          value={item.note}
-          disabled={busy}
-          onChange={e => onPatch({ note: e.target.value })}
-        />
-      </FormField>
-    </label>
-    <Button
-      type="button"
-      className="bom-remove-btn"
-      icon={Trash2}
-      disabled={busy}
-      aria-label={pt("production.removeMaterial", { v0: item.product.name })}
-      onClick={onRemove}
-    >
-      {pt("production.remove")}
-    </Button>
-    <UsagePreview value={item.quantity} unit={item.product.unit} lossRate={item.loss_rate} lossMethod={lossMethod} />
-    <details className="bom-disclosure" open={item.usage_mode === 'explode' || undefined}>
-      <summary>
-        <span>{pt('production.supplyBomHint')}</span>
-        <ChevronDown className="bom-disclosure-chevron" size={16} aria-hidden="true" />
-      </summary>
-      <p className="bom-hint">{pt('production.supplyBomDescription')}</p>
-      <ChildBomPicker
-        item={item}
-        data={queryData}
-        disabled={busy}
-        recipeOnly
-        onChange={patch => onPatch({ ...patch, usage_mode: 'explode' })}
-      />
-      {item.child_bom_id && <Button
-        type="button"
-        disabled={busy}
-        onClick={() => onPatch({ usage_mode: 'stock', child_bom_id: null, child_bom: null })}
-      >
-        {pt('production.supplyRemoveReference')}
-      </Button>}
-    </details>
-  </div>;
-}
-
-export function BomScrapRule({ row, items, busy, onPatch, onRemove }) {
-  useLocale();
-  const sameUnitMaterials = items.filter(item => item.product.unit === row.product.unit);
-  return <article className="bom-scrap-rule">
-    <div>
-      <strong>{row.product.name}</strong>
-      <small>{row.product.barcode} · {row.product.unit}{!row.product.active && pt("production.disabled")}</small>
-      {row.unit !== row.product.unit && <p className="bom-warning">{pt("production.unitChangedVerifyTheRuleBeforeSaving")}</p>}
-    </div>
-    <div className="bom-scrap-fields">
-      <label>
-        {pt("production.calculationMethod")}
-        <Select
-          aria-label={pt("production.calculationMethod2", { v0: row.product.name })}
-          value={row.method}
-          disabled={busy}
-          onChange={e => onPatch({
-            method: e,
-            source_product_id: e === 'input_ratio' && sameUnitMaterials.length === 1 ? sameUnitMaterials[0].product_id : null,
-            quantity: '',
-          })}
-        >
-          <option value="output">{pt("production.byOutput")}</option>
-          <option value="input_ratio">{pt("production.byMaterialInputRatio")}</option>
-        </Select>
-      </label>
-      {row.method === 'input_ratio' && <label>
-        {pt("production.sourceMaterial")}
-        <Select
-          aria-label={pt("production.sourceMaterial2", { v0: row.product.name })}
-          value={row.source_product_id ?? ''}
-          required
-          disabled={busy}
-          onChange={e => onPatch({ source_product_id: Number(e) })}
-        >
-          <option value="">{pt("production.selectMaterialWithTheSameUnit")}</option>
-          {sameUnitMaterials.map(item => <option value={item.product_id} key={item.product_id}>{item.product.name}</option>)}
-        </Select>
-      </label>}
-      <label>
-        {row.method === 'output' ? pt("production.baseScrapQuantity", { v0: row.product.unit }) : pt("production.scrapRatio")}
-        <FormField value={row.quantity} required maxLength={60} label={`${row.product.name}${row.method === 'output' ? pt("production.baseScrapQuantity2") : pt("production.scrapRatio2")}`}>
-          <AntInput
-            aria-label={`${row.product.name}${row.method === 'output' ? pt("production.baseScrapQuantity2") : pt("production.scrapRatio2")}`}
-            inputMode={row.method === 'output' ? 'text' : 'decimal'}
-            maxLength={60}
-            value={row.quantity}
-            disabled={busy}
-            onChange={e => onPatch({ quantity: e.target.value })}
-          />
-        </FormField>
-      </label>
-      <label>
-        {pt("production.scrapNote")}
-        <AntInput
-          aria-label={pt("production.scrapNote2", { v0: row.product.name })}
-          maxLength={200}
-          value={row.note}
-          disabled={busy}
-          onChange={e => onPatch({ note: e.target.value })}
-        />
-      </label>
-    </div>
-    <Button type="button" icon={Trash2} disabled={busy} aria-label={pt("production.removeScrap", { v0: row.product.name })} onClick={onRemove}>
-      {pt("production.remove")}
-    </Button>
-  </article>;
-}
-
 export function BomEditor({
   editor,
   data,
@@ -216,7 +45,6 @@ export function BomEditor({
   setOverviewId,
 }) {
   useLocale();
-  const [layoutMode] = useBomLayoutMode();
   const patchItem = (productId, patch) => update({
     items: editor.items.map(row => row.product_id === productId ? { ...row, ...patch } : row),
   });
@@ -226,7 +54,6 @@ export function BomEditor({
 
   return <div className="bom-page">
     <PageHeading title={editor.id ? pt("production.editBom") : pt("production.newBom")}>
-      <BomViewModeSwitch />
       <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{pt("production.backToBom")}</Button>
     </PageHeading>
     <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={save}>
@@ -340,24 +167,14 @@ export function BomEditor({
           } catch (error) { action.setError(error.message); }
         }} />
         {!editor.items.length && <p className="bom-empty">{pt("production.searchOrScanToAddMaterials")}</p>}
-        {layoutMode === 'table' ? (editor.items.length > 0 && <BomMaterialTable
+        {editor.items.length > 0 && <BomMaterialTable
           items={editor.items}
           lossMethod={editor.loss_method}
           queryData={queryData}
           busy={action.busy}
           onPatchItem={patchItem}
           onRemoveItem={productId => update({ items: editor.items.filter(row => row.product_id !== productId) })}
-        />) : <div className="bom-materials">
-          {editor.items.map(item => <BomMaterialRow
-            key={item.product_id}
-            item={item}
-            lossMethod={editor.loss_method}
-            queryData={queryData}
-            busy={action.busy}
-            onPatch={patch => patchItem(item.product_id, patch)}
-            onRemove={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}
-          />)}
-        </div>}
+        />}
       </section>
 
       <section className="panel bom-section">
@@ -382,20 +199,13 @@ export function BomEditor({
           update({ scraps: [...editor.scraps, { product_id: product.id, product, unit: product.unit, method: 'output', source_product_id: null, quantity: 1, note: '' }] });
         }} />
         {!editor.scraps.length && <p className="bom-empty">{pt("production.leaveEmptyIfThereIsNoScrap")}</p>}
-        {layoutMode === 'table' ? (editor.scraps.length > 0 && <BomScrapTable
+        {editor.scraps.length > 0 && <BomScrapTable
           scraps={editor.scraps}
           items={editor.items}
           busy={action.busy}
           onPatchScrap={patchScrap}
           onRemoveScrap={productId => update({ scraps: editor.scraps.filter(item => item.product_id !== productId) })}
-        />) : editor.scraps.map(row => <BomScrapRule
-          key={row.product_id}
-          row={row}
-          items={editor.items}
-          busy={action.busy}
-          onPatch={patch => patchScrap(row.product_id, patch)}
-          onRemove={() => update({ scraps: editor.scraps.filter(item => item.product_id !== row.product_id) })}
-        />)}
+        />}
       </section>
 
       {productionMessage(action.error) && <p className="form-error bom-error" role="alert">{productionMessage(action.error)}</p>}

@@ -70,12 +70,12 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production worksp
     await expect(page.getByText('已完工', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '返回生产单', exact: true }).click();
     await page.getByRole('group', { name: '生产单快捷筛选' }).getByRole('button', { name: '待入库', exact: true }).click();
-    await expect(page.locator('.production-list article')).toHaveCount(1);
+    await expect(page.locator('.production-list .bom-list-item')).toHaveCount(1);
     await page.screenshot({ path: test.info().outputPath(`${mode}-list.png`), fullPage: true });
     order = await get(); await post(`/production-receipts/${order.receipt_documents[0].id}/confirm`, { version: order.receipt_documents[0].version });
     await page.reload();
     await page.getByRole('group', { name: '生产单快捷筛选' }).getByRole('button', { name: '待入库', exact: true }).click();
-    await expect(page.locator('.production-list article')).toHaveCount(0);
+    await expect(page.locator('.production-list .bom-list-item')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await context.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close(); }

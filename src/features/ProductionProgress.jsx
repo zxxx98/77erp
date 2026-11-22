@@ -50,23 +50,71 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
         {layer.pool_paths && <><p className="bom-hint">{t('production.poolHint')}</p>
           <p className="bom-hint">{t('production.availableInOrder')} <strong>{count(available)} {layer.unit}</strong> · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>
           <details className="production-disclosure"><summary>{t('production.poolUsage')}</summary>
-            {layer.pool_usages.length ? layer.pool_usages.map(usage => <p key={usage.path}>{usage.name} · {usage.path}: {count(usage.quantity)} {layer.unit}</p>) : <p className="bom-hint">{t('production.poolUnused')}</p>}
+            {layer.pool_usages.length ? <div className="erp-table-wrap erp-table-mobile-stack">
+              <table className="erp-table">
+                <thead><tr><th scope="col">{t('production.levelCol')}</th><th scope="col" className="erp-col-num">{t('production.documentQtyCol')}</th></tr></thead>
+                <tbody>{layer.pool_usages.map(usage => <tr key={usage.path}>
+                  <td className="erp-cell-main"><div className="erp-cell-stack"><strong>{usage.name}</strong><small>{usage.path}</small></div></td>
+                  <td className="erp-col-num" data-label={t('production.documentQtyCol')}>{count(usage.quantity)} {layer.unit}</td>
+                </tr>)}</tbody>
+              </table>
+            </div> : <p className="bom-hint">{t('production.poolUnused')}</p>}
           </details></>}
         {!!order.stage_workflow && !layer.postProcessing && <details className="production-disclosure">
           <summary>{t('production.viewCumulativeInputVariance')}</summary>
           {layer.path && <p className="bom-hint">{t('production.availableInOrder')} {count(available)} {layer.unit} · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>}
-          {layer.items.map(item => <div className="stage-cumulative-input" key={item.path}>
-            <strong>{item.name}</strong>
-            <p>{t('production.cumulativeActual')} {count(item.actual_quantity)} {item.unit} {t('production.cumulativeStandard')} {item.standard_quantity == null ? '—' : count(item.standard_quantity)} {item.unit}</p>
-            {item.standard_quantity != null && <p>{t('production.variance')} {count(addQuantity(item.actual_quantity, -item.standard_quantity))} {item.unit}</p>}
-          </div>)}
+          <div className="erp-table-wrap erp-table-mobile-stack">
+            <table className="erp-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t('production.material2')}</th>
+                  <th scope="col" className="erp-col-num">{t('production.cumulativeActual')}</th>
+                  <th scope="col" className="erp-col-num">{t('production.cumulativeStandard')}</th>
+                  <th scope="col" className="erp-col-num">{t('production.variance')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {layer.items.map(item => <tr className="stage-cumulative-input" key={item.path}>
+                  <td className="erp-cell-main"><strong>{item.name}</strong></td>
+                  <td className="erp-col-num" data-label={t('production.cumulativeActual')}>{count(item.actual_quantity)} {item.unit}</td>
+                  <td className="erp-col-num" data-label={t('production.cumulativeStandard')}>{item.standard_quantity == null ? '—' : `${count(item.standard_quantity)} ${item.unit}`}</td>
+                  <td className="erp-col-num" data-label={t('production.variance')}>{item.standard_quantity != null ? `${count(addQuantity(item.actual_quantity, -item.standard_quantity))} ${item.unit}` : '—'}</td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
         </details>}
         {routed && <details className="production-disclosure" open={search.trim() ? true : undefined}>
           <summary>{t('production.operationsAndRegistration', { count: rows.length })}</summary>
-          <div className="production-inline-operations">{rows.map(target => <div className="production-inline-operation" key={target.id}>
-            <div><strong>{target.name}</strong><OperationPrice node={target.node} unit={layer.unit} /><small>{t('production.completed')} {count(target.node.completed_quantity)} {layer.unit}{target.node.available_quantity != null && ` · ${t(target.postProcessing ? 'production.postProcessingRemaining' : 'route.available')} ${count(target.node.available_quantity)} ${layer.unit}`}</small></div>
-            {registerable && <Button disabled={busy || outputRegistrationLocked(order, target)} onClick={() => onRegister(target.id)} aria-label={t('production.register4', { v0: target.name })}>{t('production.register')}</Button>}
-          </div>)}</div>
+          <div className="production-inline-operations erp-table-wrap erp-table-mobile-stack">
+            <table className="erp-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t('route.operations')}</th>
+                  <th scope="col" className="erp-col-num">{t('route.completed')}</th>
+                  <th scope="col" className="erp-col-num">{t('production.available')}</th>
+                  {registerable && <th scope="col" className="erp-col-actions"><span className="bom-visually-hidden">{t('production.actionsCol')}</span></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(target => <tr className="production-inline-operation" key={target.id}>
+                  <td className="erp-cell-main">
+                    <div className="erp-cell-stack">
+                      <strong>{target.name}</strong>
+                      <OperationPrice node={target.node} unit={layer.unit} />
+                    </div>
+                  </td>
+                  <td className="erp-col-num" data-label={t('production.completed')}>{count(target.node.completed_quantity)} {layer.unit}</td>
+                  <td className="erp-col-num" data-label={t(target.postProcessing ? 'production.postProcessingRemaining' : 'route.available')}>
+                    {target.node.available_quantity != null ? `${count(target.node.available_quantity)} ${layer.unit}` : '—'}
+                  </td>
+                  {registerable && <td className="erp-col-actions">
+                    <Button disabled={busy || outputRegistrationLocked(order, target)} onClick={() => onRegister(target.id)} aria-label={t('production.register4', { v0: target.name })}>{t('production.register')}</Button>
+                  </td>}
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
           <Button disabled={busy} onClick={() => onOperations(layer.path)}>{t('production.operationHistory')}</Button>
         </details>}
       </article>;

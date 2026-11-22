@@ -208,14 +208,31 @@ export function ProcessRoutes({ data }) {
           update({ graph: { ...graph, price_tables: graph.price_tables.filter(table => table.id !== priceTable.id) } }); setPriceTableId('default');
         }}>{t('route.deletePriceTable')}</Button>}
       </div>
-      <div className="process-price-rows">{orderedNodes.map(row => {
-        const price = priceTable.prices[row.id] || {};
-        return <div className="process-price-row" key={row.id}>
-          <strong>{row.step}. {row.name}</strong>
-          <label>{t('payroll.unitPrice')}<Input aria-label={`${row.name} ${t('payroll.unitPrice')}`} type="number" min="0" max="99999999" step="0.0001" value={price.unit_price ?? ''} placeholder={t('payroll.unpriced')} disabled={action.busy} onChange={event => patchPrice(row.id, { unit_price: event.target.value === '' ? null : Number(event.target.value), currency: price.currency || 'CNY' })} /></label>
-          <label>{t('payroll.currency')}<Select aria-label={`${row.name} ${t('payroll.currency')}`} value={price.currency || 'CNY'} disabled={action.busy} onChange={currency => patchPrice(row.id, { currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select></label>
-        </div>;
-      })}</div>
+      <div className="process-price-rows erp-table-wrap erp-table-mobile-stack">
+        <table className="erp-table process-price-table" aria-label={t('route.priceTables')}>
+          <thead>
+            <tr>
+              <th scope="col">{t('route.operations')}</th>
+              <th scope="col">{t('payroll.unitPrice')}</th>
+              <th scope="col">{t('payroll.currency')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orderedNodes.map(row => {
+              const price = priceTable.prices[row.id] || {};
+              return <tr className="process-price-row" key={row.id}>
+                <td className="erp-cell-main"><strong>{row.step}. {row.name}</strong></td>
+                <td className="erp-cell-full" data-label={t('payroll.unitPrice')}>
+                  <Input aria-label={`${row.name} ${t('payroll.unitPrice')}`} type="number" min="0" max="99999999" step="0.0001" value={price.unit_price ?? ''} placeholder={t('payroll.unpriced')} disabled={action.busy} onChange={event => patchPrice(row.id, { unit_price: event.target.value === '' ? null : Number(event.target.value), currency: price.currency || 'CNY' })} />
+                </td>
+                <td className="erp-cell-full" data-label={t('payroll.currency')}>
+                  <Select aria-label={`${row.name} ${t('payroll.currency')}`} value={price.currency || 'CNY'} disabled={action.busy} onChange={currency => patchPrice(row.id, { currency })}>{PAYROLL_CURRENCIES.map(code => <option key={code} value={code}>{code}</option>)}</Select>
+                </td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
     <section className="panel bom-section">
       <div className="process-editor-toolbar">

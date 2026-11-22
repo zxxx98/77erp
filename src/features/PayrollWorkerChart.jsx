@@ -42,12 +42,33 @@ export function PayrollWorkerChart({ workers }) {
           {selected.currencies.length ? selected.currencies.map(row => <strong key={row.currency}>{amount(row.amount_cents, row.currency)}</strong>) : <strong>{amount(selected.unpriced_count ? null : 0, '')}</strong>}
         </div>
         <p className="payroll-muted">{t('payroll.workerReportStats', { active: selected.active_count, void: selected.void_count })}{selected.unpriced_count > 0 ? ` · ${t('payroll.workerUnpriced', { count: selected.unpriced_count })}` : ''}</p>
-        <ul className="payroll-worker-detail-list">
-          {selected.operations.map(operation => <li key={operation.key}>
-            <div><strong>{operation.operation_name}</strong><p>{operation.route_name} · {t('payroll.operationCount', { count: operation.report_count })}</p></div>
-            <div className="payroll-worker-detail-formula"><span>{operation.quantity_fraction || number(operation.quantity)} {operation.unit} × {number(operation.multiplier)} × {operation.unit_price == null ? t('payroll.unpriced') : `${operation.currency} ${number(operation.unit_price)}`}</span><strong>{amount(operation.amount_cents, operation.currency)}</strong></div>
-          </li>)}
-        </ul>
+        {selected.operations.length > 0 && <div className="payroll-table-wrap">
+          <table className="payroll-table payroll-worker-detail-table">
+            <thead>
+              <tr>
+                <th scope="col">{t('route.operations')}</th>
+                <th scope="col">{t('payroll.formulaCol')}</th>
+                <th scope="col" className="payroll-col-right">{t('payroll.wage')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selected.operations.map(operation => <tr key={operation.key} className="payroll-worker-detail-row">
+                <td className="payroll-cell-primary">
+                  <div className="payroll-cell-stack">
+                    <strong>{operation.operation_name}</strong>
+                    <small>{operation.route_name} · {t('payroll.operationCount', { count: operation.report_count })}</small>
+                  </div>
+                </td>
+                <td className="payroll-cell-formula">
+                  <span>{operation.quantity_fraction || number(operation.quantity)} {operation.unit} × {number(operation.multiplier)} × {operation.unit_price == null ? t('payroll.unpriced') : `${operation.currency} ${number(operation.unit_price)}`}</span>
+                </td>
+                <td className="payroll-col-right payroll-cell-wage">
+                  <strong className="payroll-wage">{amount(operation.amount_cents, operation.currency)}</strong>
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>}
       </div>
     </Modal>}
   </section>;

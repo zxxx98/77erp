@@ -37,24 +37,12 @@
 .production-page .production-receipt-action { margin-bottom: 16px; }
 .production-page .material-document:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .production-page .material-document { scroll-margin-top: 24px; }
-.production-batch-material { padding: 16px 0; font-size: 13px; }
-.production-batch-material > p { line-height: 1.7; }
-.production-material { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(100px, 1fr)); gap: 20px; align-items: center; padding: 20px 0; border-top: 1px solid var(--border); font-size: 13px; }
-.production-material > div, :where(.production-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { min-width: 0; }
-.production-material span { display: block; margin-top: 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.production-material .bom-shortage { display: block; margin-top: 6px; font-size: 12px; }
+.production-material .bom-shortage { display: block; margin-top: 4px; font-size: 12px; }
 .production-bom-options { max-height: 420px; overflow-y: auto; }
-@media (max-width: 850px) {
-  .production-material { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-  .production-material-name { grid-column: 1 / -1; }
-}
 @media (max-width: 600px) {
-  .production-material { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  :where(.production-material > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { grid-column: 1 / -1; }
   .production-output { max-width: none; }
   .production-summary { gap: 20px; justify-content: space-between; }
   .production-summary strong { font-size: 20px; }
-  :where(.production-page .bom-list-item > .btn) { width: 100%; }
 }
 
 .production-variance { grid-column: 1 / -1; padding: 12px 0 4px 14px; background: transparent; border-left: 2px solid var(--border); border-radius: 0; }
@@ -298,41 +286,11 @@
 .production-finish-stage-actions { display: flex; flex-direction: column; gap: 10px; }
 .production-finish-sub-hint { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 .production-finish-toggles { display: flex; flex-direction: column; gap: 8px; }
-.production-finish-return-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border-subtle); }
-.production-finish-return-row {
-  display: grid;
-  grid-template-columns: minmax(160px, 2fr) repeat(3, minmax(84px, 1fr)) minmax(130px, 1.3fr);
-  gap: 12px;
-  align-items: center;
-  padding: 12px 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  border-radius: 0;
-  background: transparent;
-  font-size: 13px;
-}
-.production-finish-return-row > div,
-.production-finish-return-input,
-.production-finish-review-reason { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.production-finish-review-row {
-  display: grid;
-  grid-template-columns: minmax(170px, 1.8fr) repeat(2, minmax(96px, 1fr)) minmax(150px, 1.3fr) minmax(140px, 1.2fr);
-  gap: 12px;
-  align-items: start;
-  padding: 12px 0;
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  border-radius: 0;
-  background: transparent;
-  font-size: 13px;
-}
-.production-finish-review-row small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.production-finish-review-row span { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.production-finish-return-list,
+.production-finish-review-table { font-variant-numeric: tabular-nums; }
 .production-finish-review-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .production-finish-delta-up { color: var(--orange) !important; font-weight: 500; }
 .production-finish-delta-down { color: var(--green) !important; font-weight: 500; }
-.production-finish-return-row small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.production-finish-return-row span { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .production-finish-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -374,10 +332,5 @@
 
 @media (max-width: 640px) {
   .production-finish-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .production-finish-return-row,
-  .production-finish-review-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .production-finish-return-name,
-  .production-finish-return-input,
-  .production-finish-review-reason { grid-column: 1 / -1; }
   .production-finish-summary-grid { grid-template-columns: 1fr; }
 }

@@ -456,71 +456,90 @@ export function ProductionFinishPipeline({
     </div>
   );
 
-  const renderReviewRow = entry => {
-    const rawValue = reviewOverrides[entry.key] ?? quantityInput(entry.recorded);
-    const reasonValue = reviewReasons[entry.key] ?? '';
-    const rowError = parsedReview.errors.get(entry.key);
-    const parsed = parsedReview.parsedValues.get(entry.key);
-    const delta = parsed !== undefined && !rowError ? exactSubtract(parsed, entry.recorded) : 0;
-    const poolHeadroom = exactSubtract(entry.poolBaseAvailable, parsedReview.poolDeltas.get(entry.poolKey) ?? 0);
-    return (
-      <article className="production-finish-review-row" key={entry.key}>
-        <div className="production-finish-return-name">
-          <div className="production-finish-review-title">
-            <strong>{entry.name}</strong>
-            <Badge tone={entry.kind === 'semi' ? 'blue' : 'gray'}>
-              {t(entry.kind === 'semi' ? 'production.finishPipeline.reviewSemiBadge' : 'production.finishPipeline.reviewRawBadge')}
-            </Badge>
-          </div>
-          <small>{entry.barcode}{entry.specification ? ` · ${entry.specification}` : ''}</small>
-          {exactCompare(entry.postQuantity, 0) > 0 && (
-            <small>{t('production.finishPipeline.reviewPostAdded', { quantity: formatQty(entry.postQuantity), unit: entry.unit })}</small>
-          )}
-        </div>
-        <div>
-          <small>{t('production.finishPipeline.reviewRecordedLabel')}</small>
-          <span>{formatQty(entry.recorded)} {entry.unit}</span>
-          {entry.standard != null && (
-            <small>{t('production.finishPipeline.reviewStandardLabel')} {formatQty(entry.standard)} {entry.unit}</small>
-          )}
-        </div>
-        <div>
-          <small>{t('production.finishPipeline.reviewPoolHeadroom')}</small>
-          <span>{formatQty(poolHeadroom)} {entry.unit}</span>
-        </div>
-        <label className="production-finish-return-input">
-          <small>{t('production.finishPipeline.reviewInputLabel', { name: entry.name })}（{entry.unit}）</small>
-          <Input
-            aria-label={t('production.finishPipeline.reviewInputLabel', { name: entry.labelName })}
-            inputMode="text"
-            disabled={locked}
-            value={rawValue}
-            onChange={event => setReviewOverrides(prev => ({ ...prev, [entry.key]: event.target.value }))}
-          />
-          {!rowError && exactCompare(delta, 0) !== 0 && (
-            <small className={exactCompare(delta, 0) > 0 ? 'production-finish-delta-up' : 'production-finish-delta-down'}>
-              {t('production.finishPipeline.reviewDelta', {
-                delta: `${exactCompare(delta, 0) > 0 ? '+' : ''}${formatQty(delta)}`,
-                unit: entry.unit,
-              })}
-            </small>
-          )}
-          {rowError && <span className="form-error" role="alert">{rowError}</span>}
-        </label>
-        <label className="production-finish-review-reason">
-          <small>{t('production.finishPipeline.reviewReasonLabel', { name: entry.name })}</small>
-          <Input
-            aria-label={t('production.finishPipeline.reviewReasonLabel', { name: entry.labelName })}
-            maxLength={500}
-            placeholder={t('production.finishPipeline.reviewReasonPlaceholder')}
-            disabled={locked}
-            value={reasonValue}
-            onChange={event => setReviewReasons(prev => ({ ...prev, [entry.key]: event.target.value }))}
-          />
-        </label>
-      </article>
-    );
-  };
+  const renderReviewTable = entries => (
+    <div className="erp-table-wrap erp-table-mobile-stack">
+      <table className="erp-table production-finish-review-table">
+        <thead>
+          <tr>
+            <th scope="col">{t('production.material2')}</th>
+            <th scope="col" className="erp-col-num">{t('production.finishPipeline.reviewRecordedLabel')}</th>
+            <th scope="col" className="erp-col-num">{t('production.finishPipeline.reviewPoolHeadroom')}</th>
+            <th scope="col">{t('production.actualUsageCol')}</th>
+            <th scope="col">{t('production.usageVarianceReason2')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(entry => {
+            const rawValue = reviewOverrides[entry.key] ?? quantityInput(entry.recorded);
+            const reasonValue = reviewReasons[entry.key] ?? '';
+            const rowError = parsedReview.errors.get(entry.key);
+            const parsed = parsedReview.parsedValues.get(entry.key);
+            const delta = parsed !== undefined && !rowError ? exactSubtract(parsed, entry.recorded) : 0;
+            const poolHeadroom = exactSubtract(entry.poolBaseAvailable, parsedReview.poolDeltas.get(entry.poolKey) ?? 0);
+            return (
+              <tr className="production-finish-review-row" key={entry.key}>
+                <td className="erp-cell-main production-finish-return-name">
+                  <div className="erp-cell-stack">
+                    <div className="production-finish-review-title">
+                      <strong>{entry.name}</strong>
+                      <Badge tone={entry.kind === 'semi' ? 'blue' : 'gray'}>
+                        {t(entry.kind === 'semi' ? 'production.finishPipeline.reviewSemiBadge' : 'production.finishPipeline.reviewRawBadge')}
+                      </Badge>
+                    </div>
+                    <small>{entry.barcode}{entry.specification ? ` · ${entry.specification}` : ''}</small>
+                    {exactCompare(entry.postQuantity, 0) > 0 && (
+                      <small>{t('production.finishPipeline.reviewPostAdded', { quantity: formatQty(entry.postQuantity), unit: entry.unit })}</small>
+                    )}
+                  </div>
+                </td>
+                <td className="erp-col-num" data-label={t('production.finishPipeline.reviewRecordedLabel')}>
+                  <div className="erp-cell-stack">
+                    <span>{formatQty(entry.recorded)} {entry.unit}</span>
+                    {entry.standard != null && (
+                      <small>{t('production.finishPipeline.reviewStandardLabel')} {formatQty(entry.standard)} {entry.unit}</small>
+                    )}
+                  </div>
+                </td>
+                <td className="erp-col-num" data-label={t('production.finishPipeline.reviewPoolHeadroom')}>
+                  <span>{formatQty(poolHeadroom)} {entry.unit}</span>
+                </td>
+                <td className="erp-cell-full" data-label={`${t('production.finishPipeline.reviewInputLabel', { name: entry.name })}（${entry.unit}）`}>
+                  <div className="erp-inline-field">
+                    <Input
+                      aria-label={t('production.finishPipeline.reviewInputLabel', { name: entry.labelName })}
+                      inputMode="text"
+                      disabled={locked}
+                      value={rawValue}
+                      onChange={event => setReviewOverrides(prev => ({ ...prev, [entry.key]: event.target.value }))}
+                    />
+                    {!rowError && exactCompare(delta, 0) !== 0 && (
+                      <small className={exactCompare(delta, 0) > 0 ? 'production-finish-delta-up' : 'production-finish-delta-down'}>
+                        {t('production.finishPipeline.reviewDelta', {
+                          delta: `${exactCompare(delta, 0) > 0 ? '+' : ''}${formatQty(delta)}`,
+                          unit: entry.unit,
+                        })}
+                      </small>
+                    )}
+                    {rowError && <span className="form-error" role="alert">{rowError}</span>}
+                  </div>
+                </td>
+                <td className="erp-cell-full" data-label={t('production.usageVarianceReason2')}>
+                  <Input
+                    aria-label={t('production.finishPipeline.reviewReasonLabel', { name: entry.labelName })}
+                    maxLength={500}
+                    placeholder={t('production.finishPipeline.reviewReasonPlaceholder')}
+                    disabled={locked}
+                    value={reasonValue}
+                    onChange={event => setReviewReasons(prev => ({ ...prev, [entry.key]: event.target.value }))}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const stepStates = [
     { id: 1, label: t('production.finishPipeline.stepReview'), done: !reviewLocked && activeStep > 1, enabled: true },
@@ -592,19 +611,19 @@ export function ProductionFinishPipeline({
                 </div>
               )}
 
-              {preview.review_has_items && !order.stage_workflow && (
-                <div className="production-finish-card-list">
-                  {preview.review_materials.map(item => {
-                    const entry = reviewEntries.find(candidate => candidate.key === String(item.product_id));
-                    return entry ? renderReviewRow(entry) : null;
-                  })}
-                </div>
+              {preview.review_has_items && !order.stage_workflow && renderReviewTable(
+                preview.review_materials
+                  .map(item => reviewEntries.find(candidate => candidate.key === String(item.product_id)))
+                  .filter(Boolean),
               )}
 
               {preview.review_has_items && order.stage_workflow && (
                 <div className="production-finish-card-list">
                   {preview.review_stages.map(stage => {
                     const stageLabel = duplicateStageNames.has(stage.name) && stage.path ? `${stage.name} [${stage.path}]` : stage.name;
+                    const stageEntries = stage.items
+                      .map(node => reviewEntries.find(candidate => candidate.key === `${stage.path}:${node.path}`))
+                      .filter(Boolean);
                     return (
                       <div className="production-finish-card" key={stage.path || 'root'}>
                         <div className="production-finish-card-head">
@@ -619,12 +638,7 @@ export function ProductionFinishPipeline({
                             </small>
                           </div>
                         </div>
-                        <div className="production-finish-card-list">
-                          {stage.items.map(node => {
-                            const entry = reviewEntries.find(candidate => candidate.key === `${stage.path}:${node.path}`);
-                            return entry ? renderReviewRow(entry) : null;
-                          })}
-                        </div>
+                        {renderReviewTable(stageEntries)}
                       </div>
                     );
                   })}
@@ -896,45 +910,58 @@ export function ProductionFinishPipeline({
                       </Button>
                     </div>
 
-                    <div className="production-finish-return-list">
-                      {preview.returnable_materials.map(item => {
-                        const available = exactQuantity(item, 'projected_available_quantity');
-                        const rounding = exactQuantity(item, 'rounding_quantity');
-                        const returnable = exactQuantity(item, 'returnable_quantity');
-                        const inputValue = returnOverrides[item.product_id] ?? quantityInput(returnable);
-                        const rowError = parsedReturn.errors.get(item.product_id);
-                        return (
-                          <article className="production-finish-return-row" key={item.product_id}>
-                            <div className="production-finish-return-name">
-                              <strong>{item.name}</strong>
-                              <small>{item.barcode}{item.specification ? ` · ${item.specification}` : ''}</small>
-                            </div>
-                            <div>
-                              <small>{t('production.finishPipeline.currentBalanceCol')}</small>
-                              <span>{formatQty(available)} {item.unit}</span>
-                            </div>
-                            <div>
-                              <small>{t('production.finishPipeline.roundingDeductionCol')}</small>
-                              <span>{exactCompare(rounding, 0) > 0 ? `-${formatQty(rounding)}` : '0'} {item.unit}</span>
-                            </div>
-                            <div>
-                              <small>{t('production.finishPipeline.returnableCol')}</small>
-                              <span><strong>{formatQty(returnable)} {item.unit}</strong></span>
-                            </div>
-                            <label className="production-finish-return-input">
-                              <small>{t('production.finishPipeline.returnQuantityCol')}（{item.unit}）</small>
-                              <Input
-                                aria-label={t('production.finishPipeline.returnQuantityLabel', { name: item.name })}
-                                inputMode="text"
-                                disabled={locked}
-                                value={inputValue}
-                                onChange={event => setReturnOverrides(prev => ({ ...prev, [item.product_id]: event.target.value }))}
-                              />
-                              {rowError && <span className="form-error" role="alert">{rowError}</span>}
-                            </label>
-                          </article>
-                        );
-                      })}
+                    <div className="production-finish-return-list erp-table-wrap erp-table-mobile-stack">
+                      <table className="erp-table production-finish-return-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">{t('production.material2')}</th>
+                            <th scope="col" className="erp-col-num">{t('production.finishPipeline.currentBalanceCol')}</th>
+                            <th scope="col" className="erp-col-num">{t('production.finishPipeline.roundingDeductionCol')}</th>
+                            <th scope="col" className="erp-col-num">{t('production.finishPipeline.returnableCol')}</th>
+                            <th scope="col">{t('production.finishPipeline.returnQuantityCol')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {preview.returnable_materials.map(item => {
+                            const available = exactQuantity(item, 'projected_available_quantity');
+                            const rounding = exactQuantity(item, 'rounding_quantity');
+                            const returnable = exactQuantity(item, 'returnable_quantity');
+                            const inputValue = returnOverrides[item.product_id] ?? quantityInput(returnable);
+                            const rowError = parsedReturn.errors.get(item.product_id);
+                            return (
+                              <tr className="production-finish-return-row" key={item.product_id}>
+                                <td className="erp-cell-main production-finish-return-name">
+                                  <div className="erp-cell-stack">
+                                    <strong>{item.name}</strong>
+                                    <small>{item.barcode}{item.specification ? ` · ${item.specification}` : ''}</small>
+                                  </div>
+                                </td>
+                                <td className="erp-col-num" data-label={t('production.finishPipeline.currentBalanceCol')}>
+                                  <span>{formatQty(available)} {item.unit}</span>
+                                </td>
+                                <td className="erp-col-num" data-label={t('production.finishPipeline.roundingDeductionCol')}>
+                                  <span>{exactCompare(rounding, 0) > 0 ? `-${formatQty(rounding)}` : '0'} {item.unit}</span>
+                                </td>
+                                <td className="erp-col-num" data-label={t('production.finishPipeline.returnableCol')}>
+                                  <span><strong>{formatQty(returnable)} {item.unit}</strong></span>
+                                </td>
+                                <td className="erp-cell-full" data-label={`${t('production.finishPipeline.returnQuantityCol')}（${item.unit}）`}>
+                                  <div className="erp-inline-field">
+                                    <Input
+                                      aria-label={t('production.finishPipeline.returnQuantityLabel', { name: item.name })}
+                                      inputMode="text"
+                                      disabled={locked}
+                                      value={inputValue}
+                                      onChange={event => setReturnOverrides(prev => ({ ...prev, [item.product_id]: event.target.value }))}
+                                    />
+                                    {rowError && <span className="form-error" role="alert">{rowError}</span>}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
 
                     <label className="bom-note">

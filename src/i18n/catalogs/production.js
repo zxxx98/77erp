@@ -7809,21 +7809,6 @@ export default {
     "Confirm cancellation",
     "Xác nhận hủy yêu cầu"
   ],
-  "production.bomLayoutSwitch": [
-    "BOM 视图切换",
-    "BOM view mode",
-    "Chế độ hiển thị BOM"
-  ],
-  "production.bomLayoutTable": [
-    "表格视图",
-    "Table view",
-    "Dạng bảng"
-  ],
-  "production.bomLayoutClassic": [
-    "原视图",
-    "Classic view",
-    "Giao diện cũ"
-  ],
   "production.finishedProductCol": [
     "产成品",
     "Finished product",
@@ -7913,5 +7898,105 @@ export default {
     "含 {{count}} 项子配方展开",
     "{{count}} with child BOM",
     "{{count}} có BOM con"
+  ],
+  "production.groupAssignmentCol": [
+    "生产组 / 指派",
+    "Group / Assignees",
+    "Tổ SX / Giao cho"
+  ],
+  "production.actualUsageCol": [
+    "实际用量",
+    "Actual usage",
+    "Tiêu hao thực tế"
+  ],
+  "production.requestQtyCol": [
+    "申请数量",
+    "Request qty",
+    "Số lượng yêu cầu"
+  ],
+  "production.actualScrapCol": [
+    "实际产出",
+    "Actual output",
+    "Sản lượng thực tế"
+  ],
+  "production.levelCol": [
+    "层 / 物料",
+    "Layer / Material",
+    "Cấp / Vật tư"
+  ],
+  "production.actualInputCol": [
+    "实际投入",
+    "Actual input",
+    "Đầu vào thực tế"
+  ],
+  "production.standardRefCol": [
+    "标准参考",
+    "Standard ref",
+    "Định mức tham khảo"
+  ],
+  "production.approvalDocCol": [
+    "单号 / 摘要",
+    "Document / Summary",
+    "Số phiếu / Tóm tắt"
+  ],
+  "production.approvalTypeCol": [
+    "业务来源",
+    "Order / Partner",
+    "Nguồn nghiệp vụ"
+  ],
+  "production.approvalItemsCol": [
+    "数量 / 项数",
+    "Quantity / Items",
+    "Số lượng / Mục"
+  ],
+  "production.approvalMetaCol": [
+    "提交 / 时间",
+    "Submitted",
+    "Người gửi / Thời gian"
+  ],
+  "production.documentQtyCol": [
+    "数量",
+    "Quantity",
+    "Số lượng"
+  ],
+  "production.unitPriceCol": [
+    "单价",
+    "Unit price",
+    "Đơn giá"
+  ],
+  "production.amountCol": [
+    "金额",
+    "Amount",
+    "Thành tiền"
+  ],
+  "production.progressIssueCol": [
+    "收发进度",
+    "Issue progress",
+    "Tiến độ cấp"
+  ],
+  "production.postTableCol": [
+    "后处理工序表",
+    "Post-processing table",
+    "Bảng công đoạn hậu xử lý"
+  ],
+  "production.postOpCol": [
+    "后处理工序 / 单价表",
+    "Operation / Price table",
+    "Công đoạn / Bảng đơn giá"
+  ],
+  "production.coefficientCol": [
+    "成品系数 / 预计次数",
+    "Coefficient / Est. runs",
+    "Hệ số / Số lần dự kiến"
+  ],
+  "production.fixedMaterialsCol": [
+    "每次固定用料",
+    "Materials per run",
+    "Vật tư mỗi lần"
+  ],
+  "production.reportQtyCol": [
+    "报工数量",
+    "Reported qty",
+    "Số lượng ghi nhận"
   ]
 };

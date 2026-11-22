@@ -1,37 +1,4 @@
-/* Engineering/ERP table layouts for BOM List, BOM Editor, and BOM Structure.
- * Kept isolated alongside bom-layout-mode.jsx for reversible classic toggle. */
-
-/* ---------- View-Mode Segmented Switch ---------- */
-
-.bom-view-switch {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.bom-view-switch button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  white-space: nowrap;
-  line-height: 1.2;
-}
-
-.bom-view-switch button[aria-pressed="true"] {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 500;
-  box-shadow: var(--shadow-sm);
-}
-
-.bom-view-switch.is-compact button {
-  padding: 4px 8px;
-  font-size: 12px;
-}
+/* Engineering/ERP table layouts for BOM List, BOM Editor, and BOM Structure. */
 
 /* ---------- Shared Table Primitives ---------- */
 
@@ -873,12 +840,6 @@ html:not(.mobile-device) .bom-edit-table .bom-table-num-input {
 
 .mobile-device .bom-row-btn {
   min-height: 44px;
-}
-
-.mobile-device .bom-view-switch button {
-  min-height: 36px !important;
-  padding: 6px 10px;
-  font-size: 13px;
 }
 
 @media (max-width: 420px) {

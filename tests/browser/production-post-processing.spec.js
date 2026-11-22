@@ -108,7 +108,8 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pre
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     if (!await packing.locator('summary').evaluate(element => element.parentElement.open)) await packing.locator('summary').click();
     await button('查看工序记录', packing).click();
-    await expect(page.locator('.process-history-card')).toContainText('包装 · 6 次');
+    await expect(page.locator('.process-history-card')).toContainText('包装');
+    await expect(page.locator('.process-history-card')).toContainText('6 次');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   } finally {
     await context.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); db.close();

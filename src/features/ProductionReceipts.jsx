@@ -34,11 +34,26 @@ export function ProductionReceiptList({ documents, busy, onConfirm, defaultExpan
       <Button disabled={busy} aria-expanded={expanded === doc.id} onClick={() => setExpanded(expanded === doc.id ? null : doc.id)}>{expanded === doc.id ? pt("production.collapseReceiptDetails") : pt("production.viewReceiptDetails")}</Button>
       {doc.status === 'pending' && onConfirm && <Button kind="primary" disabled={busy} onClick={() => onConfirm(doc)}>{pt("production.approveAndConfirmReceipt")}</Button>}
     </div>
-    {expanded === doc.id && <ul className="material-document-lines">{doc.items.map(item => <li key={`${item.kind}:${item.product_id}`}>
-      <div><strong>{item.name}</strong><small>{item.kind === 'stage' ? pt('production.semiFinishedInThisOrder') : item.kind === 'scrap' ? pt("production.scrap") : pt("production.acceptedProducts")} · {item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
-      <span>{formatExactQuantity(exactQuantity(item))} {item.unit}</span>
-      {can('finance') && item.cost_cents != null && <small>{pt("production.receiptCost")} {currencySymbol()}{money(item.cost_cents / 100)}</small>}
-    </li>)}</ul>}
+    {expanded === doc.id && <div className="material-document-lines erp-table-wrap erp-table-mobile-stack">
+      <table className="erp-table material-document-lines-table">
+        <thead>
+          <tr>
+            <th scope="col">{pt("production.material2")}</th>
+            <th scope="col" className="erp-col-num">{pt("production.documentQtyCol")}</th>
+            {can('finance') && doc.items.some(item => item.cost_cents != null) && <th scope="col" className="erp-col-num">{pt("production.receiptCost")}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {doc.items.map(item => <tr key={`${item.kind}:${item.product_id}`}>
+            <td className="erp-cell-main">
+              <div className="erp-cell-stack"><strong>{item.name}</strong><small>{item.kind === 'stage' ? pt('production.semiFinishedInThisOrder') : item.kind === 'scrap' ? pt("production.scrap") : pt("production.acceptedProducts")} · {item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
+            </td>
+            <td className="erp-col-num" data-label={pt("production.documentQtyCol")}><span>{formatExactQuantity(exactQuantity(item))} {item.unit}</span></td>
+            {can('finance') && doc.items.some(candidate => candidate.cost_cents != null) && <td className="erp-col-num" data-label={pt("production.receiptCost")}><span>{item.cost_cents != null ? `${currencySymbol()}${money(item.cost_cents / 100)}` : '—'}</span></td>}
+          </tr>)}
+        </tbody>
+      </table>
+    </div>}
   </article>)}</div>;
 }
 

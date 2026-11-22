@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { bomUsageLabels } from '../i18n/production-display.js';
 import { t as pt, getFormatLocale, translateText } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
+import './bom-table.css';
 
 const formatCount = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const nodeLevel = node => pt('production.structureLevelValue', { level: node.path.split('.').length });

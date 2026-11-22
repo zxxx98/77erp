@@ -11,14 +11,15 @@ import { PostProcessingPlan } from './PostProcessingPlan.jsx';
 
 const path = '/post-processing-tables';
 
-function TableList({ data, manage = false, render }) {
+function TableList({ data, manage = false, render, renderList }) {
   const [search, setSearch] = useState('');
   const list = usePagedQuery(queryPath(path, { q: search, scope: manage ? 'manage' : null }), data, 'tables', 150);
+  const tables = list.result?.tables || [];
   return <>
     <Input type="search" aria-label={t('production.searchPostProcessingTables')} placeholder={t('production.searchPostProcessingTables')} value={search} onChange={event => setSearch(event.target.value)} />
     <QueryStatus query={list} />
     {list.result?.tables.length === 0 && <p className="bom-hint">{t('production.noPostProcessingTables')}</p>}
-    {list.result?.tables.map(render)}
+    {renderList ? renderList(tables) : tables.map(render)}
     {list.result?.has_more && <Button disabled={list.loading} onClick={list.loadMore}>{t('route.next')}</Button>}
   </>;
 }
@@ -87,25 +88,45 @@ export function PostProcessingTables({ data, onBack }) {
           close(); refresh();
         })}>{t('production.savePostProcessingTable')}</Button></div>
     </> : <section className="panel bom-section">
-      <TableList key={revision} data={data} manage render={table => <article key={table.id} className="post-processing-table-row">
-        <div className="post-processing-name">
-          <strong>{table.name}</strong>
-          <small>{t('route.operations')} {table.operation_count}</small>
-          {table.note && <small className="post-processing-table-note">{table.note}</small>}
-        </div>
-        <Badge tone={table.enabled ? 'green' : 'gray'}>{t(table.enabled ? 'route.enabled' : 'route.disabled')}</Badge>
-        <div className="bom-actions">
-          <Button disabled={action.busy} onClick={() => action.run(async () => setEditor(await api(`${path}/${table.id}`, options)))}>{t('production.editPostProcessingTable')}</Button>
-          <Button disabled={action.busy} onClick={() => action.run(async () => {
-            await action.send(`${path}/${table.id}/status`, { version: table.version, enabled: table.enabled ? 0 : 1 }, options); refresh();
-          })}>{t(table.enabled ? 'route.disabled' : 'route.enabled')}</Button>
-          <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => {
-            if (window.confirm(t('production.deletePostProcessingTable', { name: table.name }))) action.run(async () => {
-              await action.send(`${path}/${table.id}/delete`, { version: table.version }, options); refresh();
-            });
-          }}>{t('production.removePostProcessingTable')}</Button>
-        </div>
-      </article>} />
+      <TableList key={revision} data={data} manage renderList={tables => tables.length > 0 && <div className="erp-table-wrap erp-table-mobile-stack">
+        <table className="erp-table post-processing-admin-table" aria-label={t('production.postProcessingTables')}>
+          <thead>
+            <tr>
+              <th scope="col">{t('production.postTableCol')}</th>
+              <th scope="col" className="erp-col-num">{t('route.operations')}</th>
+              <th scope="col">{t('production.statusCol')}</th>
+              <th scope="col" className="erp-col-actions">{t('production.actionsCol')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tables.map(table => <tr key={table.id} className="post-processing-table-row">
+              <td className="erp-cell-main">
+                <div className="post-processing-name">
+                  <strong>{table.name}</strong>
+                  {table.note && <small className="post-processing-table-note">{table.note}</small>}
+                </div>
+              </td>
+              <td className="erp-col-num" data-label={t('route.operations')}>{table.operation_count}</td>
+              <td data-label={t('production.statusCol')}>
+                <Badge tone={table.enabled ? 'green' : 'gray'}>{t(table.enabled ? 'route.enabled' : 'route.disabled')}</Badge>
+              </td>
+              <td className="erp-col-actions">
+                <div className="bom-actions">
+                  <Button disabled={action.busy} onClick={() => action.run(async () => setEditor(await api(`${path}/${table.id}`, options)))}>{t('production.editPostProcessingTable')}</Button>
+                  <Button disabled={action.busy} onClick={() => action.run(async () => {
+                    await action.send(`${path}/${table.id}/status`, { version: table.version, enabled: table.enabled ? 0 : 1 }, options); refresh();
+                  })}>{t(table.enabled ? 'route.disabled' : 'route.enabled')}</Button>
+                  <Button kind="danger" icon={Trash2} disabled={action.busy} onClick={() => {
+                    if (window.confirm(t('production.deletePostProcessingTable', { name: table.name }))) action.run(async () => {
+                      await action.send(`${path}/${table.id}/delete`, { version: table.version }, options); refresh();
+                    });
+                  }}>{t('production.removePostProcessingTable')}</Button>
+                </div>
+              </td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>} />
     </section>}
   </div>;
 }

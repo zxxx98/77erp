@@ -54,30 +54,67 @@ export function MaterialDocumentList({ documents, busy, onConfirm, onCancel, def
       {doc.status === 'pending' && onCancel && <Button disabled={busy} onClick={() => { setCancelling(doc.id); setReason(''); }}>{doc.type === 'out' && doc.issues?.length ? pt('production.closeRemaining') : pt("production.cancelRequest")}</Button>}
     </div>
     {error && <p className="form-error" role="alert">{productionMessage(error)}</p>}
-    {expanded === doc.id && <ul className="material-document-lines">{doc.items.map(item => <li key={item.product_id}>
-      <div><strong>{item.name}</strong><small>{item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
-      <div><small>{pt("production.applicationQuantity")}</small><span>{formatExactQuantity(exactQuantity(item))} {item.unit}</span></div>
-      {doc.type === 'out' && <div className="material-issue-progress">
-        <span>{pt('production.issued')} {count(item.issued_quantity)} {item.unit}</span>
-        <span>{pt('production.pendingIssue')} {count(item.pending_quantity)} {item.unit}</span>
-        {item.over_issued_quantity > 0 && <span>{pt('production.overIssued')} {count(item.over_issued_quantity)} {item.unit}</span>}
-        {item.closed_quantity > 0 && <span>{pt('production.closedQuantity')} {count(item.closed_quantity)} {item.unit}</span>}
-      </div>}
-      {doc.status === 'pending' && doc.type === 'out' && onConfirm && <label className="material-issue-input">{pt('production.currentIssue')}
-        <Input aria-label={pt('production.currentIssueFor', { name: item.name })} inputMode="text" disabled={busy}
-          value={quantities[`${doc.id}:${item.product_id}`] ?? quantityInput(exactQuantity(item, 'pending_quantity'))}
-          onChange={event => { setError(''); setQuantities(previous => ({ ...previous, [`${doc.id}:${item.product_id}`]: event.target.value })); }} />
-        {issueExcess(doc, item) > 0 && <small role="status">{pt('production.currentOverIssueHint', { quantity: count(issueExcess(doc, item)), unit: item.unit })}</small>}
-      </label>}
-      {can('finance') && item.cost_cents != null && <small>{pt("production.materialCost")} {currencySymbol()}{money(item.cost_cents / 100)}</small>}
-    </li>)}</ul>}
+    {expanded === doc.id && <div className="material-document-lines erp-table-wrap erp-table-mobile-stack">
+      <table className="erp-table material-document-lines-table">
+        <thead>
+          <tr>
+            <th scope="col">{pt("production.material2")}</th>
+            <th scope="col" className="erp-col-num">{pt("production.requestQtyCol")}</th>
+            {doc.type === 'out' && <th scope="col">{pt("production.progressIssueCol")}</th>}
+            {doc.status === 'pending' && doc.type === 'out' && onConfirm && <th scope="col">{pt('production.currentIssue')}</th>}
+            {can('finance') && doc.items.some(item => item.cost_cents != null) && <th scope="col" className="erp-col-num">{pt("production.materialCost")}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {doc.items.map(item => <tr key={item.product_id}>
+            <td className="erp-cell-main">
+              <div className="erp-cell-stack"><strong>{item.name}</strong><small>{item.barcode}{item.specification && ` · ${item.specification}`}</small></div>
+            </td>
+            <td className="erp-col-num" data-label={pt("production.applicationQuantity")}><span>{formatExactQuantity(exactQuantity(item))} {item.unit}</span></td>
+            {doc.type === 'out' && <td data-label={pt("production.progressIssueCol")}>
+              <div className="material-issue-progress">
+                <span>{pt('production.issued')} {count(item.issued_quantity)} {item.unit}</span>
+                <span>{pt('production.pendingIssue')} {count(item.pending_quantity)} {item.unit}</span>
+                {item.over_issued_quantity > 0 && <span>{pt('production.overIssued')} {count(item.over_issued_quantity)} {item.unit}</span>}
+                {item.closed_quantity > 0 && <span>{pt('production.closedQuantity')} {count(item.closed_quantity)} {item.unit}</span>}
+              </div>
+            </td>}
+            {doc.status === 'pending' && doc.type === 'out' && onConfirm && <td className="erp-cell-full" data-label={pt('production.currentIssue')}>
+              <div className="erp-inline-field material-issue-input">
+                <Input aria-label={pt('production.currentIssueFor', { name: item.name })} inputMode="text" disabled={busy}
+                  value={quantities[`${doc.id}:${item.product_id}`] ?? quantityInput(exactQuantity(item, 'pending_quantity'))}
+                  onChange={event => { setError(''); setQuantities(previous => ({ ...previous, [`${doc.id}:${item.product_id}`]: event.target.value })); }} />
+                {issueExcess(doc, item) > 0 && <small role="status">{pt('production.currentOverIssueHint', { quantity: count(issueExcess(doc, item)), unit: item.unit })}</small>}
+              </div>
+            </td>}
+            {can('finance') && doc.items.some(candidate => candidate.cost_cents != null) && <td className="erp-col-num" data-label={pt("production.materialCost")}>
+              <span>{item.cost_cents != null ? `${currencySymbol()}${money(item.cost_cents / 100)}` : '—'}</span>
+            </td>}
+          </tr>)}
+        </tbody>
+      </table>
+    </div>}
     {expanded === doc.id && doc.issues?.length > 0 && <section className="material-issue-history" aria-label={pt('production.issueHistory')}>
       <h3>{pt('production.issueHistory')}</h3>{doc.issues.map(issue => <div className="material-issue-record" key={issue.id}>
         <strong>{issue.number}</strong><p className="material-muted">{issue.confirmed_by_name} · {dateTime(issue.confirmed_at)}</p>
-        {issue.items.map(row => { const item = doc.items.find(item => item.product_id === row.product_id); return <p key={row.product_id}>
-          {item.name} · {formatExactQuantity(exactQuantity(row))} {item.unit}
-          {can('finance') && row.cost_cents != null && <small> · {pt('production.materialCost')} {currencySymbol()}{money(row.cost_cents / 100)}</small>}
-        </p>; })}
+        <div className="erp-table-wrap erp-table-mobile-stack">
+          <table className="erp-table">
+            <thead>
+              <tr>
+                <th scope="col">{pt("production.material2")}</th>
+                <th scope="col" className="erp-col-num">{pt("production.documentQtyCol")}</th>
+                {can('finance') && issue.items.some(row => row.cost_cents != null) && <th scope="col" className="erp-col-num">{pt('production.materialCost')}</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {issue.items.map(row => { const item = doc.items.find(item => item.product_id === row.product_id); return <tr key={row.product_id}>
+                <td className="erp-cell-main"><strong>{item.name}</strong></td>
+                <td className="erp-col-num" data-label={pt("production.documentQtyCol")}>{formatExactQuantity(exactQuantity(row))} {item.unit}</td>
+                {can('finance') && issue.items.some(entry => entry.cost_cents != null) && <td className="erp-col-num" data-label={pt('production.materialCost')}>{row.cost_cents != null ? `${currencySymbol()}${money(row.cost_cents / 100)}` : '—'}</td>}
+              </tr>; })}
+            </tbody>
+          </table>
+        </div>
       </div>)}
     </section>}
     {cancelling === doc.id && doc.status === 'pending' && <div className="material-cancel">

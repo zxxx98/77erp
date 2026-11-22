@@ -4,7 +4,7 @@ import { t as pt, getFormatLocale, translateText } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Drawer } from 'antd';
-import { ArrowLeft, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, X } from 'lucide-react';
 import { Input } from '../ui/controls.jsx';
 import { ZoomViewport } from '../ui/ZoomViewport.jsx';
 import { mobileDevice } from '../device.js';
@@ -14,7 +14,6 @@ import { calculateBomNodes } from '../../shared/bom-expansion.js';
 import './bom-structure.css';
 import { BomHorizontalTree } from './BomHorizontalTree.jsx';
 import { BomStructureTable } from './BomStructureTable.jsx';
-import { BomViewModeSwitch, useBomLayoutMode } from './bom-layout-mode.jsx';
 
 const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const nodeLevel = node => pt('production.structureLevelValue', { level: node.path.split('.').length });
@@ -62,7 +61,6 @@ export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, ac
 
 function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot, horizontal, hideGrossHint }) {
   useLocale();
-  const [layoutMode] = useBomLayoutMode();
   const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
   const [expanded, setExpanded] = useState(() => new Set(horizontal ? nodes.filter(node => node.path.split('.').length < 2).map(node => node.path) : []));
@@ -173,7 +171,6 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
         <button type="button" className="bom-tree-action" onClick={() => expandTo(3)}>{pt("production.expandToLevel3")}</button>
         <button type="button" className="bom-tree-action" onClick={() => setExpanded(new Set())}>{pt("production.collapseAll")}</button>
       </div>}
-      {!horizontal && <BomViewModeSwitch compact />}
     </div>
     <nav className="bom-breadcrumb" aria-label={pt("production.bomPath")} ref={breadcrumb} tabIndex={-1}>
       <button type="button" aria-current={!scope ? 'location' : undefined} onClick={() => navigate('')}>{rootName}</button>
@@ -190,7 +187,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
           root={!searching && scope ? { name: byPath.get(scope)?.name, quantity: byPath.get(scope)?.required, unit: byPath.get(scope)?.unit } : { name: rootName, quantity, unit: rows[0]?.bom_base_unit }}
           expanded={expanded} searching={searching} includedPaths={includedPaths} matchedPaths={matchedPaths} selectedPath={selectedPath}
           onToggle={toggle} onBranch={navigate} onSelect={(path, trigger) => { detailTrigger.current = trigger; setSelectedPath(path); }} />
-        : layoutMode === 'table' ? <><BomStructureTable
+        : <><BomStructureTable
             visible={visible}
             narrow={narrow}
             searching={searching}
@@ -201,23 +198,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
             onToggle={toggle}
             onNavigate={navigate}
             onSelect={(path, trigger) => { detailTrigger.current = trigger; setSelectedPath(path); }}
-          />{!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}</>
-        : <><table className="bom-structure-table"><thead><tr><th scope="col">{pt("production.material2")}</th><th scope="col">{pt("production.materialSupplyMethod")}</th><th scope="col">{pt("production.currentRequirement")}</th><th scope="col"><span className="bom-visually-hidden">{pt("production.branchActions")}</span></th></tr></thead>
-          <tbody>{visible.map(({ node, level }) => <tr className="bom-structure-row" key={node.path} data-selected={node.path === selectedPath || undefined} data-match={searching && matchedPaths.has(node.path) || undefined}>
-            <td><div className="bom-tree-name" style={{ '--bom-indent': `${level * 16}px` }}>
-              {!narrow && <span className="bom-tree-toggle">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-icon" disabled={searching} aria-label={`${expanded.has(node.path) || searching ? pt("production.collapse") : pt("production.expand")} ${node.name}`} aria-expanded={searching || expanded.has(node.path)} onClick={() => toggle(node.path)}>{expanded.has(node.path) || searching ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button>}</span>}
-              <div><button type="button" className="bom-node-name" aria-label={pt("production.viewDetails2", { v0: node.name })} onClick={event => { detailTrigger.current = event.currentTarget; setSelectedPath(node.path); }}>{node.name}</button>
-                <div className="bom-node-tags"><span className="bom-node-type">{productionType(node)}</span><span>{nodeLevel(node)}</span></div>
-                <small>{node.barcode}</small>{narrow && <span className="bom-tree-mobile-mode">{bomUsageLabels[node.usage_mode]}</span>}
-                {searching && narrow && <small className="bom-search-path">{fullPath(node)}</small>}
-              </div>
-            </div></td>
-            <td className="bom-tree-mode">{bomUsageLabels[node.usage_mode]}</td>
-            <td className="bom-tree-quantity">{count(node.required)} <span>{node.unit}</span></td>
-            <td className="bom-tree-branch">{node.usage_mode === 'explode' && <button type="button" className="bom-tree-action" aria-label={pt("production.openBranch", { v0: node.name })} onClick={() => navigate(node.path)}>{narrow ? <ChevronRight size={18} /> : pt("production.openBranch2")}</button>}</td>
-          </tr>)}</tbody>
-        </table>
-        {!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}</>}
+          />{!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}</>}
       </ZoomViewport>
       {selected && !narrow && <NodeDetails node={selected} path={fullPath(selected)} onClose={closeDetails} />}
     </div>

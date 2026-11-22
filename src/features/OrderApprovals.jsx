@@ -41,13 +41,36 @@ export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {
     {order.reject_reason && <p className="material-note">{t('stockApproval.rejected')}：{order.rejected_by_name} · {dateTime(order.rejected_at)} · {order.reject_reason}</p>}
     {order.cancel_reason && <p className="material-note">{t('stockApproval.cancelled')}：{order.cancelled_by_name} · {dateTime(order.cancelled_at)} · {order.cancel_reason}</p>}
     {pending && <p className="info-box">{t('stockApproval.noStockChange')}</p>}
-    <ul className="material-document-lines">{order.items.map(item => <li key={item.id}>
-      <div><strong>{item.name}</strong><small>{item.barcode}</small></div>
-      <div><small>{t('warehouse.quantity')}</small><span>{count(item.quantity)} {item.unit}</span></div>
-      <div><small>{t('warehouse.unit.price')}</small><span>{currencySymbol()}{price(item.price)}</span></div>
-      <div><small>{t('warehouse.amount')}</small><span>{currencySymbol()}{money(item.amount_cents / 100)}</span></div>
-      {pending && <div className="stock-approval-balance"><small>{t('stockApproval.currentStock')}</small><span>{item.current_stock == null ? '—' : count(item.current_stock)} {item.current_unit}</span><small>{t('stockApproval.afterStock')}</small><span>{item.current_stock == null || item.current_unit !== item.unit || item.current_unit_round_up !== item.unit_round_up ? '—' : count(addQuantity(item.current_stock, (order.type === 'in' ? 1 : -1) * quantities.get(item.product_id)))} {item.unit}</span>{order.type === 'out' && item.current_stock < item.quantity && <small className="form-error">{t('stockApproval.insufficient')}</small>}</div>}
-    </li>)}</ul>
+    <div className="material-document-lines erp-table-wrap erp-table-mobile-stack">
+      <table className="erp-table material-document-lines-table">
+        <thead>
+          <tr>
+            <th scope="col">{t('production.material2')}</th>
+            <th scope="col" className="erp-col-num">{t('warehouse.quantity')}</th>
+            <th scope="col" className="erp-col-num">{t('warehouse.unit.price')}</th>
+            <th scope="col" className="erp-col-num">{t('warehouse.amount')}</th>
+            {pending && <th scope="col" className="erp-col-num">{t('stockApproval.currentStock')} / {t('stockApproval.afterStock')}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {order.items.map(item => <tr key={item.id}>
+            <td className="erp-cell-main">
+              <div className="erp-cell-stack"><strong>{item.name}</strong><small>{item.barcode}</small></div>
+            </td>
+            <td className="erp-col-num" data-label={t('warehouse.quantity')}><span>{count(item.quantity)} {item.unit}</span></td>
+            <td className="erp-col-num" data-label={t('warehouse.unit.price')}><span>{currencySymbol()}{price(item.price)}</span></td>
+            <td className="erp-col-num" data-label={t('warehouse.amount')}><span>{currencySymbol()}{money(item.amount_cents / 100)}</span></td>
+            {pending && <td className="erp-col-num stock-approval-balance" data-label={`${t('stockApproval.currentStock')} / ${t('stockApproval.afterStock')}`}>
+              <div className="erp-cell-stack">
+                <span>{t('stockApproval.currentStock')} {item.current_stock == null ? '—' : `${count(item.current_stock)} ${item.current_unit}`}</span>
+                <small>{t('stockApproval.afterStock')} {item.current_stock == null || item.current_unit !== item.unit || item.current_unit_round_up !== item.unit_round_up ? '—' : `${count(addQuantity(item.current_stock, (order.type === 'in' ? 1 : -1) * quantities.get(item.product_id)))} ${item.unit}`}</small>
+                {order.type === 'out' && item.current_stock < item.quantity && <small className="form-error">{t('stockApproval.insufficient')}</small>}
+              </div>
+            </td>}
+          </tr>)}
+        </tbody>
+      </table>
+    </div>
     <p><strong>{t('warehouse.total')} {currencySymbol()}{money(order.total)}</strong></p>
     {action.error && <p className="form-error" role="alert">{localizeError(action.error)}</p>}
     <div className="material-actions stock-approval-actions">
@@ -80,7 +103,42 @@ export function OrderApprovals({data,type,initialQuery='',onChanged,onRefresh,on
     <p className="material-muted">{t('stockApproval.description')}</p>
     <div className="material-filters"><Input type="search" aria-label={t('stockApproval.search')} placeholder={t('stockApproval.search')} value={q} onChange={e=>{setQ(e.target.value);setOffset(0);}}/><Select aria-label={t('warehouse.status')} value={status} onChange={value=>{setStatus(value);setOffset(0);}}><option value="all">{t('stockApproval.all')}</option>{['pending','active','rejected','cancelled','void'].map(key=><option key={key} value={key}>{t(`stockApproval.${key}`)}</option>)}</Select></div>
     <QueryStatus query={list}/>
-    <ul className="production-approval-list">{list.result?.orders.map(order=><li className="production-approval-row" key={order.id}><div className="production-approval-summary"><div className="production-approval-number"><strong>{order.number}</strong><Badge tone={tone(order.status)}>{orderStatusLabel(order)}</Badge></div><p>{order.partner} · {order.item_names.join('、')}</p><small>{orderLabel(order)} · {order.item_count} {t('warehouse.materials')} · {order.created_by_name} · {dateTime(order.submitted_at||order.created_at)}</small></div><Button onClick={()=>setSelection({id:order.id,scope})}>{order.status==='pending'&&can('stock_approve')?t('warehouse.view.and.approve'):t('warehouse.view.details')}</Button></li>)}</ul>
+    {list.result?.orders.length > 0 && <div className="production-approval-list erp-table-wrap erp-table-mobile-stack">
+      <table className="erp-table production-approval-table" aria-label={t('stockApproval.title')}>
+        <thead>
+          <tr>
+            <th scope="col">{t('production.approvalDocCol')}</th>
+            <th scope="col">{t('production.statusCol')}</th>
+            <th scope="col">{t('warehouse.business.partner')}</th>
+            <th scope="col">{t('production.materialCountCol')}</th>
+            <th scope="col">{t('production.approvalMetaCol')}</th>
+            <th scope="col" className="erp-col-actions">{t('production.actionsCol')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.result.orders.map(order => <tr className="production-approval-row" key={order.id}>
+            <td className="erp-cell-main">
+              <div className="erp-cell-stack">
+                <strong>{order.number}</strong>
+                <small>{orderLabel(order)} · {order.item_names.join('、')}</small>
+              </div>
+            </td>
+            <td data-label={t('production.statusCol')}><Badge tone={tone(order.status)}>{orderStatusLabel(order)}</Badge></td>
+            <td data-label={t('warehouse.business.partner')}>{order.partner}</td>
+            <td data-label={t('production.materialCountCol')}>{order.item_count} {t('warehouse.materials')}</td>
+            <td data-label={t('production.approvalMetaCol')}>
+              <div className="erp-cell-stack">
+                <span>{order.created_by_name}</span>
+                <small>{dateTime(order.submitted_at||order.created_at)}</small>
+              </div>
+            </td>
+            <td className="erp-col-actions">
+              <Button onClick={()=>setSelection({id:order.id,scope})}>{order.status==='pending'&&can('stock_approve')?t('warehouse.view.and.approve'):t('warehouse.view.details')}</Button>
+            </td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>}
     {list.result&&!list.result.orders.length&&<p className="material-muted">{t('stockApproval.empty')}</p>}
     {list.result && (offset>0||list.result.has_more)&&<div className="material-actions"><Button disabled={!offset||list.loading} onClick={()=>setOffset(Math.max(0,offset-10))}>{t('stockApproval.previous')}</Button><span>{t('stockApproval.page',{total:list.result.total,page:offset/10+1})}</span><Button disabled={!list.result.has_more||list.loading} onClick={()=>setOffset(offset+10)}>{t('stockApproval.next')}</Button></div>}
     {selection && <QueryStatus query={detail}/>}

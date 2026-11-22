@@ -184,37 +184,73 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
       </div>
       <QueryStatus query={historyQuery} />
       {historyQuery.result?.total === 0 && <div className="bom-empty process-empty-state"><p>{t('route.noReports')}</p></div>}
-      <div className="process-history-list">
-        {historyQuery.result?.reports.map(report => <article className={`process-operation process-history-card${report.status === 'void' ? ' is-void' : ''}`} key={report.id}>
-          <div className="process-history-main">
-            <div className="bom-section-heading process-history-head">
-              <strong>{route.operations.find(n => n.id === report.node_id)?.name} · {count(exactQuantity(report))} {unit}</strong>
-              <Badge tone={report.status === 'active' ? 'green' : 'gray'}>{t(report.status === 'active' ? 'route.active' : 'route.voided')}</Badge>
-            </div>
-            <p className="process-history-people">{t('route.worker')}: {report.worker_name} · {t('route.recorder')}: {report.registered_by_name}</p>
-            <p className="bom-hint">{t('route.multiplier')}: {count(report.multiplier)}</p>
-            <OperationPrice node={route.operations.find(node => node.id === report.node_id)} unit={unit} />
-            <p className="bom-hint">{new Date(report.created_at).toLocaleString(getFormatLocale())}</p>
-            {report.acceptance_id && <Button disabled={action.busy} onClick={()=>action.run(async()=>setAcceptanceDetail(await api(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`,{warehouseId:data.warehouse_id})))}>{t('route.acceptanceRecord')} #{report.acceptance_id}</Button>}
-            {report.note && <p className="process-history-note">{report.note}</p>}
-            {report.post_processing_materials?.length > 0 && <>
-              <p className="bom-hint">{t('production.postProcessingConsumed')}</p>
-              <ul className="post-processing-material-list">
-                {report.post_processing_materials.map(row => <li key={row.product_id}>
-                  <strong>{row.name}</strong>
-                  <p>{count(row.quantity)} {row.unit}{can('finance') && row.cost_cents != null && ` · ${cost(row.cost_cents)}`}</p>
-                </li>)}
-              </ul>
-              {can('finance') && report.post_processing_material_cost_cents != null && <p className="bom-hint">{t('production.postProcessingMaterialCost')} {cost(report.post_processing_material_cost_cents)}</p>}
-            </>}
-            {report.status === 'void' && <p className="process-history-void-reason">{t('route.reason')}: {report.void_reason}</p>}
-            {report.output_kind && <p className="bom-hint">{t('route.outputVoidHint')}</p>}
-          </div>
-          {!report.output_kind && report.status === 'active' && order.status !== 'void' && can('production') && can('corrections') && <div className="process-history-action">
-            <Button disabled={action.busy} onClick={() => setVoiding({ id: report.id, quantity: quantityInput(exactQuantity(report)), reason: '' })}>{t('route.void')}</Button>
-          </div>}
-        </article>)}
-      </div>
+      {historyQuery.result?.reports.length > 0 && <div className="process-history-list erp-table-wrap erp-table-mobile-stack">
+        <table className="erp-table process-history-table" aria-label={t('route.history')}>
+          <thead>
+            <tr>
+              <th scope="col">{t('route.operations')}</th>
+              <th scope="col" className="erp-col-num">{t('production.reportQtyCol')}</th>
+              <th scope="col" className="erp-col-num">{t('route.multiplier')}</th>
+              <th scope="col">{t('payroll.timeAndPeopleCol')}</th>
+              <th scope="col">{t('production.statusCol')}</th>
+              <th scope="col" className="erp-col-actions">{t('production.actionsCol')}</th>
+            </tr>
+          </thead>
+          {historyQuery.result.reports.map(report => {
+            const node = route.operations.find(item => item.id === report.node_id);
+            const hasExtra = !!(report.acceptance_id || report.note || report.post_processing_materials?.length || report.status === 'void' || report.output_kind);
+            return <tbody className={`process-operation process-history-card${report.status === 'void' ? ' is-void' : ''}`} key={report.id}>
+              <tr>
+                <td className="erp-cell-main">
+                  <div className="erp-cell-stack">
+                    <strong>{node?.name}</strong>
+                    <OperationPrice node={node} unit={unit} />
+                  </div>
+                </td>
+                <td className="erp-col-num" data-label={t('production.reportQtyCol')}><strong>{count(exactQuantity(report))} {unit}</strong></td>
+                <td className="erp-col-num" data-label={t('route.multiplier')}><span>× {count(report.multiplier)}</span></td>
+                <td data-label={t('payroll.timeAndPeopleCol')}>
+                  <div className="erp-cell-stack">
+                    <span>{new Date(report.created_at).toLocaleString(getFormatLocale())}</span>
+                    <small>{t('route.worker')}: {report.worker_name} · {t('route.recorder')}: {report.registered_by_name}</small>
+                  </div>
+                </td>
+                <td data-label={t('production.statusCol')}>
+                  <Badge tone={report.status === 'active' ? 'green' : 'gray'}>{t(report.status === 'active' ? 'route.active' : 'route.voided')}</Badge>
+                </td>
+                <td className="erp-col-actions">
+                  {!report.output_kind && report.status === 'active' && order.status !== 'void' && can('production') && can('corrections') && <div className="bom-actions">
+                    <Button disabled={action.busy} onClick={() => setVoiding({ id: report.id, quantity: quantityInput(exactQuantity(report)), reason: '' })}>{t('route.void')}</Button>
+                  </div>}
+                </td>
+              </tr>
+              {hasExtra && <tr className="erp-subrow">
+                <td colSpan={6}>
+                  <div className="process-history-extra">
+                    {report.acceptance_id && <Button disabled={action.busy} onClick={() => action.run(async () => setAcceptanceDetail(await api(`/production-orders/${order.id}/operations/acceptances/${report.acceptance_id}`, { warehouseId: data.warehouse_id })))}>{t('route.acceptanceRecord')} #{report.acceptance_id}</Button>}
+                    {report.note && <p className="process-history-note">{report.note}</p>}
+                    {report.post_processing_materials?.length > 0 && <>
+                      <p className="bom-hint">{t('production.postProcessingConsumed')}{can('finance') && report.post_processing_material_cost_cents != null && ` · ${t('production.postProcessingMaterialCost')} ${cost(report.post_processing_material_cost_cents)}`}</p>
+                      <div className="erp-table-wrap erp-table-mobile-stack">
+                        <table className="erp-table">
+                          <thead><tr><th scope="col">{t('production.material2')}</th><th scope="col" className="erp-col-num">{t('production.documentQtyCol')}</th>{can('finance') && <th scope="col" className="erp-col-num">{t('production.materialCost')}</th>}</tr></thead>
+                          <tbody>{report.post_processing_materials.map(row => <tr key={row.product_id}>
+                            <td className="erp-cell-main"><strong>{row.name}</strong></td>
+                            <td className="erp-col-num" data-label={t('production.documentQtyCol')}>{count(row.quantity)} {row.unit}</td>
+                            {can('finance') && <td className="erp-col-num" data-label={t('production.materialCost')}>{row.cost_cents != null ? cost(row.cost_cents) : '—'}</td>}
+                          </tr>)}</tbody>
+                        </table>
+                      </div>
+                    </>}
+                    {report.status === 'void' && <p className="process-history-void-reason">{t('route.reason')}: {report.void_reason}</p>}
+                    {report.output_kind && <p className="bom-hint">{t('route.outputVoidHint')}</p>}
+                  </div>
+                </td>
+              </tr>}
+            </tbody>;
+          })}
+        </table>
+      </div>}
       <div className="bom-actions bom-pagination process-pagination"><Button disabled={offset === 0 || historyQuery.loading} onClick={() => setOffset(n => Math.max(0, n - 20))}>{t('route.previous')}</Button><Button disabled={!historyQuery.result?.has_more || historyQuery.loading} onClick={() => setOffset(n => n + 20)}>{t('route.next')}</Button></div>
     </section>}
   </div>;

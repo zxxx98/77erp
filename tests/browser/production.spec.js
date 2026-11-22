@@ -98,7 +98,7 @@ async function productionFlow(page, pwa = false) {
     await page.screenshot({ path: test.info().outputPath('production-detail.png'), fullPage: true });
     await page.getByRole('button', { name: '返回生产单', exact: true }).click();
     await page.getByRole('searchbox', { name: '搜索生产单', exact: true }).fill('FINISHED');
-    await expect(page.locator('.production-list article')).toHaveCount(1);
+    await expect(page.locator('.production-list .bom-list-item')).toHaveCount(1);
     await page.getByRole('button', { name: '查看生产单', exact: false }).click();
     await productionAction(page, '作废生产单');
     await page.getByLabel('作废原因', { exact: true }).fill('误报完工，退回重新登记');
@@ -112,11 +112,11 @@ async function productionFlow(page, pwa = false) {
     await expect(page.getByRole('heading', { name: '生产单详情', exact: true })).toBeVisible();
     expect(f.db.prepare('SELECT COUNT(*) n FROM production_orders').get().n).toBe(1);
     await page.getByRole('button', { name: '返回生产单', exact: true }).click();
-    await expect(page.locator('.production-list article')).toHaveCount(1);
+    await expect(page.locator('.production-list .bom-list-item')).toHaveCount(1);
     page.once('dialog', async dialog => { expect(dialog.message()).toContain('删除无法恢复'); await dialog.accept(); });
     await productionAction(page, '删除生产单');
     await expect(page.locator('.bom-success')).toContainText('生产单已删除');
-    await expect(page.locator('.production-list article')).toHaveCount(0);
+    await expect(page.locator('.production-list .bom-list-item')).toHaveCount(0);
     await page.reload();
     await expect(page.getByText('暂无匹配的生产单。选择已有BOM，建立第一张生产草稿。')).toBeVisible();
     expect(f.inventory()).toEqual(before);
@@ -338,7 +338,7 @@ async function scrapProductionFlow(page, pwa = false) {
     await page.getByLabel('本次数量', { exact: true }).fill('9');
     await adjustUsage(page);
     await page.getByLabel('材料甲实际耗料', { exact: true }).fill('16');
-    await expect(page.locator('.scrap-output').first()).toContainText('完工预计0.8 千克');
+    await expect(page.locator('.scrap-output').first()).toContainText('0.8 千克');
     await expect(page.getByLabel('废料甲实际废料', { exact: true })).toHaveValue('0.675');
     await page.getByRole('button', { name: '废料甲采用预计数量', exact: true }).click();
     await expect(page.getByLabel('废料甲实际废料', { exact: true })).toHaveValue('0.8');

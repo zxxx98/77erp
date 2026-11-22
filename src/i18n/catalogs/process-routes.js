@@ -89,6 +89,13 @@ export default {
   "payroll.overflow": ["工资金额超出安全计算范围，请缩小统计范围或核对单价和倍率。", "Earnings exceed the safe calculation range. Narrow the period or check prices and multipliers.", "Lương vượt phạm vi tính an toàn. Thu hẹp khoảng ngày hoặc kiểm tra đơn giá và hệ số."],
   "payroll.missingSnapshot": ["工序快照缺失，无法计算工资。", "Operation snapshot missing; earnings cannot be calculated.", "Thiếu bản chụp công đoạn, không thể tính lương."],
   "payroll.permission": ["查看工资统计需要财务管理权限。", "Finance permission is required to view payroll.", "Cần quyền tài chính để xem thống kê lương."],
+  "payroll.operationCol": ["工序 / 产品", "Operation / Product", "Công đoạn / Sản phẩm"],
+  "payroll.formulaCol": ["数量 × 倍率 × 单价", "Qty × Multiplier × Price", "SL × Hệ số × Đơn giá"],
+  "payroll.timeAndPeopleCol": ["报工时间 / 人员", "Reported / Staff", "Thời gian / Nhân sự"],
+  "payroll.orderCol": ["生产单 / 产成品", "Order / Product", "Lệnh SX / Thành phẩm"],
+  "payroll.outputProgressCol": ["产量进度", "Output progress", "Tiến độ sản lượng"],
+  "payroll.reportStatsCol": ["报工统计", "Reports", "Thống kê ghi nhận"],
+  "payroll.createdDateCol": ["创建日期", "Created", "Ngày tạo"],
 
   'route.permissionName': ['工序验收', 'Operation acceptance', 'Nghiệm thu công đoạn'],
   'route.permissionDescription': ['填写绑定工序的验收单并确认放行，仍需相应生产单登记权限', 'Fill operation acceptance forms and confirm release; production order registration permission is also required.', 'Điền phiếu nghiệm thu và xác nhận cho phép chuyển tiếp; vẫn cần quyền ghi nhận lệnh sản xuất.'],
