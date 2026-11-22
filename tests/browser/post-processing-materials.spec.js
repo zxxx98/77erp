@@ -88,7 +88,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     await materialNote.fill('箱口向上');
     await expectPageFits();
     await button('保存工序表').click();
-    const tableItem = page.getByRole('article').filter({ hasText: '成品包装方案' });
+    const tableItem = page.locator('.post-processing-table-row').filter({ hasText: '成品包装方案' });
     await expect(tableItem.getByText('外箱标注型号', { exact: true })).toBeVisible();
     await button('编辑工序表').click();
     await expect(tableNote).toHaveValue('外箱标注型号');
@@ -120,7 +120,7 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     await expect(postMaterials).toHaveCount(0);
     await selectPostTable();
     await expect(plannedMaterials.getByText('包装材料', { exact: true })).toBeVisible();
-    await expect(postMaterials.getByRole('listitem')).toContainText('纸箱');
+    await expect(postMaterials.locator('tbody tr')).toContainText('纸箱');
     await expect(postMaterials).toContainText('预计用量 3 个');
     await label('计划产量').fill('200');
     await expect(postMaterials).toContainText('预计用量 2 个');

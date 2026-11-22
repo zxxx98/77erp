@@ -2292,8 +2292,12 @@ html:not(.mobile-device) .business-modal .operation-tabs > .btn[aria-pressed="tr
   min-width: 110px;
 }
 
-.erp-inline-field .form-field {
+.erp-inline-field :where(.erp-form-field, .form-field) {
   margin: 0;
+}
+
+.erp-inline-field :where(.ant-input, .ant-select-selector) {
+  min-height: 36px;
 }
 
 .mobile-device .erp-table .erp-col-actions .btn {
