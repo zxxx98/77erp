@@ -13,6 +13,8 @@ import { calculateBomNodes } from '../../shared/bom-expansion.js';
 
 import './bom-structure.css';
 import { BomHorizontalTree } from './BomHorizontalTree.jsx';
+import { BomStructureTable } from './BomStructureTable.jsx';
+import { BomViewModeSwitch, useBomLayoutMode } from './bom-layout-mode.jsx';
 
 const count = value => Number(value).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 const nodeLevel = node => pt('production.structureLevelValue', { level: node.path.split('.').length });
@@ -60,6 +62,7 @@ export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, ac
 
 function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot, horizontal, hideGrossHint }) {
   useLocale();
+  const [layoutMode] = useBomLayoutMode();
   const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
   const [expanded, setExpanded] = useState(() => new Set(horizontal ? nodes.filter(node => node.path.split('.').length < 2).map(node => node.path) : []));
@@ -170,6 +173,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
         <button type="button" className="bom-tree-action" onClick={() => expandTo(3)}>{pt("production.expandToLevel3")}</button>
         <button type="button" className="bom-tree-action" onClick={() => setExpanded(new Set())}>{pt("production.collapseAll")}</button>
       </div>}
+      {!horizontal && <BomViewModeSwitch compact />}
     </div>
     <nav className="bom-breadcrumb" aria-label={pt("production.bomPath")} ref={breadcrumb} tabIndex={-1}>
       <button type="button" aria-current={!scope ? 'location' : undefined} onClick={() => navigate('')}>{rootName}</button>
@@ -186,6 +190,18 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
           root={!searching && scope ? { name: byPath.get(scope)?.name, quantity: byPath.get(scope)?.required, unit: byPath.get(scope)?.unit } : { name: rootName, quantity, unit: rows[0]?.bom_base_unit }}
           expanded={expanded} searching={searching} includedPaths={includedPaths} matchedPaths={matchedPaths} selectedPath={selectedPath}
           onToggle={toggle} onBranch={navigate} onSelect={(path, trigger) => { detailTrigger.current = trigger; setSelectedPath(path); }} />
+        : layoutMode === 'table' ? <><BomStructureTable
+            visible={visible}
+            narrow={narrow}
+            searching={searching}
+            expanded={expanded}
+            matchedPaths={matchedPaths}
+            selectedPath={selectedPath}
+            fullPath={fullPath}
+            onToggle={toggle}
+            onNavigate={navigate}
+            onSelect={(path, trigger) => { detailTrigger.current = trigger; setSelectedPath(path); }}
+          />{!visible.length && <p className="bom-empty">{pt("production.noMatchingMaterialsTryAnotherNameOrCode")}</p>}</>
         : <><table className="bom-structure-table"><thead><tr><th scope="col">{pt("production.material2")}</th><th scope="col">{pt("production.materialSupplyMethod")}</th><th scope="col">{pt("production.currentRequirement")}</th><th scope="col"><span className="bom-visually-hidden">{pt("production.branchActions")}</span></th></tr></thead>
           <tbody>{visible.map(({ node, level }) => <tr className="bom-structure-row" key={node.path} data-selected={node.path === selectedPath || undefined} data-match={searching && matchedPaths.has(node.path) || undefined}>
             <td><div className="bom-tree-name" style={{ '--bom-indent': `${level * 16}px` }}>

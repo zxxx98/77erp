@@ -7,6 +7,8 @@ import { FormField } from '../ui/FormField.jsx';
 import { ProductPicker } from './ProductPicker.jsx';
 import { RoutePicker } from './RoutePicker.jsx';
 import { ChildBomPicker } from './ChildBomPicker.jsx';
+import { BomMaterialTable, BomScrapTable } from './BomEditorTables.jsx';
+import { BomViewModeSwitch, useBomLayoutMode } from './bom-layout-mode.jsx';
 import { addQuantity, parseQuantity } from '../../shared/quantity.js';
 import { BOM_MAX_ITEMS, parseBomQuantity, bomRequiredQuantity, validateBomLossRate } from '../../shared/bom.js';
 import { productionMessage } from '../i18n/production-errors.js';
@@ -214,6 +216,7 @@ export function BomEditor({
   setOverviewId,
 }) {
   useLocale();
+  const [layoutMode] = useBomLayoutMode();
   const patchItem = (productId, patch) => update({
     items: editor.items.map(row => row.product_id === productId ? { ...row, ...patch } : row),
   });
@@ -223,6 +226,7 @@ export function BomEditor({
 
   return <div className="bom-page">
     <PageHeading title={editor.id ? pt("production.editBom") : pt("production.newBom")}>
+      <BomViewModeSwitch />
       <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{pt("production.backToBom")}</Button>
     </PageHeading>
     <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={save}>
@@ -336,7 +340,14 @@ export function BomEditor({
           } catch (error) { action.setError(error.message); }
         }} />
         {!editor.items.length && <p className="bom-empty">{pt("production.searchOrScanToAddMaterials")}</p>}
-        <div className="bom-materials">
+        {layoutMode === 'table' ? (editor.items.length > 0 && <BomMaterialTable
+          items={editor.items}
+          lossMethod={editor.loss_method}
+          queryData={queryData}
+          busy={action.busy}
+          onPatchItem={patchItem}
+          onRemoveItem={productId => update({ items: editor.items.filter(row => row.product_id !== productId) })}
+        />) : <div className="bom-materials">
           {editor.items.map(item => <BomMaterialRow
             key={item.product_id}
             item={item}
@@ -346,7 +357,7 @@ export function BomEditor({
             onPatch={patch => patchItem(item.product_id, patch)}
             onRemove={() => update({ items: editor.items.filter(row => row.product_id !== item.product_id) })}
           />)}
-        </div>
+        </div>}
       </section>
 
       <section className="panel bom-section">
@@ -371,7 +382,13 @@ export function BomEditor({
           update({ scraps: [...editor.scraps, { product_id: product.id, product, unit: product.unit, method: 'output', source_product_id: null, quantity: 1, note: '' }] });
         }} />
         {!editor.scraps.length && <p className="bom-empty">{pt("production.leaveEmptyIfThereIsNoScrap")}</p>}
-        {editor.scraps.map(row => <BomScrapRule
+        {layoutMode === 'table' ? (editor.scraps.length > 0 && <BomScrapTable
+          scraps={editor.scraps}
+          items={editor.items}
+          busy={action.busy}
+          onPatchScrap={patchScrap}
+          onRemoveScrap={productId => update({ scraps: editor.scraps.filter(item => item.product_id !== productId) })}
+        />) : editor.scraps.map(row => <BomScrapRule
           key={row.product_id}
           row={row}
           items={editor.items}

@@ -1,0 +1,902 @@
+/* Engineering/ERP table layouts for BOM List, BOM Editor, and BOM Structure.
+ * Kept isolated alongside bom-layout-mode.jsx for reversible classic toggle. */
+
+/* ---------- View-Mode Segmented Switch ---------- */
+
+.bom-view-switch {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.bom-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.bom-view-switch button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+
+.bom-view-switch.is-compact button {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* ---------- Shared Table Primitives ---------- */
+
+.bom-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.bom-edit-table-wrap {
+  margin-top: 14px;
+}
+
+.bom-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.bom-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.bom-unit,
+.bom-unit-suffix {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bom-cell-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bom-cell-main strong {
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.bom-cell-main > span {
+  color: var(--text-secondary);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.bom-cell-muted {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.bom-col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bom-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Area 1: BOM List Table ---------- */
+
+.bom-list-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.bom-list-table thead th {
+  text-align: left;
+  white-space: nowrap;
+  padding: 9px 12px;
+}
+
+.bom-list-table thead th.bom-col-num {
+  text-align: right;
+}
+
+.bom-list-table thead th.bom-col-sort {
+  width: 38px;
+  padding-inline: 6px;
+}
+
+.bom-list-table thead th.bom-col-actions {
+  text-align: right;
+}
+
+/* Reset classic .bom-list-item flex rules on desktop table rows */
+.bom-list-table tbody tr.bom-list-item {
+  display: table-row;
+  padding: 0;
+  gap: 0;
+  border-top: 0;
+}
+
+.bom-list-table tbody tr.bom-list-item td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.bom-list-table tbody tr.bom-list-item:last-child td {
+  border-bottom: 0;
+}
+
+.bom-list-table tbody tr.bom-list-item td.bom-list-cell-sort {
+  width: 38px;
+  padding: 6px;
+  text-align: center;
+}
+
+.bom-list-table tbody tr[data-sortable-id][data-dragging] {
+  border: 0;
+  box-shadow: none;
+}
+
+.bom-list-table tbody tr[data-sortable-id][data-dragging] td {
+  background: var(--accent-light);
+  border-top: 1px solid var(--accent-border);
+  border-bottom: 1px solid var(--accent-border);
+}
+
+.bom-status-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.bom-list-table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.bom-row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.bom-row-btn-primary {
+  color: var(--accent);
+}
+
+.bom-row-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.bom-row-btn-primary:hover:not(:disabled) {
+  background: var(--accent-light);
+  color: var(--accent-hover);
+}
+
+.bom-row-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+/* ---------- Area 2: BOM Editor Spreadsheet Tables ---------- */
+
+.bom-edit-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.bom-edit-table th {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.bom-edit-table th.bom-col-num {
+  text-align: right;
+}
+
+.bom-edit-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+  color: var(--text-secondary);
+}
+
+/* Reset classic .bom-material / .bom-scrap-rule layout overrides on desktop */
+.bom-material-table tbody.bom-material {
+  display: table-row-group;
+  grid-template-columns: none;
+  padding: 0;
+  border-top: 0;
+  gap: 0;
+}
+
+.bom-material-table tbody.bom-material:hover tr.bom-material-main-row td {
+  background: var(--surface-subtle);
+}
+
+.bom-scrap-table tbody tr.bom-scrap-rule {
+  display: table-row;
+  padding: 0;
+  border-top: 0;
+}
+
+.bom-scrap-table tbody tr.bom-scrap-rule:hover td {
+  background: var(--surface-subtle);
+}
+
+.bom-scrap-table tbody tr.bom-scrap-rule:last-child td {
+  border-bottom: 0;
+}
+
+.bom-edit-table .bom-col-index {
+  width: 36px;
+  text-align: center;
+  padding-inline: 6px;
+}
+
+.bom-row-num {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bom-material-table .bom-col-name {
+  min-width: 180px;
+}
+
+.bom-material-table .bom-col-qty {
+  width: 138px;
+}
+
+.bom-material-table .bom-col-loss {
+  width: 112px;
+}
+
+.bom-material-table .bom-col-gross {
+  width: 138px;
+  text-align: right;
+}
+
+.bom-material-table .bom-col-child {
+  width: 170px;
+}
+
+.bom-material-table .bom-col-note {
+  min-width: 140px;
+}
+
+.bom-edit-table .bom-col-del {
+  width: 44px;
+  text-align: center;
+  padding-inline: 6px;
+}
+
+.bom-scrap-table .bom-col-method {
+  width: 165px;
+}
+
+.bom-scrap-table .bom-col-source {
+  width: 180px;
+}
+
+.bom-scrap-table .bom-col-scrap-qty {
+  width: 148px;
+}
+
+.bom-edit-table .erp-form-field.ant-form-item {
+  margin: 0;
+}
+
+.bom-edit-table .erp-form-field .ant-form-item-control-input {
+  min-height: 0;
+}
+
+.bom-edit-table .ant-input.bom-table-input {
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+html:not(.mobile-device) .bom-edit-table .bom-table-num-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bom-edit-table .dropdown {
+  width: 100%;
+  min-width: 0;
+}
+
+.bom-edit-table .dropdown .ant-select {
+  height: 32px;
+}
+
+.bom-edit-table .dropdown .ant-select-selector {
+  min-height: 32px !important;
+  height: 32px !important;
+  font-size: 13px !important;
+}
+
+.bom-cell-input-unit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bom-cell-input-unit > .erp-form-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.bom-table-gross {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.bom-table-gross .bom-gross-line {
+  white-space: nowrap;
+}
+
+.bom-table-gross .bom-fraction-approx {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  line-height: 1.35;
+}
+
+.bom-child-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bom-child-trigger:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.bom-child-trigger.is-linked {
+  background: var(--accent-light);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.bom-child-trigger-label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bom-child-trigger-chevron {
+  flex-shrink: 0;
+  transition: transform 0.16s;
+}
+
+.bom-child-trigger-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.bom-icon-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.bom-icon-del:hover:not(:disabled) {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.bom-icon-del:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bom-material-child-row:not(:has(> td > details[open])) {
+  display: none;
+}
+
+.bom-material-child-row td.bom-child-cell {
+  padding: 10px 14px 14px 44px;
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border);
+}
+
+.bom-table-child-details.bom-disclosure > summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.bom-table-child-body {
+  display: grid;
+  gap: 8px;
+}
+
+.bom-table-child-body > .bom-hint {
+  margin: 0;
+}
+
+.bom-table-child-body .bom-child-picker {
+  padding: 6px 0 0 12px;
+}
+
+.bom-table-child-body > .btn {
+  justify-self: start;
+}
+
+.bom-edit-table tfoot td {
+  background: var(--surface-subtle);
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.bom-table-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Area 3: BOM Multi-Level Engineering Structure Table ---------- */
+
+.bom-structure-grid-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.bom-structure-grid-table th,
+.bom-structure-grid-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.bom-structure-grid-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.bom-structure-grid-table th.bom-col-num,
+.bom-structure-grid-table td.bom-col-num,
+.bom-structure-grid-table .bom-tree-quantity {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.bom-structure-grid-table .bom-struct-col-path {
+  width: 64px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.bom-structure-grid-table .bom-struct-col-name {
+  width: auto;
+  min-width: 200px;
+}
+
+.bom-structure-grid-table .bom-struct-col-code {
+  width: 112px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.bom-structure-grid-table .bom-struct-col-type {
+  width: 128px;
+}
+
+.bom-structure-grid-table .bom-struct-col-type .bom-node-tags {
+  margin-bottom: 0;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.bom-structure-grid-table .bom-struct-col-mode {
+  width: 112px;
+  white-space: nowrap;
+}
+
+.bom-structure-grid-table .bom-struct-col-base {
+  width: 102px;
+  font-size: 12.5px;
+}
+
+.bom-structure-grid-table .bom-struct-col-loss {
+  width: 68px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.bom-structure-grid-table .bom-struct-col-req {
+  width: 108px;
+}
+
+.bom-structure-grid-table .bom-struct-col-branch {
+  width: 92px;
+  white-space: nowrap;
+}
+
+.bom-structure-grid-table .bom-tree-branch .bom-tree-action {
+  white-space: nowrap;
+}
+
+.bom-structure-grid-table .bom-structure-row:hover td {
+  background: var(--surface-subtle);
+}
+
+.bom-structure-grid-table .bom-structure-row[data-selected] td {
+  background: var(--accent-light);
+}
+
+.bom-structure-grid-table .bom-structure-row[data-explode] .bom-node-name {
+  font-weight: 600;
+}
+
+.bom-structure.is-drill .bom-structure-grid-table {
+  min-width: 0;
+}
+
+.bom-structure.is-drill .bom-structure-grid-table .bom-struct-col-name {
+  min-width: 0;
+  width: auto;
+}
+
+.bom-structure.is-drill .bom-structure-grid-table .bom-struct-col-req {
+  width: 84px;
+}
+
+.bom-structure.is-drill .bom-structure-grid-table .bom-struct-col-branch {
+  width: 44px;
+}
+
+/* ---------- Mobile & Narrow Viewport Adaptation (<= 760px / .mobile-device) ---------- */
+
+@media (max-width: 760px) {
+  .bom-table-wrap {
+    overflow-x: visible;
+  }
+
+  .bom-list-table,
+  .bom-list-table tbody,
+  .bom-list-table tfoot,
+  .bom-edit-table,
+  .bom-edit-table tbody,
+  .bom-edit-table tfoot {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .bom-list-table thead,
+  .bom-edit-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  /* BOM List Mobile */
+  .bom-list-table tbody tr.bom-list-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .bom-list-table tbody tr.bom-list-item:last-child {
+    border-bottom: 0;
+  }
+
+  .bom-list-table tbody tr.bom-list-item td {
+    display: block;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .bom-list-table tbody tr.bom-list-item td.bom-list-cell-sort {
+    grid-column: 1 / -1;
+    width: auto;
+    padding: 0;
+    text-align: left;
+  }
+
+  .bom-list-table tbody tr.bom-list-item td.bom-list-cell-name,
+  .bom-list-table tbody tr.bom-list-item td.bom-list-cell-product,
+  .bom-list-table tbody tr.bom-list-item td.bom-list-cell-actions {
+    grid-column: 1 / -1;
+  }
+
+  .bom-list-table tbody tr.bom-list-item td[data-label]::before,
+  .bom-edit-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .bom-list-table-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .bom-row-btn {
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    font-size: 13px;
+  }
+
+  .bom-row-btn-primary {
+    border-color: var(--accent-border);
+    background: var(--accent-light);
+  }
+
+  /* BOM Material & Scrap Editor Tables Mobile */
+  .bom-material-table tbody.bom-material,
+  .bom-scrap-table tbody tr.bom-scrap-rule {
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 14px 0;
+  }
+
+  .bom-material-table tbody.bom-material:last-of-type,
+  .bom-scrap-table tbody tr.bom-scrap-rule:last-child {
+    border-bottom: 0;
+  }
+
+  .bom-material-table tr.bom-material-main-row,
+  .bom-scrap-table tbody tr.bom-scrap-rule {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .bom-edit-table td {
+    display: block;
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .bom-edit-table td.bom-col-index {
+    display: none;
+  }
+
+  .bom-edit-table td.bom-col-name {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .bom-edit-table td.bom-col-del {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+  }
+
+  .bom-icon-del {
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .bom-material-table td.bom-col-gross,
+  .bom-material-table td.bom-col-child,
+  .bom-material-table td.bom-col-note,
+  .bom-scrap-table td.bom-col-method,
+  .bom-scrap-table td.bom-col-source,
+  .bom-scrap-table td.bom-col-note {
+    grid-column: 1 / -1;
+  }
+
+  .bom-material-table td.bom-col-gross {
+    text-align: left;
+  }
+
+  .bom-table-gross {
+    align-items: flex-start;
+  }
+
+  .bom-table-gross .bom-fraction-approx {
+    text-align: left;
+  }
+
+  .bom-child-trigger {
+    width: 100%;
+    min-height: 44px;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+  }
+
+  .bom-material-child-row.is-open,
+  .bom-material-child-row:has(> td > details[open]) {
+    display: block;
+    margin-top: 12px;
+  }
+
+  .bom-material-child-row td.bom-child-cell {
+    display: block;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .bom-edit-table tfoot tr,
+  .bom-edit-table tfoot td {
+    display: block;
+    width: 100%;
+  }
+
+  .bom-structure-grid-table {
+    min-width: 0;
+  }
+
+  .bom-structure-grid-table .bom-struct-col-name {
+    min-width: 0;
+    width: auto;
+  }
+
+  .bom-structure-grid-table .bom-struct-col-req {
+    width: 84px;
+  }
+
+  .bom-structure-grid-table .bom-struct-col-branch {
+    width: 44px;
+  }
+}
+
+.mobile-device .bom-edit-table .ant-input.bom-table-input {
+  height: auto;
+  min-height: 46px;
+}
+
+.mobile-device .bom-row-btn {
+  min-height: 44px;
+}
+
+.mobile-device .bom-view-switch button {
+  min-height: 36px !important;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+@media (max-width: 420px) {
+  .bom-material-table td.bom-col-qty,
+  .bom-material-table td.bom-col-loss,
+  .bom-scrap-table td.bom-col-scrap-qty {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 360px) {
+  .bom-list-table-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bom-child-trigger-chevron {
+    transition: none;
+  }
+}

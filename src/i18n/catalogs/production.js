@@ -7808,5 +7808,110 @@ export default {
     "确认取消申请",
     "Confirm cancellation",
     "Xác nhận hủy yêu cầu"
+  ],
+  "production.bomLayoutSwitch": [
+    "BOM 视图切换",
+    "BOM view mode",
+    "Chế độ hiển thị BOM"
+  ],
+  "production.bomLayoutTable": [
+    "表格视图",
+    "Table view",
+    "Dạng bảng"
+  ],
+  "production.bomLayoutClassic": [
+    "原视图",
+    "Classic view",
+    "Giao diện cũ"
+  ],
+  "production.finishedProductCol": [
+    "产成品",
+    "Finished product",
+    "Thành phẩm"
+  ],
+  "production.materialCountCol": [
+    "物料数",
+    "Materials",
+    "Số vật tư"
+  ],
+  "production.statusCol": [
+    "状态",
+    "Status",
+    "Trạng thái"
+  ],
+  "production.updatedByCol": [
+    "更新人",
+    "Updated by",
+    "Người cập nhật"
+  ],
+  "production.actionsCol": [
+    "操作",
+    "Actions",
+    "Thao tác"
+  ],
+  "production.netUsageCol": [
+    "净用量",
+    "Net usage",
+    "Lượng ròng"
+  ],
+  "production.lossRateCol": [
+    "损耗率",
+    "Loss rate",
+    "Hao hụt"
+  ],
+  "production.grossInputCol": [
+    "含损标准投入",
+    "Standard input",
+    "Đầu vào tiêu chuẩn"
+  ],
+  "production.childBomCol": [
+    "供料 / 下级配方",
+    "Supply / Child BOM",
+    "Cấp / BOM con"
+  ],
+  "production.directIssueLinkChild": [
+    "直接领料",
+    "Direct issue",
+    "Cấp trực tiếp"
+  ],
+  "production.linkChildBom": [
+    "关联",
+    "Link",
+    "Liên kết"
+  ],
+  "production.optionalNotePlaceholder": [
+    "可选备注",
+    "Optional note",
+    "Ghi chú tùy chọn"
+  ],
+  "production.scrapMaterialCol": [
+    "废料物料",
+    "Scrap material",
+    "Vật tư phế liệu"
+  ],
+  "production.scrapAmountOrRatioCol": [
+    "基准量 / 比例",
+    "Base qty / Ratio",
+    "Lượng chuẩn / Tỷ lệ"
+  ],
+  "production.structurePathCol": [
+    "路径",
+    "Path",
+    "Đường dẫn"
+  ],
+  "production.structureTypeLevelCol": [
+    "类型 / 层级",
+    "Type / Level",
+    "Loại / Cấp"
+  ],
+  "production.bomMaterialSummaryCount": [
+    "合计 {{count}} 种物料",
+    "{{count}} materials total",
+    "Tổng {{count}} vật tư"
+  ],
+  "production.bomMaterialChildCount": [
+    "含 {{count}} 项子配方展开",
+    "{{count}} with child BOM",
+    "{{count}} có BOM con"
   ]
 };

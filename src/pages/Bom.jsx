@@ -13,6 +13,8 @@ import { validateScrapRules } from '../../shared/scrap.js';
 import { BomProcessOverview } from '../features/ProcessOverview.jsx';
 import { BomCalculation } from '../features/BomCalculation.jsx';
 import { BomEditor, parseLossRate } from '../features/BomEditor.jsx';
+import { BomListTable } from '../features/BomListTable.jsx';
+import { BomViewModeSwitch, useBomLayoutMode } from '../features/bom-layout-mode.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { t as pt, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
@@ -62,8 +64,10 @@ function BomList({
   onDelete,
 }) {
   useLocale();
+  const [layoutMode] = useBomLayoutMode();
   return <div className="bom-page">
     <PageHeading title="BOM">
+      <BomViewModeSwitch />
       <Button kind="primary" icon={Plus} disabled={action.busy} onClick={onNew}>{pt("production.newBom")}</Button>
     </PageHeading>
     {message && <p className="bom-success" role="status">{productionMessage(message)}</p>}
@@ -101,7 +105,15 @@ function BomList({
       </div>
       <QueryStatus query={list} />
       {!!list.result?.boms.length && <p className="bom-hint sort-hint">{pt(sort === 'custom' ? 'production.dragSortHint' : 'production.dragSortDisabledHint')}</p>}
-      <div className="bom-list">
+      {layoutMode === 'table' ? (sortable.ordered.length > 0 && <BomListTable
+        items={sortable.ordered}
+        sort={sort}
+        sortable={sortable}
+        busy={action.busy}
+        onOpen={open}
+        onCreateProduction={onCreateProduction}
+        onMore={setMoreBom}
+      />) : <div className="bom-list">
         {sortable.ordered.map(bom => <article className="bom-list-item" key={bom.id} {...sortable.itemProps(bom.id)}>
           <div className="bom-list-info">
             <div className="bom-list-heading">
@@ -123,7 +135,7 @@ function BomList({
             <Button disabled={action.busy} onClick={() => setMoreBom(bom)}>{pt('production.moreActions')}</Button>
           </div>
         </article>)}
-      </div>
+      </div>}
       {list.result && !list.result.boms.length && <p className="bom-empty">{pt("production.noMatchingBomsCreateAProductRecipeTo")}</p>}
       {list.result && (offset > 0 || list.result.has_more) && <div className="bom-actions bom-pagination">
         <Button disabled={!offset} onClick={() => setOffset(n => n - 30)}>{pt("production.previous")}</Button>
