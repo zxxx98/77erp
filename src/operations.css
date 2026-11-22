@@ -1,6 +1,6 @@
 .operation-panel {
-  border: 1px solid var(--border, #e9ecf1);
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: 18px;
   display: grid;
   gap: 14px;

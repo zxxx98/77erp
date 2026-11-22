@@ -194,7 +194,7 @@ export function QualityAcceptances({data,onTemplates,onAreaChange}) {
   const title=draft?(isOnline?pt("production.newOnlineAcceptance"):pt("production.importAcceptance")):detail?pt("production.acceptanceDetails"):pt("production.acceptances");
   return <section className="quality-page">
     <QualityNavigation area="acceptances" disabled={busy} onChange={area=>{if(area==='templates')leave(onTemplates);else if(area==='charts')leave(()=>onAreaChange('charts'));}}/>
-    <PageHeading title={title} description={draft?(isOnline?pt("production.selectATemplateFillInOnlineValidateAnd"):pt("production.selectAnActiveTemplateVersionUploadCompletedExcel")):detail?`${detail.number} · ${detail.template_name} v${detail.revision}`:pt("production.fillATemplateOnlineOrUploadExcelTo")}>
+    <PageHeading title={title} description={detail?`${detail.number} · ${detail.template_name} v${detail.revision}`:undefined}>
       {(draft||detail)?<Button icon={ArrowLeft} disabled={busy} onClick={()=>leave()}>{pt("production.backToAcceptances")}</Button>:<><Button kind="primary" icon={Plus} disabled={!templates.length} onClick={()=>start('online')}>{pt("production.newOnlineAcceptance")}</Button><Button icon={Upload} disabled={!templates.length} onClick={()=>start()}>{pt("production.importAcceptance")}</Button></>}
       {detail&&<><Button icon={Download} busy={busy} onClick={()=>run(()=>downloadExcel(`/acceptances/${detail.id}/download`))}>{pt("production.downloadUploadedOriginal")}</Button><Button icon={Trash2} disabled={busy||!!detail.operation_reports?.length} onClick={()=>remove(detail)}>{pt("production.deleteAcceptance")}</Button></>}
     </PageHeading>

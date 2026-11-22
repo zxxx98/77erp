@@ -831,8 +831,8 @@ export default {
   ],
   "warehouse.view.all.inbound.and.outbound.documents.and.trace.materials.quantities.and": [
     "查看全部入出库单据，追溯物料、数量和往来单位。",
-    "View all inbound and outbound documents and trace materials, quantities and units.",
-    "Xem tất cả các vật tư gửi đến và gửi đi cũng như theo dõi vật tư, số lượng và đơn vị."
+    "View all stock-in and stock-out orders and trace materials, quantities and business partners.",
+    "Xem tất cả các chứng từ nhập xuất kho và theo dõi vật tư, số lượng và đối tác."
   ],
   "warehouse.new": [
     "新建",
@@ -1941,8 +1941,8 @@ export default {
   ],
   "warehouse.automatically.save.when.editing.inbound.and.outbound.documents": [
     "编辑入出库单据时自动保存。",
-    "Automatically save when editing inbound and outbound documents.",
-    "Tự động lưu khi chỉnh sửa văn bản đến và đi."
+    "Automatically save when editing stock-in and stock-out orders.",
+    "Tự động lưu khi chỉnh sửa chứng từ nhập xuất kho."
   ],
   "warehouse.results.to.be.confirmed": [
     " · 结果待确认",
@@ -2271,8 +2271,8 @@ export default {
   ],
   "warehouse.inbound.and.outbound.warehouse": [
     "入出库仓库",
-    "Inbound and outbound warehouse",
-    "Kho hàng nhập và xuất"
+    "Stock-in/stock-out warehouse",
+    "Kho nhập xuất"
   ],
   "warehouse.clear": [
     "清除",
@@ -3251,8 +3251,8 @@ export default {
   ],
   "warehouse.inbound.and.outbound.qr.code.labels": [
     "出入库二维码标签",
-    "Inbound and outbound QR code labels",
-    "Nhãn mã QR gửi vào và gửi đi"
+    "Stock-in/stock-out QR labels",
+    "Nhãn mã QR nhập xuất kho"
   ],
   "warehouse.return.to.list": [
     "返回列表",
@@ -3271,8 +3271,8 @@ export default {
   ],
   "warehouse.processing.the.inbound.and.outbound.qr.code": [
     "正在处理出入库二维码…",
-    "Processing the inbound and outbound QR code...",
-    "Đang xử lý mã QR gửi đi và gửi đi..."
+    "Processing stock-in/stock-out QR code...",
+    "Đang xử lý mã QR nhập xuất kho..."
   ],
   "warehouse.qr.code.name": [
     "二维码名称",

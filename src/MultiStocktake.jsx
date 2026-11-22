@@ -103,8 +103,8 @@ export function MultiStocktake({ warehouses = [], warehouseId, active = true }) 
     </section>}
     {step === 2 && <section className="multi-stocktake-stage" aria-label={translate("warehouse.add.items.to.be.counted")}>
       <label className="multi-stocktake-search-label" htmlFor="multi-stocktake-search">{translate("warehouse.search.for.materials")}{current?.name}）</label>
-      <div className="multi-stocktake-search"><Search size={18} aria-hidden="true" />
-        <AntInput id="multi-stocktake-search" type="search" value={query} maxLength={100} disabled={busy}
+      <div className="multi-stocktake-search">
+        <AntInput id="multi-stocktake-search" type="search" prefix={<Search size={16} aria-hidden="true" />} value={query} maxLength={100} disabled={busy}
           placeholder={translate("warehouse.enter.the.item.number.or.item.name")} autoComplete="off" onChange={e => {
             const value = e.target.value;
             setQuery(value);

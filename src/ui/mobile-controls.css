@@ -17,21 +17,21 @@ html:not(.mobile-device) a:active {opacity:unset;}
 .mobile-device .adm-button>span,.mobile-device .adm-button-loading-wrapper {display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;width:100%;flex-wrap:wrap;}
 .mobile-device .adm-button>span>svg {flex-shrink:0;}
 .mobile-device .adm-button:focus-visible {outline-offset:-3px;}
-.erp-mobile-input {display:flex;align-items:center;gap:8px;min-width:0;width:100%;min-height:48px;padding:0 12px;border:1px solid var(--adm-color-border);border-radius:8px;background:#fff;}
-.erp-mobile-input:focus-within {border-color:var(--adm-color-primary);box-shadow:0 0 0 2px #2563eb14;}
+.erp-mobile-input {display:flex;align-items:center;gap:8px;min-width:0;width:100%;min-height:48px;padding:0 12px;border:1px solid var(--adm-color-border);border-radius:var(--radius-md,6px);background:#fff;}
+.erp-mobile-input:focus-within {border-color:var(--adm-color-primary);box-shadow:0 0 0 2px var(--accent-light,#eff4ff);}
 .erp-mobile-input .adm-input,.erp-mobile-input .adm-text-area {flex:1;min-width:0;--font-size:16px;}
 .erp-mobile-input .adm-input-element {min-width:0;min-height:46px;padding:8px 0;}
 .erp-mobile-input .adm-input-element:focus,.erp-mobile-input .adm-text-area-element:focus {box-shadow:none;}
 .erp-mobile-textarea {align-items:flex-start;padding-block:10px;}
 .erp-mobile-input .adm-text-area-element {min-height:0;padding:0;}
-.erp-input-addon {display:flex;color:#647084;flex-shrink:0;}
+.erp-input-addon {display:flex;color:var(--muted,#667085);flex-shrink:0;}
 .erp-mobile-input .adm-button {padding:0;flex-shrink:0;}
 .ant-form-item-has-error .erp-mobile-input {border-color:var(--adm-color-danger);}
 .erp-mobile-choice {display:contents;}
 .mobile-device .adm-checkbox,.mobile-device .adm-radio {position:relative;min-height:44px;--font-size:14px;--icon-size:22px;}
 /* Keep the native inputs focusable and accessible to screen readers. */
 .mobile-device .adm-checkbox input,.mobile-device .adm-radio input {display:block;position:absolute;width:1px;height:1px;min-height:0;padding:0;margin:0;opacity:0;}
-.mobile-device .adm-checkbox:has(input:focus-visible),.mobile-device .adm-radio:has(input:focus-visible) {outline:2px solid #a8c9ff;outline-offset:2px;}
+.mobile-device .adm-checkbox:has(input:focus-visible),.mobile-device .adm-radio:has(input:focus-visible) {outline:2px solid var(--accent,#1d4ed8);outline-offset:2px;}
 .mobile-device .adm-tag {white-space:normal;overflow-wrap:anywhere;}
 .erp-mobile-empty {padding:12px 0;}
 .erp-mobile-empty .adm-empty-description {display:grid;gap:8px;}
@@ -42,12 +42,12 @@ html:not(.mobile-device) a:active {opacity:unset;}
 .mobile-device .erp-mobile-popup .modal {animation:none;}
 .mobile-device .mw-product-copy>span {display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:4px;}
 .mobile-device .mw-order-summary>span {display:flex;flex-direction:column;align-items:stretch;gap:10px;}
-.mobile-device .mw-search {--height:48px;--border-radius:8px;--background:#f0f3f8;}
+.mobile-device .mw-search {--height:48px;--border-radius:var(--radius-md,6px);--background:var(--surface-subtle,#f9fafb);}
 .mobile-device .mw-search .adm-input {--font-size:16px;}
 .mobile-device .product-fixed-asset .adm-checkbox-content {display:flex;flex-direction:column;gap:4px;}
-.erp-mobile-select-trigger {display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0;min-height:48px;text-align:left;padding:10px 12px;border:1px solid var(--adm-color-border);border-radius:8px;background:#fff;color:var(--adm-color-text);}
+.erp-mobile-select-trigger {display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0;min-height:48px;text-align:left;padding:10px 12px;border:1px solid var(--adm-color-border);border-radius:var(--radius-md,6px);background:#fff;color:var(--adm-color-text);}
 .erp-mobile-select-trigger>span {min-width:0;overflow-wrap:anywhere;}
 .erp-mobile-select-trigger>svg {flex-shrink:0;}
-.erp-mobile-select-trigger:disabled {background:#f5f7fa;color:#94a3b8;}
+.erp-mobile-select-trigger:disabled {background:var(--surface-subtle,#f9fafb);color:var(--text-subtle,#98a2b3);}
 .erp-select-sheet .adm-search-bar {--height:48px;flex-shrink:0;}
 .erp-select-sheet .adm-list-item-content-main {overflow-wrap:anywhere;white-space:normal;}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Select } from '../Dropdown.jsx';
 import { t, getFormatLocale } from '../i18n/index.js';
 
@@ -12,7 +12,6 @@ function barPath(x, y, width, height, radius = 5) {
 }
 
 export function PayrollDailyChart({ daily, currencies, startDate, endDate }) {
-  const uid = useId();
   const scrollRef = useRef(null);
   const [chartWidth, setChartWidth] = useState(760);
   const [choice, setChoice] = useState(''), [selected, setSelected] = useState(null);
@@ -49,7 +48,6 @@ export function PayrollDailyChart({ daily, currencies, startDate, endDate }) {
   const byDate = new Map(rows.map(row => [row.date, row]));
   const active = rows.find(row => row.date === selected) || rows.at(-1);
   const description = row => `${row.date} · ${currency} ${money(row.amount_cents)} · ${t('payroll.chartReports', { count: row.report_count })}`;
-  const barGradId = `${uid}-bar`, activeGradId = `${uid}-bar-active`;
   return <section className="panel payroll-section payroll-daily">
     <div className="payroll-chart-heading">
       <div className="payroll-chart-title-group">
@@ -68,16 +66,6 @@ export function PayrollDailyChart({ daily, currencies, startDate, endDate }) {
     {!rows.length ? <p className="payroll-empty">{t('payroll.chartEmpty')}</p> : <>
       <div className="payroll-chart-scroll" ref={scrollRef} role="region" aria-label={t('payroll.daily')} tabIndex={0}>
         <svg viewBox={`0 0 ${width} ${height}`} style={{ minWidth: scrollable ? width : undefined }} role="group" aria-label={`${t('payroll.daily')} · ${currency}`}>
-          <defs>
-            <linearGradient id={barGradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#64748b" />
-              <stop offset="100%" stopColor="#475569" />
-            </linearGradient>
-            <linearGradient id={activeGradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#1d4ed8" />
-              <stop offset="100%" stopColor="#1e40af" />
-            </linearGradient>
-          </defs>
           {Array.from({ length: 5 }, (_, i) => ceiling * i / 4).map(value => <g key={value} aria-hidden="true">
             <line x1={left} x2={right} y1={y(value)} y2={y(value)} className={value === 0 ? 'payroll-chart-baseline' : 'payroll-chart-grid'} />
             <text x={left - 8} y={y(value) + 4} textAnchor="end">{new Intl.NumberFormat(getFormatLocale(), { maximumFractionDigits: 2, notation: value >= 100000000 ? 'compact' : 'standard' }).format(value / 100)}</text>
@@ -99,11 +87,11 @@ export function PayrollDailyChart({ daily, currencies, startDate, endDate }) {
             return <g key={row.date}>
               {isSelected && <rect x={cx - slotWidth / 2} y={top - 6} width={slotWidth} height={bottom - top + 6} rx={4} className="payroll-chart-band" aria-hidden="true" />}
               <rect x={cx - slotWidth / 2} y={top - 6} width={slotWidth} height={bottom - top + 6} className="payroll-chart-hit" aria-hidden="true" onMouseEnter={() => setSelected(row.date)} onClick={() => setSelected(row.date)} />
-              <path d={barPath(cx - barWidth / 2, barTop, barWidth, barHeight, 5)} fill={`url(#${isSelected ? activeGradId : barGradId})`}
+              <path d={barPath(cx - barWidth / 2, barTop, barWidth, barHeight, 4)} fill={isSelected ? 'var(--accent)' : 'var(--muted)'}
                 className={`payroll-chart-bar${isSelected ? ' is-selected' : ''}`} role="button" tabIndex={0} aria-label={description(row)} aria-pressed={isSelected}
                 onMouseEnter={() => setSelected(row.date)} onFocus={() => setSelected(row.date)} onClick={() => setSelected(row.date)} onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); setSelected(row.date); } }}><title>{description(row)}</title></path>
               {isSelected && <g transform={`translate(${pillX}, ${pillY})`} className="payroll-chart-pill" aria-hidden="true">
-                <rect x={-pillWidth / 2} y={-14} width={pillWidth} height={18} rx={9} />
+                <rect x={-pillWidth / 2} y={-14} width={pillWidth} height={18} rx={4} />
                 <text x={0} y={-2} textAnchor="middle">{pillText}</text>
               </g>}
             </g>;

@@ -222,7 +222,7 @@ export function BomEditor({
   });
 
   return <div className="bom-page">
-    <PageHeading title={editor.id ? pt("production.editBom") : pt("production.newBom")} description={pt("production.setBaseOutputAndMaterialUsageThenSave")}>
+    <PageHeading title={editor.id ? pt("production.editBom") : pt("production.newBom")}>
       <Button icon={ArrowLeft} disabled={action.busy} onClick={back}>{pt("production.backToBom")}</Button>
     </PageHeading>
     <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={save}>

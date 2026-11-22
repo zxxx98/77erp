@@ -66,7 +66,7 @@ function ChartEditor({data,chart,onClose,onSaved}) {
   const numeric=fields.filter(field=>field.type==='number'),dates=fields.filter(field=>chartDateTypes.includes(field.type));
   const options=source&&!sources.some(row=>row.revision_id===source.revision_id)?[source,...sources]:sources;
   return <section className="quality-chart-editor">
-    <PageHeading title={chart?pt("production.editQualityChart"):pt("production.newQualityChart")} description={pt("production.selectATemplateAndDataSourceThenConfigure")}>
+    <PageHeading title={chart?pt("production.editQualityChart"):pt("production.newQualityChart")}>
       <Button icon={ArrowLeft} disabled={busy} onClick={close}>{pt("production.backToCharts")}</Button><Button icon={Save} kind="primary" busy={busy} disabled={!source} onClick={()=>run(async()=>{
         const body=payload(),fingerprint=JSON.stringify(body);
         if(request.current?.fingerprint!==fingerprint)request.current={fingerprint,id:qualityUid()};

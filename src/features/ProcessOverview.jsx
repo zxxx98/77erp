@@ -70,7 +70,7 @@ function OverviewCanvas({ layout, production, scale, onScaleChange, canvasRef, o
       <div className="overview-canvas" style={{ width: layout.width, height: layout.height }}>
         <svg width={layout.width} height={layout.height} className="overview-edges" aria-hidden="true">
           <defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1L7 4L0 7Z" fill="currentColor" /></marker></defs>
-          {layout.groups.map(group => <rect key={group.path} className="overview-group-bg" x={group.x} y={group.y} width={group.width} height={group.height} rx="12" />)}
+          {layout.groups.map(group => <rect key={group.path} className="overview-group-bg" x={group.x} y={group.y} width={group.width} height={group.height} rx="6" />)}
           {layout.supplyEdges.map(edge => <path key={edge.fromPath} data-supply-from={edge.fromPath} data-supply-to={edge.toPath} className="overview-supply-edge"
             d={`M${edge.x1},${edge.y1} C${edge.x1 + 64},${edge.y1} ${edge.x2 - 64},${edge.y2} ${edge.x2},${edge.y2}`}
             fill="none" stroke="currentColor" strokeWidth="2" stroke-dasharray="6 5" markerEnd={`url(#${marker})`} />)}

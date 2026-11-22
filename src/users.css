@@ -3,20 +3,20 @@
 .settings-section-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .settings-section-header > .settings-section-heading { flex: 1; min-width: min(100%, 240px); }
 .settings-section-header > .btn { flex-shrink: 0; }
-.user-create-panel { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--border, #e9ecf1); border-radius: 10px; background: #fbfcfe; min-width: 0; }
+.user-create-panel { display: grid; gap: 14px; padding: 14px 0 16px; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; min-width: 0; }
 .user-create-actions, .password-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .password-section { display: grid; gap: 16px; min-width: 0; }
-.settings-section > .password-section { border-top: 1px solid var(--border, #e9ecf1); padding-top: 24px; }
+.settings-section > .password-section { border-top: 1px solid var(--border); padding-top: 24px; }
 .password-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 14px; min-width: 0; }
 .account-modal { width: min(720px, 100%); }
 .account-modal-body { display: grid; gap: 20px; }
-.account-modal-body > .password-section { border-top: 1px solid var(--border, #e9ecf1); padding-top: 20px; }
+.account-modal-body > .password-section { border-top: 1px solid var(--border); padding-top: 20px; }
 .account-modal-body > .account-identity + .password-section { border-top: 0; padding-top: 0; }
-.account-identity { margin: 0; padding: 12px 14px; border-radius: 8px; background: #f7f8fa; color: #253858; font-size: 13px; font-weight: 500; }
-.user-list { margin: 20px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; container-type: inline-size; }
+.account-identity { margin: 0; padding: 10px 14px; border-radius: var(--radius-md); background: var(--surface-subtle); border: 1px solid var(--border); color: var(--text); font-size: 13px; font-weight: 500; }
+.user-list { margin: 20px 0; border: 1px solid var(--border); border-radius: var(--radius-md); min-width: 0; container-type: inline-size; }
 .user-table { width: 100%; border-collapse: collapse; }
 .user-table td { vertical-align: middle; }
-.user-table td strong { color: var(--text-strong, #1c2433); font-size: 12px; }
+.user-table td strong { color: var(--text); font-size: 12px; }
 .user-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .user-account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .user-table .btn { white-space: nowrap; }
@@ -40,14 +40,14 @@
   .user-actions > .btn { flex: 0 0 auto; min-width: 64px; }
 }
 
-.permission-dialog { width: min(780px, 100%); max-height: min(84dvh, 760px); border-radius: 14px; background: white; box-shadow: 0 20px 60px rgba(15, 23, 42, .2); }
+.permission-dialog { width: min(780px, 100%); max-height: min(84dvh, 760px); border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-lg); }
 .permission-dialog .account-fields { max-width: none; margin: 0; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); align-items: start; }
 .permission-dialog .form-body.account-fields { display: flex; flex-direction: column; }
 .permission-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; margin: 8px 0; }
-:where(.permission-options label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
-:where(.permission-options input) { width: 16px; min-height: 16px; flex-shrink: 0; margin-top: 3px; accent-color: var(--accent, #1d4ed8); }
+:where(.permission-options label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; }
+:where(.permission-options input) { width: 16px; min-height: 16px; flex-shrink: 0; margin-top: 3px; accent-color: var(--accent); }
 .permission-options span { display: grid; gap: 6px; }
-.permission-options small { color: var(--muted, #6982a5); line-height: 1.6; }
+.permission-options small { color: var(--muted); line-height: 1.6; }
 .permission-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
 @media (max-width: 640px) { .permission-options { grid-template-columns: 1fr; } }
 
@@ -67,11 +67,11 @@
 .position-actions .btn, .position-manager > .btn, .permission-dialog-actions .btn { white-space: nowrap; }
 .position-description, .position-delete-hint, .position-legacy { display: block; margin-top: 6px; line-height: 1.6; }
 .position-description, .position-delete-hint { color: var(--muted); }
-.position-legacy { color: var(--text-strong); }
+.position-legacy { color: var(--text); }
 .position-legacy-notice { margin: 16px 0; }
 .position-legacy-notice p { line-height: 1.7; }
-.effective-permissions ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 12px 0; padding: 0; list-style: none; }
-.effective-permissions li { padding: 10px 12px; border: 1px solid var(--border, #e9ecf1); border-radius: 8px; background: #fafbfd; overflow-wrap: anywhere; }
+.effective-permissions ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; margin: 12px 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.effective-permissions li { padding: 10px 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; overflow-wrap: anywhere; }
 .effective-permissions small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.6; }
 @media (max-width: 640px) { .effective-permissions ul { grid-template-columns: 1fr; } }
 .user-table td:nth-child(3) .dropdown { display: block; width: 160px; margin: 6px 0; }
@@ -93,7 +93,7 @@
   .permission-dialog-actions > .btn { flex: 1 1 auto; }
 }
 
-.user-position-picker { min-width: 0; margin: 0; padding: 8px 12px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.user-position-picker { min-width: 0; margin: 0; padding: 8px 12px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
 .user-position-picker legend { padding: 0 4px; font-size: 13px; font-weight: 500; }
 .user-position-picker > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr)); gap: 4px 12px; max-height: 240px; overflow-y: auto; }
 .user-position-picker .ant-checkbox-wrapper, .user-position-picker .adm-checkbox { margin: 0; min-height: 44px; display: flex; align-items: center; overflow-wrap: anywhere; }

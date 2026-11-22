@@ -2,8 +2,9 @@
   display: flex;
   gap: 2px;
   padding: 3px;
-  background: var(--surface-hover, #eceff3);
-  border-radius: 7px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   margin-bottom: 12px;
 }
 
@@ -11,10 +12,10 @@
   flex: 1;
   min-width: 0;
   min-height: 30px;
-  border: 0;
-  border-radius: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--muted, #667085);
+  color: var(--muted);
   font: inherit;
   font-size: 12.5px;
   font-weight: 500;
@@ -22,10 +23,11 @@
 }
 
 .mode-switch button[aria-pressed="true"] {
-  background: var(--surface, #ffffff);
-  color: var(--text, #111827);
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+  box-shadow: none;
 }
 
 .mode-switch button:focus-visible {

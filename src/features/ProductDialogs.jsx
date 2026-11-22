@@ -74,7 +74,7 @@ function ProductCodeModal({ product, warehouseId, sourceId, onClose, notify, man
     } catch (error) { notify(localizeError(error.message)); }
   };
   return (
-    <Modal title={translate("warehouse.material.barcode")} subtitle={translate("warehouse.print.or.download.material.labels")} onClose={onClose} className="product-code-modal" headerActions={
+    <Modal title={translate("warehouse.material.barcode")} subtitle={product?.barcode} onClose={onClose} className="product-code-modal" headerActions={
       <div className="code-format-switch" role="group" aria-label={translate("warehouse.tag.type")}>
         <AntButton type="text" htmlType="button" aria-pressed={format === "barcode"} onClick={() => setFormat("barcode")}>{translate("warehouse.barcode.2")}</AntButton>
         <AntButton type="text" htmlType="button" aria-pressed={format === "qr"} onClick={() => setFormat("qr")}>{translate("warehouse.qr.code")}</AntButton>
@@ -147,7 +147,7 @@ function ProductDetail({ product, data, warehouseName, onViewOrder, onClose, onV
     [translate("warehouse.inspection.cycle"), inspectionCycleLabel(product)],
     [translate("warehouse.last.check"), product.last_inspected_on || translate("warehouse.no.records")],
   ];
-  return <Modal title={translate("warehouse.material.details.2")} subtitle={translate("warehouse.view.material.files.and.current.inventory")} onClose={onClose} presentation="drawer">
+  return <Modal title={translate("warehouse.material.details.2")} subtitle={product?.barcode} onClose={onClose} presentation="drawer">
     <div className="form-body product-detail">
       <div className="product-detail-heading">
         <ProductArt product={product} size="large" />

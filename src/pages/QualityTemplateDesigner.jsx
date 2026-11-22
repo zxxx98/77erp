@@ -52,7 +52,7 @@ export function QualityTemplateDesigner({designer,name,busy,error,onApply,onClos
   const extend=rect=>{if(!drag.current)return;const start=drag.current;select(regionAddress({r1:Math.min(start.r1,rect.r1),c1:Math.min(start.c1,rect.c1),r2:Math.max(start.r2,rect.r2),c2:Math.max(start.c2,rect.c2)}));};
   const editableText=cell?.text||'';
   return <section className="quality-page quality-designer-page">
-    <PageHeading title={designer.file?pt("production.editTemplateTable"):pt("production.createTemplateOnline")} description={pt("production.editTableContentAndLayoutFirstThenConfigure")}>
+    <PageHeading title={designer.file?pt("production.editTemplateTable"):pt("production.createTemplateOnline")}>
       <Button icon={ArrowLeft} disabled={busy} onClick={leave}>{pt("production.back")}</Button>
       <Button kind="primary" icon={Check} busy={busy} onClick={()=>onApply({commands:state.commands,definition:starter,keepFields,name:templateName})}>{pt("production.continueToFieldConfiguration")}</Button>
     </PageHeading>

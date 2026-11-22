@@ -324,7 +324,7 @@ function OrderRecords({ data, initial, showOrder }) {
     <Chips label={translate('warehouse.status')} value={status} onChange={setStatus} options={['all','pending','active','rejected','cancelled','void'].map(key=>[key,translate(`stockApproval.${key}`)])} />
     <p className="mw-muted">{translate("warehouse.total.2")}{" "}{result ? result.total : '—'}{" "}{translate("warehouse.documents.loaded")}{" "}{orders.length}{" "}{translate("warehouse.documents")}</p>
     <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>{translate("warehouse.reload")}</Button>}{loading && <LoadingStatus>{translate("warehouse.reading.document")}</LoadingStatus>}
-    {orders.map(o => <section key={o.id} className="mw-card"><OrderSummary order={o} onOpen={showOrder} /></section>)}
+    {orders.length > 0 && <section className="mw-card mw-order-list">{orders.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}</section>}
     {!loading && !orders.length && !error && <Empty title={translate("warehouse.no.documents.yet")}>{translate("warehouse.adjust.filter.conditions.or.create.your.first.document")}</Empty>}
     {result?.has_more && <Button busy={loading} onClick={loadMore}>{translate("warehouse.load.more.documents")}</Button>}
     {can('data_io') && <><ExportLanguageSelect value={exportLanguage} onChange={setExportLanguage} disabled={exporting} /><Button busy={exporting} disabled={!online} onClick={exportOrders}>{translate("warehouse.export.documents")}</Button></>}

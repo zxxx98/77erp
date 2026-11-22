@@ -1,6 +1,6 @@
 .imagebed-settings { display: grid; gap: 16px; min-width: 0; }
 .imagebed-fields { display: grid; gap: 16px; min-width: 0; }
-.imagebed-fields small { color: #647084; font-size: 12px; line-height: 1.6; font-weight: 400; }
+.imagebed-fields small { color: var(--muted); font-size: 12px; line-height: 1.6; font-weight: 400; }
 .imagebed-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 :where(.account-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio).imagebed-clear-secret),
 :where(.imagebed-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio).imagebed-clear-secret) {

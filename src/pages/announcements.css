@@ -22,12 +22,13 @@
 .announcement-detail h2 svg { color: var(--muted, #667085); margin-right: 8px; }
 .announcement-content { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; font-size: 14px; color: var(--text-secondary, #374151); }
 .announcement-detail .announcement-meta { line-height: 1.6; }
-.mobile-device .announcements-page { gap: 12px; padding: 16px; background: var(--surface, #fff); }
+.mobile-device .announcements-page { gap: 12px; padding: 0; background: transparent; }
 .mobile-device .announcements-page .page-heading { display: flex; flex-wrap: wrap; gap: 12px; padding: 0; }
-.mobile-device .announcements-page .page-heading h1 { font-size: 22px; }
+.mobile-device .announcements-page .page-heading h1 { font-size: 21px; }
 .mobile-device .announcements-page .page-heading p { font-size: 13px; line-height: 1.6; }
 .mobile-device .announcement-toolbar { flex-wrap: wrap; }
 .mobile-device .announcement-card { padding: 14px 0; }
+.mobile-device .mw-shell .announcement-list { margin-inline: -16px; padding-inline: 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
 :where(.mobile-device .announcements-page .btn), :where(.mobile-device .announcement-pagination .btn), :where(.mobile-device .announcement-error .btn) { min-height: 44px; }
 .mobile-device .announcement-card-heading { flex-wrap: wrap; }
 .mobile-device .announcement-card-heading strong { flex-basis: 70%; }

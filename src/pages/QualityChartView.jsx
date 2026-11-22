@@ -15,7 +15,7 @@ import { WorkbookResults, downloadExcel } from './quality-shared.jsx';
 import { qualityPieSlices } from '../../shared/quality-charts.js';
 import '../quality.css';
 
-const colors=['#2864eb','#00a68a','#e69c31','#985be5','#df6483','#188caf'];
+const colors=['#1d4ed8','#475569','#15803d','#b45309','#64748b','#b91c1c'];
 const axisTextWidth=text=>Array.from(text).reduce((width,char)=>width+(/[\x20-\x7e]/.test(char)?7:12),0);
 function wrapAxisLabel(value,width) {
   const lines=[];

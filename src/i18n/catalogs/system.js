@@ -307,8 +307,8 @@ export default {
   ],
   "system.the.data.required.for.query.header.first.5.rows.and.pictures": [
     "查询所需数据、上传表格的表头和前5行及图片会发送给配置的模型服务。图片分析需要模型支持图片输入。完整导入数据由本系统校验处理。单批最多20张出入库单、合计100行；物料导入最多1000行。",
-    "The data required for query, header, first 5 rows and pictures of the uploaded table will be sent to the configured model service. Image analysis requires the model to support image input. Completely imported data is verified and processed by this system. A single batch can have a maximum of 20 inbound and outbound orders, with a total of 100 lines; the maximum number of material import lines is 1,000 lines.",
-    "Dữ liệu cần thiết cho truy vấn, tiêu đề, 5 hàng đầu tiên và hình ảnh của bảng đã tải lên sẽ được gửi đến dịch vụ mô hình đã định cấu hình. Phân tích hình ảnh yêu cầu mô hình hỗ trợ đầu vào hình ảnh. Dữ liệu nhập hoàn toàn được hệ thống này xác minh và xử lý. Một đợt có thể có tối đa 20 đơn hàng gửi và xuất, với tổng số 100 dòng; số dòng nhập nguyên liệu tối đa là 1.000 dòng."
+    "The data required for query, header, first 5 rows and pictures of the uploaded table will be sent to the configured model service. Image analysis requires the model to support image input. Completely imported data is verified and processed by this system. A single batch can have a maximum of 20 stock-in and stock-out orders, with a total of 100 lines; the maximum number of material import lines is 1,000 lines.",
+    "Dữ liệu cần thiết cho truy vấn, tiêu đề, 5 hàng đầu tiên và hình ảnh của bảng đã tải lên sẽ được gửi đến dịch vụ mô hình đã định cấu hình. Phân tích hình ảnh yêu cầu mô hình hỗ trợ đầu vào hình ảnh. Dữ liệu nhập hoàn toàn được hệ thống này xác minh và xử lý. Một đợt có thể có tối đa 20 chứng từ nhập xuất kho, với tổng số 100 dòng; số dòng nhập vật tư tối đa là 1.000 dòng."
   ],
   "system.save.ai.settings": [
     "保存 AI 设置",
@@ -1123,7 +1123,7 @@ export default {
   "system.additional.materials.excel.csv": [
     "附加物料 Excel / CSV",
     "Additional materials Excel/CSV",
-    "Tài liệu bổ sung Excel/CSV"
+    "Vật tư bổ sung Excel/CSV"
   ],
   "system.add.table": [
     "添加表格",

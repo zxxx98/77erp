@@ -1,7 +1,7 @@
 import { PAYROLL_CURRENCIES } from '../../shared/payroll.js';
 import { productionTypes } from '../../shared/product-production-type.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, ArrowLeft, GitBranch, Sparkles, Link2, Trash2 } from 'lucide-react';
+import { Plus, ArrowLeft, GitBranch, LayoutGrid, Link2, Trash2 } from 'lucide-react';
 import { Button, PageHeading, QueryStatus, Badge } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { Select } from '../Dropdown.jsx';
@@ -225,7 +225,7 @@ export function ProcessRoutes({ data }) {
         </div>
         <div className="bom-actions process-editor-tools">
           <Button icon={Plus} disabled={action.busy || graph.nodes.length >= 50} onClick={() => createNode({ x: 24, y: Math.min(9900, graph.nodes.length * 110 + 24) })}>{t('route.add')}</Button>
-          <Button icon={Sparkles} disabled={action.busy} onClick={() => action.run(async () => update({ graph: arrangeProcessGraph(graph) }))}>{t('route.auto')}</Button>
+          <Button icon={LayoutGrid} disabled={action.busy} onClick={() => action.run(async () => update({ graph: arrangeProcessGraph(graph) }))}>{t('route.auto')}</Button>
           {view === 'graph' && <Button icon={Link2} disabled={action.busy} aria-pressed={connecting !== null} onClick={() => setConnecting(connecting === null ? '' : null)}>{t('route.connect')}</Button>}
         </div>
       </div>

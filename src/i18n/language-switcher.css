@@ -6,13 +6,13 @@
 .language-short { display: none; }
 .language-option { display: flex; align-items: center; gap: 10px; min-width: 150px; padding-block: 5px; }
 .language-option > span { flex: 1; }
-.language-sync-error { position: absolute; z-index: 1300; inset-inline-end: 0; top: calc(100% + 8px); width: 260px; padding: 10px 12px; border: 1px solid #dfe4eb; border-radius: 8px; background: #fff; color: #92400e; font-size: 13px; line-height: 1.5; }
+.language-sync-error { position: absolute; z-index: 1300; inset-inline-end: 0; top: calc(100% + 8px); width: 260px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--orange); font-size: 13px; line-height: 1.5; }
 .auth-language { position: absolute; top: max(20px, env(safe-area-inset-top)); right: max(24px, env(safe-area-inset-right)); z-index: 2; }
 .language-switcher-compact .language-name { display: none; }
 .language-switcher-compact .language-short { display: inline; }
 .language-switcher-compact .language-trigger { min-height: 44px; padding-inline: 7px; gap: 5px; }
 .language-switcher-icon-only .language-trigger { width: 48px; height: 48px; padding: 0; border: 0; background: transparent; }
-.language-switcher-icon-only .language-trigger:hover { background: var(--surface-alt, #f2f5f9); }
+.language-switcher-icon-only .language-trigger:hover { background: var(--surface-hover); }
 @media (prefers-reduced-motion: reduce) {
   /* Popup alignment measures temporary coordinates; these must update immediately. */
   .language-menu { transition: none !important; }

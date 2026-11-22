@@ -25,12 +25,16 @@
 }
 .stock-qr-edit-line,
 .stock-qr-record {
-  border: 1px solid #e9ecf1;
-  padding: 16px;
-  border-radius: 12px;
-  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  padding: 14px 0;
+  border-radius: 0;
+  margin: 0;
   display: grid;
   gap: 10px;
+}
+.stock-qr-record:last-child {
+  border-bottom: 1px solid var(--border);
 }
 .stock-qr-edit-line {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -54,12 +58,12 @@
   justify-content: space-between;
   gap: 16px;
   padding: 10px 0;
-  border-bottom: 1px solid #e9ecf1;
+  border-bottom: 1px solid var(--border);
 }
 .stock-qr-line small,
 .stock-qr-edit-line small {
   display: block;
-  color: #7e8798;
+  color: var(--muted);
   font-size: 12px;
   margin-top: 4px;
 }
@@ -71,7 +75,7 @@
 }
 .stock-qr-record p {
   margin: 0;
-  color: #647084;
+  color: var(--muted);
 }
 .stock-qr-record { min-width: 0; overflow-wrap: anywhere; }
 .stock-qr-record .stock-qr-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 280px; }

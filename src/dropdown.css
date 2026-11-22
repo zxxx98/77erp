@@ -1,13 +1,13 @@
 .dropdown, .select-field { position: relative; min-width: 0; max-width: 100%; }
-:where(.dropdown-field) > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) { display: block; margin: 0 0 8px; color: #304563; font-size: 13px; font-weight: 500; }
+:where(.dropdown-field) > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) { display: block; margin: 0 0 8px; color: var(--text); font-size: 13px; font-weight: 500; }
 :where(.dropdown-field) > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio) > span { color: var(--red); }
 .dropdown .ant-select { width: 100%; }
 .dropdown-error { margin: 6px 0 0; color: var(--red); font-size: 12px; }
 .dropdown-option-content { display: flex; align-items: center; gap: 10px; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-.dropdown-role { flex-shrink: 0; border-radius: 5px; padding: 4px 7px; font-size: 11px; }
-.dropdown-role-supplier { color: #16816b; background: #eaf7f2; }
-.dropdown-role-customer { color: var(--accent); background: #e7efff; }
-.dropdown-role-internal { color: #8257b5; background: #f3edfb; }
+.dropdown-role { flex-shrink: 0; border-radius: var(--radius-sm); padding: 2px 7px; font-size: 11px; }
+.dropdown-role-supplier { color: var(--green); background: var(--green-bg); }
+.dropdown-role-customer { color: var(--accent); background: var(--accent-light); }
+.dropdown-role-internal { color: var(--text-secondary); background: var(--surface-hover); }
 .dropdown-contact-copy { display: grid; flex: 1; min-width: 0; gap: 4px; }
 .dropdown-contact-copy strong { font-size: 13px; overflow-wrap: anywhere; }
 .dropdown-contact-copy strong > small { margin-left: 7px; color: var(--muted); font-size: 11px; font-weight: 400; }

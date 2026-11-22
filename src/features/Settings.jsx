@@ -11,7 +11,7 @@ import { FormField } from './../ui/FormField.jsx';
 
 import { Select } from '../Dropdown.jsx';
 import { Button, Modal, Badge } from '../components/common.jsx';
-import { Trash2, Plus, Settings, SlidersHorizontal, Sparkles, Camera, Bell, Database, Users, ShieldCheck, UserCog, Check } from 'lucide-react';
+import { Trash2, Plus, Settings, SlidersHorizontal, Bot, Camera, Bell, Database, Users, ShieldCheck, UserCog, Check } from 'lucide-react';
 import { useRef, useState, useEffect } from 'react';
 import { api } from '../api.js';
 import { WarehouseManager } from '../Warehouses.jsx';
@@ -146,14 +146,13 @@ function SettingsForm({ settings, warehouses, onClose, onSaved, onRefresh, onPas
   return (
     <Modal
       title={translate("warehouse.workspace.settings")}
-      subtitle={translate("warehouse.manage.workspace.account.and.business.backup")}
       className="settings-modal"
       onClose={busy ? () => {} : closeSettings}
     >
       <AntForm noValidate layout="vertical" scrollToFirstError={{ focus: true }} onFinish={() => { if (section === "general") void submit(); }}>
         <div className="settings-layout">
           <nav className="settings-nav" ref={navRef} aria-label={translate("warehouse.set.categories")}>
-            {[["general", translate("warehouse.basic.settings"), Settings, translate("warehouse.name.warehouse.and.unit.of.measurement")], ["preferences", translate("warehouse.user.habits"), SlidersHorizontal, translate("warehouse.how.to.close.pop.up.windows.and.drawers")], ["ai", translate("warehouse.ai.assistant"), Sparkles, translate("warehouse.model.connection.and.operating.scope")], ["imagebed", translate("warehouse.picture.bed.configuration"), Camera, translate("warehouse.material.picture.upload.and.certification")], ["notifications", translate("warehouse.notification.settings"), Bell, translate("warehouse.webhooks.and.notification.types")], ["data", translate("warehouse.backup.and.recovery"), Database, translate("warehouse.business.backup.recovery.and.reset")], ["groups", translate("warehouse.production.team"), Users, translate("warehouse.production.team.and.employee.affiliation")], ["positions", translate("warehouse.position.configuration"), ShieldCheck, translate("warehouse.position.authority.and.related.employees")], ["users", translate("warehouse.user.management"), UserCog, translate("warehouse.account.role.and.password")]].map(([id, title, Icon, caption]) => (
+            {[["general", translate("warehouse.basic.settings"), Settings, translate("warehouse.name.warehouse.and.unit.of.measurement")], ["preferences", translate("warehouse.user.habits"), SlidersHorizontal, translate("warehouse.how.to.close.pop.up.windows.and.drawers")], ["ai", translate("warehouse.ai.assistant"), Bot, translate("warehouse.model.connection.and.operating.scope")], ["imagebed", translate("warehouse.picture.bed.configuration"), Camera, translate("warehouse.material.picture.upload.and.certification")], ["notifications", translate("warehouse.notification.settings"), Bell, translate("warehouse.webhooks.and.notification.types")], ["data", translate("warehouse.backup.and.recovery"), Database, translate("warehouse.business.backup.recovery.and.reset")], ["groups", translate("warehouse.production.team"), Users, translate("warehouse.production.team.and.employee.affiliation")], ["positions", translate("warehouse.position.configuration"), ShieldCheck, translate("warehouse.position.authority.and.related.employees")], ["users", translate("warehouse.user.management"), UserCog, translate("warehouse.account.role.and.password")]].map(([id, title, Icon, caption]) => (
               <AntButton type="text" key={id} htmlType="button" disabled={busy} aria-pressed={section === id} onClick={() => { setSection(id); setVisited(current => new Set([...current, id])); contentRef.current?.scrollTo(0, 0); }}>
                 <Icon size={18} /><div><strong>{title}</strong><small>{caption}</small></div>
               </AntButton>

@@ -1,14 +1,14 @@
-.inspection-panel { background: var(--surface, #fff); border: 1px solid var(--border, #e4e7ec); border-radius: 8px; padding: 16px 18px; margin: 16px 0; }
+.inspection-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px 18px; margin: 16px 0; }
 .inspection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.inspection-heading h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text, #111827); }
-.inspection-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--border-subtle, #eef0f3); margin-top: 10px; }
+.inspection-heading h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.inspection-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--border-subtle); margin-top: 10px; }
 .inspection-row > div { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
-.inspection-row small { color: var(--muted, #667085); font-size: 12px; }
-.inspection-row span { font-size: 12.5px; color: var(--orange, #b45309); }
+.inspection-row small { color: var(--muted); font-size: 12px; }
+.inspection-row span { font-size: 12.5px; color: var(--orange); }
 .inspection-row > button { flex-shrink: 0; }
 :where(.inspection-panel > .btn) { margin-top: 12px; }
-.inspection-success { color: var(--green, #15803d); font-size: 13px; }
-.mw-shell .inspection-panel { padding: 16px; margin: 0; border-radius: 10px; }
+.inspection-success { color: var(--green); font-size: 13px; }
+.mw-shell .inspection-panel { padding: 16px; margin: 0 -16px; border-inline: 0; border-radius: 0; }
 .mw-shell .inspection-row { align-items: flex-start; gap: 10px; }
 .mw-shell .inspection-heading h2 { font-size: 16px; }
 .mw-shell .inspection-panel button { min-height: 44px; }

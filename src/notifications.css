@@ -1,13 +1,13 @@
 .notification-fields { display: grid; gap: 16px; min-width: 0; }
 .settings-field-group { display: grid; gap: 6px; min-width: 0; }
 :where(.notification-fields label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio):not(.notification-choice)), :where(.notification-schedule > label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio)) { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
-.notification-fields small, .notification-help, .notification-logs small { color: #647084; font-size: 12px; line-height: 1.6; font-weight: 400; }
-.notification-fields fieldset { min-width: 0; padding: 16px; border: 1px solid #e9ecf1; border-radius: 10px; }
-.notification-fields legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
+.notification-fields small, .notification-help, .notification-logs small { color: var(--muted); font-size: 12px; line-height: 1.6; font-weight: 400; }
+.notification-fields fieldset { min-width: 0; padding: 16px 0 4px; border: 0; border-top: 1px solid var(--border); border-radius: 0; }
+.notification-fields legend { padding: 0; font-size: 14px; font-weight: 600; }
 .notification-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 12px 0; }
 :where(.form-body .notification-settings label:not(.ant-checkbox-wrapper, .ant-radio-wrapper, .adm-checkbox, .adm-radio).notification-choice) { display: flex; align-items: flex-start; gap: 10px; margin: 0; cursor: pointer; line-height: 1.5; }
-:where(.notification-settings .notification-choice input) { flex: 0 0 18px; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent, #1d4ed8); }
-.notification-settings .notification-choice > span { min-width: 0; color: var(--text, #111827); font-size: 13px; overflow-wrap: anywhere; }
+:where(.notification-settings .notification-choice input) { flex: 0 0 18px; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); }
+.notification-settings .notification-choice > span { min-width: 0; color: var(--text); font-size: 13px; overflow-wrap: anywhere; }
 .notification-choice strong { display: block; font-size: 13px; font-weight: 600; }
 .notification-choice small { display: block; margin-top: 4px; }
 .notification-schedule { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -15,10 +15,10 @@
 .notification-actions, .notification-log-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .notification-log-heading { margin-top: 28px; justify-content: space-between; }
 .notification-log-heading h3 { margin: 0; }
-.notification-logs { display: grid; gap: 10px; }
-.notification-logs article { border: 1px solid #e9ecf1; border-radius: 10px; padding: 12px; overflow-wrap: anywhere; }
+.notification-logs { display: grid; gap: 0; border-top: 1px solid var(--border); }
+.notification-logs article { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 12px 0; overflow-wrap: anywhere; }
 .notification-logs article > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 6px; }
-.notification-logs article p { color: #647084; font-size: 12px; }
+.notification-logs article p { color: var(--muted); font-size: 12px; }
 @media (max-width: 760px) {
   .notification-choices, .notification-schedule { grid-template-columns: 1fr; }
 }
