@@ -1,3 +1,4 @@
+import { Disclosure } from '../ui/Disclosure.jsx';
 import { productionFlowView } from '../../shared/production-flow.js';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, Minus, Plus, Maximize2 } from 'lucide-react';
@@ -56,9 +57,9 @@ function LayerList({ layers, production, collapsed, onSelect, counts, byPath, ..
           </button></li>;
         })}</ol>}
         {!folded && !graph && <p>{noRouteLabel(production)}</p>}
-        {!!layer.materials?.length && <details className="overview-materials"><summary>{t('overview.materials')} ({layer.materials.length})</summary>
+        {!!layer.materials?.length && <Disclosure className="overview-materials" label={<span>{t('overview.materials')} ({layer.materials.length})</span>}>
           <ul>{layer.materials.map((material, index) => <li key={material.path || index}>{material.name} · {material.unit}</li>)}</ul>
-        </details>}
+        </Disclosure>}
       </article>;
     })}
   </div>;
@@ -123,7 +124,8 @@ export function ProcessOverview({ layers, production = false, onOpen, disabled =
     const observer = new ResizeObserver(entries => setCanvasWidth(entries[0].contentRect.width));
     observer.observe(canvas); return () => observer.disconnect();
   }, [view, visible.layers.length]);
-  const fit = Math.max(0.35, Math.min(1, canvasWidth / layout.width)), scale = zoom ?? fit;
+  const fit = Math.max(0.35, Math.min(1, canvasWidth / layout.width));
+  const scale = zoom ?? fit;
   const navigate = path => { setScope(path); setSearch(''); setPage(0); setSelected(null); setZoom(null); setExpandedDepth(1); };
   const onToggle = path => setCollapsed(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else next.add(path); return next; });
   const onSelect = (path, id) => setSelected({ path, id });
@@ -134,7 +136,10 @@ export function ProcessOverview({ layers, production = false, onOpen, disabled =
     <h2>{t(production ? 'overview.production' : 'overview.connections')}</h2>
     <p className="overview-description">{t(production ? 'overview.snapshotHint' : 'overview.savedHint')}</p>
     <div className="overview-toolbar">
-      <div className="overview-view-switch"><Button aria-pressed={view === 'graph'} onClick={() => setView('graph')}>{t('route.graph')}</Button><Button aria-pressed={view === 'list'} onClick={() => setView('list')}>{t('overview.list')}</Button></div>
+      <div className="overview-view-switch"><Button aria-pressed={view === 'graph'} onClick={() => {
+        if (production && view !== 'graph' && window.matchMedia('(max-width: 760px)').matches) setZoom(1);
+        setView('graph');
+      }}>{t('route.graph')}</Button><Button aria-pressed={view === 'list'} onClick={() => setView('list')}>{t('overview.list')}</Button></div>
       <Input aria-label={t('overview.search')} placeholder={t('overview.search')} value={search} onChange={event => { setSearch(event.target.value); setPage(0); setSelected(null); setZoom(null); }} />
     </div>
     <div className="overview-context">

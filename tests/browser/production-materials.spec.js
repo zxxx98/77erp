@@ -1,4 +1,4 @@
-import { productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
+import { dismissApprovalNotices, productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
 import { browserPosition } from './position-helpers.js';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +7,7 @@ import { createApp } from '../../server/app.js';
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 
 async function fixture(page) {
+  await dismissApprovalNotices(page);
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));

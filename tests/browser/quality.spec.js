@@ -635,8 +635,8 @@ test('object single and multiple choice properties expose split results for each
   }
   await editor.getByRole('tab',{name:'解析预览',exact:true}).click();await showPreviewDetails(editor);
   const first=editor.locator('tbody tr').first();
-  const radio=first.locator('td').nth(0);await radio.locator('.quality-choice-details summary').click();await expect(radio.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(2);await expect(radio.getByText('已选中',{exact:true})).toHaveCount(1);
-  const multi=first.locator('td').nth(1);await multi.locator('.quality-choice-details summary').click();await expect(multi.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(3);await expect(multi.getByText('已选中',{exact:true})).toHaveCount(2);await expect(multi.getByText('未选中',{exact:true})).toHaveCount(1);
+  const radio=first.locator('td').nth(0);await radio.getByRole('button',{name:/查看拆分结果/}).click();await expect(radio.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(2);await expect(radio.getByText('已选中',{exact:true})).toHaveCount(1);
+  const multi=first.locator('td').nth(1);await multi.getByRole('button',{name:/查看拆分结果/}).click();await expect(multi.getByRole('region',{name:'选项拆分结果'}).locator('.quality-choice-part')).toHaveCount(3);await expect(multi.getByText('已选中',{exact:true})).toHaveCount(2);await expect(multi.getByText('未选中',{exact:true})).toHaveCount(1);
   await editor.getByRole('button',{name:'完成配置',exact:true}).click();
 });
 

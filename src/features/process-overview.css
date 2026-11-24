@@ -24,10 +24,10 @@
 .overview-graph-layer .overview-layer-name, .overview-graph-layer .overview-layer-recipe, .overview-graph-layer .overview-layer-route { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .overview-inactive { position: absolute; right: 0; top: 0; background: var(--orange-bg); color: var(--orange); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 12px; }
 .overview-layer-quantity { font-size: 12px; font-variant-numeric: tabular-nums; }
-.overview-graph-actions { position: absolute; top: 112px; left: 24px; right: 24px; }
-.overview-graph-actions .btn { height: 28px; min-height: 28px; padding: 2px 7px; font-size: 11px; }
+.overview-graph-actions { position: absolute; top: 102px; left: 24px; right: 24px; }
+.overview-graph-actions .btn { min-height: 44px; height: auto; padding: 4px 8px; font-size: 12px; }
 .overview-graph-actions .overview-layer-actions { gap: 5px; flex-wrap: nowrap; }
-.overview-inlet { position: absolute; top: 145px; left: 4px; color: var(--accent); font-size: 11px; }
+.overview-inlet { position: absolute; top: 148px; left: 4px; color: var(--accent); font-size: 11px; }
 .overview-outlet { position: absolute; right: 2px; font-size: 11px; color: var(--accent); background: var(--surface); }
 .overview-node { position: absolute; width: 180px; height: 94px; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); text-align: left; color: inherit; cursor: pointer; font: inherit; }
 .overview-node.is-output { border-color: var(--accent-border); background: var(--accent-light); }
@@ -40,11 +40,11 @@
 .overview-list-layer > header { display: grid; gap: 6px; padding-right: 40px; overflow-wrap: anywhere; }
 .overview-list-layer .overview-layer-actions { margin: 12px 0; }
 .overview-supply-label { color: var(--accent); margin: 8px 0; font-size: 12px; }
-.overview-operation-list { list-style: none; padding: 0; margin: 14px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-.overview-operation-list button { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); text-align: left; color: inherit; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
-.overview-operation-list button span, .overview-operation-list button small { color: var(--muted); line-height: 1.5; }
+.overview-operation-list { list-style: none; padding: 0; margin: 12px 0; border-top: 1px solid var(--border); }
+.overview-operation-list button { width: 100%; min-height: 44px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; padding: 10px 0; background: transparent; border: 0; border-bottom: 1px solid var(--border); text-align: start; color: inherit; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.overview-operation-list button:hover { background: var(--surface-hover); }
+.overview-operation-list button :is(span, small) { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .overview-materials { margin-top: 12px; color: var(--muted); font-size: 12px; }
-.overview-materials summary { cursor: pointer; padding: 6px 0; }
 .overview-materials ul { max-height: 200px; overflow: auto; }
 .overview-detail { display: grid; gap: 10px; padding: 18px 0 0; margin-top: 18px; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .overview-detail-heading { justify-content: space-between; }
@@ -57,9 +57,8 @@
   .overview-toolbar > .ant-input, .overview-toolbar > input { width: 100%; }
   .overview-view-switch { width: 100%; }
   .overview-view-switch > .btn { flex: 1; }
-  .overview-operation-list { grid-template-columns: 1fr; }
+  .overview-operation-list button strong { width: 100%; }
   .overview-legend { width: 100%; }
   .overview-canvas-scroll { max-height: 480px; }
-  .overview-layer-actions > .btn { min-height: 40px; }
-  .overview-graph-actions .btn { min-height: 28px; }
+  .overview-layer-actions > .btn { min-height: 44px; }
 }

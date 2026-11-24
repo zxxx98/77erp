@@ -1,3 +1,4 @@
+import { Disclosure } from '../ui/Disclosure.jsx';
 import { productionFlowView } from '../../shared/production-flow.js';
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
 import { ProductionOperations, OperationWorkerSelect } from './ProductionOperations.jsx';
@@ -204,7 +205,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
         <div className="bom-section-heading"><strong>{pt("production.batch")} {batch.batch_number} {pt("production.batchSuffix")} {count(exactQuantity(batch, 'completed_quantity'))} {byPath.get(history.path)?.unit}</strong><Badge tone={batch.status === 'active' ? 'green' : 'gray'}>{batch.status === 'active' ? pt("production.valid") : pt("production.voided2")}</Badge></div>
         <p className="bom-hint">{batch.created_by_name} · {time(batch.created_at)}</p>
         {batch.note && <p className="production-note">{batch.note}</p>}
-        <details><summary>{pt("production.viewBatchInputs")}</summary>
+        <Disclosure label={pt("production.viewBatchInputs")}>
           {batch.items?.length > 0 && <div className="erp-table-wrap erp-table-mobile-stack">
             <table className="erp-table production-batch-table">
               <thead>
@@ -234,7 +235,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
               </tbody>
             </table>
           </div>}
-        </details>
+        </Disclosure>
         {batch.status === 'void' && <p className="bom-hint">{pt("production.voidReason2")}{batch.void_reason}</p>}
         {canVoid && batch.status === 'active' && order.status !== 'void' && (requiresReceiptPermission(batch) && !canReceive
           ? <p className="bom-hint">{pt("production.thisProductBatchIsReceivedVoidingAlsoRequires")}</p>
@@ -297,7 +298,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
             </tr>
             {item.items.length > 0 && <tr className="erp-subrow">
               <td colSpan={8}>
-                <details><summary>{pt("production.viewCumulativeInputVariance")}</summary><p className="bom-hint">{pt("production.standardIsCalculatedOnceFromThisLevelS")}</p>
+                <Disclosure label={pt("production.viewCumulativeInputVariance")}><p className="bom-hint">{pt("production.standardIsCalculatedOnceFromThisLevelS")}</p>
                   <div className="erp-table-wrap erp-table-mobile-stack">
                     <table className="erp-table">
                       <thead>
@@ -318,7 +319,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
                       </tbody>
                     </table>
                   </div>
-                </details>
+                </Disclosure>
               </td>
             </tr>}
           </tbody>)}

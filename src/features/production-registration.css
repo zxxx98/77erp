@@ -34,7 +34,6 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   box-shadow: none;
   margin-bottom: 16px;
 }
-.production-registration-drawer .registration-details > summary { padding-inline: 0; }
 .production-registration-drawer .registration-details-body { padding-inline: 0; }
 .production-registration-drawer .registration-drawer-body { display: block; }
 .production-registration-drawer .registration-drawer-body > .production-acceptance-registrations {
@@ -49,7 +48,7 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
 .registration-record-count { font-weight: 400; }
 .registration-records { list-style: none; padding: 0; margin: 14px 0 0; border-top: 1px solid var(--border); }
 .registration-records > li { border-bottom: 1px solid var(--border); }
-.registration-record-summary {
+.erp-disclosure-toggle.registration-record-summary {
   display: grid;
   grid-template-columns: auto 3ch minmax(0, 1fr) auto;
   align-items: center;
@@ -59,18 +58,14 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   list-style: none;
   cursor: pointer;
 }
-.registration-record-summary::-webkit-details-marker { display: none; }
-.registration-record-summary::marker { content: ''; }
-.registration-record-summary:hover { background: var(--surface-hover); }
-.registration-record-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.registration-record[open] > summary > svg { transform: rotate(90deg); }
 .registration-record-number { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .registration-record-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; min-width: 0; overflow-wrap: anywhere; }
 .registration-record-title strong { font-variant-numeric: tabular-nums; }
 .registration-record-body { min-width: 0; padding: 4px 0 14px; overflow-wrap: anywhere; }
 .registration-record-body > p { margin: 4px 0; }
-.registration-record-body > details { margin: 6px 0; }
-.registration-record-body > details p { margin: 4px 0 0 12px; }
+.registration-record-section { padding-block: 8px; border-top: 1px solid var(--border-subtle); }
+.registration-record-section h3 { margin: 0; font-size: 13px; }
+.registration-record-section p { margin: 4px 0 0; font-variant-numeric: tabular-nums; }
 .registration-record-actions { margin-top: 12px; }
 .registration-input-editor { display: grid; gap: 12px; margin-top: 16px; min-width: 0; container: registration-inputs / inline-size; }
 .registration-input-editor > .bom-hint { margin: 0; }
@@ -138,19 +133,10 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   font-weight: 600;
   color: var(--text);
 }
-.registration-selected-target {
-  margin: 0 !important;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 12px;
-}
+.registration-selected-target { margin: 0; }
 .registration-operations {
   display: grid;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-block: 1px solid var(--border);
   background: var(--surface);
   overflow: hidden;
 }
@@ -169,11 +155,10 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   margin: 0;
   padding: 10px 14px;
   white-space: normal;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: background 0.15s;
 }
 .registration-operation:has(input:checked) {
   background: var(--accent-light);
-  box-shadow: inset 3px 0 0 var(--accent);
 }
 .registration-operation:has(input:checked) .registration-operation-name strong {
   color: var(--accent);
@@ -210,24 +195,10 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
 .registration-option-quantity {
   flex-shrink: 0;
   max-width: 40%;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-align: right;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  color: var(--muted);
+  text-align: end;
+  color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 400;
   font-variant-numeric: tabular-nums;
-}
-.registration-option-quantity.is-available,
-.registration-operation:has(input:checked) .registration-option-quantity {
-  background: var(--accent-light);
-  border-color: var(--accent-border);
-  color: var(--accent);
-  font-weight: 500;
 }
 
 .registration-quantity-block {
@@ -306,42 +277,6 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   overflow: hidden;
   min-width: 0;
 }
-.registration-details > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 44px;
-  padding: 12px 0;
-  background: transparent;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  transition: background 0.15s;
-}
-.registration-details > summary::-webkit-details-marker { display: none; }
-.registration-details > summary::marker { content: ""; }
-.registration-details > summary:hover { background: var(--surface-subtle); }
-.registration-details > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-.registration-details[open] > summary {
-  background: transparent;
-  border-bottom: 1px solid var(--border);
-}
-.registration-details-chevron {
-  flex-shrink: 0;
-  color: var(--muted);
-  transition: transform 0.18s ease;
-}
-.registration-details[open] > summary > .registration-details-chevron,
-.registration-tools-disclosure[open] > summary > .registration-details-chevron {
-  transform: rotate(180deg);
-}
 .registration-details-body {
   padding: 16px 0 20px;
   display: flex;
@@ -355,26 +290,12 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   gap: 14px;
   align-items: start;
 }
-.registration-source {
-  margin: 0 !important;
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-.registration-operation-note {
+.registration-source, .registration-operation-note {
   margin: 0;
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
-  background: var(--orange-bg);
-  border: 1px solid var(--orange-border);
-  color: var(--orange);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 .registration-output-materials {
   display: flex;
@@ -444,18 +365,7 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
 .registration-material-title small.bom-hint {
   margin: 0;
 }
-.registration-available-pill {
-  margin: 0 !important;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
+.registration-material-head .bom-hint { margin: 0; font-variant-numeric: tabular-nums; }
 .registration-material-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
@@ -508,34 +418,6 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
   font-size: 14px;
   font-weight: 500;
 }
-.registration-tools-disclosure {
-  margin: 0 !important;
-  position: relative;
-}
-.registration-tools-disclosure > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 6px 10px;
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  font-size: 12.5px;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  transition: background 0.15s, color 0.15s;
-}
-.registration-tools-disclosure > summary:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-.registration-tools-disclosure > summary::-webkit-details-marker { display: none; }
-.registration-tools-disclosure > summary::marker { content: ""; }
-.registration-tools-body {
-  margin-top: 6px;
-}
-
 .registration-picker-trigger.btn {
   display: flex;
   align-items: center;
@@ -599,9 +481,6 @@ html:not(.mobile-device) .production-registration-drawer { --drawer-width: 720px
 }
 
 @media (max-width: 600px) {
-  .registration-details > summary {
-    padding: 12px 0;
-  }
   .registration-details-body {
     padding: 14px 0;
   }

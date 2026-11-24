@@ -1,3 +1,4 @@
+import { Disclosure } from '../ui/Disclosure.jsx';
 import { productionFlowView } from '../../shared/production-flow.js';
 import { ProductionAcceptanceRegistrations } from './ProductionAcceptanceRegistrations.jsx';
 import { useOperationAcceptance } from './OperationAcceptance.jsx';
@@ -141,7 +142,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
   const choices = rows => <div className="registration-operations" role="group" aria-label={t('registration.chooseOperation')}>
     {rows.map(row => <div key={row.id} className="registration-option-row"><Radio className="registration-operation" checked={selectedId === row.id} name={`registration-${order.id}`}
       disabled={action.busy || !registerable || outputRegistrationLocked(order, row)} onChange={() => select(row)}>
-      <span className="registration-option-content"><OperationName target={row} /><span className={`registration-option-quantity${row.node?.available_quantity > 0 ? ' is-available' : ''}`}>{row.node?.available_quantity != null
+      <span className="registration-option-content"><OperationName target={row} /><span className="registration-option-quantity">{row.node?.available_quantity != null
         ? t('registration.available', { quantity: count(row.node.available_quantity), unit: row.unit })
         : t('registration.completed', { quantity: count(row.node?.completed_quantity ?? row.layer.completed_quantity ?? 0), unit: row.unit })}</span></span>
     </Radio></div>)}
@@ -152,10 +153,10 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
     {choices(filteredTargets)}
     {!filteredTargets.length && <p className="bom-hint" role="status">{t('registration.noMatches')}</p>}
   </>;
-  const reload = <details className="production-disclosure registration-tools-disclosure" open={!!action.error}><summary><span>{t('production.registrationTools')}</span><ChevronDown className="registration-details-chevron" size={14} aria-hidden="true" /></summary><div className="registration-tools-body"><Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
+  const reload = <Button className="registration-reload" disabled={action.busy} onClick={() => leave(() => action.run(async () => {
     const latest = await api(`/production-orders/${order.id}`, { warehouseId: data.warehouse_id });
     clear(); setMessage(''); await onSaved(latest);
-  }))}>{t('production.reloadProductionOrder')}</Button></div></details>;
+  }))}>{t('production.reloadProductionOrder')}</Button>;
   const formContent = <>
     <div className="registration-workspace-grid">
         <section className="panel bom-section registration-step-block">
@@ -200,8 +201,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
         </section>
       </div>
       {!registerable && <p className="bom-warning registration-closed-warning" role="status">{t('registration.closed')}</p>}
-      <details className="panel bom-section registration-details" open={expanded} onToggle={event => setExpanded(event.currentTarget.open)}>
-        <summary><span>{t('registration.more')}</span><ChevronDown className="registration-details-chevron" size={16} aria-hidden="true" /></summary>
+      <Disclosure className="panel bom-section registration-details" label={t('registration.more')} open={expanded} onOpenChange={setExpanded}>
         <div className="registration-details-body">
           <div className="registration-details-meta">
             {!drawer && target && <p className="bom-hint registration-source">{[target.bomName, target.routeName, target.name, target.postProcessing ? t('production.postProcessing') : t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>}
@@ -224,7 +224,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
                       <strong>{source.name}</strong>
                       {!!order.stage_workflow && <small className="bom-hint">{source.is_supplemental_input ? t('production.supplementalInput') : t('registration.layer', { path: source.path })} · {t(source.usage_mode === 'explode' ? 'production.supplyProduce' : 'production.supplyStock')}</small>}
                     </div>
-                    {source.available_quantity != null && <p className="bom-hint registration-available-pill">{t('production.available')} {count(exactQuantity(source, 'available_quantity'))} {source.unit}</p>}
+                    {source.available_quantity != null && <p className="bom-hint">{t('production.available')} {count(exactQuantity(source, 'available_quantity'))} {source.unit}</p>}
                   </div>
                   <label>{t('production.actualUsage')}{source.unit}）<Input aria-label={t('production.actualUsage2', { v0: source.is_supplemental_input ? `${source.name}（${t('production.supplementalInput')}）` : source.name })} inputMode="text" disabled={action.busy} value={row.quantity} onChange={event => patchItem(key, { quantity: event.target.value })} /></label>
                   {order.stage_workflow
@@ -237,7 +237,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           </div>}
           {!target?.layer.pool_paths && <label className="registration-batch-note">{t('production.batchNote')}<Input.TextArea aria-label={t('production.batchNote')} maxLength={500} rows={2} value={note} disabled={action.busy} onChange={event => { setNote(event.target.value); action.setError(''); }} /></label>}
         </div>
-      </details>
+      </Disclosure>
       {action.error && <p className="form-error registration-feedback registration-feedback-error" role="alert">{productionMessage(action.error)}</p>}
       {message && !action.error && <p className="bom-success registration-feedback registration-feedback-success" role="status">{message}</p>}
       {drawer && reload}

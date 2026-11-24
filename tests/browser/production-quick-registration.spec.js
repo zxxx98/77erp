@@ -1,9 +1,11 @@
+import { dismissApprovalNotices } from './production-ui-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
 import { productionRegistrationUrl } from '../../shared/production-link.js';
 
 async function fixture(page, fractional = false) {
+  await dismissApprovalNotices(page);
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -55,7 +57,7 @@ test('desktop registration drawer preserves detail, guards drafts and closes aft
     page.once('dialog', dialog => dialog.dismiss());
     await drawer.getByRole('button', { name: '取消', exact: true }).click();
     await expect(quantity).toHaveValue('2');
-    await drawer.locator('.registration-details summary').click();
+    await drawer.getByRole('button', { name: '更多信息 / 调整用料', exact: true }).click();
     await page.setViewportSize({ width: 1000, height: 600 });
     await drawer.locator('.registration-drawer-body').evaluate(element => { element.scrollTop = element.scrollHeight; });
     await expect(drawer.getByRole('button', { name: '提交登记', exact: true })).toBeInViewport();
@@ -79,7 +81,7 @@ test('desktop registration drawer preserves detail, guards drafts and closes aft
   } finally { await f.close(); }
 });
 
-test('desktop registration drawer restores progress scroll and its expanded operation', async ({ page }) => {
+test('desktop registration drawer restores progress scroll and the selected operation', async ({ page }) => {
   const f = await fixture(page);
   try {
     await page.setViewportSize({ width: 1440, height: 600 });
@@ -87,9 +89,9 @@ test('desktop registration drawer restores progress scroll and its expanded oper
     const tab = page.getByRole('tab', { name: '生产进度', exact: true });
     await tab.click();
     const half = page.locator('.production-progress-item').filter({ has: page.getByRole('button', { name: '查看批次 半成品', exact: true }) });
-    const disclosure = half.locator('details').filter({ hasText: '工序进度与登记' });
-    await disclosure.locator('summary').click();
     const opener = half.getByRole('button', { name: `登记 ${f.longName}`, exact: true });
+    const progressRow = half.locator('.production-inline-operation').first();
+    await expect(progressRow).toHaveCSS('display', 'table-row');
     await opener.scrollIntoViewIfNeeded();
     const scroll = await page.evaluate(() => window.scrollY);
     await opener.click();
@@ -98,7 +100,7 @@ test('desktop registration drawer restores progress scroll and its expanded oper
     await drawer.getByRole('button', { name: '取消', exact: true }).click();
     await expect(opener).toBeFocused();
     await expect(tab).toHaveAttribute('aria-selected', 'true');
-    await expect(disclosure).toHaveAttribute('open', '');
+    await expect(opener).toBeVisible();
     expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
     await half.getByRole('button', { name: '查看工序记录', exact: true }).click();
     const operations = page.locator('.production-stages.process-page');
@@ -167,7 +169,7 @@ for (const mode of ['desktop', 'iPhone 13', 'Pixel 7', 'pwa']) test(`${mode} fra
     await page.getByRole('searchbox', { name: '搜索工序、路线、BOM 或层级', exact: true }).fill('检验');
     await page.locator('.registration-option-row').filter({ hasText: '半成品配方' }).getByRole('radio').click();
     const quantity = page.getByLabel('本次数量', { exact: true });
-    await page.locator('.registration-details summary').click();
+    await page.getByRole('button', { name: '更多信息 / 调整用料', exact: true }).click();
     for (let batch = 0; batch < 3; batch++) {
       await quantity.fill('0.5/3');
       await expect(page.getByLabel('钢材实际耗料', { exact: true })).toHaveValue('1/18');
@@ -355,7 +357,7 @@ test('quick final output allows actual usage adjustments and root output consume
       await (half ? rows.filter({ hasText: '半成品配方' }) : rows.filter({ hasNotText: '半成品配方' })).getByRole('radio').click();
     };
     await chooseOutput(true); await quantity.fill('2');
-    await page.locator('.registration-details summary').click();
+    await page.getByRole('button', { name: '更多信息 / 调整用料', exact: true }).click();
     await expect(page.getByLabel('钢材实际耗料', { exact: true })).toHaveValue('6');
     await page.getByLabel('钢材实际耗料', { exact: true }).fill('5');
     await page.getByLabel('钢材耗料差异原因', { exact: true }).fill('现场核实用量');
@@ -366,7 +368,6 @@ test('quick final output allows actual usage adjustments and root output consume
     expect(order.stages.find(stage => stage.path === '1').available_quantity).toBe(2);
     expect(order.receipt_documents).toHaveLength(0);
     for (const id of ['n0', 'n1', 'n2']) await report('', id, 1);
-    await page.getByText('重新读取单据', { exact: true }).click();
     await page.getByRole('button', { name: '重新读取生产单', exact: true }).click();
     await expect(quantity).toHaveValue('');
     await chooseOutput(false); await quantity.fill('1');

@@ -1,5 +1,5 @@
+import { Disclosure } from '../ui/Disclosure.jsx';
 import { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
 import { Button, Badge } from '../components/common.jsx';
 import { Input } from '../ui/controls.jsx';
 import { usePermissions } from '../permissions.jsx';
@@ -135,28 +135,26 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
       const canEditInputs = canEditRegistration && row.status === 'pending' && order.status !== 'void' && row.editable_inputs?.length > 0;
       const status = row.status === 'pending' ? (settlement ? 'production.registration.unsettled' : 'route.acceptancePending')
         : row.status === 'approved' ? (row.kind === 'settlement' ? 'production.registration.settled' : 'route.registrationPassed') : 'route.registrationCancelled';
-      return <li key={row.id}><details className="registration-record">
-        <summary className="registration-record-summary">
-          <ChevronRight size={16} aria-hidden="true" />
+      return <li key={row.id}><Disclosure className="registration-record" buttonClassName="registration-record-summary" label={<>
           <span className="registration-record-number">{formatNumber.format(index + 1)}</span>
           <span className="registration-record-title">
             <strong>{node?.name || stage?.name || order.product_name} · {formatExactQuantity(row.quantity, locale)} {route?.unit || stage?.unit || order.unit}</strong>
             <time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString(locale)}</time>
           </span>
           <Badge tone={row.status === 'pending' ? 'orange' : row.status === 'approved' ? 'green' : 'gray'}>{t(status)}</Badge>
-        </summary>
+        </>}>
         <div className="registration-record-body">
           <p>{stage?.name || order.product_name}{row.path&&` · ${row.path}`}</p>
           <p>{t('route.worker')}: {row.worker_name} · {t('route.recorder')}: {row.registered_by_name}</p>
           {row.resolved_by_name && <p>{t('production.registration.resolvedBy', { name: row.resolved_by_name })}</p>}
           {row.kind==='acceptance'&&row.acceptance_id!=null&&<p>{t('production.registration.inspected')}</p>}
           {row.note&&<p>{row.note}</p>}
-          {!!row.actual_inputs?.length&&<details><summary>{t('production.registration.recordedInputs')}</summary>{row.actual_inputs.map(item=><p key={item.key}>{item.name} · {formatExactQuantity(item.quantity_fraction||item.quantity,getFormatLocale())} {item.unit}{item.path&&` · ${item.path}`}</p>)}</details>}
-          {!!row.input_adjustments?.length&&<details><summary>{t('production.registration.inputHistory')}</summary>{row.input_adjustments.map((change,index)=><div key={index}><p>{new Date(change.at).toLocaleString(getFormatLocale())} · {change.by}</p>{change.items.map((item,itemIndex)=><p key={itemIndex}>{row.editable_inputs?.[itemIndex]?.name} · {String(change.previous[itemIndex].quantity)} → {String(item.quantity)} · {item.variance_reason}</p>)}</div>)}</details>}
+          {!!row.actual_inputs?.length&&<section className="registration-record-section"><h3>{t('production.registration.recordedInputs')}</h3>{row.actual_inputs.map(item=><p key={item.key}>{item.name} · {formatExactQuantity(item.quantity_fraction||item.quantity,getFormatLocale())} {item.unit}{item.path&&` · ${item.path}`}</p>)}</section>}
+          {!!row.input_adjustments?.length&&<section className="registration-record-section"><h3>{t('production.registration.inputHistory')}</h3>{row.input_adjustments.map((change,index)=><div key={index}><p>{new Date(change.at).toLocaleString(getFormatLocale())} · {change.by}</p>{change.items.map((item,itemIndex)=><p key={itemIndex}>{row.editable_inputs?.[itemIndex]?.name} · {String(change.previous[itemIndex].quantity)} → {String(item.quantity)} · {item.variance_reason}</p>)}</div>)}</section>}
           {canEditInputs&&editing?.id===row.id&&<RegistrationInputEditor inputs={row.editable_inputs} draft={editing.items} disabled={action.busy}
             onChange={(index, changes) => setEditing(previous => ({ ...previous, items: previous.items.map((item, i) => i === index ? { ...item, ...changes } : item) }))}
             onSave={saveInputs} onCancel={() => setEditing(null)} />}
-          {!!row.initial_issues?.length&&<details><summary>{t('production.registration.originalIssues')}</summary>{row.initial_issues.map(issue=><p key={issue.key}>{issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}</details>}
+          {!!row.initial_issues?.length&&<section className="registration-record-section"><h3>{t('production.registration.originalIssues')}</h3>{row.initial_issues.map(issue=><p key={issue.key}>{issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}</section>}
           {row.issues?.map(issue=><p className="bom-hint" key={issue.key}>{t(`production.registration.issue.${issue.kind}`)} · {issue.name} · {t('production.registration.missing',{quantity:formatExactQuantity(issue.missing_quantity_fraction||issue.missing_quantity,getFormatLocale()),unit:issue.unit})}</p>)}
           {row.status==='pending'&&order.status!=='void'&&<div className="registration-record-actions bom-actions">
             {(settlement?can('production'):can('operation_accept'))&&<Button kind="primary" disabled={action.busy} onClick={()=>resolve(row,'approve')}>{t(settlement?'production.registration.reconcile':'route.inspectRegistration')}</Button>}
@@ -164,7 +162,7 @@ export function ProductionAcceptanceRegistrations({order,data,onSaved,path,pendi
             {(row.registered_by===user.id||can('production')||can('operation_accept'))&&<Button disabled={action.busy} onClick={()=>resolve(row,'cancel')}>{t('route.cancelRegistration')}</Button>}
           </div>}
         </div>
-      </details></li>;
+      </Disclosure></li>;
     })}
     </ol>}
     {action.error&&<p role="alert" className="form-error">{action.error}</p>}

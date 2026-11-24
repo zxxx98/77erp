@@ -1,3 +1,4 @@
+import { dismissApprovalNotices } from './production-ui-helpers.js';
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
@@ -7,6 +8,7 @@ import { productionRegistrationUrl } from '../../shared/production-link.js';
 
 const graph = { nodes:[{id:'cut',name:'下料',note:'按图下料',x:24,y:24},{id:'out',name:'检验',note:'',x:244,y:24}],edges:[{from:'cut',to:'out'}] };
 async function fixture(page,{worker=false,multi=false,repeated=false}={}) {
+  await dismissApprovalNotices(page);
   const {app,db}=createApp(':memory:');const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}`;
   const post=async(path,body)=>{const response=await page.request.post(`${base}/api${path}`,{data:{request_id:randomUUID(),schema_version:2,stage_schema_version:1,operation_schema_version:1,...body}});const result=await response.json();expect(response.ok(),JSON.stringify(result)).toBe(true);return result;};
   await post('/auth/setup',{username:'routeadmin',password:'Route-test-123'});await post('/settings/reset',{confirmation:'RESET_BUSINESS_DATA'});
@@ -409,12 +411,12 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     expect(order.completed_quantity).toBeNull(); expect(order.receipt_documents).toHaveLength(0);
     expect(order.items[0].available_quantity).toBe(20); expect(order.operation_routes[0].reports).toHaveLength(1);
     await page.getByRole('radio', { name: /检验/ }).check();
-    await quantity.fill('7');
+    await quantity.fill('0');
     await page.getByRole('button', { name: '提交登记', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('前置工序可用数量不足，请先核对前序报工。');
+    await expect(page.getByRole('alert')).toContainText('数量需为正数');
     expect((await f.get()).operation_routes[0].reports).toHaveLength(1);
     await quantity.fill('4');
-    await expect(page.locator('.registration-details')).toHaveAttribute('open', '');
+    await expect(page.getByRole('button', { name: '更多信息 / 调整用料', exact: true })).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: '提交登记', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '已登记 检验：4 件' })).toBeVisible();
     order = await f.get();
@@ -436,7 +438,6 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     await page.screenshot({ path: test.info().outputPath('detail-registration-qr.png'), fullPage: true });
     await page.getByRole('button', { name: '刷新单据与库存', exact: true }).click();
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
-    await page.getByText('工序进度与登记（2）', { exact: true }).click();
     await page.getByRole('button', { name: '查看工序记录', exact: true }).click();
     await expect(page.getByText('工序登记记录', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '作废工序记录', exact: true }).click();
@@ -446,7 +447,6 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} quick QR registra
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '确认作废工序记录', exact: true }).click();
     await expect.poll(async () => (await f.get()).operation_routes[0].operations.find(row => row.id === 'cut').completed_quantity).toBe(5);
-    await page.getByText('工序进度与登记（2）', { exact: true }).click();
     await page.getByRole('button', { name: '查看工序记录', exact: true }).click();
     await expect(page.locator('.process-history-void-reason')).toContainText('纠正部分数量');
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -71,7 +71,7 @@ test('measurement checks expose limits, locate differences and require a fresh a
   await page.getByRole('checkbox',{name:'绑定物料 251-01204040JV',exact:true}).uncheck();
   await openSheetResults(page,'251-01204040JV');
   const result=page.getByRole('region',{name:'系统核对结果'});await expect(result).toContainText('7 个项目的结果或单项判定尚未完成核对');
-  const length=result.locator('.quality-check-result').filter({hasText:'总长公差'});await length.locator('summary').click();await length.getByRole('button',{name:'H15:J15 · 定位',exact:true}).click();
+  const length=result.locator('.quality-check-result').filter({hasText:'总长公差'});await length.getByRole('button',{name:/查看来源位置/}).click();await length.getByRole('button',{name:'H15:J15 · 定位',exact:true}).click();
   const source=page.getByRole('dialog',{name:'上传文件单元格定位'});await expect(source.locator('.quality-source-error')).toContainText('2065/2061/2060');await source.getByRole('button',{name:'关闭弹窗',exact:true}).click();await closeSheetResults(page);
   const save=page.getByRole('button',{name:'确认保存验收单',exact:true}),ack=page.getByRole('checkbox',{name:'已核对系统提示',exact:true});
   await expect(save).toBeDisabled();await ack.check();await expect(save).toBeEnabled();

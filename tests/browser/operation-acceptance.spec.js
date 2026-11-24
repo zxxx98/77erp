@@ -45,7 +45,7 @@ for(const mode of ['desktop','drawer','mobile','pwa']) test(`${mode} registers f
   if(mode==='pwa') await context.addInitScript(()=>{const match=window.matchMedia.bind(window);window.matchMedia=query=>{const result=match(query);if(query==='(display-mode: standalone)')Object.defineProperty(result,'matches',{value:true});return result;};});
   const page=await context.newPage(),f=await fixture(page),errors=[];page.on('pageerror',error=>errors.push(error.message));
   const records=page.getByRole('region',{name:'登记与待处理问题'});
-  const openRecord=name=>records.locator('summary.registration-record-summary').filter({hasText:name}).click();
+  const openRecord=name=>records.locator('button.registration-record-summary').filter({hasText:name}).click();
   const openRegistration=async()=>{
     await page.goto(mode==='drawer'?`${f.base}/#production?order=${f.draft.id}`:f.link);
     if(mode==='drawer'){
@@ -134,8 +134,8 @@ for(const mode of ['desktop','mobile','pwa']) test(`${mode} inspector passes a m
     if(mode==='pwa')await page.evaluate(()=>navigator.serviceWorker.ready);
     const records=page.getByRole('region',{name:'登记与待处理问题'});
     for(const name of ['下料','最终检验']) {
-      const row=records.locator('.registration-record').filter({has:page.locator('summary.registration-record-summary').filter({hasText:name})});
-      await row.locator('summary.registration-record-summary').click();
+      const row=records.locator('.registration-record').filter({has:page.locator('button.registration-record-summary').filter({hasText:name})});
+      await row.locator('button.registration-record-summary').click();
       await row.getByRole('button',{name:'验收',exact:true}).click();
       const modal=page.getByRole('dialog',{name:'工序验收单',exact:true});
       await modal.getByRole('button',{name:'字段填写',exact:true}).click();

@@ -196,7 +196,6 @@ export default {
   "production.suppliesProduct": ["用于 {{name}}", "Supplies {{name}}", "Dùng cho {{name}}"],
   "production.operationsAndRegistration": ["工序进度与登记（{{count}}）", "Operations and registration ({{count}})", "Công đoạn và ghi nhận ({{count}})"],
   "production.operationHistory": ["查看工序记录", "View operation records", "Xem lịch sử công đoạn"],
-  "production.registrationTools": ["重新读取单据", "Reload options", "Tải lại lệnh"],
 
   "production.registrationPermissionDescription": ["仅查看派给所属生产组或本人的生产单，并登记产量和耗料", "View orders assigned to your group or you, and register output and material usage.", "Xem lệnh giao cho tổ hoặc cá nhân bạn và ghi nhận sản lượng, tiêu hao nguyên liệu."],
   "production.editRegistrationPermission": ["编辑员工登记信息", "Edit employee production registrations", "Chỉnh sửa ghi nhận sản xuất của nhân viên"],
@@ -2164,10 +2163,10 @@ export default {
     "View details",
     "Xem chi tiết"
   ],
-  "production.noMatchingProductionOrdersSelectAnExistingBom": [
-    "暂无匹配的生产单。选择已有BOM，建立第一张生产草稿。",
-    "No matching production orders. Select an existing BOM to create your first draft.",
-    "Không có lệnh sản xuất phù hợp. Chọn BOM có sẵn để tạo nháp đầu tiên."
+  "production.noMatchingProductionOrders": [
+    "暂无匹配的生产单。",
+    "No matching production orders.",
+    "Không có lệnh sản xuất phù hợp."
   ],
   "production.noProductionOrdersAssignedToThisGroup": [
     "暂无派给本组的生产单。",

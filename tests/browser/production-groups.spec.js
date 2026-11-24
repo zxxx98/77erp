@@ -1,9 +1,10 @@
-import { productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
+import { dismissApprovalNotices, productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
 import { test, expect } from '@playwright/test';
 import { createApp } from '../../server/app.js';
 import { randomUUID } from 'node:crypto';
 
 async function fixture(page, accessMode = 'production_only') {
+  await dismissApprovalNotices(page);
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -76,9 +77,6 @@ for (const accessMode of ['standard', 'production_only']) for (const {width, pwa
 
 async function choose(page, control, name) { await control.click(); await page.getByRole('option', { name, exact: true }).click(); }
 test('admin configures groups, strict positions, optional employee membership and dispatch', async ({ page }) => {
-  await page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
-    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
-  });
   const f = await fixture(page);
   try {
     await page.request.post(f.base + '/api/auth/logout');

@@ -1,12 +1,6 @@
 import { test, expect, devices } from '@playwright/test';
 import { productionIssuesFixture } from '../helpers/production-issues.js';
-import { confirmFinishPipeline } from './production-ui-helpers.js';
-
-function dismissApprovalNotices(page) {
-  return page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
-    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
-  });
-}
+import { confirmFinishPipeline, dismissApprovalNotices } from './production-ui-helpers.js';
 
 for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending consumption and settles without replacing the registration`,async({page,browser})=>{
   const context=device==='desktop'?page.context():await browser.newContext({locale:'zh-CN',...devices[device==='mobile'?'Pixel 7':'iPhone 13'],serviceWorkers:device==='pwa'?'allow':'block'});
@@ -24,7 +18,7 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     const url=`${f.base}/#production?order=${order.id}`;
     await page.goto(url);
     const records=page.getByRole('region',{name:'登记与待处理问题'});
-    await expect(records.getByRole('heading')).toContainText('未核对/总数 1/1');
+    await expect(records.getByRole('heading', { level: 2 })).toContainText('未核对/总数 1/1');
     const edit=records.getByRole('button',{name:'调整本次用料'});
     await records.locator('.registration-record-summary').click();
     await expect(edit).toHaveCount(0);
@@ -47,7 +41,7 @@ for(const device of ['desktop','mobile','pwa']) test(`${device} corrects pending
     await expect(records).toContainText('用料调整记录');
     await records.getByRole('button',{name:'核对并结算',exact:true}).click();
     await expect(records).toContainText('已结算');
-    await expect(records.getByRole('heading')).toContainText('未核对/总数 0/1');
+    await expect(records.getByRole('heading', { level: 2 })).toContainText('未核对/总数 0/1');
     const updated=await f.get();
     expect(updated.pending_registration_count).toBe(0);
     expect(updated.operation_registrations[0].id).toBe(order.operation_registrations[0].id);
@@ -118,15 +112,15 @@ test('settling a semi-finished registration updates the next record without relo
     await page.context().addCookies([{ name, value, url: f.base }]);
     await page.goto(`${f.base}/#production?order=${order.id}`);
     const section = page.getByRole('region', { name: '登记与待处理问题' });
-    const heading = section.getByRole('heading');
+    const heading = section.getByRole('heading', { level: 2 });
     const rows = section.locator('.registration-record');
-    const summaries = rows.locator('summary.registration-record-summary');
+    const summaries = rows.locator('button.registration-record-summary');
     const settle = row => row.getByRole('button', { name: '核对并结算', exact: true });
     const shortage = section.locator(':scope > p.bom-hint').filter({ hasText: '半成品 · 还缺 24 kg' });
     await expect(heading).toContainText('未核对/总数 2/3');
     await expect(summaries.locator('strong')).toHaveText(['半成品 · 24 kg', '成品 · 12 kg', '半成品 · 25 kg']);
     await expect(summaries.locator('.registration-record-number')).toHaveText(['1', '2', '3']);
-    await expect(section.locator('.registration-record[open]')).toHaveCount(0);
+    await expect(section.locator('.registration-record-summary[aria-expanded="true"]')).toHaveCount(0);
     await expect(shortage).toBeVisible();
     await summaries.nth(0).click();
     await settle(rows.nth(0)).click();
@@ -200,7 +194,6 @@ test('mobile predecessor with zero available quantity can be selected and record
     const split=f.cookie.indexOf('=');await page.context().addCookies([{name:f.cookie.slice(0,split),value:f.cookie.slice(split+1),url:f.base}]);
     await page.goto(`${f.base}/#production?order=${f.order.id}`);
     await page.getByRole('tab',{name:'生产进度',exact:true}).click();
-    await page.locator('.production-progress-item details').filter({hasText:'工序进度与登记'}).locator('summary').click();
     await page.getByRole('button',{name:'登记 组装',exact:true}).click();
     const drawer=page.getByRole('dialog',{name:'生产登记',exact:true});
     await drawer.getByLabel('本次数量',{exact:true}).fill('2');
@@ -266,7 +259,7 @@ for(const device of ['desktop','mobile']) test(`${device} registration drawer sc
     expect(scrollMetrics.scrollWidth).toBeLessThanOrEqual(scrollMetrics.clientWidth+1);
     const cards=drawer.locator('.registration-record');
     await expect(cards).toHaveCount(16);
-    const firstMain=await cards.first().locator('summary.registration-record-summary').boundingBox();
+    const firstMain=await cards.first().locator('button.registration-record-summary').boundingBox();
     expect(firstMain.width).toBeGreaterThanOrEqual(device==='desktop'?260:200);
     await cards.last().scrollIntoViewIfNeeded();
     const scrolledTop=await body.evaluate(el=>el.scrollTop);

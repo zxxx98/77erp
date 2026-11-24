@@ -117,29 +117,29 @@ export function ProductionOperations({ order, path = '', data, canRegister, onRe
           {view === 'graph' && selected && <Button onClick={() => setSelected('')}>{t('route.allNodes')}</Button>}
         </div>}
         {view === 'graph' && <ProcessGraph graph={route.graph} operations={route.operations} selected={selected} onSelect={setSelected} />}
-        <div className="process-operations-grid">
+        <div className="process-operations-list">
           {route.operations.filter(node => view === 'list' || !selected || selected === node.id).map((node) => {
             const stepIndex = route.operations.findIndex(item => item.id === node.id) + 1;
             const isStart = node.predecessors.length === 0;
-            return <article key={node.id} className={`process-operation process-operation-card${node.is_output ? ' is-output' : ''}${selected === node.id ? ' selected' : ''}`}>
-              <div className="bom-section-heading process-operation-card-head">
+            return <article key={node.id} className="process-operation process-operation-row">
+              <div>
                 <div className="process-operation-title-group">
-                  <span className="process-step-badge">#{stepIndex}</span>
+                  <span className="process-operation-number">#{stepIndex}</span>
                   <h3>{node.name}</h3>
+                  {postProcessing ? <small>{t('production.postProcessing')}</small> : node.is_output ? <small>{t('route.output')}</small> : isStart ? <small>{t('route.start')}</small> : null}
                 </div>
-                {postProcessing ? <Badge tone="orange">{t('production.postProcessing')}</Badge> : node.is_output ? <Badge tone="blue">{t('route.output')}</Badge> : isStart ? <Badge tone="green">{t('route.start')}</Badge> : null}
+                <OperationPrice node={node} unit={unit} />
+                {node.acceptance_template_id && <Badge tone="orange">{t('route.acceptanceRequired')}</Badge>}
+                {node.note && <p className="process-operation-note">{node.note}</p>}
+                {postProcessing ? <p className="bom-hint">{route.graph.post_processing_materials_per_unit ? t('production.bomPostProcessingAutomatic') : `${t('production.productCoefficient')} ${count(route.product_coefficient)} ${order.unit}`} · {t(order.output_completed ? 'production.postProcessingFinal' : 'production.postProcessingAvailable')} {count(route.post_processing_limit)} {unit}</p>
+                  : <p className="bom-hint">{`${t('route.predecessors')}: ${node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}`}</p>}
               </div>
-              <OperationPrice node={node} unit={unit} />
-              {node.acceptance_template_id && <Badge tone="orange">{t('route.acceptanceRequired')}</Badge>}
-              {node.note && <p className="process-operation-note">{node.note}</p>}
-              {postProcessing ? <p className="bom-hint">{route.graph.post_processing_materials_per_unit ? t('production.bomPostProcessingAutomatic') : `${t('production.productCoefficient')} ${count(route.product_coefficient)} ${order.unit}`} · {t(order.output_completed ? 'production.postProcessingFinal' : 'production.postProcessingAvailable')} {count(route.post_processing_limit)} {unit}</p>
-                : <p className="bom-hint">{`${t('route.predecessors')}: ${node.predecessors.map(parent => route.operations.find(n => n.id === parent)?.name).join('、') || t('route.noPredecessors')}`}</p>}
               <dl className="process-operation-stats">
                 <div className="process-stat-box"><dt>{t('route.completed')}</dt><dd>{count(exactQuantity(node, 'completed_quantity'))} {unit}</dd></div>
                 {node.available_quantity !== null && <div className={`process-stat-box${node.available_quantity > 0 ? ' is-available' : ''}`}><dt>{t(availableLabel)}</dt><dd>{count(exactQuantity(node, 'available_quantity'))} {unit}</dd></div>}
               </dl>
-              {canRegister && <div className="process-operation-card-action">
-                <Button kind="primary" disabled={action.busy || outputRegistrationLocked(order, { path, output: node.is_output })} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
+              {canRegister && <div className="process-operation-action">
+                <Button disabled={action.busy || outputRegistrationLocked(order, { path, output: node.is_output })} aria-label={`${t(node.is_output ? 'route.outputReport' : 'route.report')} ${node.name}`} onClick={() => { return onRegister ? onRegister(JSON.stringify([path, node.id])) : node.is_output ? onOutput(node, workerId) : setForm({ node_id: node.id, quantity: '', note: '' }); }}>{t(node.is_output ? 'route.outputReport' : 'route.report')}</Button>
               </div>}
             </article>;
           })}

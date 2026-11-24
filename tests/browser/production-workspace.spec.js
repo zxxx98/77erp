@@ -1,11 +1,12 @@
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
-import { confirmFinishPipeline } from './production-ui-helpers.js';
+import { confirmFinishPipeline, dismissApprovalNotices } from './production-ui-helpers.js';
 
 for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production workspace keeps progress visible and uses one registration flow`, async ({ browser }) => {
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? { viewport: { width: 1440, height: 1000 } } : devices['iPhone 13']), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage();
+  await dismissApprovalNotices(page);
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -45,16 +46,16 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production worksp
     await page.getByRole('button', { name: '更多操作', exact: true }).click();
     await page.getByRole('button', { name: '刷新单据与库存', exact: true }).click();
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
-    await page.getByText('工序进度与登记（2）', { exact: true }).click();
     await page.getByRole('button', { name: '登记 下料', exact: true }).click();
-    await expect(page.locator('.production-quick-registration')).toBeVisible();
+    const registration = mode === 'desktop' ? page.getByRole('dialog', { name: '生产登记' }) : page.locator('.production-quick-registration');
+    await expect(registration).toBeVisible();
     await expect(page.getByRole('radio', { name: /下料/ })).toBeChecked();
     await page.getByLabel('本次数量', { exact: true }).fill('2');
     await page.getByRole('button', { name: '提交登记', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '已登记' })).toBeVisible();
-    await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
+    if (mode !== 'desktop') await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
     await page.getByRole('button', { name: '登记', exact: true }).click();
-    await expect(page.locator('.production-quick-registration')).toBeVisible();
+    await expect(registration).toBeVisible();
     await page.getByRole('radio', { name: /成品检验/ }).click();
     await page.getByLabel('本次数量', { exact: true }).fill('2');
     await expect(page.getByLabel('铜料实际耗料', { exact: true })).not.toBeVisible();
@@ -62,7 +63,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production worksp
     await expect(page.getByRole('status').filter({ hasText: '已登记' })).toBeVisible();
     order = await get(); expect(order.status).toBe('in_progress'); expect(order.pending_receipt_quantity).toBe(2);
     expect(db.prepare('SELECT stock FROM products WHERE id=?').get(output.id).stock).toBe(0);
-    await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
+    if (mode !== 'desktop') await page.getByRole('button', { name: '返回单据详情', exact: true }).click();
     await page.getByRole('tab', { name: '概览', exact: true }).click();
     await expect(page.getByRole('region', { name: '当前待办' })).toContainText('待仓库入库 2 件');
     await page.getByRole('button', { name: '结束生产', exact: true }).click();

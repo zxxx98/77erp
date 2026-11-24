@@ -203,7 +203,6 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} cre
     await expect(page.getByText(/本单总耗料成本.*253\.00/)).toBeVisible();
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     const operation = page.locator('.production-progress-item').filter({ hasText: '包装' });
-    await operation.locator('summary').click();
     await button('查看工序记录', operation).click();
     await expect(page.locator('.process-history-card')).toContainText('纸箱');
     await expect(page.locator('.process-history-card')).toContainText('3 个');

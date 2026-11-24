@@ -1,13 +1,14 @@
 import { test, expect, devices } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
-import { productionAction, confirmFinishPipeline } from './production-ui-helpers.js';
+import { productionAction, confirmFinishPipeline, dismissApprovalNotices } from './production-ui-helpers.js';
 
 for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} preserves legacy post-processing and gates completion on actual output and every operation`, async ({ browser }) => {
   test.setTimeout(60000);
   const context = await browser.newContext({ locale: 'zh-CN', ...(mode === 'desktop' ? {} : devices[mode === 'pwa' ? 'iPhone 13' : mode]), serviceWorkers: mode === 'pwa' ? 'allow' : 'block' });
   const page = await context.newPage();
   page.setDefaultTimeout(12000);
+  await dismissApprovalNotices(page);
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -81,7 +82,6 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pre
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await expect(packing).toContainText('0 / 6 次');
     await page.screenshot({ path: test.info().outputPath('post-processing-progress.png'), animations: 'disabled', fullPage: true });
-    await packing.locator('summary').click();
     await button('登记 包装', packing).click();
     await expect(page.getByRole('radio', { name: /后处理成品/ })).toBeDisabled();
     await page.getByLabel('本次数量', { exact: true }).fill('1.5');
@@ -106,7 +106,6 @@ for (const mode of ['desktop', 'Pixel 7', 'iPhone 13', 'pwa']) test(`${mode} pre
     expect(order.status).toBe('completed');
     expect(order.receipt_documents).toHaveLength(1);
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
-    if (!await packing.locator('summary').evaluate(element => element.parentElement.open)) await packing.locator('summary').click();
     await button('查看工序记录', packing).click();
     await expect(page.locator('.process-history-card')).toContainText('包装');
     await expect(page.locator('.process-history-card')).toContainText('6 次');

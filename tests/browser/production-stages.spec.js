@@ -1,4 +1,4 @@
-import { productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
+import { dismissApprovalNotices, productionAction, adjustUsage, submitProductionBatch } from './production-ui-helpers.js';
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { createApp } from '../../server/app.js';
@@ -7,6 +7,7 @@ import { productionRegistrationUrl } from '../../shared/production-link.js';
 const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1';
 
 async function fixture(page, worker = false, shared = false, partial = false) {
+  await dismissApprovalNotices(page);
   const { app, db } = createApp(':memory:');
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
@@ -53,9 +54,6 @@ async function fixture(page, worker = false, shared = false, partial = false) {
 }
 
 for (const mode of ['desktop', 'mobile']) test(`${mode} progress includes issued and produced semi-finished stock`, async ({ page }) => {
-  page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
-    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
-  });
   if (mode === 'mobile') {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(ua => Object.defineProperty(navigator, 'userAgent', { value: ua }), iphone);
@@ -95,7 +93,7 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers child B
     await expect(page.getByRole('heading', { name: '产品与半成品进度', exact: true })).toBeVisible();
     const halfStage = page.locator('.production-progress-item').filter({ has: page.getByRole('button', { name: '登记 分层半成品', exact: true }) });
     await halfStage.getByText('查看累计投入差异', { exact: true }).click();
-    await expect(halfStage).toContainText('累计实际 0 件 · 累计标准 0 件');
+    await expect(halfStage.locator('.stage-cumulative-input').getByRole('cell')).toHaveText(['分层原料', '0 件', '0 件', '0 件']);
     await page.getByRole('button', { name: '登记 分层半成品', exact: true }).click();
     await page.getByLabel('本次数量', { exact: true }).fill('12');
     await adjustUsage(page);
@@ -370,7 +368,6 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers one sha
     await expect(shared).toHaveCount(1);
     await expect(shared).toContainText('芯线黑色、芯线白色');
     await expect(shared).toContainText('/ 20 件');
-    await shared.getByText('工序进度与登记（1）', { exact: true }).click();
     await page.getByRole('button', { name: '登记 绞合', exact: true }).click();
     await expect(page.getByRole('radio', { name: /绞合/ })).toHaveCount(1);
     await page.getByLabel('本次数量', { exact: true }).fill('16');
@@ -398,8 +395,8 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} registers one sha
     expect(JSON.stringify(order)).not.toMatch(/cost_cents/);
     await page.getByRole('tab', { name: '生产进度', exact: true }).click();
     await shared.getByText('查看实际领用去向', { exact: true }).click();
-    await expect(shared).toContainText('芯线黑色 · 1: 5 件');
-    await expect(shared).toContainText('芯线白色 · 2: 8 件');
+    await expect(shared.getByRole('row').filter({ hasText: '芯线黑色' }).getByRole('cell').last()).toHaveText('5 件');
+    await expect(shared.getByRole('row').filter({ hasText: '芯线白色' }).getByRole('cell').last()).toHaveText('8 件');
     await shared.getByRole('button', { name: '查看批次 分层半成品', exact: true }).click();
     await expect(page.getByText('R001', { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

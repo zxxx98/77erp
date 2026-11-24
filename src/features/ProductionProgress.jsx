@@ -1,3 +1,4 @@
+import { Disclosure } from '../ui/Disclosure.jsx';
 import { productionFlowView } from '../../shared/production-flow.js';
 import { useMemo, useState } from 'react';
 import { Button, Badge } from '../components/common.jsx';
@@ -12,7 +13,6 @@ import { OperationPrice } from './OperationPrice.jsx';
 
 const count = value => Number(value ?? 0).toLocaleString(getFormatLocale(), { maximumFractionDigits: 4 });
 
-// Keep every product reachable in one list; operations expand in place.
 export function ProductionProgress({ order, busy, onRegister, onHistory, onOperations }) {
   order = productionFlowView(order);
   useLocale();
@@ -49,7 +49,7 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
         {!!order.stage_workflow && layer.path && !layer.postProcessing && <p className="bom-hint">{t('production.availableInOrder')} {count(available)} {layer.unit} · {t('production.pendingReceipt')} {count(layer.pending_receipt_quantity)} {layer.unit} · {t('production.received')} {count(layer.received_quantity)} {layer.unit}</p>}
         {layer.pool_paths && <><p className="bom-hint">{t('production.poolHint')}</p>
           <p className="bom-hint">{t('production.availableInOrder')} <strong>{count(available)} {layer.unit}</strong> · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>
-          <details className="production-disclosure"><summary>{t('production.poolUsage')}</summary>
+          <Disclosure className="production-disclosure" label={t('production.poolUsage')}>
             {layer.pool_usages.length ? <div className="erp-table-wrap erp-table-mobile-stack">
               <table className="erp-table">
                 <thead><tr><th scope="col">{t('production.levelCol')}</th><th scope="col" className="erp-col-num">{t('production.documentQtyCol')}</th></tr></thead>
@@ -59,9 +59,8 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
                 </tr>)}</tbody>
               </table>
             </div> : <p className="bom-hint">{t('production.poolUnused')}</p>}
-          </details></>}
-        {!!order.stage_workflow && !layer.postProcessing && <details className="production-disclosure">
-          <summary>{t('production.viewCumulativeInputVariance')}</summary>
+          </Disclosure></>}
+        {!!order.stage_workflow && !layer.postProcessing && <Disclosure className="production-disclosure" label={t('production.viewCumulativeInputVariance')}>
           {layer.path && <p className="bom-hint">{t('production.availableInOrder')} {count(available)} {layer.unit} · {t('production.suppliedToParent')} {count(layer.consumed_quantity)} {layer.unit}</p>}
           <div className="erp-table-wrap erp-table-mobile-stack">
             <table className="erp-table">
@@ -83,9 +82,9 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
               </tbody>
             </table>
           </div>
-        </details>}
-        {routed && <details className="production-disclosure" open={search.trim() ? true : undefined}>
-          <summary>{t('production.operationsAndRegistration', { count: rows.length })}</summary>
+        </Disclosure>}
+        {routed && <section className="production-inline-section">
+          <h3>{t('production.operationsAndRegistration', { count: rows.length })}</h3>
           <div className="production-inline-operations erp-table-wrap erp-table-mobile-stack">
             <table className="erp-table">
               <thead>
@@ -116,7 +115,7 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
             </table>
           </div>
           <Button disabled={busy} onClick={() => onOperations(layer.path)}>{t('production.operationHistory')}</Button>
-        </details>}
+        </section>}
       </article>;
     })}
   </section>;

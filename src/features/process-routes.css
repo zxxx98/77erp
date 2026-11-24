@@ -736,10 +736,8 @@
 }
 .process-worker-picker {
   margin-top: 0 !important;
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
+  padding: 8px 0;
+  border-block-start: 1px solid var(--border);
 }
 .process-worker-picker > .bom-hint {
   margin: 4px 0 0;
@@ -749,46 +747,24 @@
   padding-bottom: 12px;
 }
 
-.process-operations-grid {
+.process-operations-list { margin-top: 16px; border-top: 1px solid var(--border); }
+.process-operation-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-.process-operation-card {
-  display: flex;
-  flex-direction: column;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  transition: border-color .15s;
-}
-.process-operation-card.is-output {
-  border-color: var(--accent-border);
-  background: var(--surface);
-}
-.process-operation-card.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-light);
-}
-.process-operation-card-head {
-  margin-bottom: 8px;
-}
-.process-operation-title-group {
-  display: flex;
+  grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
+  gap: 12px 20px;
+  padding: 12px 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
 }
-.process-operation-note {
-  margin: 4px 0 6px;
-  color: var(--text-secondary);
-  font-size: 13px;
-}
-.process-operation-card > .bom-hint {
-  margin: 2px 0 12px;
-}
+.process-operation-title-group { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.process-operation-title-group h3 { margin: 0; font-size: 14px; }
+.process-operation-title-group small, .process-operation-number { color: var(--muted); font-size: 12px; }
+.process-operation-number { font-variant-numeric: tabular-nums; }
+.process-operation-note, .process-operation-row .bom-hint { margin: 4px 0 0; font-size: 13px; }
+.process-operation-row .process-operation-stats { margin: 0; padding: 0; border: 0; }
+.process-progress-badges .process-meta-pill { height: auto; padding: 0; border: 0; background: transparent; }
 .process-operation-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -821,16 +797,6 @@
 .process-stat-box.is-available dd {
   color: var(--accent);
 }
-.process-operation-card-action {
-  margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-subtle);
-}
-.process-operation-card-action .btn {
-  width: 100%;
-  justify-content: center;
-}
-
 /* ─── 报工与作废表单 ─── */
 .process-report-form {
   display: grid;
@@ -995,9 +961,9 @@
     flex: 1 1 auto;
     justify-content: center;
   }
-  .process-operations-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  .process-operation-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .process-operation-row > div:first-child { grid-column: 1 / -1; }
+  .process-operation-action .btn { min-height: 44px; }
   .process-node {
     min-height: 82px;
   }

@@ -1,3 +1,4 @@
+import { Disclosure } from '../ui/Disclosure.jsx';
 import { productionMessage } from '../i18n/production-errors.js';
 import { qualityTypeLabels } from '../i18n/production-display.js';
 import { t as pt } from '../i18n/index.js';
@@ -42,7 +43,7 @@ function ChoiceSplitPreview({field,raw,compact=false}) {
       <dl><dt>{pt("production.rawSegment")}</dt><dd><code>{part.raw||pt("production.empty")}</code></dd><dt>{pt("production.optionText")}</dt><dd>{part.label||pt("production.empty")}</dd><dt>{pt("production.detectedMarker")}</dt><dd><code>{part.marker||pt("production.none")}</code></dd></dl>
     </div>)}
   </section>;
-  return compact?<details className="quality-choice-details"><summary>{pt("production.viewSplitResults")}{parsed.parts.length} {pt("production.items")}</summary>{content}</details>:content;
+  return compact?<Disclosure className="quality-choice-details" label={<span>{pt("production.viewSplitResults")}{parsed.parts.length} {pt("production.items")}</span>}>{content}</Disclosure>:content;
 }
 function PercentHint({field}) {
   useLocale();
@@ -73,7 +74,7 @@ function ProcessedTextPreview({field,raw,compact=false}) {
   let processed,error;
   try {processed=preprocessText(raw,field);}catch(e){error=e.message;}
   const content=<div className="quality-processed-text">{compact&&<><span>{pt("production.originalContent")}</span><pre>{raw||pt("production.empty")}</pre></>}<span>{pt("production.processedContent2")}</span>{error?<p className="form-error">{productionMessage(error)}</p>:<pre>{processed||pt("production.empty")}</pre>}</div>;
-  return compact?<details className="quality-choice-details"><summary>{pt("production.viewContentProcessing")}</summary>{content}</details>:content;
+  return compact?<Disclosure className="quality-choice-details" label={pt("production.viewContentProcessing")}>{content}</Disclosure>:content;
 }
 
 export function QualityCheckResults({checks,onLocate}) {
@@ -86,7 +87,7 @@ export function QualityCheckResults({checks,onLocate}) {
     {[...checks].sort((a,b)=>order[a.status]-order[b.status]).map((check,index)=><article key={`${check.id}-${index}`} className={`quality-check-result quality-check-${check.status}`}>
       <strong>{check.name} · {labels[check.status]}</strong><p>{productionMessage(check.message)}</p>
       {check.measurements&&<div className="quality-preview-table"><table><thead><tr><th>{pt("production.samplePart")}</th><th>{pt("production.measuredValue")}</th><th>{pt("production.lowerLimit")}</th><th>{pt("production.upperLimit")}</th><th>{pt("production.check")}</th></tr></thead><tbody>{check.measurements.map((m,i)=><tr key={i}><td>{m.name}</td><td>{m.value}{check.unit}</td><td>{m.min===null?pt("production.noLimit"):`${m.minInclusive?'≥':'>'} ${m.min}${check.unit||''}`}</td><td>{m.max===null?pt("production.noLimit"):`${m.maxInclusive?'≤':'<'} ${m.max}${check.unit||''}`}</td><td>{m.pass?pt("production.withinRange"):pt("production.outOfRange")}</td></tr>)}</tbody></table></div>}
-      {!!check.locations.length&&<details><summary>{pt("production.viewSourceLocations")}</summary><div className="quality-toolbar">{[...new Set(check.locations.map(p=>p.region))].map(region=>onLocate?<Button key={region} onClick={()=>onLocate(region)}>{region} {pt("production.locate")}</Button>:<span key={region}>{region}</span>)}</div></details>}
+      {!!check.locations.length&&<Disclosure label={pt("production.viewSourceLocations")}><div className="quality-toolbar">{[...new Set(check.locations.map(p=>p.region))].map(region=>onLocate?<Button key={region} onClick={()=>onLocate(region)}>{region} {pt("production.locate")}</Button>:<span key={region}>{region}</span>)}</div></Disclosure>}
     </article>)}
   </section>;
 }

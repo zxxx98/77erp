@@ -1,5 +1,11 @@
 import { expect } from '@playwright/test';
 
+export function dismissApprovalNotices(page) {
+  return page.addLocatorHandler(page.getByRole('complementary', { name: '审核通知' }), async notice => {
+    await notice.getByRole('button', { name: '我知道了', exact: true }).click();
+  });
+}
+
 export async function productionAction(page, name) {
   const button = page.getByRole('button', { name, exact: true });
   if (!await button.isVisible()) await page.getByRole('button', { name: '更多操作', exact: true }).click();
@@ -7,8 +13,8 @@ export async function productionAction(page, name) {
 }
 
 export async function adjustUsage(page) {
-  const details = page.locator('.registration-details');
-  if (!await details.evaluate(element => element.open)) await details.locator('summary').click();
+  const toggle = page.getByRole('button', { name: '更多信息 / 调整用料', exact: true });
+  if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
 }
 
 // Registration and closing are now separate user actions. Keep the accounting

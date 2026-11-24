@@ -40,6 +40,9 @@ for (const mode of ['desktop', 'mobile', 'pwa']) test(`${mode} production tabs p
   try {
     await page.goto(`${f.base}/#production`);
     if (context) await page.evaluate(() => navigator.serviceWorker.ready);
+    const orderRow = page.locator('.production-order-row').first();
+    await expect(orderRow).toHaveCSS('display', mode === 'desktop' ? 'table-row' : 'grid');
+    if (mode !== 'desktop') await expect(orderRow.getByRole('button').first()).toBeInViewport({ ratio: 1 });
     await page.getByRole('button', { name: `查看生产单 ${f.draft.number}`, exact: true }).click();
     await expect(tab('概览')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('tab')).toHaveCount(6);

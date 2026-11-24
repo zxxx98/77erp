@@ -1,0 +1,20 @@
+.erp-disclosure-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: start;
+  cursor: pointer;
+}
+.erp-disclosure-toggle:hover { background: var(--surface-hover); }
+.erp-disclosure-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.erp-disclosure-chevron { flex-shrink: 0; color: var(--muted); }
+.erp-disclosure-toggle[aria-expanded="true"] > .erp-disclosure-chevron { transform: rotate(90deg); }
