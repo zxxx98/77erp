@@ -111,6 +111,7 @@ test('inbound metadata and repeated rows survive approval, per-row returns and b
   assert.deepEqual({...f.stock()},{stock:107,inventory_value_cents:24100});
   const returned=await f.command(f.admin,`/orders/${doc.id}/returns`,{reason:'逐行退货',items:detail.items.map(i=>({source_item_id:i.id,product_id:i.product_id,quantity:1}))});
   assert.equal(returned.status,200,JSON.stringify(returned.data));
+  assert.equal((await f.command(f.admin,`/orders/${returned.data.id}/approve`,{version:1})).status,200);
   const returnDetail=(await f.request(f.admin,`/orders/${returned.data.id}`)).data.order;
   assert.equal(returnDetail.total,10);assert.deepEqual(returnDetail.items.map(i=>i.price),[3,7]);
   detail=(await f.request(f.admin,`/orders/${doc.id}`)).data.order;assert.deepEqual(detail.items.map(i=>i.returned_quantity),[1,1]);
@@ -136,8 +137,10 @@ test('legacy and row-linked returns share one quantity limit and cannot select t
   const line=(await f.request(f.admin,`/orders/${doc.id}`)).data.order.items[0];
   const returnItem={product_id:line.product_id,quantity:1};
   const first=await f.command(f.admin,`/orders/${doc.id}/returns`,{reason:'历史退货',items:[returnItem]});assert.equal(first.status,200);
+  assert.equal((await f.command(f.admin,`/orders/${first.data.id}/approve`,{version:1})).status,200);
   f.db.prepare('UPDATE order_items SET source_item_id=NULL WHERE order_id=?').run(first.data.id);
   const linked=await f.command(f.admin,`/orders/${doc.id}/returns`,{reason:'新退货',items:[{...returnItem,source_item_id:line.id}]});assert.equal(linked.status,200);
+  assert.equal((await f.command(f.admin,`/orders/${linked.data.id}/approve`,{version:1})).status,200);
   assert.equal((await f.request(f.admin,`/orders/${doc.id}`)).data.order.items[0].returned_quantity,2);
   const duplicate=await f.command(f.admin,`/orders/${doc.id}/returns`,{reason:'重复选择同一行',items:[{...returnItem,quantity:2},{...returnItem,quantity:2,source_item_id:line.id}]});assert.equal(duplicate.status,400);
   const backup=(await f.request(f.admin,'/backup')).data;
@@ -145,4 +148,58 @@ test('legacy and row-linked returns share one quantity limit and cannot select t
   const source=backup.data.order_items.find(i=>i.id===line.id);source.quantity=1;source.amount_cents=Math.round(source.quantity*source.price*100);
   backup.data.orders.find(o=>o.id===doc.id).total=source.amount_cents/100;
   assert.equal((await f.request(f.admin,'/backup/preview',{backup})).status,400);
+});
+
+test('supplier returns, exchanges and replacement receipts require stock approval for every posting', async t => {
+  const f = await fixture(t);
+  const writer = await f.employee('returnwriter', ['corrections']);
+  const reviewer = await f.employee('returnreviewer', ['stock_approve']);
+  const request = (id, action, body) => f.command(writer.cookie, `/orders/${id}/${action}`, body);
+  const review = (id, action = 'approve') => f.command(reviewer.cookie, `/orders/${id}/${action}`, {version:1, reason:'复核'});
+  const source = await f.submit('in', 3);
+  assert.equal((await review(source.id)).status,200);
+  const initial = f.stock();
+  const submit = async mode => {
+    const result = await request(source.id,'returns',{reason:'来料退回',return_mode:mode,items:[{product_id:f.product.id,quantity:2}]});
+    assert.equal(result.status,200);
+    assert.equal(result.data.status,'pending');
+    return result.data.id;
+  };
+  const cancelled = await submit('return');
+  assert.equal((await request(cancelled,'cancel',{version:1,reason:'撤回'})).status,200);
+  assert.equal((await review(cancelled)).status,409);
+  const rejected = await submit('exchange');
+  assert.equal((await review(rejected,'reject')).status,200);
+  assert.deepEqual(f.stock(),initial);
+  const refund = await submit('return');
+  const exchange = await submit('exchange');
+  for (const id of [refund,exchange]) {
+    assert.equal((await request(id,'approve',{version:1})).status,403);
+    assert.equal((await request(id,'reject',{version:1,reason:'无审核权'})).status,403);
+    assert.equal((await f.request(f.admin,`/orders/${id}`)).data.order.due_cents,0);
+    assert.ok((await f.request(reviewer.cookie,'/todos')).data.items.some(item => item.source === 'order' && item.source_id === id));
+  }
+  assert.deepEqual(f.stock(),initial);
+  assert.equal((await request(exchange,'exchange-receipt',{})).status,400);
+  assert.equal((await review(exchange)).status,200);
+  assert.equal(f.stock().stock, initial.stock-2);
+  // Two pending requests for the same source line cannot both exceed the remaining quantity.
+  assert.notEqual((await review(refund)).status,200);
+  assert.equal(f.stock().stock,initial.stock-2);
+  assert.equal((await review(refund,'reject')).status,200);
+  const receipt = (await request(exchange,'exchange-receipt',{})).data;
+  assert.equal(receipt.status,'pending');
+  assert.equal((await request(receipt.id,'approve',{version:1})).status,403);
+  assert.equal((await request(exchange,'exchange-receipt',{})).status,400);
+  assert.equal((await review(receipt.id,'reject')).status,200);
+  assert.equal(f.stock().stock,initial.stock-2);
+  const retry = (await request(exchange,'exchange-receipt',{})).data;
+  assert.equal((await review(retry.id)).status,200);
+  assert.deepEqual(f.stock(),initial);
+  for (const id of [exchange,retry.id]) {
+    const doc = (await f.request(f.admin,`/orders/${id}`)).data.order;
+    assert.equal(doc.created_by,writer.id);
+    assert.equal(doc.approved_by,reviewer.id);
+    assert.ok(doc.approved_at);
+  }
 });

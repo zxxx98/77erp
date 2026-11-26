@@ -14,7 +14,9 @@ export function installTodoContext(app, db) {
 }
 
 const sources = [
-  { table: 'orders', key: 'order', approved: 'active', owner: 's.created_by', number: 's.number', title: 's.partner', label: "'order_'||s.type", permission: "'stock_approve'", condition: "s.approval_origin='workflow' AND s.kind IN ('normal','internal')", at: 's.approved_at' },
+  { table: 'orders', key: 'order', approved: 'active', owner: 's.created_by', number: 's.number', title: 's.partner', label: `CASE WHEN s.return_mode='replacement' THEN 'supplier_replacement'
+      WHEN s.return_mode='exchange' THEN 'supplier_exchange' WHEN s.kind='return' THEN 'supplier_return'
+      ELSE 'order_'||s.type END`, permission: "'stock_approve'", condition: "s.approval_origin='workflow'", at: 's.approved_at' },
   { table: 'production_material_documents', key: 'material', approved: 'confirmed', label: "'material_'||s.kind", at: 's.confirmed_at' },
   { table: 'production_receipts', key: 'receipt', approved: 'confirmed', label: "'receipt'", at: 's.confirmed_at' },
   { table: 'production_stage_receipts', key: 'stage_receipt', approved: 'confirmed', label: "'stage_receipt'", at: 's.confirmed_at' },
@@ -46,7 +48,10 @@ export function installTodos(app, db) {
   for (const spec of sources) {
     const pending = `INSERT OR IGNORE INTO todo_events(source,source_id,event,submitter_id,occurred_at)
       SELECT source,source_id,'pending',COALESCE(owner,todo_submitter()),created_at FROM (${sourceQuery(spec)}) WHERE source_id=NEW.id AND status='pending';`;
-    db.exec(`CREATE TRIGGER IF NOT EXISTS todo_${spec.key}_insert AFTER INSERT ON ${spec.table} BEGIN ${pending} END;
+    // Replace the persisted order triggers together when upgrading their source query.
+    const updateOrderTriggers = spec.key === 'order';
+    db.exec(`${updateOrderTriggers ? 'BEGIN IMMEDIATE; DROP TRIGGER IF EXISTS todo_order_insert; DROP TRIGGER IF EXISTS todo_order_update;' : ''}
+      CREATE TRIGGER IF NOT EXISTS todo_${spec.key}_insert AFTER INSERT ON ${spec.table} BEGIN ${pending} END;
       CREATE TRIGGER IF NOT EXISTS todo_${spec.key}_update AFTER UPDATE OF status ON ${spec.table} WHEN OLD.status IS NOT NEW.status BEGIN
         ${pending}
         INSERT OR IGNORE INTO todo_events(source,source_id,event,submitter_id,occurred_at)
@@ -55,7 +60,8 @@ export function installTodos(app, db) {
       END;
       CREATE TRIGGER IF NOT EXISTS todo_${spec.key}_delete AFTER DELETE ON ${spec.table} BEGIN
         DELETE FROM todo_events WHERE source='${spec.key}' AND source_id=OLD.id;
-      END;`);
+      END;
+      ${updateOrderTriggers ? 'COMMIT;' : ''}`);
     // Existing pending documents appear immediately; historical approvals are not replayed.
     db.exec(`INSERT OR IGNORE INTO todo_events(source,source_id,event,submitter_id,occurred_at)
       SELECT source,source_id,'pending',owner,created_at FROM (${sourceQuery(spec)}) WHERE status='pending'`);

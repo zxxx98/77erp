@@ -87,7 +87,7 @@ export function OrderActions({ order, onSaved, returnOnly = false }) {
       if (action === 'exchange-receipt') {
         if (!window.confirm(translate('warehouse.returns.confirmReceipt', {number: order.number}))) return;
         const receipt = await send(`/orders/${order.id}/exchange-receipt`, {}, { warehouseId: order.warehouse_id });
-        await onSaved(translate('warehouse.returns.receivedMessage', {number: receipt.number}));
+        await onSaved(translate('stockApproval.submitted', {number: receipt.number}));
         return;
       }
       if (!reason.trim()) throw new Error(translate("warehouse.please.fill.in.the.reason.for.the.operation"));
@@ -107,7 +107,7 @@ export function OrderActions({ order, onSaved, returnOnly = false }) {
         !window.confirm(
           action === "void"
             ? translate("warehouse.confirm.to.void.this.document.and.reverse.inventory.adjustment.the.original")
-            : supplier && mode === 'exchange' ? translate('warehouse.returns.confirmExchange') : translate("warehouse.confirm.the.return.and.adjust.the.inventory.at.the.original.order"),
+            : supplier ? translate('warehouse.returns.confirmSubmission') : translate("warehouse.confirm.the.return.and.adjust.the.inventory.at.the.original.order"),
         )
       )
         return;
@@ -119,7 +119,7 @@ export function OrderActions({ order, onSaved, returnOnly = false }) {
       await onSaved(
         action === "void"
           ? translate("warehouse.the.document.has.been.voided.and.the.inventory.has.been.adjusted")
-          : supplier ? translate('warehouse.returns.sentMessage', { number: result.number }) : translate("warehouse.return.order.has.been.generated.and.inventory.has.been.adjusted"),
+          : supplier ? translate('stockApproval.submitted', { number: result.number }) : translate("warehouse.return.order.has.been.generated.and.inventory.has.been.adjusted"),
       );
     });
   return (
@@ -168,7 +168,7 @@ export function OrderActions({ order, onSaved, returnOnly = false }) {
             htmlType="button"
             disabled={busy}
             onClick={() => act("returns")}
-          >{translate(mode === "exchange" ? "warehouse.returns.sendExchange" : "warehouse.confirm.return")}</AntButton>
+          >{translate(supplier ? "stockApproval.submit" : "warehouse.confirm.return")}</AntButton>
         </>
       )}
       {!returnOnly && <AntButton type="default"

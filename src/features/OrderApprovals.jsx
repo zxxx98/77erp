@@ -29,6 +29,7 @@ export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {
   const action = useBusiness();
   const [reasonAction, setReasonAction] = useState(null), [reason, setReason] = useState('');
   useEffect(() => { onBusy?.(action.busy); }, [action.busy,onBusy]);
+  const correction = order.kind === 'return' || order.return_mode === 'replacement';
   const pending = order.status === 'pending';
   const quantities = order.items.reduce((totals, item) => totals.set(item.product_id, addQuantity(totals.get(item.product_id) || 0, item.quantity)), new Map());
   const process = kind => action.run(async () => {
@@ -69,7 +70,7 @@ export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {
               <div className="erp-cell-stack">
                 <span>{t('stockApproval.currentStock')} {item.current_stock == null ? '—' : `${count(item.current_stock)} ${item.current_unit}`}</span>
                 <small>{t('stockApproval.afterStock')} {item.current_stock == null || item.current_unit !== item.unit || item.current_unit_round_up !== item.unit_round_up ? '—' : `${count(addQuantity(item.current_stock, (order.type === 'in' ? 1 : -1) * quantities.get(item.product_id)))} ${item.unit}`}</small>
-                {order.type === 'out' && item.current_stock < item.quantity && <small className="form-error">{t('stockApproval.insufficient')}</small>}
+                {order.type === 'out' && item.current_stock < quantities.get(item.product_id) && <small className="form-error">{t('stockApproval.insufficient')}</small>}
               </div>
             </td>}
           </tr>)}
@@ -80,8 +81,8 @@ export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {
     {action.error && <p className="form-error" role="alert">{localizeError(action.error)}</p>}
     <div className="material-actions stock-approval-actions">
       {pending && can('stock_approve') && <><Button kind="primary" disabled={action.busy || navigator.onLine === false} onClick={() => process('approve')}>{t('stockApproval.approve')}</Button><Button disabled={action.busy} onClick={() => {setReasonAction('reject');setReason('');}}>{t('stockApproval.reject')}</Button></>}
-      {pending && order.created_by === user.id && can(order.type === 'in' ? 'purchase' : 'sale') && <Button disabled={action.busy} onClick={() => {setReasonAction('cancel');setReason('');}}>{t('stockApproval.cancel')}</Button>}
-      {['rejected','cancelled'].includes(order.status) && onCopy && can(order.type === 'in' ? 'purchase' : 'sale') && <Button onClick={() => onCopy(order)}>{t('stockApproval.copy')}</Button>}
+      {pending && order.created_by === user.id && can(correction ? 'corrections' : order.type === 'in' ? 'purchase' : 'sale') && <Button disabled={action.busy} onClick={() => {setReasonAction('cancel');setReason('');}}>{t('stockApproval.cancel')}</Button>}
+      {['rejected','cancelled'].includes(order.status) && !correction && onCopy && can(order.type === 'in' ? 'purchase' : 'sale') && <Button onClick={() => onCopy(order)}>{t('stockApproval.copy')}</Button>}
     </div>
     {reasonAction && <div className="material-cancel"><label>{t('stockApproval.reason')}<Input.TextArea aria-label={t('stockApproval.reason')} maxLength={500} rows={3} disabled={action.busy} value={reason} onChange={e=>setReason(e.target.value)} /></label><div className="material-actions"><Button disabled={action.busy} onClick={()=>setReasonAction(null)}>{t('warehouse.cancel')}</Button><Button kind="primary" disabled={action.busy || !reason.trim() || navigator.onLine === false} onClick={()=>process(reasonAction)}>{t('stockApproval.confirmReason')}</Button></div></div>}
   </article>;

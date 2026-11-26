@@ -27,7 +27,8 @@ export const reportOrders = (orders) =>
 export const orderIconTone = order => ['void', 'rejected', 'cancelled'].includes(order.status) ? 'red' : order.status === 'active' ? 'green' : 'blue';
 
 export function supplierReturnStatus(order, lng) {
-  if (order.status === 'void') return translate('stockApproval.void', { lng });
+  if (order.status !== 'active') return translate(`stockApproval.${order.status}`, { lng });
+  if (order.replacement_status === 'pending') return translate('warehouse.returns.receiptPending', { lng });
   if (order.return_mode === 'exchange') return translate(order.replacement_number ? 'warehouse.returns.received' : 'warehouse.returns.awaiting', { lng });
   return translate('warehouse.returns.returned', { lng });
 }

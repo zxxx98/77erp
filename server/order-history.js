@@ -4,8 +4,9 @@ import { settlementFromPaid } from './commerce.js';
 
 // The caller aliases the outer orders table as o.
 export const returnLinks = `(SELECT number FROM orders WHERE id=o.source_order_id) AS source_number,
-  (SELECT number FROM orders WHERE source_order_id=o.id AND return_mode='replacement' AND status='active') AS replacement_number,
-  (SELECT id FROM orders WHERE source_order_id=o.id AND return_mode='replacement' AND status='active') AS replacement_id`;
+  (SELECT number FROM orders WHERE source_order_id=o.id AND return_mode='replacement' AND status IN ('pending','active')) AS replacement_number,
+  (SELECT id FROM orders WHERE source_order_id=o.id AND return_mode='replacement' AND status IN ('pending','active')) AS replacement_id,
+  (SELECT status FROM orders WHERE source_order_id=o.id AND return_mode='replacement' AND status IN ('pending','active')) AS replacement_status`;
 
 export function migrateOrderIndexes(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS orders_warehouse_time ON orders(warehouse_id,created_at DESC,id DESC);

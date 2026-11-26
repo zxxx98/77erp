@@ -7,6 +7,7 @@ export const validationMessages = {
   SUPPLIER_EXCHANGE_SOURCE: ['换货仅适用于采购入库单。', 'Select a purchase stock-in note for the exchange.', 'Chọn phiếu nhập mua hàng để đổi hàng.'],
   SUPPLIER_RETURN_DATE: ['请填写有效的退货日期。', 'Enter a valid return date.', 'Nhập ngày trả hàng hợp lệ.'],
   SUPPLIER_EXCHANGE_PENDING: ['请核对换货单状态，只有待收货的换货单可以收货。', 'Only an exchange awaiting replacements can be received.', 'Chỉ có thể nhập hàng đổi cho phiếu đang chờ nhận.'],
+  SUPPLIER_RETURN_PENDING_VOID: ['请先撤回或驳回关联的待审核单据。', 'Withdraw or reject the linked pending document first.', 'Hãy rút hoặc từ chối chứng từ liên quan đang chờ duyệt trước.'],
   SUPPLIER_EXCHANGE_VOID: ['请先作废关联的补收入库单。', 'Void the linked replacement stock-in note first.', 'Hãy hủy phiếu nhập hàng đổi liên quan trước.'],
   SUPPLIER_RETURN_BACKUP: ['备份退换货信息无效。', 'Invalid supplier return or exchange in the backup.', 'Thông tin trả hoặc đổi hàng trong bản sao lưu không hợp lệ.'],
   RETIRED_ADDITIONAL_OPERATIONS: ['附加工序功能已移除。', 'Additional operations have been removed.', 'Chức năng công đoạn bổ sung đã được loại bỏ.'],

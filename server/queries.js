@@ -150,7 +150,7 @@ export function installQueries(app, db) {
       const clauses = ['o.warehouse_id=?'], params = [req.warehouse.id];
       if (type) { clauses.push('o.type=?'); params.push(type); }
       if (kind) { clauses.push('o.kind=?'); params.push(kind); }
-      if (req.query.approval === '1') clauses.push("o.approval_origin='workflow' AND o.kind IN ('normal','internal')");
+      if (req.query.approval === '1') clauses.push("o.approval_origin='workflow'");
       // Business direction folds returns into the side they correct, like the UI.
       if (business === 'in') clauses.push("((o.kind IN ('normal','internal') AND o.type='in') OR (o.kind='return' AND o.type='out'))");
       if (business === 'out') clauses.push("((o.kind IN ('normal','internal') AND o.type='out') OR (o.kind='return' AND o.type='in'))");

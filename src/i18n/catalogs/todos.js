@@ -76,6 +76,9 @@ export default {
     "Got it",
     "Đã hiểu"
   ],
+  "todos.kind.supplier_return": ["采购退货出库", "Supplier return", "Xuất trả nhà cung cấp"],
+  "todos.kind.supplier_exchange": ["采购换货出库", "Supplier exchange stock-out", "Xuất kho đổi hàng với nhà cung cấp"],
+  "todos.kind.supplier_replacement": ["换货补收入库", "Replacement receipt", "Nhập kho hàng đổi"],
   "todos.kind.order_in": [
     "普通入库",
     "Stock receipt",

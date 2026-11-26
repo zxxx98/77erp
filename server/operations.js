@@ -1,4 +1,4 @@
-import { orderApprovalDefaults, validateDeliveryFields } from './orders.js';
+import { orderApprovalDefaults, validateDeliveryFields, returnAllocation } from './orders.js';
 import { nextDailyDocumentNumber } from './document-numbers.js';
 import { validateExactQuantityBackup } from './exact-quantity.js';
 import { validExactQuantity } from '../shared/exact-quantity.js';
@@ -10,7 +10,7 @@ import { customerPartNumbersValue, validateCustomerPartNumbers } from './custome
 import { orderLineAmount, validUnitPrice } from "../shared/money.js";
 import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from '../shared/quantity.js';
 import { stockQrTables, clearStockQr, validateStockQrBackup } from './stock-qr.js';
-import { installCommerce, moveInventory, allocate } from "./commerce.js";
+import { installCommerce, moveInventory } from "./commerce.js";
 import { createHash, randomUUID } from "node:crypto";
 import { categoryPaths, productDetails, splitLegacyCategories } from "./catalog.js";
 import { notificationMutation } from './notifications.js';
@@ -135,14 +135,9 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       mutation(req, () => {
         const reason = reasonOf(req.body),
           order = originalOrder(req.params.id);
-        if (
-          db
-            .prepare(
-              "SELECT 1 FROM orders WHERE source_order_id=? AND status='active'",
-            )
-            .get(order.id)
-        )
-          fail(order.return_mode === 'exchange' ? '请先作废关联的补收入库单。' : '此单据已有退货，请先作废关联退货单。');
+        const linked = db.prepare("SELECT status FROM orders WHERE source_order_id=? AND status IN ('active','pending') ORDER BY status DESC LIMIT 1").get(order.id);
+        if (linked?.status === 'pending') fail('请先撤回或驳回关联的待审核单据。');
+        if (linked) fail(order.return_mode === 'exchange' ? '请先作废关联的补收入库单。' : '此单据已有退货，请先作废关联退货单。');
         if (db.prepare("SELECT 1 FROM payments WHERE order_id=? AND reversed_at IS NULL").get(order.id)) fail("请先撤销此单据的收付款记录，再作废单据。");
         for (const item of orderItems(order.id))
           changeStock(
@@ -195,29 +190,11 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           if (!original) fail("退货物料不在原单中。");
           if (seen.has(original.id)) fail("同一原单明细不能重复退货。内容相同的物料请按原单行分别选择。");
           seen.add(original.id);
-          item.quantity = materialQuantity(item.quantity, product(item.product_id));
-          const returned = db
-            .prepare(
-              `SELECT COALESCE(SUM(i.quantity),0) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id
-        WHERE o.source_order_id=? AND o.status='active' AND i.product_id=? AND (i.source_item_id=? OR i.source_item_id IS NULL)`,
-            )
-            .get(source.id, item.product_id, original.id).quantity;
-          if (item.quantity > addQuantity(original.quantity, -returned))
-            fail(
-              `${original.name} 退货数量超过可退数量 ${addQuantity(original.quantity, -returned)}。`,
-            );
-          let cost = null;
-          if (source.type === "out" && original.cost_cents != null) {
-            const prior = db.prepare("SELECT COALESCE(SUM(i.cost_cents),0) AS n FROM order_items i JOIN orders o ON o.id=i.order_id WHERE o.source_order_id=? AND o.status='active' AND i.product_id=? AND (i.source_item_id=? OR i.source_item_id IS NULL)").get(source.id,item.product_id,original.id).n;
-            cost = allocate(original.cost_cents - prior, item.quantity, addQuantity(original.quantity, -returned));
-          }
-          const priorAmount = db.prepare(`SELECT i.* FROM order_items i JOIN orders o ON o.id=i.order_id
-            WHERE o.source_order_id=? AND o.status='active' AND i.product_id=? AND (i.source_item_id=? OR i.source_item_id IS NULL)`).all(source.id, item.product_id, original.id)
-            .reduce((sum, line) => sum + orderLineAmount(line), 0);
-          const remainingAmount = orderLineAmount(original) - priorAmount;
-          if (remainingAmount < 0) fail('历史退货金额已超过原单，请先核对并作废错误退货单。');
-          const amount = allocate(remainingAmount, item.quantity, addQuantity(original.quantity, -returned));
-          return { ...original, quantity: item.quantity, return_cost: cost, amount_cents: amount };
+          const current = product(item.product_id);
+          const quantity = materialQuantity(item.quantity, current);
+          const allocation = returnAllocation(db, original, quantity, source.type === 'out');
+          return { ...original, quantity, ...allocation, unit: original.unit || current.unit,
+            unit_round_up: current.unit_round_up, active_snapshot: current.active };
         });
         const type = source.type === "in" ? "out" : "in";
         const number = nextDailyDocumentNumber(db, 'orders', 'TH', at);
@@ -226,9 +203,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           0,
         );
         if (!Number.isSafeInteger(total)) fail("退货金额过大。");
+        const review = source.type === 'in';
         const result = db
           .prepare(
-            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name,return_mode,return_date,order_number,delivery_number) VALUES (?,?,?,?,?,?,'return',?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name,return_mode,return_date,order_number,delivery_number,status,stock_applied,approval_origin,submitted_at,source_channel) VALUES (?,?,?,?,?,?,'return',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
           )
           .run(
             number,
@@ -242,9 +220,10 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             source.warehouse_id,
             req.user.id, (req.user.name || req.user.username),
             mode === 'exchange' ? 'exchange' : '', source.type === 'in' ? date : '', delivery.order_number, delivery.delivery_number,
+            review ? 'pending' : 'active', review ? 0 : 1, review ? 'workflow' : 'legacy', review ? at : null, 'manual',
           );
         for (const i of items) {
-          const movedCost = changeStock(i.product_id, (type === "in" ? 1 : -1) * i.quantity, i.return_cost);
+          const movedCost = review ? null : changeStock(i.product_id, i.quantity, i.return_cost);
           db.prepare(
             "INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,source_item_id,unit,unit_round_up,active_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
           ).run(
@@ -258,26 +237,25 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             i.amount_cents, i.id, i.unit, i.unit_round_up, i.active_snapshot,
           );
         }
-        return { id: Number(result.lastInsertRowid), number };
+        return { id: Number(result.lastInsertRowid), number, ...(review ? { status: 'pending', version: 1 } : {}) };
       }),
     ),
   );
   app.post('/api/orders/:id/exchange-receipt', route(req => mutation(req, () => {
     const order = originalOrder(req.params.id);
-    if (order.return_mode !== 'exchange' || db.prepare("SELECT 1 FROM orders WHERE source_order_id=? AND status='active'").get(order.id))
+    if (order.return_mode !== 'exchange' || db.prepare("SELECT 1 FROM orders WHERE source_order_id=? AND status IN ('active','pending')").get(order.id))
       fail('请核对换货单状态，只有待收货的换货单可以收货。');
     const at = new Date().toISOString();
     const number = nextDailyDocumentNumber(db, 'orders', 'RK', at);
     const id = Number(db.prepare(`INSERT INTO orders(number,type,kind,return_mode,source_order_id,partner,partner_id,total,
-      created_at,settlement_tracked,warehouse_id,created_by,created_by_name,order_number,delivery_number)
-      VALUES (?,'in','normal','replacement',?,?,?,?,?,0,?,?,?,?,?)`)
+      created_at,settlement_tracked,warehouse_id,created_by,created_by_name,order_number,delivery_number,status,stock_applied,approval_origin,submitted_at,source_channel)
+      VALUES (?,'in','normal','replacement',?,?,?,?,?,0,?,?,?,?,?,'pending',0,'workflow',?,'manual')`)
       .run(number,order.id,order.partner,order.partner_id,order.total,at,order.warehouse_id,req.user.id,
-        req.user.name || req.user.username,order.order_number,order.delivery_number).lastInsertRowid);
-    for (const line of orderItems(order.id)) changeStock(line.product_id, line.quantity, line.cost_cents);
-    db.prepare(`INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,unit,unit_round_up,active_snapshot)
-      SELECT ?,product_id,name,barcode,quantity,price,cost_cents,amount_cents,unit,unit_round_up,active_snapshot
-      FROM order_items WHERE order_id=? ORDER BY id`).run(id, order.id);
-    return { id, number };
+        req.user.name || req.user.username,order.order_number,order.delivery_number,at).lastInsertRowid);
+    db.prepare(`INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,unit,unit_round_up,active_snapshot,source_item_id)
+      SELECT ?,i.product_id,i.name,i.barcode,i.quantity,i.price,NULL,i.amount_cents,COALESCE(NULLIF(i.unit,''),p.unit),p.unit_round_up,p.active,i.id
+      FROM order_items i JOIN products p ON p.id=i.product_id WHERE i.order_id=? ORDER BY i.id`).run(id, order.id);
+    return { id, number, status: 'pending', version: 1 };
   })));
   const adjustment = (batch, p, next, reason, kind) =>
     db
@@ -794,8 +772,9 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       }
       if (typeof o.reject_reason !== 'string' || o.reject_reason.length > 500 || typeof o.cancel_reason !== 'string' || o.cancel_reason.length > 500) fail('备份审核原因无效。');
       const unposted = ['pending','rejected','cancelled'].includes(o.status);
-      if (unposted && (o.approval_origin !== 'workflow' || !['normal','internal'].includes(o.kind) || o.stock_applied !== 0 || o.approved_at !== null)) fail('备份待审核单据状态无效。');
-      if (o.approval_origin === 'workflow' && (!text(o.submitted_at,100) || !['normal','internal'].includes(o.kind) ||
+      const reviewable = ['normal','internal'].includes(o.kind) || (o.kind === 'return' && o.type === 'out');
+      if (unposted && (o.approval_origin !== 'workflow' || !reviewable || o.stock_applied !== 0 || o.approved_at !== null)) fail('备份待审核单据状态无效。');
+      if (o.approval_origin === 'workflow' && (!text(o.submitted_at,100) || !reviewable ||
           (!unposted && (!text(o.approved_at,100) || !text(o.approved_by_name,60) || o.stock_applied !== 1)) ||
           (o.status === 'rejected' && (!text(o.rejected_at,100) || !text(o.reject_reason,500) || !text(o.rejected_by_name,60))) ||
           (o.status === 'cancelled' && (!text(o.cancelled_at,100) || !text(o.cancel_reason,500) || !text(o.cancelled_by_name,60))))) fail('备份审核状态或记录不一致。');
@@ -806,7 +785,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       validateDeliveryFields(o);
       if (!['','exchange','replacement'].includes(o.return_mode) ||
           (o.return_date !== '' && (o.kind !== 'return' || !validInspectionDate(o.return_date))) ||
-          (o.return_mode && (o.settlement_tracked || !o.stock_applied || o.approval_origin !== 'legacy')) ||
+          (o.return_mode && (o.settlement_tracked || !unposted && !o.stock_applied)) ||
           (o.return_mode === 'replacement' && (o.kind !== 'normal' || o.type !== 'in')) ||
           (o.return_mode === 'exchange' && (o.kind !== 'return' || o.type !== 'out' || !o.return_date)))
         fail('备份退换货信息无效。');
@@ -824,7 +803,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           source.warehouse_id !== o.warehouse_id ||
           source.kind !== "normal" ||
           source.type === o.type ||
-          (o.status === "active" && source.status === "void")
+          (['active','pending'].includes(o.status) && source.status !== 'active')
         )
           fail("备份退货关联无效。");
       } else if (o.return_mode === 'replacement') {
@@ -832,9 +811,9 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         if (o.kind !== 'normal' || o.type !== 'in' || source?.return_mode !== 'exchange' ||
             source.id >= o.id || source.warehouse_id !== o.warehouse_id || source.partner !== o.partner ||
             source.partner_id !== o.partner_id || source.total !== o.total ||
-            (o.status === 'active' && (source.status !== 'active' || activeReceipts.has(source.id))))
+            (['active','pending'].includes(o.status) && (source.status !== 'active' || activeReceipts.has(source.id))))
           fail('备份退换货信息无效。');
-        if (o.status === 'active') activeReceipts.add(source.id);
+        if (['active','pending'].includes(o.status)) activeReceipts.add(source.id);
       } else if (o.source_order_id !== null) fail("备份原单关联无效。");
     }
     // A transfer is exactly two linked legs whose item sets mirror by barcode.
@@ -879,7 +858,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
       keys.add(key);
       originalItems.set(key, i);
       originalItems.set(`line:${i.id}`, i);
-      if (i.source_item_id !== null && (!Number.isSafeInteger(i.source_item_id) || orders.get(i.order_id).kind !== 'return')) fail('备份退货明细关联无效。');
+      if (i.source_item_id !== null && (!Number.isSafeInteger(i.source_item_id) || (orders.get(i.order_id).kind !== 'return' && orders.get(i.order_id).return_mode !== 'replacement'))) fail('备份退货明细关联无效。');
       totals.set(
         i.order_id,
         (totals.get(i.order_id) || 0) + orderLineAmount(i),
@@ -891,11 +870,23 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const exchangeLines = new Map();
     for (const i of data.order_items) if (orders.get(i.order_id).return_mode) {
       if (!exchangeLines.has(i.order_id)) exchangeLines.set(i.order_id, []);
-      exchangeLines.get(i.order_id).push(JSON.stringify([i.product_id,i.quantity,i.price,i.amount_cents,i.cost_cents]));
+      exchangeLines.get(i.order_id).push(i);
     }
-    for (const o of data.orders) if (o.return_mode === 'replacement' &&
-        JSON.stringify(exchangeLines.get(o.id)?.sort()) !== JSON.stringify(exchangeLines.get(o.source_order_id)?.sort()))
-      fail('备份退换货信息无效。');
+    for (const o of data.orders) if (o.return_mode === 'replacement') {
+      const posted = !!o.stock_applied;
+      const signature = i => JSON.stringify([i.product_id,i.quantity,i.price,i.amount_cents,posted ? i.cost_cents : null]);
+      const original = exchangeLines.get(o.source_order_id);
+      const receipt = exchangeLines.get(o.id);
+      if (JSON.stringify(receipt.map(signature).sort()) !== JSON.stringify(original.map(signature).sort()))
+        fail('备份退换货信息无效。');
+      if (o.approval_origin === 'workflow') {
+        const sources = new Map(original.map(i => [i.id, signature(i)]));
+        for (const i of receipt) {
+          if (sources.get(i.source_item_id) !== signature(i)) fail('备份退换货信息无效。');
+          sources.delete(i.source_item_id);
+        }
+      }
+    }
     const returned = new Map(), returnedAmounts = new Map();
     for (const i of data.order_items) {
       const order = orders.get(i.order_id);

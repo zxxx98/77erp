@@ -104,6 +104,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin, onCopy, onViewOrder }) 
           <p>{order.note || translate("warehouse.no.remarks")}</p>
         </div>
         <p className="muted">{translate("warehouse.biller")}{order.created_by_name || translate("warehouse.historical.record.operator.unknown")}</p>
+        {order.approved_at && <p className="muted">{translate('stockApproval.approver')}：{order.approved_by_name} · {new Date(order.approved_at).toLocaleString(getFormatLocale())}</p>}
         {order.kind === "internal" && <p className="info-box">{translate("warehouse.internal.transfers.are.not.included.in.purchases.sales.profits.receivables.and")}</p>}
         {transfer && (
           <div className="info-box">{translate("warehouse.there.is.no.amount.involved.in.inter.warehouse.transfers.and.the")}</div>

@@ -165,6 +165,9 @@ test("partial returns, replay protection, voiding returns and original orders pr
   };
   const returned = await f.request(`/orders/${incoming.id}/returns`, body);
   assert.equal(returned.status, 200);
+  assert.equal(returned.data.status, 'pending');
+  assert.equal(f.stock(id), 10);
+  assert.equal((await f.command(`/orders/${returned.data.id}/approve`, {version: 1})).status,200);
   assert.equal(f.stock(id), 7);
   assert.deepEqual(
     (await f.request(`/orders/${incoming.id}/returns`, body)).data,
@@ -336,10 +339,11 @@ test("backup round trip restores business data without replacing credentials or 
   const f = await fixture(t),
     id = await f.makeProduct();
   const incoming = await f.makeOrder(id, "in", 10);
-  await f.command(`/orders/${incoming.id}/returns`, {
+  const correction = await f.command(`/orders/${incoming.id}/returns`, {
     reason: "退货",
     items: [{ product_id: id, quantity: 2 }],
   });
+  assert.equal((await f.command(`/orders/${correction.data.id}/approve`, {version: 1})).status,200);
   await f.command("/stocktakes", {
     reason: "盘盈",
     items: [{ product_id: id, expected_stock: 8, counted: 9 }],
@@ -571,6 +575,8 @@ test('supplier exchange links stock-out and one full replacement receipt without
   assert.equal((await f.command(path, { ...body, return_date: '2026-02-30' })).status, 400);
   const result = await f.command(path, body);
   assert.equal(result.status, 200, JSON.stringify(result.data));
+  assert.equal(f.stock(product), 5);
+  assert.equal((await f.command(`/orders/${result.data.id}/approve`, {version: 1})).status,200);
   assert.equal(f.stock(product), 3);
   const exchange = await details(result.data.id);
   assert.deepEqual([exchange.order_number,exchange.delivery_number,exchange.return_date,exchange.source_number],
@@ -583,6 +589,14 @@ test('supplier exchange links stock-out and one full replacement receipt without
   const [a,b] = await Promise.all([f.request(receive,sameRequest),f.request(receive,sameRequest)]);
   assert.equal(a.status, 200, JSON.stringify(a.data));
   assert.deepEqual(a.data,b.data);
+  assert.equal((await details(exchange.id)).replacement_status, 'pending');
+  assert.equal((await f.command(receive,{})).status,400);
+  assert.equal(f.stock(product),3);
+  const pendingBackup = (await f.request('/backup')).data;
+  const pendingPreview = await f.request('/backup/preview', {backup:pendingBackup});
+  assert.equal(pendingPreview.status,200,JSON.stringify(pendingPreview.data));
+  assert.equal((await f.command('/backup/restore', {backup:pendingBackup,...pendingPreview.data,confirmation:'RESTORE_BUSINESS_DATA'})).status,200);
+  assert.equal((await f.command(`/orders/${a.data.id}/approve`, {version: 1})).status,200);
   assert.equal(f.stock(product),5);
   assert.equal((await f.command(receive,{})).status,400);
   assert.equal((await details(exchange.id)).replacement_number,a.data.number);

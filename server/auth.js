@@ -288,7 +288,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
     if ((read && (path === '/ai/conversations' || /^\/ai\/conversations\/[0-9a-f-]+$/.test(path)) ||
          post && ['/ai/chat', '/ai/confirm'].includes(path)) && hasPermission(req.user, 'ai')) return next();
     if (post && /^\/orders\/\d+\/(approve|reject|cancel)$/.test(path)) {
-      const allowed = /\/cancel$/.test(path) ? ['purchase','sale'].some(key => hasPermission(req.user,key)) : hasPermission(req.user,'stock_approve');
+      const allowed = /\/cancel$/.test(path) ? ['purchase','sale','corrections'].some(key => hasPermission(req.user,key)) : hasPermission(req.user,'stock_approve');
       return allowed ? next() : res.status(403).json({error:'需要相应开单或出入库审核权限。'});
     }
     if (read && (path === '/orders' || /^\/orders\/\d+$/.test(path)) && ['stock_approve','purchase','sale','corrections'].some(key => hasPermission(req.user,key))) return next();

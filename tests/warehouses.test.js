@@ -444,6 +444,7 @@ test('deleting a zero-stock warehouse removes orders, returns, payments, adjustm
   }
   const returned = await f.command(`/orders/${incoming.id}/returns`, { reason: '采购退货', items: [{ product_id: local, quantity: 1 }] }, w);
   assert.equal(returned.status, 200);
+  assert.equal((await f.command(`/orders/${returned.data.id}/approve`, {version:1}, w)).status,200);
   assert.equal((await f.command(`/orders/${returned.data.id}/void`, { reason: '作废退货' }, w)).status, 200);
   assert.equal((await f.order(local, 'out', 1, w)).status, 201);
   assert.equal((await f.command('/stock/reduce', { product_id: local, quantity: 1, reason: '报损' }, w)).status, 200);

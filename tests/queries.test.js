@@ -158,6 +158,7 @@ test('order queries fold returns into their business side, page on the server an
   const purchase = (await f.order(f.admin, { type: 'in', partner: '优品供应链', items: [{ product_id: item.id, quantity: 10, price: 10 }] })).data;
   const sale = (await f.order(f.admin, { type: 'out', partner: '零售客户', items: [{ product_id: item.id, quantity: 4, price: 20 }] })).data;
   const purchaseReturn = (await f.command(f.admin, `/orders/${purchase.id}/returns`, { reason: '质量问题', items: [{ product_id: item.id, quantity: 2 }] })).data;
+  assert.equal((await f.command(f.admin, `/orders/${purchaseReturn.id}/approve`, {version:1})).status,200);
   const saleReturn = (await f.command(f.admin, `/orders/${sale.id}/returns`, { reason: '客户退货', items: [{ product_id: item.id, quantity: 1 }] })).data;
   const total = (await f.request(f.admin, '/orders?limit=100')).data;
   assert.equal(total.total, 4);

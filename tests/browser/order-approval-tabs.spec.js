@@ -41,7 +41,7 @@ for(const mobile of [false,true]) test(`${mobile?'mobile':'desktop'} approval ta
     await expect(page.getByRole('tabpanel',{name:'出库记录',exact:true})).toBeVisible();
     await tabs.getByRole('tab',{name:'出库记录',exact:true}).focus();
     await page.keyboard.press('ArrowRight');
-    await expect(tabs.getByRole('tab',{name:/普通出库待审核/})).toBeFocused();
+    await expect(tabs.getByRole('tab',{name:/出库单待审核/})).toBeFocused();
     await page.keyboard.press('Home');
     await expect(tabs.getByRole('tab',{name:/领料.*补料待出库.*11/})).toBeVisible();
     await expect(page.getByRole('region',{name:'生产领料出库单',exact:true})).toHaveCount(0);

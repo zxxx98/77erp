@@ -1,7 +1,7 @@
 import { validQuantity, addQuantity, materialQuantity, validStoredQuantity } from '../shared/quantity.js';
-import { validUnitPrice } from '../shared/money.js';
-import { resolveContact, moveInventory } from './commerce.js';
-import { notifyOrder, notificationMutation } from './notifications.js';
+import { orderLineAmount, validUnitPrice } from '../shared/money.js';
+import { allocate, resolveContact, moveInventory } from './commerce.js';
+import { notifyOrder, notifyStockChanges, notificationMutation } from './notifications.js';
 import { contactMatchesDirection } from '../shared/contacts.js';
 import { hasPermission } from '../shared/permissions.js';
 import { nextDailyDocumentNumber } from './document-numbers.js';
@@ -80,7 +80,7 @@ export function createOrder(db, req, body) {
   const sourceId = body.resubmitted_from_id ?? null;
   if (sourceId !== null) {
     const source = Number.isSafeInteger(sourceId) && db.prepare('SELECT * FROM orders WHERE id=? AND warehouse_id=?').get(sourceId,req.warehouse.id);
-    if (!source || source.type !== type || !['rejected','cancelled'].includes(source.status)) fail('重提来源单据无效。');
+    if (!source || source.kind === 'return' || source.return_mode || source.type !== type || !['rejected','cancelled'].includes(source.status)) fail('重提来源单据无效。');
   }
   const contact = resolveContact(db,type,partner,body.partner_id);
   const id = Number(db.prepare(`INSERT INTO orders(number,type,partner,note,total,created_at,partner_id,kind,settlement_tracked,warehouse_id,created_by,created_by_name,status,stock_applied,submitted_at,source_channel,approval_origin,resubmitted_from_id)
@@ -92,14 +92,29 @@ export function createOrder(db, req, body) {
   return {id,number,status:'pending',version:1};
 }
 
+// Allocate only the unreturned balance so the last partial return carries the remaining cents.
+export function returnAllocation(db, original, quantity, restoreSaleCost) {
+  const prior = db.prepare(`SELECT i.* FROM order_items i JOIN orders o ON o.id=i.order_id
+    WHERE o.source_order_id=? AND o.kind='return' AND o.status='active' AND i.product_id=?
+      AND (i.source_item_id=? OR i.source_item_id IS NULL)`).all(original.order_id, original.product_id, original.id);
+  const available = prior.reduce((n, line) => addQuantity(n, -line.quantity), original.quantity);
+  if (quantity > available) fail(`${original.name} 退货数量超过可退数量 ${available}。`);
+  const cents = prior.reduce((n, line) => n - orderLineAmount(line), orderLineAmount(original));
+  if (cents < 0) fail('历史退货金额已超过原单，请先核对并作废错误退货单。');
+  const cost = restoreSaleCost && original.cost_cents != null
+    ? allocate(prior.reduce((n, line) => n - (line.cost_cents || 0), original.cost_cents), quantity, available) : null;
+  return { amount_cents: allocate(cents, quantity, available), return_cost: cost };
+}
+
 export function installOrderApproval(app, db) {
   for (const action of ['approve','reject','cancel']) app.post(`/api/orders/:id/${action}`, (req,res) => {
     try {
       db.exec('BEGIN IMMEDIATE');
       const doc = db.prepare('SELECT * FROM orders WHERE id=? AND warehouse_id=?').get(Number(req.params.id),req.warehouse.id);
       if (!doc) fail('单据不存在。',404);
+      const supplierCorrection = doc.kind === 'return' || doc.return_mode === 'replacement';
       if (action === 'cancel') {
-        if (doc.created_by !== req.user.id || !hasPermission(req.user,doc.type === 'in' ? 'purchase' : 'sale')) fail('仅提交人可撤回自己的待审核单据。',403);
+        if (doc.created_by !== req.user.id || !hasPermission(req.user,supplierCorrection ? 'corrections' : doc.type === 'in' ? 'purchase' : 'sale')) fail('仅提交人可撤回自己的待审核单据。',403);
       } else if (!hasPermission(req.user,'stock_approve')) fail('需要出入库审核权限。',403);
       const request = operationRequest(db,req);
       if (request.previous) { db.exec('COMMIT'); return res.json(request.previous); }
@@ -108,8 +123,15 @@ export function installOrderApproval(app, db) {
       const at = new Date().toISOString();
       const response = notificationMutation(db,req,() => {
         if (action === 'approve') {
-          const contact = db.prepare('SELECT * FROM contacts WHERE id=?').get(doc.partner_id);
-          if (!contact?.active || !contactMatchesDirection(contact,doc.type) || (doc.kind === 'internal') !== (contact.role === 'internal')) fail('往来单位已停用或不存在，请撤回后重新提交。',409);
+          if (supplierCorrection) {
+            const source = db.prepare('SELECT * FROM orders WHERE id=? AND warehouse_id=?').get(doc.source_order_id, doc.warehouse_id);
+            if (!source || source.status !== 'active' || !source.stock_applied ||
+                (doc.return_mode === 'replacement' ? source.return_mode !== 'exchange' : source.kind !== 'normal' || source.type !== 'in'))
+              fail('单据已变化，请刷新后核对。',409);
+          } else {
+            const contact = db.prepare('SELECT * FROM contacts WHERE id=?').get(doc.partner_id);
+            if (!contact?.active || !contactMatchesDirection(contact,doc.type) || (doc.kind === 'internal') !== (contact.role === 'internal')) fail('往来单位已停用或不存在，请撤回后重新提交。',409);
+          }
           const lines = db.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id').all(doc.id);
           if (!lines.length) fail('单据没有物料。',409);
           const products = [];
@@ -117,15 +139,30 @@ export function installOrderApproval(app, db) {
             const p = db.prepare('SELECT * FROM products WHERE id=? AND warehouse_id=?').get(i.product_id,req.warehouse.id);
             if (!p || p.active !== i.active_snapshot) fail(`${i.name}启停状态已变化或不存在，请重新核对。`,409);
             if (p.unit !== i.unit || p.unit_round_up !== i.unit_round_up) fail(`${i.name}单位或取整规则已变化，请撤回后重新提交。`,409);
-            if (!validQuantity(i.quantity,true) || materialQuantity(i.quantity,p) !== i.quantity || !validUnitPrice(i.price) || i.amount_cents !== Math.round(i.quantity*i.price*100)) fail('单据明细无效。',409);
+            if (!validQuantity(i.quantity,true) || materialQuantity(i.quantity,p) !== i.quantity || !validUnitPrice(i.price)) fail('单据明细无效。',409);
             if (doc.type === 'out' && p.stock < i.quantity) fail(`${p.name}库存不足（当前 ${p.stock} ${p.unit}）。`,409);
             if (doc.type === 'in' && !validStoredQuantity(addQuantity(p.stock,i.quantity))) fail(`${p.name}入库后库存超出上限。`,409);
-            const cost = moveInventory(db,p.id,doc.type === 'in' ? i.quantity : -i.quantity,doc.type === 'in' ? i.amount_cents : undefined);
+            let amount = Math.round(i.quantity*i.price*100);
+            let receiptCost = i.amount_cents;
+            if (supplierCorrection) {
+              const source = db.prepare('SELECT * FROM order_items WHERE id=? AND order_id=? AND product_id=?').get(i.source_item_id,doc.source_order_id,p.id);
+              if (!source || source.price !== i.price) fail('单据明细无效。',409);
+              if (doc.return_mode === 'replacement') {
+                if (i.quantity !== source.quantity || source.cost_cents == null) fail('单据明细无效。',409);
+                amount = orderLineAmount(source);
+                receiptCost = source.cost_cents;
+              } else {
+                amount = returnAllocation(db, source, i.quantity, false).amount_cents;
+              }
+            }
+            if (i.amount_cents !== amount) fail('单据已变化，请刷新后核对。',409);
+            const cost = moveInventory(db,p.id,doc.type === 'in' ? i.quantity : -i.quantity,doc.type === 'in' ? receiptCost : undefined);
             db.prepare('UPDATE order_items SET cost_cents=? WHERE id=?').run(cost,i.id);
             products.push(p);
           }
           db.prepare("UPDATE orders SET status='active',stock_applied=1,approved_by=?,approved_by_name=?,approved_at=?,version=version+1 WHERE id=?").run(req.user.id,actor(req),at,doc.id);
-          notifyOrder(db,req,doc.id,doc.type === 'in' ? 'purchase_in' : 'sale_out',products);
+          if (doc.return_mode === 'replacement') notifyStockChanges(db,req,products,{order_id:doc.id,number:doc.number});
+          else notifyOrder(db,req,doc.id,doc.kind === 'return' ? 'order_return' : doc.type === 'in' ? 'purchase_in' : 'sale_out',products);
         } else {
           const reason = req.body.reason;
           if (typeof reason !== 'string' || !reason.trim() || reason.length > 500) fail('请填写操作原因（最多 500 字）。');

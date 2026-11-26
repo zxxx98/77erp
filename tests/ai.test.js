@@ -1816,7 +1816,9 @@ test('order search identifies supplier exchanges and their posted replacement re
   await post(`/orders/${source.id}/approve`, {version:1});
   const exchange = await post(`/orders/${source.id}/returns`, {reason:'同料补换',return_mode:'exchange',
     items:[{product_id:1,quantity:1}], return_date:'2026-08-20'});
+  await post(`/orders/${exchange.id}/approve`, {version:1});
   const receipt = await post(`/orders/${exchange.id}/exchange-receipt`, {});
+  await post(`/orders/${receipt.id}/approve`, {version:1});
   f.use('search_orders', {warehouse_id:1});
   assert.equal((await f.chat(f.admin)).status, 200);
   const orders = JSON.parse(f.calls.at(-1).body.messages.filter(m => m.role === 'tool').at(-1).content);

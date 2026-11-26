@@ -149,13 +149,18 @@ test("order details create partial returns and void return orders with confirmat
     await page.getByLabel("操作原因").fill("退回破损");
     await page.getByRole("spinbutton", { name: "退货物料 退货数量" }).fill("2");
     accept(page);
-    await page.getByRole("button", { name: "确认退货", exact: true }).click();
+    await page.getByRole("button", { name: "提交审核", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(8);
+    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(10);
     const returned = f.db
       .prepare("SELECT * FROM orders WHERE kind='return'")
       .get();
     await page.getByText(returned.number, { exact: true }).click();
+    accept(page);
+    await page.getByRole('button', {name:'审核通过',exact:true}).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(f.db.prepare("SELECT stock FROM products").get().stock).toBe(8);
+    await page.getByText(returned.number, {exact:true}).click();
     await expect(
       page.getByRole("heading", { name: "采购退货单详情" }),
     ).toBeVisible();

@@ -131,9 +131,9 @@ export default {
     "Điều chỉnh chứng từ"
   ],
   "shared.purchasing.returns.sales.returns.and.document.voiding.production.voiding.requires.production.order": [
-    "采购退货、销售退货及单据作废；生产作废需生产单权限，回退已入库批次还需入库权限",
-    "Purchasing returns, sales returns and document voiding; production voiding requires production order permissions, and returning batches that have been put into storage also requires warehousing permissions",
-    "Hàng mua bị trả lại, hàng bán bị trả lại và chứng từ vô hiệu; việc hủy sản xuất yêu cầu quyền đặt hàng sản xuất và việc trả lại các lô đã được đưa vào kho cũng yêu cầu quyền nhập kho"
+    "提交供应商退换货和补收审核，办理销售退货及单据作废；生产作废需生产单权限，回退已入库批次还需入库权限",
+    "Submit supplier returns, exchanges and replacement receipts for approval. Process sales returns and void documents; production voiding requires production order permissions, and returning batches that have been put into storage also requires warehousing permissions",
+    "Trình duyệt trả hoặc đổi hàng nhà cung cấp và nhập hàng đổi, xử lý trả hàng bán và hủy chứng từ; việc hủy sản xuất yêu cầu quyền đặt hàng sản xuất và việc trả lại các lô đã được đưa vào kho cũng yêu cầu quyền nhập kho"
   ],
   "shared.warehouse.allocation": [
     "仓库调拨",

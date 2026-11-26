@@ -531,9 +531,11 @@ test('fractional returns conserve cents through split refunds, voids, profit and
 test('purchase return tails and legacy v10 refunds retain their financial history', async t => {
   const f = await fixture(t), id = await f.product();
   const purchase = (await f.order(id, 'in', 1, 0.01)).data;
-  for (const quantity of [0.5, 0.5]) assert.equal((await f.command(`/orders/${purchase.id}/returns`, {
-    reason: '分批采购退货', items: [{ product_id: id, quantity }],
-  })).status, 200);
+  for (const quantity of [0.5, 0.5]) {
+    const request = await f.command(`/orders/${purchase.id}/returns`, { reason: '分批采购退货', items: [{product_id:id,quantity}] });
+    assert.equal(request.status,200);
+    assert.equal((await f.command(`/orders/${request.data.id}/approve`, {version:1})).status,200);
+  }
   assert.equal(f.db.prepare("SELECT SUM(total) n FROM orders WHERE kind='return'").get().n, 0.01);
   const legacy = (await f.request('/backup')).data;
   legacy.version = 10;

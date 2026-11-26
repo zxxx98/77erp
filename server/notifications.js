@@ -129,15 +129,13 @@ export function notificationMutation(db, req, fn) {
   const reduce = path.endsWith('/stock/reduce');
   const increase = path.endsWith('/stock/increase');
   let before = [];
-  const replacement = path.endsWith('/exchange-receipt');
-  if (correction || replacement) before = db.prepare('SELECT p.* FROM products p JOIN order_items i ON i.product_id=p.id WHERE i.order_id=?').all(req.params.id);
+  if (correction) before = db.prepare('SELECT p.* FROM products p JOIN order_items i ON i.product_id=p.id WHERE i.order_id=?').all(req.params.id);
   if (stocktake || reduce || increase) {
     const ids = reduce || increase ? [req.body.product_id] : Array.isArray(req.body.items) ? req.body.items.map(i => i?.product_id) : [];
     before = [...new Set(ids)].filter(Number.isSafeInteger).map(id => db.prepare('SELECT * FROM products WHERE id=?').get(id)).filter(Boolean);
   }
   const result = fn();
-  if (replacement) notifyStockChanges(db, req, before);
-  if (correction) notifyOrder(db, req, path.endsWith('/returns') ? result.id : Number(req.params.id), path.endsWith('/returns') ? 'order_return' : 'order_void', before);
+  if (correction && result.status !== 'pending') notifyOrder(db, req, path.endsWith('/returns') ? result.id : Number(req.params.id), path.endsWith('/returns') ? 'order_return' : 'order_void', before);
   if (stocktake || reduce || increase) {
     const items = before.map(p => ({ id: p.id, name: p.name, unit: p.unit, threshold: p.threshold, before_stock: p.stock, stock: db.prepare('SELECT stock FROM products WHERE id=?').get(p.id).stock }))
       .filter(p => p.before_stock !== p.stock);

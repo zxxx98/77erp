@@ -331,7 +331,7 @@ function StandardApp({ admin, onLogout }) {
   const openTodo = async item => {
     if (item.warehouse_id !== data.warehouse_id && !await switchWarehouse(item.warehouse_id)) return;
     if (item.source === 'registration') navigate('production', { order: item.production_id });
-    else navigate(['order_in','material_return','receipt','stage_receipt'].includes(item.kind) ? 'purchases' : 'sales', { approval: item.source === 'order' ? 'ordinary' : ['receipt','stage_receipt'].includes(item.source) ? 'receipts' : item.kind === 'material_return' ? 'returns' : 'issues', q: item.number });
+    else navigate(['order_in','supplier_replacement','material_return','receipt','stage_receipt'].includes(item.kind) ? 'purchases' : 'sales', { approval: item.source === 'order' ? 'ordinary' : ['receipt','stage_receipt'].includes(item.source) ? 'receipts' : item.kind === 'material_return' ? 'returns' : 'issues', q: item.number });
   };
   const renderSupplierReturns = () => <SupplierReturns key={data.warehouse_id} data={data} onNew={() => setModal({kind:'supplierReturn'})} showDetail={openOrderDetail} />;
   const visibleNav = modeItems(mode, can);
