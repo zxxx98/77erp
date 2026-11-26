@@ -53,6 +53,8 @@ export function migrateProductionStages(db) {
     quantity REAL NOT NULL,cost_cents INTEGER NOT NULL,UNIQUE(allocation_id,product_id));
     CREATE INDEX IF NOT EXISTS production_stage_batch_order ON production_stage_batches(production_id,path,id);
     CREATE INDEX IF NOT EXISTS production_stage_source ON production_stage_allocations(source_batch_id);`);
+    if (!db.prepare('PRAGMA table_info(production_stages)').all().some(c => c.name === 'customer_part_number'))
+      db.exec("ALTER TABLE production_stages ADD COLUMN customer_part_number TEXT NOT NULL DEFAULT ''");
     migrateStageReceipts(db);
     db.exec('RELEASE SAVEPOINT production_stage_migration');
   } catch (error) {
@@ -64,8 +66,8 @@ export function migrateProductionStages(db) {
 
 export function saveProductionStages(db, order) {
   const stages = deriveProductionStages(order);
-  const insert=db.prepare(`INSERT INTO production_stages(production_id,path,parent_path,product_id,name,unit,unit_round_up,bom_id,bom_version,bom_name,base_quantity,loss_method,planned_quantity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  for (const s of stages) insert.run(order.id,s.path,s.parent_path,s.product_id,s.name,s.unit,s.unit_round_up,s.bom_id,s.bom_version,s.bom_name,s.base_quantity,s.loss_method,s.planned_quantity);
+  const insert=db.prepare(`INSERT INTO production_stages(production_id,path,parent_path,product_id,name,unit,unit_round_up,customer_part_number,bom_id,bom_version,bom_name,base_quantity,loss_method,planned_quantity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const s of stages) insert.run(order.id,s.path,s.parent_path,s.product_id,s.name,s.unit,s.unit_round_up,s.customer_part_number ?? '',s.bom_id,s.bom_version,s.bom_name,s.base_quantity,s.loss_method,s.planned_quantity);
   db.prepare('UPDATE production_orders SET stage_workflow=1 WHERE id=?').run(order.id);
 }
 

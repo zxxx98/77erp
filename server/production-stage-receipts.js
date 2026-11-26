@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { allocate, moveInventory } from './commerce.js';
 import { hasPermission } from '../shared/permissions.js';
 import { stagePoolPaths } from '../shared/production-pools.js';
@@ -73,7 +73,7 @@ export function installStageReceipts(app, db, {route,current,version}) {
       if (exactCompare(exactQuantity(left),0)<=0) continue;
       const q=exactMin(needed,exactQuantity(left)), cost=allocate(left.cost_cents,q,exactQuantity(left));
       const components=allocateStageComponents(left.components,q,exactQuantity(left),cost).map(c=>({product_id:c.product_id,...quantityFields(exactQuantity(c)),cost_cents:c.cost_cents}));
-      const at=stageEventTime(db,order.id),number=`BCRK${at.slice(0,10).replaceAll('-','')}-${randomUUID().replaceAll('-','').slice(0,12)}`;
+      const at=stageEventTime(db,order.id),number=nextDailyDocumentNumber(db,'production_stage_receipts','BCRK',at);
       const id=Number(db.prepare(`INSERT INTO production_stage_receipts(number,warehouse_id,production_id,source_batch_id,quantity,total_cost_cents,components,created_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`)
         .run(number,order.warehouse_id,order.id,batch.id,exactNumber(q),cost,JSON.stringify(components),actor(req),at,at).lastInsertRowid);
       saveExactQuantity(db,stageReceiptTable,id,'quantity',q);needed=exactSubtract(needed,q);
@@ -137,7 +137,7 @@ export function validateStageReceipts(data) {
   for(const r of data.production_stage_receipts||[]) {
     const batch=data.production_stage_batches.find(b=>b.id===r.source_batch_id),order=data.production_orders.find(o=>o.id===r.production_id);
     if(!Number.isSafeInteger(r.id)||r.id<1||ids.has(r.id)||!order||!batch||batch.production_id!==order.id||batch.path===''||r.warehouse_id!==order.warehouse_id||
-      !text(r.number,100,true)||!/^BCRK\d{8}-[a-f0-9]{12}$/.test(r.number)||numbers.has(r.number)||!Number.isSafeInteger(r.version)||r.version<1||
+      !text(r.number,100,true)||!/^BCRK\d{8}(?:-[a-f0-9]{12}|\d{6,})$/.test(r.number)||numbers.has(r.number)||!Number.isSafeInteger(r.version)||r.version<1||
       !validExactQuantity(exactQuantity(r),true)||!money(r.total_cost_cents)||!['pending','confirmed','void'].includes(r.status)||
       !text(r.created_by_name,60,true)||!date(r.created_at)||!date(r.updated_at)||r.created_at<batch.created_at||r.updated_at<r.created_at||
       !text(r.confirmed_by_name,60)||!text(r.voided_by_name,60)||!text(r.void_reason,500)||

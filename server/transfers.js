@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { validQuantity, materialQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
 import { moveInventory } from './commerce.js';
@@ -29,12 +30,6 @@ export function installTransfers(app, db, { route, mutation }) {
   const warehouseName = (id) => db.prepare('SELECT name FROM warehouses WHERE id=?').get(id)?.name || '';
   const itemsOf = (orderId) =>
     db.prepare('SELECT product_id,name,barcode,quantity,cost_cents FROM order_items WHERE order_id=? ORDER BY id').all(orderId);
-  const nextNumber = (prefix) => {
-    const last = db
-      .prepare('SELECT MAX(CAST(substr(number, ?) AS INTEGER)) AS sequence FROM orders WHERE number LIKE ?')
-      .get(prefix.length + 1, `${prefix}%`);
-    return prefix + String((last.sequence || 0) + 1).padStart(6, '0');
-  };
   // Prefer the explicit cross-warehouse link, then the same barcode within the
   // destination warehouse; otherwise create the档案 there so later transfers,
   // syncs and multi-warehouse stocktakes stay linked.
@@ -128,8 +123,8 @@ export function installTransfers(app, db, { route, mutation }) {
     });
     const at = new Date().toISOString(), transferId = randomUUID();
     const user = { id: req.user.id, name: (req.user.name || req.user.username) };
-    const outNumber = nextNumber(`DC${at.slice(0, 10).replaceAll('-', '')}`);
-    const inNumber = nextNumber(`DR${at.slice(0, 10).replaceAll('-', '')}`);
+    const outNumber = nextDailyDocumentNumber(db, 'orders', 'DC', at);
+    const inNumber = nextDailyDocumentNumber(db, 'orders', 'DR', at);
     const outLeg = insertLeg({ number: outNumber, type: 'out', partner: target.name, note, at, warehouseId: req.warehouse.id, counterpartId: target.id, transferId, user });
     const inLeg = insertLeg({ number: inNumber, type: 'in', partner: req.warehouse.name, note, at, warehouseId: target.id, counterpartId: req.warehouse.id, transferId, user });
     const insertItem = db.prepare('INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents) VALUES (?,?,?,?,?,0,?,0)');

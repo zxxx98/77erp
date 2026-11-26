@@ -29,9 +29,11 @@ const count = value => formatExactQuantity(value, getFormatLocale());
 const itemKey = (order, item) => order.stage_workflow ? item.path : item.product_id;
 
 function OperationName({ target, compact = false }) {
+  const customerPart = !target.postProcessing && target.layer?.customer_part_number;
   return <span className="registration-operation-name"><strong>{target.name}</strong>
-    {!compact && (target.context || target.showPath || target.showStep) && <small>{[
+    {!compact && (target.context || customerPart || target.showPath || target.showStep) && <small>{[
       target.context,
+      customerPart && `${t('production.customerPartNumber')} ${customerPart}`,
       target.showPath && t('registration.layer', { path: target.path || t('production.finalProduct') }),
       target.showStep && t('registration.step', { step: target.step }),
     ].filter(Boolean).join(' · ')}</small>}
@@ -147,7 +149,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
         : t('registration.completed', { quantity: count(row.node?.completed_quantity ?? row.layer.completed_quantity ?? 0), unit: row.unit })}</span></span>
     </Radio></div>)}
   </div>;
-  const filteredTargets = targets.filter(row => `${row.name} ${row.context} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const filteredTargets = targets.filter(row => `${row.name} ${row.context} ${row.layer?.customer_part_number || ''} ${row.routeName} ${row.bomName} ${row.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const pickerContent = <>
     <Input type="search" aria-label={t('registration.search')} placeholder={t('registration.search')} value={search} onChange={event => setSearch(event.target.value)} />
     {choices(filteredTargets)}
@@ -171,7 +173,7 @@ export function ProductionQuickRegistration({ order, data, initialTargetId, onSa
           </Modal>)}
           {drawer && target && <div className="registration-drawer-context">
             <OperationPrice node={target.node} unit={target.unit} />
-            <p>{[target.bomName, target.routeName, !target.postProcessing && t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>
+            <p>{[target.bomName, !target.postProcessing && target.layer?.customer_part_number && `${t('production.customerPartNumber')} ${target.layer.customer_part_number}`, target.routeName, !target.postProcessing && t('registration.layer', { path: target.path || t('production.finalProduct') })].filter(Boolean).join(' / ')}</p>
             <div className="registration-drawer-quantities">
               {target.node?.available_quantity != null && <strong>{t('registration.available', { quantity: count(exactQuantity(target.node, 'available_quantity')), unit: target.unit })}</strong>}
               <span>{t('registration.completed', { quantity: count(exactQuantity(target.node || target.layer, 'completed_quantity')), unit: target.unit })}</span>

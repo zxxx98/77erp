@@ -7997,5 +7997,70 @@ export default {
     "报工数量",
     "Reported qty",
     "Số lượng ghi nhận"
+  ],
+  "production.salesOrderInfo": [
+    "订单信息",
+    "Order details",
+    "Thông tin đơn hàng"
+  ],
+  "production.orderNumber": [
+    "订单号码",
+    "Order number",
+    "Số đơn hàng"
+  ],
+  "production.orderNumberPlaceholder": [
+    "选填，输入客户或销售订单号",
+    "Optional sales or customer order number",
+    "Tùy chọn, nhập số đơn hàng"
+  ],
+  "production.customerShortName": [
+    "客户简称",
+    "Customer",
+    "Khách hàng"
+  ],
+  "production.selectCustomer": [
+    "选择已建档客户（选填）",
+    "Select customer (optional)",
+    "Chọn khách hàng (tùy chọn)"
+  ],
+  "production.clearCustomer": [
+    "不关联客户",
+    "No customer",
+    "Không chọn khách hàng"
+  ],
+  "production.customerDeactivatedSuffix": [
+    "（已停用）",
+    " (deactivated)",
+    " (ngừng hoạt động)"
+  ],
+  "production.deliveryDate": [
+    "交期",
+    "Delivery date",
+    "Ngày giao hàng"
+  ],
+  "production.customerPartNumber": [
+    "客户料号",
+    "Customer part no.",
+    "Mã vật tư khách hàng"
+  ],
+  "production.customerPartNotConfigured": [
+    "该客户未配置物料客户料号",
+    "Not configured for this customer",
+    "Chưa cấu hình cho khách hàng này"
+  ],
+  "production.saveAndContinueSameOrder": [
+    "保存并按同订单继续建单",
+    "Save and add another for this order",
+    "Lưu và tạo tiếp cùng đơn hàng"
+  ],
+  "production.savedContinueSameOrder": [
+    "生产草稿 {{number}} 已保存，已保留订单信息，可继续选择下一成品配方。",
+    "Production draft {{number}} saved. Order details retained for the next recipe.",
+    "Đã lưu bản nháp {{number}} và giữ thông tin đơn hàng để chọn công thức tiếp theo."
+  ],
+  "production.newOrderWithSameInfo": [
+    "按同订单新建生产单",
+    "New production order with same order info",
+    "Tạo lệnh sản xuất mới cùng đơn hàng"
   ]
 };

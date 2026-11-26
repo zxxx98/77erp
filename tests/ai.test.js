@@ -1763,3 +1763,44 @@ test('AI reads BOM post-processing per-unit material use and explains automatic 
     assert.match(prompt, /1000条预计领10个纸箱、装箱10次/);
   }
 });
+
+test('AI reads production order sales metadata and customer part number snapshots without leaking archive or cost fields', async t => {
+  const f = await fixture(t, ':memory:', false);
+  await f.permissions(['ai', 'production']);
+  const customer = await f.request(f.admin, '/contacts', { request_id: randomUUID(), role: 'customer', name: 'AI测试客户', person: '', phone: '', address: '', note: '', active: 1 });
+  assert.equal(customer.status, 200);
+  const otherCustomer = await f.request(f.admin, '/contacts', { request_id: randomUUID(), role: 'customer', name: '保密客户', person: '', phone: '', address: '', note: '', active: 1 });
+  assert.equal(otherCustomer.status, 200);
+  const currentProduct = (await f.request(f.admin, '/products/1', undefined, 'GET')).data.product;
+  assert.equal((await f.request(f.admin, '/products/1', {
+    ...currentProduct, request_id: randomUUID(),
+    customer_part_numbers: [
+      { customer_id: customer.data.id, part_number: 'AI-CUST-PN-01' },
+      { customer_id: otherCustomer.data.id, part_number: 'SECRET-PN-99' },
+    ],
+  }, 'PUT')).status, 200);
+  const bom = await f.request(f.admin, '/boms', { request_id: randomUUID(), name: 'AI订单配方', product_id: 1, base_quantity: 1, base_unit: currentProduct.unit, enabled: 1, note: '',
+    items: [{ product_id: 2, quantity: 1, unit: f.db.prepare('SELECT unit FROM products WHERE id=2').get().unit, note: '' }] });
+  assert.equal(bom.status, 200);
+  const order = await f.request(f.admin, '/production-orders', {
+    request_id: randomUUID(), schema_version: 2, stage_schema_version: 1,
+    bom_id: bom.data.id, bom_version: bom.data.version, planned_quantity: 5, note: 'AI核对',
+    order_number: 'PO-AI-2026', customer_id: customer.data.id, delivery_date: '2026-12-31',
+  });
+  assert.equal(order.status, 200, JSON.stringify(order.data));
+
+  f.use('search_production_orders', { query: 'PO-AI-2026' });
+  assert.equal((await f.chat(f.staff)).status, 200);
+  const searchResult = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.equal(searchResult.total, 1);
+  assert.equal(searchResult.orders[0].order_number, 'PO-AI-2026');
+  assert.equal(searchResult.orders[0].customer_name, 'AI测试客户');
+  assert.equal(searchResult.orders[0].customer_part_number, 'AI-CUST-PN-01');
+
+  f.use('get_production_order', { production_id: order.data.id });
+  assert.equal((await f.chat(f.staff)).status, 200);
+  const detail = JSON.parse(f.calls.at(-1).body.messages.find(m => m.role === 'tool').content);
+  assert.equal(detail.delivery_date, '2026-12-31');
+  assert.equal(detail.customer_part_number, 'AI-CUST-PN-01');
+  assert.ok(!JSON.stringify(detail).includes('cost_cents'));
+});

@@ -12,7 +12,7 @@ import { requestLanguage } from './i18n.js';
 import { productionRegistrationGroup, isGroupProductionWorker, assertProductionReader, assertProductionOrderAccess, productionWorkerProjection } from './production-access.js';
 import { rebuildTable } from './table-migration.js';
 import { BOM_NODE_COLUMNS, validateSnapshotNodes, validateExpansionScraps, calculateBomNodes } from '../shared/bom-expansion.js';
-import { randomUUID } from 'node:crypto';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { getBom, listBoms, calculateBom, withCurrentProductionTypes } from './bom.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 import { moveInventory, allocate } from './commerce.js';
@@ -23,7 +23,7 @@ import { hasPermission } from '../shared/permissions.js';
 import { validateScrapRules, validateScrapActuals, scrapExpectedQuantity } from '../shared/scrap.js';
 import { validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { validateBomLossRate, validateBomLossMethod } from '../shared/bom.js';
-import { canEditProductionPlan, validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionNetPlannedItems, productionMaterialAnalysis } from '../shared/production.js';
+import { canEditProductionPlan, validateProductionPlan, validateProductionCompletion, productionItemQuantity, productionNetPlannedItems, productionMaterialAnalysis, validProductionDeliveryDate, resolveCustomerPartNumber } from '../shared/production.js';
 import { productionBatchSummary } from '../shared/production-batches.js';
 import { productionRegistrationUrl } from '../shared/production-link.js';
 import { renderProductionPdf } from './production-pdf.js';
@@ -54,16 +54,7 @@ export function productionWithoutCosts(value) {
 }
 
 export function nextProductionOrderNumber(db, at = new Date().toISOString()) {
-  const dateStr = at instanceof Date ? at.toISOString() : String(at);
-  const prefix = `SC${dateStr.slice(0, 10).replaceAll('-', '')}`;
-  const last = db.prepare('SELECT MAX(CAST(substr(number, ?) AS INTEGER)) AS sequence FROM production_orders WHERE number LIKE ?').get(prefix.length + 1, `${prefix}%`);
-  let seq = (last?.sequence || 0) + 1;
-  let number = `${prefix}${String(seq).padStart(6, '0')}`;
-  while (db.prepare('SELECT 1 FROM production_orders WHERE number=?').get(number)) {
-    seq += 1;
-    number = `${prefix}${String(seq).padStart(6, '0')}`;
-  }
-  return number;
+  return nextDailyDocumentNumber(db, 'production_orders', 'SC', at);
 }
 
 export function migrateProduction(db) {
@@ -138,6 +129,8 @@ export function migrateProduction(db) {
     CREATE INDEX IF NOT EXISTS production_bom_node_parent_product ON production_bom_nodes(bom_product_id);`);
   if (!db.prepare('PRAGMA table_info(production_bom_nodes)').all().some(c => c.name === 'supply_fraction'))
     db.exec("ALTER TABLE production_bom_nodes ADD COLUMN supply_fraction TEXT NOT NULL DEFAULT ''");
+  if (!db.prepare('PRAGMA table_info(production_bom_nodes)').all().some(c => c.name === 'customer_part_number'))
+    db.exec("ALTER TABLE production_bom_nodes ADD COLUMN customer_part_number TEXT NOT NULL DEFAULT ''");
   if (!db.prepare('PRAGMA table_info(production_bom_nodes)').all().some(c => c.name === 'unit_round_up'))
     db.exec('ALTER TABLE production_bom_nodes ADD COLUMN unit_round_up INTEGER NOT NULL DEFAULT 0 CHECK(unit_round_up IN (0,1))');
   for (const table of ['production_items', 'production_orders', 'production_scraps'])
@@ -147,10 +140,22 @@ export function migrateProduction(db) {
     db.exec('ALTER TABLE production_orders ADD COLUMN quantity_decimals INTEGER NOT NULL DEFAULT 6 CHECK(quantity_decimals IN (4,6))');
   if (!db.prepare('PRAGMA table_info(production_orders)').all().some(c => c.name === 'output_completion_confirmed'))
     db.exec('ALTER TABLE production_orders ADD COLUMN output_completion_confirmed INTEGER NOT NULL DEFAULT 0 CHECK(output_completion_confirmed IN (0,1))');
+  for (const [column, definition] of [
+    ['order_number', "TEXT NOT NULL DEFAULT ''"],
+    ['customer_id', 'INTEGER REFERENCES contacts(id)'],
+    ['customer_name', "TEXT NOT NULL DEFAULT ''"],
+    ['delivery_date', "TEXT NOT NULL DEFAULT ''"],
+    ['customer_part_number', "TEXT NOT NULL DEFAULT ''"],
+  ]) {
+    if (!db.prepare('PRAGMA table_info(production_orders)').all().some(c => c.name === column))
+      db.exec(`ALTER TABLE production_orders ADD COLUMN ${column} ${definition}`);
+  }
   const advance = `UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='production_version';
     UPDATE production_orders SET version=(SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='production_version') WHERE id=NEW.id;`;
+  if (!db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='production_version_update'").get()?.sql.includes('order_number'))
+    db.exec('DROP TRIGGER IF EXISTS production_version_update');
   db.exec(`CREATE TRIGGER IF NOT EXISTS production_version_insert AFTER INSERT ON production_orders BEGIN ${advance} END;
-    CREATE TRIGGER IF NOT EXISTS production_version_update AFTER UPDATE OF planned_quantity,note,status,updated_at ON production_orders BEGIN ${advance} END;`);
+    CREATE TRIGGER IF NOT EXISTS production_version_update AFTER UPDATE OF planned_quantity,note,order_number,customer_id,customer_name,delivery_date,customer_part_number,status,updated_at ON production_orders BEGIN ${advance} END;`);
   migrateProductionMaterials(db);
   migrateProductionReceipts(db);
   migrateProductionStages(db);
@@ -215,7 +220,10 @@ export function listProductionOrders(db, warehouseId, query = {}, costs = false,
     else if (status === 'awaiting_materials') clauses.push("status='draft' AND material_workflow=1 AND material_phase='awaiting_materials'");
     else if (status === 'pending_receipt') clauses.push("(status!='void' AND EXISTS (SELECT 1 FROM production_batches b JOIN production_receipts r ON r.batch_id=b.id WHERE b.production_id=production_orders.id AND b.status='active' AND r.status='pending') OR status!='void' AND EXISTS (SELECT 1 FROM production_stage_receipts r WHERE r.production_id=production_orders.id AND r.status='pending'))");
     else if (status !== 'all') { clauses.push('status=?'); params.push(status); }
-    if (q.trim()) { clauses.push("(number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR bom_name LIKE ? ESCAPE '\\')"); params.push(...Array(4).fill(pattern(q.trim()))); }
+    if (q.trim()) {
+      clauses.push("(number LIKE ? ESCAPE '\\' OR product_name LIKE ? ESCAPE '\\' OR barcode LIKE ? ESCAPE '\\' OR bom_name LIKE ? ESCAPE '\\' OR order_number LIKE ? ESCAPE '\\' OR customer_name LIKE ? ESCAPE '\\' OR customer_part_number LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM production_stages s WHERE s.production_id=production_orders.id AND s.customer_part_number LIKE ? ESCAPE '\\'))");
+      params.push(...Array(8).fill(pattern(q.trim())));
+    }
     const where = clauses.join(' AND '), total = db.prepare(`SELECT COUNT(*) AS n FROM production_orders WHERE ${where}`).get(...params).n;
     const orders = db.prepare(`SELECT * FROM production_orders WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`).all(...params, Number(limit), Number(offset));
     const result = { orders: orders.map(order => ({ ...order, ...productionAssignments(order), ...receiptQuantities(db, order), status: publicStatus(order) })), total, has_more: Number(offset) + orders.length < total, next_offset: Number(offset) + orders.length };
@@ -254,7 +262,9 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
     if (!order) fail('生产单不存在或不属于当前仓库。', 404);
     Object.assign(order, productionAssignments(order));
     assertProductionOrderAccess(user, order);
-    order.product = publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(order.product_id));
+    const rootProduct = db.prepare('SELECT * FROM products WHERE id=?').get(order.product_id);
+    order.product = publicProduct(rootProduct);
+    order.product_customer_part_numbers = JSON.parse(rootProduct.customer_part_numbers || '[]');
     order.items = db.prepare('SELECT * FROM production_items WHERE production_id=? ORDER BY position,id').all(id).map(item => ({
       ...item, is_supplemental: item.base_quantity === 0, product: publicProduct(db.prepare('SELECT * FROM products WHERE id=?').get(item.product_id)),
     }));
@@ -325,12 +335,32 @@ export function getProductionOrder(db, warehouseId, id, costs = false, user) {
   });
 }
 
+function productCustomerPartsById(db, warehouseId, productIds) {
+  const ids = [...new Set(productIds.filter(isId))];
+  if (!ids.length) return new Map();
+  return new Map(db.prepare(`SELECT id,customer_part_numbers FROM products WHERE warehouse_id=? AND id IN (${ids.map(() => '?').join(',')})`)
+    .all(warehouseId, ...ids).map(row => [row.id, JSON.parse(row.customer_part_numbers || '[]')]));
+}
+
 function prepareProduction(db, req) {
   if (!isId(req.body.bom_id) || !isId(req.body.bom_version)) fail('请选择BOM并核对版本。');
   const product = db.prepare('SELECT p.unit_round_up FROM boms b JOIN products p ON p.id=b.product_id WHERE b.id=? AND b.warehouse_id=?').get(req.body.bom_id, req.warehouse.id);
   if (validQuantity(req.body.planned_quantity, true)) req.body.planned_quantity = materialQuantity(req.body.planned_quantity, product);
-  return snapshot(db, () => calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version, req.body.schema_version, req.body.supply_choices,
-    { inheritPostProcessing: req.body.post_processing_table_id === undefined }));
+  return snapshot(db, () => {
+    const plan = calculateBom(db, req.warehouse, req.body.bom_id, req.body.planned_quantity, req.body.bom_version, req.body.schema_version, req.body.supply_choices,
+      { inheritPostProcessing: req.body.post_processing_table_id === undefined });
+    const partsById = productCustomerPartsById(db, req.warehouse.id, [
+      plan.product.id,
+      ...(plan.supplies || []).map(row => row.product_id),
+      ...(plan.nodes || []).map(node => node.product_id),
+    ]);
+    return {
+      ...plan,
+      product: { ...plan.product, customer_part_numbers: partsById.get(plan.product.id) || [] },
+      ...(plan.supplies ? { supplies: plan.supplies.map(row => ({ ...row, customer_part_numbers: partsById.get(row.product_id) || [] })) } : {}),
+      nodes: (plan.nodes || []).map(node => ({ ...node, customer_part_numbers: partsById.get(node.product_id) || [] })),
+    };
+  });
 }
 
 export function installProduction(app, db, options = {}) {
@@ -616,7 +646,20 @@ export function installProduction(app, db, options = {}) {
   installProductionOperations(app, db, { route, current, version });
   installProductionMaterials(app, db, { route, current, version, units });
   installProductionReceipts(app, db, {route});
-  app.get('/api/production-orders/assignment-options', route(() => ({ users: assignmentUsers().map(user => ({ id: user.id, name: user.name || user.username })) })));
+  const orderHeader = (body, previous = null) => {
+    const order_number = (body.order_number ?? previous?.order_number ?? '').trim();
+    const delivery_date = (body.delivery_date ?? previous?.delivery_date ?? '').trim();
+    const customer_id = body.customer_id === undefined ? (previous?.customer_id ?? null) : body.customer_id;
+    if (customer_id === null) return { order_number, delivery_date, customer_id: null, customer_name: '' };
+    const contact = db.prepare("SELECT id,name,role,active FROM contacts WHERE id=?").get(customer_id);
+    if (!contact || contact.role !== 'customer') fail('请选择有效客户。');
+    if (!contact.active && contact.id !== previous?.customer_id) fail('所选客户已停用，请选择已启用的客户。');
+    return { order_number, delivery_date, customer_id: contact.id, customer_name: contact.name };
+  };
+  app.get('/api/production-orders/assignment-options', route(() => ({
+    users: assignmentUsers().map(user => ({ id: user.id, name: user.name || user.username })),
+    customers: db.prepare("SELECT id,name,person,phone,active FROM contacts WHERE role='customer' ORDER BY active DESC,name,id").all(),
+  })));
   app.get('/api/production-orders', route(req => listProductionOrders(db, req.warehouse.id, req.query, true, req.user)));
   app.get('/api/production-orders/boms', route(req => listBoms(db, req.warehouse.id, { ...req.query, status: 'enabled' })));
   app.post('/api/production-orders/prepare', route(req => prepareProduction(db, req)));
@@ -638,6 +681,7 @@ export function installProduction(app, db, options = {}) {
   });
   app.post('/api/production-orders', route(req => {
     validateProductionPlan(req.body);
+    const header = orderHeader(req.body);
     const targets = assignmentTargets(req.body);
     const plan = prepareProduction(db, req), bom = getBom(db, req.warehouse.id, plan.bom_id);
     if ((plan.multi_level || plan.post_processing_operations.length || req.body.supply_choices !== undefined) && req.body.structure_token !== plan.structure_token) fail('下级配方已变化或尚未预览，请重新测算后保存。当前填写内容已保留。', 409);
@@ -645,17 +689,23 @@ export function installProduction(app, db, options = {}) {
     const postOperations = legacyPostProcessing
       ? (plan.post_processing_operations.length ? plan.post_processing_operations : req.body.post_processing_operations)
       : productionPostProcessingTable(db, req.warehouse.id, req.body, bom.product_id);
+    const partsById = header.customer_id ? productCustomerPartsById(db, req.warehouse.id, [bom.product_id, ...plan.nodes.map(node => node.product_id)]) : new Map();
+    const rootCustomerPart = resolveCustomerPartNumber(partsById.get(bom.product_id), header.customer_id);
+    const nodes = plan.nodes.map(node => ({ ...node, customer_part_number: resolveCustomerPartNumber(partsById.get(node.product_id), header.customer_id) }));
     const at = new Date().toISOString(), owner = actor(req), number = nextProductionOrderNumber(db, at);
     const id = Number(db.prepare(`INSERT INTO production_orders(number,warehouse_id,bom_id,bom_version,bom_name,
       product_id,product_name,barcode,specification,unit,base_quantity,planned_quantity,loss_method,note,
-      created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
+      order_number,customer_id,customer_name,delivery_date,customer_part_number,
+      created_by_name,updated_by_name,created_at,updated_at,batch_tracking) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
       .run(number, req.warehouse.id, bom.id, bom.version, bom.name, bom.product_id, bom.product.name, bom.product.barcode,
-        bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, bom.loss_method, req.body.note.trim(), owner, owner, at, at).lastInsertRowid);
+        bom.product.specification, bom.base_unit, bom.base_quantity, req.body.planned_quantity, bom.loss_method, req.body.note.trim(),
+        header.order_number, header.customer_id, header.customer_name, header.delivery_date, rootCustomerPart,
+        owner, owner, at, at).lastInsertRowid);
     saveAssignments(id, targets);
     db.prepare('UPDATE production_orders SET material_workflow=1,quantity_decimals=4,snapshot_format=?,unit_round_up=? WHERE id=?').run(plan.multi_level ? 2 : 1, bom.product.unit_round_up, id);
     if (plan.multi_level) {
       const insertNode = db.prepare(`INSERT INTO production_bom_nodes(production_id,${BOM_NODE_COLUMNS.join(',')}) VALUES (${Array(BOM_NODE_COLUMNS.length + 1).fill('?').join(',')})`);
-      for (const node of plan.nodes) insertNode.run(id, ...BOM_NODE_COLUMNS.map(key => node[key]));
+      for (const node of nodes) insertNode.run(id, ...BOM_NODE_COLUMNS.map(key => node[key]));
     }
     const insert = db.prepare(`INSERT INTO production_items(production_id,product_id,name,barcode,specification,unit,base_quantity,base_quantity_fraction,loss_rate,planned_quantity,note,position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
     plan.rows.forEach((row, index) => insert.run(id, row.product_id, row.name, row.barcode, row.specification, row.unit, row.quantity, row.quantity_fraction, row.loss_rate, row.required, row.note, index));
@@ -665,7 +715,7 @@ export function installProduction(app, db, options = {}) {
     for (const row of plan.scraps) db.prepare('UPDATE production_scraps SET unit_round_up=? WHERE production_id=? AND product_id=?').run(row.product.unit_round_up, id, row.product_id);
     if (plan.multi_level) {
       if (req.body.stage_schema_version !== 1) fail('新多层生产单使用分层生产，请刷新页面后建单。', 409);
-      saveProductionStages(db, { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), nodes: plan.nodes });
+      saveProductionStages(db, { ...db.prepare('SELECT * FROM production_orders WHERE id=?').get(id), nodes });
     }
     const order = db.prepare('SELECT * FROM production_orders WHERE id=?').get(id);
     captureProductionRoutes(db, order);
@@ -694,6 +744,7 @@ export function installProduction(app, db, options = {}) {
     if (!canEditProductionPlan(order)) fail('仅未开工、未领料的待生产单可以编辑。', 409);
     const unchanged = req.body.planned_quantity === order.planned_quantity;
     validateProductionPlan(req.body, unchanged);
+    const header = orderHeader(req.body, order);
     const plannedQuantity = unchanged ? order.planned_quantity : materialQuantity(req.body.planned_quantity, order);
     if (plannedQuantity !== order.planned_quantity) {
       const standards = order.snapshot_format === 2 ? new Map(calculateBomNodes(order.nodes, plannedQuantity, order.quantity_decimals).rows.map(row => [row.product_id, row.required])) : null;
@@ -707,8 +758,22 @@ export function installProduction(app, db, options = {}) {
       if (order.stage_workflow) for (const stage of deriveProductionStages({ ...order, planned_quantity: plannedQuantity }))
         db.prepare('UPDATE production_stages SET planned_quantity=? WHERE production_id=? AND path=?').run(stage.planned_quantity, order.id, stage.path);
     }
-    db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,updated_by_name=?,updated_at=? WHERE id=?')
-      .run(plannedQuantity, req.body.note.trim(), actor(req), new Date().toISOString(), order.id);
+    let rootCustomerPart = order.customer_part_number ?? '';
+    if (req.body.customer_id !== undefined && header.customer_id !== order.customer_id) {
+      const partsById = header.customer_id ? productCustomerPartsById(db, req.warehouse.id, [order.product_id, ...order.nodes.map(node => node.product_id)]) : new Map();
+      rootCustomerPart = resolveCustomerPartNumber(partsById.get(order.product_id), header.customer_id);
+      for (const node of order.nodes) {
+        db.prepare('UPDATE production_bom_nodes SET customer_part_number=? WHERE id=?')
+          .run(resolveCustomerPartNumber(partsById.get(node.product_id), header.customer_id), node.id);
+      }
+      if (order.stage_workflow) {
+        const updatedNodes = order.nodes.map(node => ({ ...node, customer_part_number: resolveCustomerPartNumber(partsById.get(node.product_id), header.customer_id) }));
+        for (const stage of deriveProductionStages({ ...order, customer_part_number: rootCustomerPart, nodes: updatedNodes }))
+          db.prepare('UPDATE production_stages SET customer_part_number=? WHERE production_id=? AND path=?').run(stage.customer_part_number, order.id, stage.path);
+      }
+    }
+    db.prepare('UPDATE production_orders SET planned_quantity=?,note=?,order_number=?,customer_id=?,customer_name=?,delivery_date=?,customer_part_number=?,updated_by_name=?,updated_at=? WHERE id=?')
+      .run(plannedQuantity, req.body.note.trim(), header.order_number, header.customer_id, header.customer_name, header.delivery_date, rootCustomerPart, actor(req), new Date().toISOString(), order.id);
     return current(req);
   }, true));
   const checkOpen = (req, order) => {
@@ -919,6 +984,7 @@ export function installProduction(app, db, options = {}) {
 export function validateProductionBackup(data, postPlans = new Map()) {
   const validQuantity = validExactQuantity;
   const products = new Map(data.products.map(p => [p.id, p])), boms = new Map(data.boms.map(b => [b.id, b]));
+  const contacts = new Map((data.contacts || []).map(c => [c.id, c]));
   const orders = new Map(data.production_orders.map(o => [o.id, o])), grouped = new Map(), numbers = new Set();
   const text = (v, max, required = false) => typeof v === 'string' && v.length <= max && (!required || !!v.trim());
   const date = v => text(v, 100, true) && Number.isFinite(Date.parse(v));
@@ -957,6 +1023,11 @@ export function validateProductionBackup(data, postPlans = new Map()) {
           entries.some(entry => !entry || Object.keys(entry).length !== 2 || !isId(entry.id) || !text(entry.name, 60, true))) fail('备份生产指派无效。');
     }
     validateProductionPlan(order, true);
+    if (!text(order.order_number, 100) || !(order.delivery_date === '' || validProductionDeliveryDate(order.delivery_date)) ||
+        (order.customer_id === null
+          ? order.customer_name !== '' || order.customer_part_number !== '' || nodes.some(node => node.customer_part_number !== '')
+          : contacts.get(order.customer_id)?.role !== 'customer' || !text(order.customer_name, 100, true) || !text(order.customer_part_number, 500)))
+      fail('备份生产单字段、状态或关联无效。');
     validateBomLossMethod(order.loss_method);
     if (![0, 1].includes(order.batch_tracking) || (batches.length && order.batch_tracking !== 1) || (order.batch_tracking === 1 && completed && !batches.length) ||
         !['draft', 'completed', 'void'].includes(order.status) || !isId(order.version) || !isId(order.bom_version) ||

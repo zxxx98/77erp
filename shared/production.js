@@ -70,9 +70,22 @@ export function productionNetPlannedItems(order) {
     item.post_processing_planned_quantity ?? 0), 'net_planned_quantity') }));
 }
 
+export function validProductionDeliveryDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
+export function resolveCustomerPartNumber(parts, customerId) {
+  if (!Number.isSafeInteger(customerId) || customerId < 1 || !Array.isArray(parts)) return '';
+  return parts.filter(row => row?.customer_id === customerId && typeof row.part_number === 'string' && row.part_number.trim())
+    .map(row => row.part_number.trim()).join(' / ');
+}
+
 export function validateProductionPlan(value, stored = false) {
   if (!value || !validQuantity(value.planned_quantity, true, stored ? 6 : 4)) throw new Error('计划产量需为正数，最多 4 位小数。');
   if (typeof value.note !== 'string' || value.note.length > 500) throw new Error('生产备注最多 500 字。');
+  if (value.order_number !== undefined && (typeof value.order_number !== 'string' || value.order_number.length > 100)) throw new Error('订单号码最多 100 字。');
+  if (value.delivery_date !== undefined && value.delivery_date !== '' && !validProductionDeliveryDate(value.delivery_date)) throw new Error('交期需为有效日期（YYYY-MM-DD）。');
+  if (value.customer_id !== undefined && value.customer_id !== null && (!Number.isSafeInteger(value.customer_id) || value.customer_id < 1)) throw new Error('请选择有效客户。');
 }
 
 export function validateProductionCompletion(value, items, stored = false) {

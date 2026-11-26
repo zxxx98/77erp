@@ -35,6 +35,7 @@ function NodeDetails({ node, path, onClose }) {
     <p className="bom-node-path">{path}</p>
     <dl>
       <dt>{pt("production.materialCode")}</dt><dd>{node.barcode || '—'}</dd>
+      {node.customer_part_number && <><dt>{pt("production.customerPartNumber")}</dt><dd>{node.customer_part_number}</dd></>}
       <dt>{pt("production.currentProductionType")}</dt><dd>{productionType(node)}</dd>
       <dt>{pt("production.structureLevel")}</dt><dd>{nodeLevel(node)}</dd>
       <dt>{pt("production.structurePath")}</dt><dd>{node.path}</dd>
@@ -51,15 +52,15 @@ function NodeDetails({ node, path, onClose }) {
   </section>;
 }
 
-export function BomStructure({ nodes = emptyNodes, quantity, sourceSelection, active = true, isSnapshot = false, horizontal = false, hideGrossHint = false }) {
+export function BomStructure({ nodes = emptyNodes, rootCustomerPart = '', quantity, sourceSelection, active = true, isSnapshot = false, horizontal = false, hideGrossHint = false }) {
   useLocale();
   // Changing production quantity keeps the current view. Replacing a recipe or
   // snapshot starts at its root, since positional paths can name different goods.
   const identity = useMemo(() => JSON.stringify(nodes.map(node => [node.path, node.product_id, node.bom_id, node.bom_version, node.usage_mode, node.child_bom_id])), [nodes]);
-  return <StructureBrowser key={identity} nodes={nodes} quantity={quantity} sourceSelection={sourceSelection} active={active} isSnapshot={isSnapshot} horizontal={horizontal} hideGrossHint={hideGrossHint} />;
+  return <StructureBrowser key={identity} nodes={nodes} rootCustomerPart={rootCustomerPart} quantity={quantity} sourceSelection={sourceSelection} active={active} isSnapshot={isSnapshot} horizontal={horizontal} hideGrossHint={hideGrossHint} />;
 }
 
-function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot, horizontal, hideGrossHint }) {
+function StructureBrowser({ nodes, rootCustomerPart, quantity, sourceSelection, active, isSnapshot, horizontal, hideGrossHint }) {
   useLocale();
   const { preferences } = usePreferences();
   const narrow = useSyncExternalStore(subscribeSize, isNarrow, onServer);
@@ -93,7 +94,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
   const matches = useMemo(() => {
     if (productFilter !== null) return rows.filter(row => row.product_id === productFilter && row.usage_mode === 'stock');
     const term = query.trim().toLocaleLowerCase();
-    return term ? rows.filter(row => `${row.name}\n${row.barcode}`.toLocaleLowerCase().includes(term)) : [];
+    return term ? rows.filter(row => `${row.name}\n${row.barcode}\n${row.customer_part_number || ''}`.toLocaleLowerCase().includes(term)) : [];
   }, [rows, query, productFilter]);
   const matchedPaths = new Set(matches.map(row => row.path));
   const includedPaths = new Set(matches.flatMap(node => ancestors(node.path).map(row => row.path)));
@@ -184,7 +185,7 @@ function StructureBrowser({ nodes, quantity, sourceSelection, active, isSnapshot
     <div className={`bom-structure-layout${selected && !narrow ? ' has-detail' : ''}`}>
       <ZoomViewport className={`bom-structure-scroll${horizontal ? ' bom-horizontal-scroll' : ''}`} ref={viewport} label={pt(horizontal ? 'production.horizontalTree' : 'production.recipeStructureList')}>
         {horizontal ? <BomHorizontalTree groups={groups} scope={searching ? '' : scope}
-          root={!searching && scope ? { name: byPath.get(scope)?.name, quantity: byPath.get(scope)?.required, unit: byPath.get(scope)?.unit } : { name: rootName, quantity, unit: rows[0]?.bom_base_unit }}
+          root={!searching && scope ? { name: byPath.get(scope)?.name, customer_part_number: byPath.get(scope)?.customer_part_number, quantity: byPath.get(scope)?.required, unit: byPath.get(scope)?.unit } : { name: rootName, customer_part_number: rootCustomerPart, quantity, unit: rows[0]?.bom_base_unit }}
           expanded={expanded} searching={searching} includedPaths={includedPaths} matchedPaths={matchedPaths} selectedPath={selectedPath}
           onToggle={toggle} onBranch={navigate} onSelect={(path, trigger) => { detailTrigger.current = trigger; setSelectedPath(path); }} />
         : <><BomStructureTable

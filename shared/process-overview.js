@@ -9,6 +9,7 @@ export function productionOverviewLayers(order) {
   const routes = new Map((order.operation_routes || []).map(route => [route.path, route]));
   const derived = order.stages?.length ? order.stages : deriveProductionStages(order);
   const stages = derived.length ? derived : [{ path: '', parent_path: null, name: order.product_name,
+    customer_part_number: order.customer_part_number ?? '',
     bom_id: order.bom_id, bom_name: order.bom_name, unit: order.unit,
     planned_quantity: order.planned_quantity, completed_quantity: order.completed_quantity }];
   return stages.map(stage => {
@@ -25,7 +26,7 @@ export function productionOverviewLayers(order) {
 export function overviewScope(layers, scope = '', query = '', page = 0, expandedDepth = 1) {
   const byPath = new Map(layers.map(layer => [layer.path, layer]));
   const term = query.trim().toLocaleLowerCase();
-  const matches = term ? layers.filter(layer => [layer.name, layer.bom_name, layer.barcode, layer.path, layer.route?.name].join(' ').toLocaleLowerCase().includes(term))
+  const matches = term ? layers.filter(layer => [layer.name, layer.bom_name, layer.barcode, layer.customer_part_number, layer.path, layer.route?.name].join(' ').toLocaleLowerCase().includes(term))
     : layers.filter(layer => layer.path !== scope && layer.parent_path === scope);
   const currentPage = Math.max(0, Math.min(page, Math.ceil(matches.length / OVERVIEW_PAGE_SIZE) - 1));
   const chosen = matches.slice(currentPage * OVERVIEW_PAGE_SIZE, (currentPage + 1) * OVERVIEW_PAGE_SIZE);

@@ -22,9 +22,10 @@ const publicProduct = product => Object.fromEntries(['id', 'name', 'barcode', 's
 export function withCurrentProductionTypes(db, warehouseId, nodes) {
   const ids = [...new Set(nodes.map(node => node.product_id))];
   if (!ids.length) return nodes;
-  const products = db.prepare(`SELECT id,production_type FROM products WHERE warehouse_id=? AND id IN (${ids.map(() => '?').join(',')})`).all(warehouseId, ...ids);
+  const products = db.prepare(`SELECT id,production_type,customer_part_numbers FROM products WHERE warehouse_id=? AND id IN (${ids.map(() => '?').join(',')})`).all(warehouseId, ...ids);
   const types = new Map(products.map(product => [product.id, product.production_type]));
-  return nodes.map(node => ({ ...node, current_production_type: types.get(node.product_id) ?? '' }));
+  const parts = new Map(products.map(product => [product.id, JSON.parse(product.customer_part_numbers || '[]')]));
+  return nodes.map(node => ({ ...node, current_production_type: types.get(node.product_id) ?? '', current_customer_part_numbers: parts.get(node.product_id) ?? [] }));
 }
 
 function readSnapshot(db, fn) {

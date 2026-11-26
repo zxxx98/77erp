@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { allocate, moveInventory } from './commerce.js';
 import { MAX_QUANTITY, validQuantity, validStoredQuantity, materialQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
@@ -183,7 +183,7 @@ export function createFinishMaterialReturn(db, req, order, { items, note = '', c
     if (exactCompare(quantity, exactQuantity(item, 'available_quantity')) > 0) fail(`${item.name}退料超过已领未耗余额。`);
     return { product_id: item.product_id, quantity };
   });
-  const at = new Date().toISOString(), number = `SCTL${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const at = new Date().toISOString(), number = nextDailyDocumentNumber(db, 'production_material_documents', 'SCTL', at);
   const id = Number(db.prepare(`INSERT INTO production_material_documents(number,warehouse_id,production_id,production_number,product_name,unit,type,kind,note,created_by_name,created_at,updated_at)
     VALUES (?,?,?,?,?,?,'in','return',?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, order.product_name, order.unit, (note ?? '').trim(), actor(req), at, at).lastInsertRowid);
   for (const row of normalized) {
@@ -234,7 +234,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
     .run(phase, actor(req), new Date().toISOString(), order.id);
   const create = (req, order, type, kind, items, note) => {
     assertNoPendingMaterials(db, order);
-    const at = new Date().toISOString(), number = `${type === 'out' ? 'SCLL' : 'SCTL'}${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const at = new Date().toISOString(), number = nextDailyDocumentNumber(db, 'production_material_documents', type === 'out' ? 'SCLL' : 'SCTL', at);
     const id = Number(db.prepare(`INSERT INTO production_material_documents(number,warehouse_id,production_id,production_number,product_name,unit,type,kind,note,created_by_name,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, order.product_name, order.unit, type, kind, note, actor(req), at, at).lastInsertRowid);
     for (const row of items) {
@@ -327,7 +327,7 @@ export function installProductionMaterials(app, db, { route, current, version, u
         return { ...source, ...quantityFields(exactQuantity(row)) };
       });
       const before = rows.map(row => db.prepare('SELECT * FROM products WHERE id=?').get(row.product_id));
-      const issueNumber = `SCFL${at.slice(0, 10).replaceAll('-', '')}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+      const issueNumber = doc.type === 'out' ? nextDailyDocumentNumber(db, 'production_material_issues', 'SCFL', at) : null;
       const issueId = doc.type === 'out' ? Number(db.prepare(`INSERT INTO production_material_issues(document_id,number,total_cost_cents,confirmed_by_name,confirmed_at)
         VALUES (?,?,0,?,?)`).run(doc.id, issueNumber, actor(req), at).lastInsertRowid) : null;
       let total = 0;
@@ -389,7 +389,7 @@ export function validateProductionMaterialBackup(data) {
   for (const doc of data.production_material_documents) {
     const order = orders.get(doc.production_id);
     if (!order || !order.material_workflow || doc.warehouse_id !== order.warehouse_id || doc.production_number !== order.number || doc.product_name !== order.product_name || doc.unit !== order.unit ||
-        !isId(doc.version) || !text(doc.number, 100, true) || !/^SC(LL|TL)\d{8}-[a-f0-9]{12}$/.test(doc.number) || numbers.has(doc.number) ||
+        !isId(doc.version) || !text(doc.number, 100, true) || !/^SC(LL|TL)\d{8}(?:-[a-f0-9]{12}|\d{6,})$/.test(doc.number) || numbers.has(doc.number) ||
         !['in','out'].includes(doc.type) || !['initial','supplement','return'].includes(doc.kind) || (doc.type === 'in') !== (doc.kind === 'return') ||
         !['pending','confirmed','cancelled'].includes(doc.status) || !text(doc.note, 500) || !text(doc.created_by_name, 60, true) || !date(doc.created_at) || !date(doc.updated_at) ||
         !text(doc.confirmed_by_name, 60) || !text(doc.cancelled_by_name, 60) || !text(doc.cancel_reason, 500) ||
@@ -413,7 +413,7 @@ export function validateProductionMaterialBackup(data) {
   for (const issue of data.production_material_issues) {
     const doc = docs.get(issue.document_id);
     if (!doc || doc.type !== 'out' || !money(issue.total_cost_cents) || !text(issue.confirmed_by_name,60,true) || !date(issue.confirmed_at) ||
-        !/^SCFL\d{8}-[a-f0-9]{12}$/.test(issue.number) || issueNumbers.has(issue.number)) fail('备份生产发料记录无效。');
+        !/^SCFL\d{8}(?:-[a-f0-9]{12}|\d{6,})$/.test(issue.number) || issueNumbers.has(issue.number)) fail('备份生产发料记录无效。');
     issueNumbers.add(issue.number);
     const value = { ...issue, items: [] }; issues.set(issue.id, value); doc.issues.push(value);
   }

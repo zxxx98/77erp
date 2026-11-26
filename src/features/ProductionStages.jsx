@@ -126,7 +126,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
   const heading = stage ? pt("production.register3", { v0: stage.path ? pt("production.semiFinishedProduct") : pt("production.finishedProduct") }) : history ? pt("production.levelBatchRecords") : pt("production.selectProductionLevel");
   const notices = <>{productionMessage(action.error) && <p className="form-error registration-feedback registration-feedback-error" role="alert">{productionMessage(action.error)}</p>}</>;
   const visible = displayStages.filter(item => search.trim()
-    ? `${item.name} ${item.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+    ? `${item.name} ${item.customer_part_number || ''} ${item.path}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
     : item.path === scope || item.path !== '' && (item.parent_path === scope || item.pool_paths?.some(path => order.stages.find(s => s.path === path)?.parent_path === scope)));
   const requiresReceiptPermission = batch => {
     const root = batch.root_batch_id && order.batches.find(row => row.id === batch.root_batch_id);
@@ -141,6 +141,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
       <section className="panel bom-section">
         {form.operation_node_id && <OperationWorkerSelect order={order} warehouseId={data.warehouse_id} value={form.worker_id} onChange={worker_id => patch({ worker_id })} disabled={locked} />}
         <h2>{stage.name}</h2><p className="stage-path">{pathLabel(stage)}</p>
+        {stage.customer_part_number && <p className="production-customer-part-line"><span className="production-customer-part">{pt("production.customerPartNumber")}：{stage.customer_part_number}</span></p>}
         <p className="bom-hint">{pt("production.planned")} {count(stage.planned_quantity)} {stage.unit}{pt("production.acceptedToDate")} {count(stage.completed_quantity)} {stage.unit}{pt("production.enterThisBatchSQuantity")}</p>
         <p className="bom-hint">{pt('production.fractionRegistrationHint')}</p>
         <label className="production-output">{pt("production.acceptedBatchQuantity")}{stage.unit}）<Input aria-label={pt("production.acceptedBatchQuantity2")} inputMode="text" value={form.completed_quantity} disabled={locked} onChange={event => patch({ completed_quantity: event.target.value })} /></label>
@@ -276,6 +277,7 @@ export function ProductionStages({ order, data, canRegister, canVoid, canReceive
               <td className="erp-cell-main">
                 <div className="erp-cell-stack">
                   <strong>{item.name}</strong>
+                  {item.customer_part_number && <small className="production-customer-part">{pt("production.customerPartNumber")}：{item.customer_part_number}</small>}
                   <small className="stage-path">{item.path ? pt("production.path", { v0: pathLabel(item), v1: item.path }) : pt("production.finalProduct")}</small>
                 </div>
               </td>

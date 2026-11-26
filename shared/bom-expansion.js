@@ -6,7 +6,7 @@ export const BOM_MAX_DEPTH = 10;
 export const BOM_MAX_NODES = 2000;
 export const BOM_MAX_MATERIALS = 500;
 export const bomUsageLabels = { stock: '领用本物料', explode: '展开下级 BOM' };
-export const BOM_NODE_COLUMNS = ['path','parent_path','bom_id','bom_version','bom_name','bom_product_id','bom_product_name','bom_base_quantity','bom_base_unit','loss_method','product_id','name','barcode','specification','unit','quantity','quantity_fraction','loss_rate','usage_mode','child_bom_id','note','position','unit_round_up','supply_fraction'];
+export const BOM_NODE_COLUMNS = ['path','parent_path','bom_id','bom_version','bom_name','bom_product_id','bom_product_name','bom_base_quantity','bom_base_unit','loss_method','product_id','name','barcode','specification','unit','quantity','quantity_fraction','loss_rate','usage_mode','child_bom_id','note','position','unit_round_up','supply_fraction','customer_part_number'];
 const fail = message => { throw new Error(message); };
 const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return a; };
 const ratio = (n, d = 1n) => {
@@ -106,7 +106,7 @@ export function buildBomNodes(root, loadBom, { availability = true, scrapRules =
         name: item.product?.name || item.name, barcode: item.product?.barcode || item.barcode,
         specification: item.product?.specification ?? item.specification ?? '', unit: item.unit, quantity: item.quantity,
         quantity_fraction: item.quantity_fraction ?? '', loss_rate: item.loss_rate ?? 0, usage_mode: mode,
-        unit_round_up: item.product?.unit_round_up ?? item.unit_round_up ?? 0, child_bom_id: item.child_bom_id ?? null, supply_fraction: '', note: item.note, position: nodes.length };
+        unit_round_up: item.product?.unit_round_up ?? item.unit_round_up ?? 0, child_bom_id: item.child_bom_id ?? null, supply_fraction: '', customer_part_number: item.customer_part_number ?? '', note: item.note, position: nodes.length };
       nodes.push(node);
       if (mode === 'explode') {
         const child = loadBom(item.child_bom_id);
@@ -145,13 +145,13 @@ export function validateSnapshotNodes(order, nodes) {
         node.parent_path !== node.path.split('.').slice(0, -1).join('.') || !Number.isSafeInteger(node.bom_id) || node.bom_id < 1 ||
         !Number.isSafeInteger(node.bom_version) || node.bom_version < 1 || !Number.isSafeInteger(node.bom_product_id) || node.bom_product_id < 1 ||
         !text(node.bom_name, 100, true) || !text(node.bom_product_name, 100, true) || !validStoredQuantity(node.bom_base_quantity, true) || !text(node.bom_base_unit, 100, true) ||
-        !text(node.name, 100, true) || !text(node.barcode, 100, true) || !text(node.specification, 500) || !text(node.unit, 100, true) || !text(node.note, 200) ||
+        !text(node.name, 100, true) || !text(node.barcode, 100, true) || !text(node.specification, 500) || !text(node.unit, 100, true) || !text(node.note, 200) || !text(node.customer_part_number ?? '', 500) ||
         node.position !== paths.size) fail('生产配方节点字段或路径无效。');
     if (node.supply_fraction) supplyFraction(node.supply_fraction);
     else if (node.supply_fraction !== '' && node.supply_fraction !== undefined) fail('生产用料分配比例无效。');
     validateBomQuantity(node.quantity, node.quantity_fraction); validateBomLossRate(node.loss_rate); validateBomLossMethod(node.loss_method);
     if (![0, 1].includes(node.unit_round_up ?? 0)) fail('生产物料取整属性无效。');
-    const productSignature = JSON.stringify([node.name, node.barcode, node.specification, node.unit, node.unit_round_up ?? 0]);
+    const productSignature = JSON.stringify([node.name, node.barcode, node.specification, node.unit, node.unit_round_up ?? 0, node.customer_part_number ?? '']);
     if (products.has(node.product_id) && products.get(node.product_id) !== productSignature) fail('同一生产物料的节点快照不一致。');
     products.set(node.product_id, productSignature);
     paths.set(node.path, node);
@@ -174,7 +174,7 @@ export function validateSnapshotNodes(order, nodes) {
       if (row.supply_fraction) {
         const next = bom.items[++i];
         if (!next || row.usage_mode !== 'stock' || next.usage_mode !== 'explode' || !next.supply_fraction ||
-            ['product_id','quantity','quantity_fraction','loss_rate','unit','note'].some(key => row[key] !== next[key])) fail('生产用料分配节点不一致。');
+            ['product_id','quantity','quantity_fraction','loss_rate','unit','note','customer_part_number'].some(key => (row[key] ?? '') !== (next[key] ?? ''))) fail('生产用料分配节点不一致。');
         const a = supplyFraction(row.supply_fraction), b = supplyFraction(next.supply_fraction);
         if (a[0]*b[1]+b[0]*a[1] !== a[1]*b[1]) fail('生产用料分配比例不守恒。');
       }

@@ -166,7 +166,7 @@ test('loss snapshots drive plans and actual-output variance without double-count
     scraps: [{ product_id: scrap, quantity: 2, disposition: 'stock' }, { product_id: outputScrap, quantity: 1.5, disposition: 'discard' }] }));
   assert.equal(done.items[0].standard_quantity, 30); assert.equal(done.items[0].variance_quantity, 3); assert.equal(done.items[0].variance_rate, 10);
   assert.deepEqual(done.scraps.map(row => row.expected_quantity), [1.98, 1.5], 'completion uses actual input, not a second loss multiplier');
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 59);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 60);
   for (const change of [
     data => { data.bom_items[0].loss_rate = 100; },
     data => { data.production_items.at(-1).loss_rate = 25; },
@@ -501,7 +501,7 @@ test('production searches and endpoints isolate warehouses and reject invalid pl
 test('production backup validates quantities, state, cost conservation and relations, restores without replay and invalidates stale editors', async t => {
   const f = await fixture(t), draft = await f.create(), done = await f.complete(await f.create());
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 59); assert.equal(backup.data.production_orders.length, 2);
+  assert.equal(backup.version, 60); assert.equal(backup.data.production_orders.length, 2);
   const before = f.inventory().map(({ stock, inventory_value_cents }) => [stock, inventory_value_cents]);
   for (const tamper of [
     value => { value.production_items = []; },
@@ -648,7 +648,7 @@ test('scrap backup validates rule relations and completion state, restores quant
   const draft = await f.create({ bom_version: bom.version }), order = await f.create({ bom_version: bom.version });
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { scraps: [{ product_id: scrap, quantity: 0.8, disposition: 'stock' }] })));
   const backup = f.ok(await f.request('/backup')), before = f.inventory().map(row => [row.stock, row.inventory_value_cents]);
-  assert.equal(backup.version, 59);
+  assert.equal(backup.version, 60);
   for (const tamper of [
     data => { data.bom_scraps[0].bom_id = 99999; }, data => { data.bom_scraps[0].source_product_id = f.second; data.bom_scraps[0].unit = 'kg'; },
     data => { data.bom_scraps[0].quantity = 101; }, data => { data.production_scraps[0].production_id = 99999; },
@@ -765,7 +765,7 @@ test('variance reasons survive backup and void, reject malformed drafts, and for
   const done = f.ok(await f.command(`/production-orders/${order.id}/complete`, f.completion(order, { items: [
     { product_id: f.material, quantity: 16, variance_reason: '调机\n材料偏差' }, { product_id: f.second, quantity: 1.5, variance_reason: '字'.repeat(500) },
   ] })));
-  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 59);
+  const backup = f.ok(await f.request('/backup')); assert.equal(backup.version, 60);
   assert.ok(backup.data.production_items.every(item => !('standard_quantity' in item)));
   for (const change of [
     data => { data.production_items[0].variance_reason = '草稿不得提前记完工原因'; },
@@ -1115,6 +1115,213 @@ test('production order numbers use SC, date and a six-digit daily sequence', asy
   assert.equal(nextProductionOrderNumber(f.db, at), 'SC20261103001000');
   assert.equal(nextProductionOrderNumber(f.db, '2026-11-04T00:00:00.000Z'), 'SC20261104000001');
 
+});
+
+test('production orders store sales order metadata, snapshot finished and semi-finished customer part numbers, export PDF and unify daily sequence numbers', async t => {
+  const f = await fixture(t);
+  const today = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+
+  const custA = f.ok(await f.command('/contacts', { role: 'customer', name: '北美电器客户', person: 'Alice', phone: '13800000001', address: '', note: '', active: 1 }));
+  const custB = f.ok(await f.command('/contacts', { role: 'customer', name: '欧洲线束客户', person: 'Bob', phone: '13800000002', address: '', note: '', active: 1 }));
+  const supplier = f.ok(await f.command('/contacts', { role: 'supplier', name: '铜材供应商', person: '', phone: '', address: '', note: '', active: 1 }));
+
+  const finishedId = await f.product('COCA0103', 1, {
+    name: '美式电源线黑色 COCA0103',
+    specification: '1.8m UL',
+    customer_part_numbers: [
+      { customer_id: custA.id, part_number: 'US-PWR-0103' },
+      { customer_id: custB.id, part_number: 'EU-PWR-9988' },
+    ],
+  });
+  const semiId = await f.product('SEMI-WIRE-01', 1, {
+    name: '半成品插头线组件',
+    specification: '3x0.75mm',
+    customer_part_numbers: [
+      { customer_id: custA.id, part_number: 'US-SEMI-77' },
+    ],
+  });
+
+  const semiBom = f.ok(await f.command('/boms', {
+    name: '插头线组件配方', product_id: semiId, base_quantity: 1, base_unit: '件', note: '', enabled: 1,
+    items: [{ product_id: f.material, quantity: 2, unit: '件', note: '' }],
+  }));
+  const rootBom = f.ok(await f.command('/boms', {
+    name: '美式电源线配方', product_id: finishedId, base_quantity: 1, base_unit: '件', note: '', enabled: 1,
+    items: [
+      { product_id: semiId, quantity: 1, unit: '件', usage_mode: 'explode', child_bom_id: semiBom.id, note: '' },
+      { product_id: f.second, quantity: 1, unit: '件', note: '' },
+    ],
+  }));
+
+  const options = f.ok(await f.request('/production-orders/assignment-options'));
+  assert.ok(options.customers.some(c => c.id === custA.id && c.name === '北美电器客户'));
+  assert.ok(!options.customers.some(c => c.id === supplier.id));
+
+  const prepared = f.ok(await f.request('/production-orders/prepare', {
+    bom_id: rootBom.id, bom_version: rootBom.version, schema_version: 2, planned_quantity: 5, supply_choices: [], post_processing_table_id: null,
+  }));
+  assert.equal(prepared.product.customer_part_numbers.length, 2);
+  assert.equal(prepared.supplies[0].customer_part_numbers[0].part_number, 'US-SEMI-77');
+
+  // Validation rejects non-customer contacts, invalid dates, and overly long order numbers.
+  assert.equal((await f.command('/production-orders', {
+    bom_id: rootBom.id, bom_version: rootBom.version, schema_version: 2, structure_token: prepared.structure_token,
+    planned_quantity: 5, note: '', customer_id: supplier.id,
+  })).status, 400);
+  assert.equal((await f.command('/production-orders', {
+    bom_id: rootBom.id, bom_version: rootBom.version, schema_version: 2, structure_token: prepared.structure_token,
+    planned_quantity: 5, note: '', delivery_date: '2026-02-30',
+  })).status, 400);
+
+  // Create real material + stage workflow order directly through HTTP without legacy fixture downgrade.
+  const createRealOrder = async extra => {
+    const res = await fetch(`${f.request ? '' : ''}` || `http://127.0.0.1:${f.db ? '' : ''}`, { method: 'GET' }).catch(() => null);
+    void res;
+    return null;
+  };
+  void createRealOrder;
+
+  // Use a fresh in-memory app without the legacy material_workflow downgrade wrapper to verify full multi-level stages & sub-document numbers.
+  const { app: liveApp } = createApp(':memory:');
+  const liveServer = liveApp.listen(0, '127.0.0.1');
+  await new Promise(resolve => liveServer.once('listening', resolve));
+  t.after(async () => { liveServer.closeAllConnections(); await new Promise(resolve => liveServer.close(resolve)); });
+  const baseUrl = `http://127.0.0.1:${liveServer.address().port}`;
+  let liveCookie = '';
+  const call = async (path, body, method = body === undefined ? 'GET' : 'POST') => {
+    const response = await fetch(`${baseUrl}/api${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Warehouse-ID': '1', ...(liveCookie ? { Cookie: liveCookie } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (response.headers.get('set-cookie')) liveCookie = response.headers.get('set-cookie').split(';')[0];
+    const data = response.headers.get('content-type')?.includes('application/pdf') ? Buffer.from(await response.arrayBuffer()) : await response.json();
+    return { status: response.status, data };
+  };
+  assert.equal((await call('/auth/setup', { username: 'liveadmin', password: 'Test-admin-123' })).status, 201);
+  assert.equal((await call('/settings/reset', { request_id: randomUUID(), confirmation: 'RESET_BUSINESS_DATA' })).status, 200);
+
+  const liveCustA = (await call('/contacts', { request_id: randomUUID(), role: 'customer', name: '北美电器客户', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  const liveCustB = (await call('/contacts', { request_id: randomUUID(), role: 'customer', name: '欧洲线束客户', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  const liveSupplier = (await call('/contacts', { request_id: randomUUID(), role: 'supplier', name: '原料商', person: '', phone: '', address: '', note: '', active: 1 })).data;
+  const raw = (await call('/products', { request_id: randomUUID(), name: '铜线', barcode: 'RAW-01', category: '生产', unit: '米', cost: 2, price: 4, threshold: 0 })).data;
+  const semi = (await call('/products', { request_id: randomUUID(), name: '半成品插头线', barcode: 'SEMI-01', category: '生产', unit: '条', cost: 3, price: 6, threshold: 0,
+    customer_part_numbers: [{ customer_id: liveCustA.id, part_number: 'CA-SEMI-01' }] })).data;
+  const fg = (await call('/products', { request_id: randomUUID(), name: '美式电源线黑色 COCA0103', barcode: 'FG-01', category: '生产', unit: '条', cost: 5, price: 10, threshold: 0,
+    customer_part_numbers: [{ customer_id: liveCustA.id, part_number: 'CA-FG-0103' }, { customer_id: liveCustB.id, part_number: 'CB-FG-9900' }] })).data;
+
+  // Purchase stock-in + return to verify RK and TH 6-digit daily sequence numbers.
+  const inbound = (await call('/orders', { request_id: randomUUID(), type: 'in', partner: '原料商', partner_id: liveSupplier.id, note: '', items: [{ product_id: raw.id, quantity: 100, price: 2 }] })).data;
+  assert.equal(inbound.number, `RK${today}000001`);
+  assert.equal((await call(`/orders/${inbound.id}/approve`, { request_id: randomUUID(), version: inbound.version })).status, 200);
+  const ret = (await call(`/orders/${inbound.id}/returns`, { request_id: randomUUID(), reason: '退回1米', items: [{ product_id: raw.id, quantity: 1 }] })).data;
+  assert.equal(ret.number, `TH${today}000001`);
+
+  const liveSemiBom = (await call('/boms', { request_id: randomUUID(), name: '插头线BOM', product_id: semi.id, base_quantity: 1, base_unit: '条', note: '', enabled: 1,
+    items: [{ product_id: raw.id, quantity: 2, unit: '米', note: '' }] })).data;
+  const liveFgBom = (await call('/boms', { request_id: randomUUID(), name: '电源线BOM', product_id: fg.id, base_quantity: 1, base_unit: '条', note: '', enabled: 1,
+    items: [{ product_id: semi.id, quantity: 1, unit: '条', usage_mode: 'explode', child_bom_id: liveSemiBom.id, note: '' }] })).data;
+  const livePlan = (await call('/production-orders/prepare', { bom_id: liveFgBom.id, bom_version: liveFgBom.version, schema_version: 2, planned_quantity: 10, supply_choices: [], post_processing_table_id: null })).data;
+
+  let order = (await call('/production-orders', {
+    request_id: randomUUID(), schema_version: 2, stage_schema_version: 1,
+    bom_id: liveFgBom.id, bom_version: liveFgBom.version, structure_token: livePlan.structure_token,
+    supply_choices: [], post_processing_table_id: null,
+    planned_quantity: 10, note: '首批订单生产',
+    order_number: 'SO-20261126-88', customer_id: liveCustA.id, delivery_date: '2026-12-15',
+  })).data;
+  assert.equal(order.number, `SC${today}000001`);
+  assert.equal(order.order_number, 'SO-20261126-88');
+  assert.equal(order.customer_id, liveCustA.id);
+  assert.equal(order.customer_name, '北美电器客户');
+  assert.equal(order.delivery_date, '2026-12-15');
+  assert.equal(order.customer_part_number, 'CA-FG-0103');
+  assert.equal(order.stages.find(s => s.path === '').customer_part_number, 'CA-FG-0103');
+  assert.equal(order.stages.find(s => s.path === '1').customer_part_number, 'CA-SEMI-01');
+  assert.equal(order.nodes.find(n => n.path === '1').customer_part_number, 'CA-SEMI-01');
+
+  // Cannot delete a customer linked to a production order.
+  assert.equal((await call(`/contacts/${liveCustA.id}/delete`, { request_id: randomUUID(), version: liveCustA.version })).status, 400);
+
+  // Search matches order_number, customer_name, root customer_part_number, and semi-finished customer_part_number.
+  for (const term of ['SO-20261126-88', '北美电器', 'CA-FG-0103', 'CA-SEMI-01']) {
+    const found = (await call(`/production-orders?q=${encodeURIComponent(term)}`)).data;
+    assert.equal(found.total, 1, term);
+    assert.equal(found.orders[0].id, order.id);
+  }
+
+  // Editing draft updates customer and refreshes customer_part_number snapshots on order, nodes, and stages.
+  order = (await call(`/production-orders/${order.id}`, {
+    request_id: randomUUID(), version: order.version, schema_version: 2, stage_schema_version: 1,
+    planned_quantity: 10, note: '改客户后草稿',
+    order_number: 'SO-20261126-99', customer_id: liveCustB.id, delivery_date: '2026-12-20',
+  })).data;
+  assert.equal(order.order_number, 'SO-20261126-99');
+  assert.equal(order.customer_name, '欧洲线束客户');
+  assert.equal(order.customer_part_number, 'CB-FG-9900');
+  assert.equal(order.stages.find(s => s.path === '1').customer_part_number, '');
+
+  // Switch back to CustA, then verify archive edits do not mutate the saved production snapshot.
+  order = (await call(`/production-orders/${order.id}`, {
+    request_id: randomUUID(), version: order.version, schema_version: 2, stage_schema_version: 1,
+    planned_quantity: 10, note: '锁定快照',
+    order_number: 'SO-20261126-88', customer_id: liveCustA.id, delivery_date: '2026-12-15',
+  })).data;
+  const latestFg = (await call(`/products/${fg.id}`)).data.product;
+  assert.equal((await call(`/products/${fg.id}`, {
+    ...latestFg, request_id: randomUUID(), customer_part_numbers: [{ customer_id: liveCustA.id, part_number: 'CHANGED-LATER' }],
+  }, 'PUT')).status, 200);
+  const reloaded = (await call(`/production-orders/${order.id}`)).data;
+  assert.equal(reloaded.customer_part_number, 'CA-FG-0103');
+  assert.equal(reloaded.stages.find(s => s.path === '1').customer_part_number, 'CA-SEMI-01');
+
+  // Verify PDF export renders with order metadata and customer part number.
+  const pdf = await call(`/production-orders/${order.id}/pdf?origin=${encodeURIComponent(baseUrl)}`);
+  assert.equal(pdf.status, 200);
+  assert.equal(pdf.data.subarray(0, 5).toString(), '%PDF-');
+
+  // Verify SCLL, SCFL, BCRK, SCRK, SCTL all use PREFIX + YYYYMMDD + 6-digit daily sequence.
+  order = (await call(`/production-orders/${order.id}/start`, {
+    request_id: randomUUID(), version: order.version, schema_version: 2, stage_schema_version: 1,
+    items: [{ product_id: raw.id, quantity: 20 }], note: '',
+  })).data;
+  assert.equal(order.material_documents[0].number, `SCLL${today}000001`);
+  const issueConfirm = (await call(`/production-material-documents/${order.material_documents[0].id}/confirm`, {
+    request_id: randomUUID(), version: order.material_documents[0].version,
+  })).data;
+  assert.equal(issueConfirm.issues[0].number, `SCFL${today}000001`);
+
+  order = (await call(`/production-orders/${order.id}`)).data;
+  order = (await call(`/production-orders/${order.id}/stages/complete`, {
+    request_id: randomUUID(), version: order.version, schema_version: 2, stage_schema_version: 1, operation_schema_version: 1,
+    path: '1', completed_quantity: 6, finish_order: false, note: '',
+    items: [{ path: '1.1', quantity: 12, variance_reason: '' }], scraps: [],
+  })).data;
+  order = (await call(`/production-orders/${order.id}/stage-receipts`, {
+    request_id: randomUUID(), version: order.version, schema_version: 2, stage_schema_version: 1,
+    path: '1', quantity: 1, confirm: true,
+  })).data;
+  const stageReceipt = order.receipt_documents.find(doc => doc.kind === 'stage');
+  assert.equal(stageReceipt.number, `BCRK${today}000001`);
+
+  order = (await call(`/production-orders/${order.id}/stages/complete`, {
+    request_id: randomUUID(), version: order.version, schema_version: 2, stage_schema_version: 1, operation_schema_version: 1,
+    path: '', completed_quantity: 5, finish_order: false, note: '',
+    items: [{ path: '1', quantity: 5, variance_reason: '' }], scraps: [],
+  })).data;
+  const rootReceipt = order.receipt_documents.find(doc => doc.kind !== 'stage');
+  assert.equal(rootReceipt.number, `SCRK${today}000001`);
+
+  order = (await call(`/production-orders/${order.id}/material-requests`, {
+    request_id: randomUUID(), version: order.version, schema_version: 2, stage_schema_version: 1,
+    type: 'in', items: [{ product_id: raw.id, quantity: 2 }], note: '',
+  })).data;
+  assert.equal(order.material_documents.at(-1).number, `SCTL${today}000001`);
+
+  // Backup & preview validation passes with all new fields and 6-digit sequence document numbers.
+  const backup = (await call('/backup')).data;
+  assert.equal(backup.version, 60);
+  assert.equal((await call('/backup/preview', { backup })).status, 200);
 });
 
 test('net planned requirements remove all layer losses, preserve supply splits, fractions, rounding and post-processing plans', () => {

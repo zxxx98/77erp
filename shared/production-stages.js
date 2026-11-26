@@ -35,6 +35,7 @@ export function deriveProductionStages(order) {
     const node = order.nodes.find(n => n.path === path), children = order.nodes.filter(n => n.parent_path === path), first = children[0];
     return { path, parent_path: node?.parent_path ?? null, product_id: node?.product_id ?? order.product_id,
       name: node?.name ?? order.product_name, unit: node?.unit ?? order.unit, unit_round_up: node?.unit_round_up ?? order.unit_round_up,
+      customer_part_number: (path ? node?.customer_part_number : order.customer_part_number) ?? '',
       bom_id: first.bom_id, bom_version: first.bom_version, bom_name: first.bom_name, base_quantity: first.bom_base_quantity,
       loss_method: first.loss_method, planned_quantity: path ? calculated.nodes.find(n => n.path === path).required : order.planned_quantity,
       items: children };

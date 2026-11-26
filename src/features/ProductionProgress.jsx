@@ -21,7 +21,7 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
   const layers = [...(order.stage_workflow ? pooledProductionStages(order) : [{ ...order, path: '', name: order.product_name }]),
     ...targets.filter(target => target.postProcessing).map(target => ({ ...target.layer, postProcessing: true }))];
   const registerable = order.status === 'in_progress' || !order.material_workflow && order.status === 'draft';
-  const matches = layers.filter(layer => `${layer.name} ${layer.path} ${targets.filter(target => target.path === layer.path).map(target => target.name).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const matches = layers.filter(layer => `${layer.name} ${layer.customer_part_number || ''} ${layer.path} ${targets.filter(target => target.path === layer.path).map(target => target.name).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return <section className="panel bom-section production-progress-list">
     <h2>{t('production.productProgress')}</h2>
     {layers.length > 1 && <Input type="search" aria-label={t('production.searchProductionLevels')} placeholder={t('production.searchProgress')} value={search} onChange={event => setSearch(event.target.value)} />}
@@ -37,6 +37,7 @@ export function ProductionProgress({ order, busy, onRegister, onHistory, onOpera
           : layer.completed_quantity ? 'production.registered2' : 'production.notRegistered';
       return <article className="production-progress-item" key={layer.path}>
         <div className="production-list-title"><strong>{layer.name}</strong><Badge tone={reached && !waitingForOutput ? 'green' : layer.completed_quantity ? 'blue' : 'gray'}>{t(badge)}</Badge></div>
+        {!layer.postProcessing && layer.customer_part_number && <small className="production-customer-part">{t('production.customerPartNumber')}：{layer.customer_part_number}</small>}
         {layer.postProcessing && <small>{t('production.postProcessing')} · {t(order.output_completed ? 'production.postProcessingFinal' : 'production.postProcessingAvailable')}</small>}
         {layer.pool_paths ? <small>{t('production.sharedSemiFinished')} · {t('production.suppliesProduct', { name: [...new Set(order.stages.filter(s => layer.pool_paths.includes(s.path)).map(s => order.stages.find(p => p.path === s.parent_path)?.name).filter(Boolean))].join('、') })}</small>
           : parent && <small>{t('production.suppliesProduct', { name: parent.name })} · {layer.path}</small>}

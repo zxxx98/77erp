@@ -21,6 +21,7 @@ function LayerHeading({ layer, production }) {
   const routeLabel = layer.route ? `${layer.route.name} · ${layer.route.graph.price_table_name || t('route.defaultPriceTable')} · ${sourceLabel(layer.route_source)} · v${layer.route.version}` : noRouteLabel(production);
   return <>
     <strong className="overview-layer-name" title={layer.name}>{layer.name}</strong>
+    {layer.customer_part_number && <span className="overview-layer-part" title={`${t('production.customerPartNumber')}：${layer.customer_part_number}`}>{t('production.customerPartNumber')}：{layer.customer_part_number}</span>}
     <span className="overview-layer-recipe" title={`${layer.bom_name || ''} · ${layer.path || t('production.finalProduct')}`}>{layer.bom_name} · {layer.path || t('production.finalProduct')}</span>
     <span className="overview-layer-route" title={routeLabel}>{routeLabel}</span>
     {(layer.enabled === 0 || layer.product_active === 0 || layer.route?.enabled === 0) && <span className="overview-inactive">{t('route.disabled')}</span>}

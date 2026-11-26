@@ -70,6 +70,7 @@ export function BomStructureTable({
                 >
                   {node.name}
                 </button>
+                {node.customer_part_number && <small className="production-customer-part">{pt('production.customerPartNumber')}：{node.customer_part_number}</small>}
                 {narrow && <div className="bom-node-tags">
                   <span className="bom-node-type">{productionType(node)}</span>
                   <span>{nodeLevel(node)}</span>

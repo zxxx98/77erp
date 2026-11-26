@@ -2,13 +2,15 @@ import { Input } from '../ui/controls.jsx';
 import { Select } from '../Dropdown.jsx';
 import { Button } from '../components/common.jsx';
 import { t } from '../i18n/index.js';
+import { resolveCustomerPartNumber } from '../../shared/production.js';
 
-export function ProductionSupply({ supplies, choices, onChange, onCalculate, stale, disabled }) {
+export function ProductionSupply({ supplies, choices, customerId, onChange, onCalculate, stale, disabled }) {
   return <section className="panel bom-section production-supply">
     <h2>{t('production.supplyTitle')}</h2>
     <p className="bom-hint">{t('production.supplyHint')}</p>
     {supplies.filter(row => row.recipe_options.length || row.mode !== 'stock').map(row => {
       const choice = choices.find(item => item.path === row.path) || row;
+      const partNumber = resolveCustomerPartNumber(row.customer_part_numbers, customerId);
       const set = patch => {
         const resetChildren = patch.mode === 'stock' || patch.child_bom_id !== undefined && patch.child_bom_id !== choice.child_bom_id;
         onChange([...choices.filter(item => item.path !== row.path && (!resetChildren || !item.path.startsWith(`${row.path}.`))),
@@ -16,6 +18,7 @@ export function ProductionSupply({ supplies, choices, onChange, onCalculate, sta
       };
       return <div className="production-supply-row" key={row.path}>
         <strong>{row.name} <small>［{row.path}］</small></strong>
+        {partNumber && <p className="production-customer-part-line"><span className="production-customer-part">{t('production.customerPartNumber')}：{partNumber}</span></p>}
         <p className="bom-hint">{t('production.supplyDemand', { required: row.required, stock: row.stock, unit: row.unit })}</p>
         {row.mode === 'partial' && <p className="bom-hint">{t('production.supplyAllocation', { stock: row.stock_quantity, produce: row.production_quantity, unit: row.unit })}</p>}
         <div className="bom-form-grid">

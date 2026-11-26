@@ -2,6 +2,7 @@ import { remapChecks, needsQualityReview } from '../shared/quality-checks.js';
 import express from 'express';
 import multer from 'multer';
 import { randomUUID, createHash, createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { qualityStorage } from './quality-storage.js';
 import { hasPermission } from '../shared/permissions.js';
 import { validateDefinition, previewDefinition, parseRegion } from '../shared/quality-template.js';
@@ -102,7 +103,7 @@ export function validateQualityBackup(data) {
     const t = templates.get(a.template_id), f = files.get(a.file_id);
     const r = data.quality_template_revisions.find(rev => rev.id === a.revision_id && rev.template_id === a.template_id);
     if (!t || !f || !r || a.warehouse_id !== t.warehouse_id || a.warehouse_id !== f.warehouse_id ||
-        !text(a.number,60) || acceptanceNumbers.has(a.number) || !/^QA-\d{8}-[A-F0-9]{12}$/.test(a.number) || !text(a.name,100) || !a.name.trim() ||
+        !text(a.number,60) || acceptanceNumbers.has(a.number) || !/^(?:QA-\d{8}-[A-F0-9]{12}|QA\d{8}\d{6,})$/.test(a.number) || !text(a.name,100) || !a.name.trim() ||
         !text(a.note,1000) || !text(a.result,5*1024*1024) || !text(a.created_by_name,60) || !text(a.created_at,100))
       throw error('备份验收单关联或字段无效。');
     acceptanceNumbers.add(a.number);
@@ -333,7 +334,7 @@ export function installQuality(app, db, options = {}) {
         const bindings=resolveBindings(req.warehouse.id,JSON.parse(revision.definition),result,choices);
         const now=new Date().toISOString();
         const fid=Number(db.prepare('INSERT INTO quality_template_files(warehouse_id,account_id,bucket,object_key,filename,size,sha256,workbook,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(req.warehouse.id,c.account_id,c.bucket,key,file.filename,req.file.size,file.sha256,JSON.stringify(file.workbook),now).lastInsertRowid);
-        const number=`QA-${now.slice(0,10).replaceAll('-','')}-${randomBytes(6).toString('hex').toUpperCase()}`;
+        const number=nextDailyDocumentNumber(db,'quality_acceptances','QA',now);
         // Deleted IDs must not be reused: saved operation requests still refer to them.
         const lastDeletedId=Number(db.prepare("SELECT value FROM app_metadata WHERE key='quality_acceptance_last_deleted_id'").get()?.value||0);
         const id=Math.max(lastDeletedId,db.prepare('SELECT COALESCE(MAX(id),0) AS id FROM quality_acceptances').get().id)+1;

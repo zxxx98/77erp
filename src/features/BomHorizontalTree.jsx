@@ -19,6 +19,7 @@ export function BomHorizontalTree({ groups, root, scope, expanded, searching, in
         <div className="bom-horizontal-node" data-node-path={node.path} data-selected={selectedPath === node.path || undefined} data-match={searching && matchedPaths.has(node.path) || undefined}>
           <button type="button" className="bom-node-name" aria-label={t('production.viewDetails2', { v0: node.name })} onClick={event => onSelect(node.path, event.currentTarget)}>{node.name}</button>
           <small>{node.barcode}</small>
+          {node.customer_part_number && <small className="production-customer-part">{t('production.customerPartNumber')}：{node.customer_part_number}</small>}
           <div className="bom-node-tags"><span>{translateText(node.current_production_type) || t('production.productionTypeNotSet')}</span><span>{t('production.structureLevelValue', { level: node.path.split('.').length })}</span></div>
           <p className="bom-horizontal-quantity">{count(node.required)} {node.unit}</p>
           <small>{bomUsageLabels[node.usage_mode]}</small>
@@ -36,6 +37,7 @@ export function BomHorizontalTree({ groups, root, scope, expanded, searching, in
   return <div className="bom-horizontal-tree">
     <div className="bom-horizontal-root bom-horizontal-node" data-node-path={scope}>
       <strong>{root.name}</strong><small>{scope ? t('production.openBranch2') : t('production.finalProduct')}</small>
+      {root.customer_part_number && <small className="production-customer-part">{t('production.customerPartNumber')}：{root.customer_part_number}</small>}
       <p className="bom-horizontal-quantity">{count(root.quantity)} {root.unit}</p>
     </div>
     {branch(searching ? '' : scope)}

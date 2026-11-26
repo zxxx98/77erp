@@ -279,6 +279,7 @@ export function installCommerce(app, db, { route, mutation }) {
       if (db.prepare("SELECT 1 FROM products p,json_each(p.customer_part_numbers) cp WHERE json_extract(cp.value,'$.customer_id')=? LIMIT 1").get(contact.id))
         fail('此客户已关联物料客户料号，不能删除；可停用以保留记录。');
       if (db.prepare("SELECT 1 FROM orders WHERE partner_id=?").get(contact.id) ||
+          db.prepare("SELECT 1 FROM production_orders WHERE customer_id=?").get(contact.id) ||
           db.prepare("SELECT 1 FROM templates WHERE partner_id=?").get(contact.id) ||
           db.prepare("SELECT 1 FROM stock_qr_codes WHERE partner_id=?").get(contact.id))
         fail("此往来单位已关联单据、模板或出入库二维码，不能删除；可停用以保留历史记录。");

@@ -1,4 +1,20 @@
 .production-fields { margin-top: 22px; }
+.production-order-meta-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; margin-bottom: 0; }
+.production-order-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 20px; padding: 12px 0; margin-bottom: 18px; border-block: 1px solid var(--border); min-width: 0; }
+.production-order-meta > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.production-order-meta small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.production-order-meta strong { font-size: 13px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.production-tabular { font-variant-numeric: tabular-nums; }
+.production-customer-part-line { margin: 6px 0 0; }
+.production-customer-part { display: inline-block; font-size: 12px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.production-customer-part.is-unset { color: var(--muted); }
+.production-progress-item > .production-customer-part { display: block; margin-top: 4px; }
+.production-list-order-meta { color: var(--text-secondary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.overview-layer-part { display: block; font-size: 12px; color: var(--text-secondary); line-height: 1.45; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .production-order-meta-grid { grid-template-columns: 1fr; }
+  .production-order-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+}
 .production-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
 .production-detail-main { flex: 1; min-width: 0; }
 .production-detail-identity { margin-bottom: 16px; min-width: 0; }

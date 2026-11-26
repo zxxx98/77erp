@@ -1,5 +1,5 @@
 import { stageReceiptDocument } from './production-stage-receipts.js';
-import { randomUUID } from 'node:crypto';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { moveInventory } from './commerce.js';
 import { addQuantity, validStoredQuantity } from '../shared/quantity.js';
 import { hasPermission } from '../shared/permissions.js';
@@ -61,7 +61,7 @@ export function receiptQuantities(db, order) {
 }
 export function createProductionReceipt(db, req, order, batchId) {
   const batch = db.prepare('SELECT * FROM production_batches WHERE id=?').get(batchId), at = batch.created_at;
-  const number = `SCRK${at.slice(0,10).replaceAll('-','')}-${randomUUID().replaceAll('-','').slice(0,12)}`;
+  const number = nextDailyDocumentNumber(db, 'production_receipts', 'SCRK', at);
   const id = Number(db.prepare(`INSERT INTO production_receipts(number,warehouse_id,production_id,production_number,batch_id,batch_number,product_name,unit,quantity,total_cost_cents,created_by_name,created_at,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(number, req.warehouse.id, order.id, order.number, batchId, batch.batch_number, order.product_name, order.unit, batch.completed_quantity, batch.total_cost_cents, batch.created_by_name, at, at).lastInsertRowid);
   saveExactQuantity(db, 'production_receipts', id, 'quantity', exactQuantity(batch, 'completed_quantity'));
@@ -140,7 +140,7 @@ export function validateProductionReceiptBackup(data) {
       doc.warehouse_id!==order.warehouse_id || doc.production_number!==order.number || doc.batch_number!==batch.batch_number ||
       doc.product_name!==order.product_name || doc.unit!==order.unit || exactCompare(exactQuantity(doc),exactQuantity(batch,'completed_quantity'))!==0 || doc.total_cost_cents!==batch.total_cost_cents ||
       !validStoredQuantity(doc.quantity,true) || !money(doc.total_cost_cents) || !isId(doc.version) ||
-      !text(doc.number,100,true) || !/^SCRK\d{8}-[a-f0-9]{12}$/.test(doc.number) || numbers.has(doc.number) ||
+      !text(doc.number,100,true) || !/^SCRK\d{8}(?:-[a-f0-9]{12}|\d{6,})$/.test(doc.number) || numbers.has(doc.number) ||
       !['pending','confirmed','void'].includes(doc.status) || !text(doc.created_by_name,60,true) || !date(doc.created_at) || !date(doc.updated_at) ||
       doc.created_at!==batch.created_at || doc.created_by_name!==batch.created_by_name ||
       !text(doc.confirmed_by_name,60) || (doc.confirmed_at===null ? doc.confirmed_by_name!=='' : !date(doc.confirmed_at) || !doc.confirmed_by_name.trim()) ||

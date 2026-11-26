@@ -4,6 +4,7 @@ import { resolveContact, moveInventory } from './commerce.js';
 import { notifyOrder, notificationMutation } from './notifications.js';
 import { contactMatchesDirection } from '../shared/contacts.js';
 import { hasPermission } from '../shared/permissions.js';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { operationRequest, saveOperationRequest } from './operations.js';
 
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -74,9 +75,8 @@ export function createOrder(db, req, body) {
     if (!Number.isSafeInteger(amount) || !Number.isSafeInteger(total)) fail('单据金额过大，请减少数量或拆分单据。');
     return {product,quantity,price:item.price,amount};
   });
-  const at = new Date().toISOString(), prefix = `${type === 'in' ? 'RK' : 'CK'}${at.slice(0,10).replaceAll('-','')}`;
-  const last = db.prepare('SELECT MAX(CAST(substr(number, ?) AS INTEGER)) AS sequence FROM orders WHERE number LIKE ?').get(prefix.length+1,`${prefix}%`);
-  const number = prefix + String((last.sequence || 0)+1).padStart(6,'0');
+  const at = new Date().toISOString();
+  const number = nextDailyDocumentNumber(db, 'orders', type === 'in' ? 'RK' : 'CK', at);
   const sourceId = body.resubmitted_from_id ?? null;
   if (sourceId !== null) {
     const source = Number.isSafeInteger(sourceId) && db.prepare('SELECT * FROM orders WHERE id=? AND warehouse_id=?').get(sourceId,req.warehouse.id);

@@ -23,7 +23,9 @@ export async function renderProductionPdf({order,warehouseName,registrationUrl,e
  const text=(value,size=10)=>{doc.fontSize(size);for(const line of lines(value,width)){if(y+size+7>bottom)page();doc.text(line,left,y,{lineBreak:false});y+=size+7;}doc.fontSize(10);};
  text(t('pdf.title'),21);text(t('pdf.number',{value:display(order.number)}));text(t('pdf.warehouseGroup',{warehouse:display(warehouseName),group:display(productionAssignmentNames(order))}));
  if(order.status==='void'){doc.fillColor('#b91c1c');text(t('pdf.void'),14);doc.fillColor('#111111');text(t('pdf.voidReason',{value:display(order.void_reason)}));}
+ if(order.order_number||order.customer_name||order.delivery_date)text(t('pdf.orderMeta',{orderNumber:display(order.order_number),customer:display(order.customer_name),deliveryDate:display(order.delivery_date)}));
  text(t('pdf.product',{value:display(order.product_name)}));text(t('pdf.identity',{barcode:display(order.barcode),specification:display(order.specification)}));
+ if(order.customer_part_number)text(t('pdf.customerPartNumber',{value:display(order.customer_part_number)}));
  text(t('pdf.quantity',{quantity:display(order.planned_quantity),unit:display(order.unit)}));
  text(t('pdf.bom',{name:display(order.bom_name),version:display(order.bom_version),quantity:display(order.base_quantity),unit:display(order.unit)}));
  const scanTitle=t(order.operation_routes?.length ? 'pdf.scanOperations' : order.stage_workflow ? 'pdf.scanStages' : 'pdf.scan');

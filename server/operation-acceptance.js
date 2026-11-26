@@ -1,4 +1,5 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { nextDailyDocumentNumber } from './document-numbers.js';
 import { MAX_QUANTITY } from '../shared/quantity.js';
 import { productionStageItems, stageInputCanBeZero } from '../shared/production-stages.js';
 import { validateProductionCompletion } from '../shared/production.js';
@@ -120,7 +121,7 @@ export function saveOperationAcceptance(db,req,order,input) {
   const bindings=[{sheetName:sheet.sheetName,mode:'manual',product_id:product.id,product,keyValue:sheetUniqueKey(JSON.parse(prepared.revision.definition),sheet).keyValue}];
   const last=Number(db.prepare("SELECT value FROM app_metadata WHERE key='quality_acceptance_last_deleted_id'").get()?.value||0);
   const id=Math.max(last,db.prepare('SELECT COALESCE(MAX(id),0) id FROM quality_acceptances').get().id)+1;
-  const number=`QA-${now.slice(0,10).replaceAll('-','')}-${randomBytes(6).toString('hex').toUpperCase()}`;
+  const number=nextDailyDocumentNumber(db,'quality_acceptances','QA',now);
   const title=`${order.number} · ${input.node.name}`.slice(0,100);
   const note=`工序验收合格；${input.route.product_coefficient != null ? '后处理工序' : `生产层：${input.route.path||'根层'}`}；本次登记数量：${req.body.quantity??req.body.completed_quantity} ${input.route.unit ?? layer.unit}；作业员工：${input.worker.name||input.worker.username}`;
   db.prepare(`INSERT INTO quality_acceptances(id,warehouse_id,number,name,note,template_id,revision_id,file_id,result,created_by_name,created_at,bindings,checks_acknowledged)
