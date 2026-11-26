@@ -141,6 +141,9 @@ test("order details create partial returns and void return orders with confirmat
         },
       })
     ).json();
+    await expect(await page.request.post(f.base + `/api/orders/${incoming.id}/approve`, {
+      data: {version: 1, request_id: 'approve-return-source'},
+    })).toBeOK();
     await page.goto(f.base + "/#history");
     await page.getByText(incoming.number, { exact: true }).click();
     await page.getByLabel("操作原因").fill("退回破损");

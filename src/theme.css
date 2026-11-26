@@ -1824,6 +1824,9 @@ a:focus-visible {
   margin-bottom: 4px;
 }
 
+.detail-meta.return-meta { background: var(--surface); border-width: 1px 0; border-radius: 0; }
+.detail-meta.return-meta button { padding: 0; height: auto; }
+
 .detail-meta strong {
   font-size: 13px;
   font-weight: 500;

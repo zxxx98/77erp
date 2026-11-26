@@ -10,7 +10,7 @@ import { CheckCheck } from 'lucide-react';
 import { money, price, count, currencySymbol } from '../app/format.js';
 import { orderLineAmount } from '../../shared/money.js';
 
-function OrderDetail({ order, onClose, onSaved, isAdmin, onCopy }) {
+function OrderDetail({ order, onClose, onSaved, isAdmin, onCopy, onViewOrder }) {
   useLocale();
   const { can, costs } = usePermissions();
   if (['pending','rejected','cancelled'].includes(order.status)) return <OrderApprovalDetail order={order} onClose={onClose} onChanged={onSaved} onCopy={onCopy}/>;
@@ -53,7 +53,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin, onCopy }) {
             </strong>
           </div>
         </div>
-        <OrderDeliveryDetails order={order} />
+        <OrderDeliveryDetails order={order} onViewOrder={onViewOrder} />
         <div className="table-scroll">
           <table className="data-table detail-table">
             <thead>
@@ -108,7 +108,7 @@ function OrderDetail({ order, onClose, onSaved, isAdmin, onCopy }) {
         {transfer && (
           <div className="info-box">{translate("warehouse.there.is.no.amount.involved.in.inter.warehouse.transfers.and.the")}</div>
         )}
-        {!transfer && order.kind !== 'internal' && can('finance') && <Payments order={order} />}
+        {!transfer && order.kind !== 'internal' && !order.return_mode && can('finance') && <Payments order={order} />}
         {!transfer && can('corrections') && <OrderActions order={order} onSaved={onSaved} />}
       </div>
       <div className="modal-footer order-form-footer">

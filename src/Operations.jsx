@@ -2,7 +2,7 @@ import { localizeError } from './i18n/errors.js';
 import { ExportLanguageSelect } from './ExportLanguageSelect.jsx';
 import { t as translate, getFormatLocale, getLocale } from './i18n/index.js';
 import { useLocale } from './i18n/react.jsx';
-import { currencySymbol, money as formatMoney } from './app/format.js';
+import { currencySymbol, price, count, todayKey, money as formatMoney } from './app/format.js';
 import { ConfigProvider as AntConfigProvider } from 'antd';
 import { Input as AntInput, Button as AntButton, Checkbox as AntCheckbox } from './ui/controls.jsx';
 import { FormField } from './ui/FormField.jsx';
@@ -46,7 +46,7 @@ function useOperation() {
       setBusy(false);
     }
   };
-  const send = (path, body) => {
+  const send = (path, body, options = {}) => {
     const key = JSON.stringify([path, body]);
     if (request.current.key !== key)
       request.current = {
@@ -57,17 +57,22 @@ function useOperation() {
         ).join("-"),
       };
     return api(path, {
-      method: "POST",
+      ...options, method: "POST",
       body: { ...body, request_id: request.current.id },
     });
   };
   return { busy, error, run, send };
 }
-export function OrderActions({ order, onSaved }) {
+export function OrderActions({ order, onSaved, returnOnly = false }) {
   useLocale();
   const { busy, error, run, send } = useOperation();
   const [reason, setReason] = useState(""),
     [quantities, setQuantities] = useState({});
+  const supplier = order.kind === 'normal' && order.type === 'in';
+  const [mode, setMode] = useState('return');
+  const [date, setDate] = useState(todayKey);
+  const [purchaseNumber, setPurchaseNumber] = useState(order.order_number || '');
+  const [deliveryNumber, setDeliveryNumber] = useState(order.delivery_number || '');
   if (order.status === "void")
     return (
       <div className="info-box">{translate("warehouse.obsolete")}{order.void_reason} · {order.voided_at}
@@ -79,6 +84,12 @@ export function OrderActions({ order, onSaved }) {
     );
   const act = (action) =>
     run(async () => {
+      if (action === 'exchange-receipt') {
+        if (!window.confirm(translate('warehouse.returns.confirmReceipt', {number: order.number}))) return;
+        const receipt = await send(`/orders/${order.id}/exchange-receipt`, {}, { warehouseId: order.warehouse_id });
+        await onSaved(translate('warehouse.returns.receivedMessage', {number: receipt.number}));
+        return;
+      }
       if (!reason.trim()) throw new Error(translate("warehouse.please.fill.in.the.reason.for.the.operation"));
       const items = order.items
         .filter(
@@ -96,25 +107,35 @@ export function OrderActions({ order, onSaved }) {
         !window.confirm(
           action === "void"
             ? translate("warehouse.confirm.to.void.this.document.and.reverse.inventory.adjustment.the.original")
-            : translate("warehouse.confirm.the.return.and.adjust.the.inventory.at.the.original.order"),
+            : supplier && mode === 'exchange' ? translate('warehouse.returns.confirmExchange') : translate("warehouse.confirm.the.return.and.adjust.the.inventory.at.the.original.order"),
         )
       )
         return;
-      await send(`/orders/${order.id}/${action}`, {
+      const result = await send(`/orders/${order.id}/${action}`, {
         reason,
         ...(action === "returns" ? { items } : {}),
-      });
+        ...(action === "returns" && supplier ? { return_mode: mode, return_date: date, order_number: purchaseNumber, delivery_number: deliveryNumber } : {}),
+      }, { warehouseId: order.warehouse_id });
       await onSaved(
         action === "void"
           ? translate("warehouse.the.document.has.been.voided.and.the.inventory.has.been.adjusted")
-          : translate("warehouse.return.order.has.been.generated.and.inventory.has.been.adjusted"),
+          : supplier ? translate('warehouse.returns.sentMessage', { number: result.number }) : translate("warehouse.return.order.has.been.generated.and.inventory.has.been.adjusted"),
       );
     });
   return (
-    <section className="operation-panel">
-      <h3>{translate("warehouse.document.correction")}</h3>
+    <section className="operation-panel order-correction">
+      {!returnOnly && <h3>{translate("warehouse.document.correction")}</h3>}
+      {order.return_mode === 'exchange' && !order.replacement_number && <AntButton type="primary" disabled={busy} onClick={() => act('exchange-receipt')}>{translate('warehouse.returns.receive')}</AntButton>}
+      {supplier && <div className="form-grid return-fields">
+        <Select label={translate('warehouse.returns.mode')} value={mode} onChange={setMode} disabled={busy}>
+          <option value="return">{translate('warehouse.returns.return')}</option><option value="exchange">{translate('warehouse.returns.exchange')}</option>
+        </Select>
+        <label>{translate('warehouse.returns.date')}<AntInput type="date" required value={date} onChange={e => setDate(e.target.value)} disabled={busy} /></label>
+        <label>{translate('warehouse.returns.po')}<AntInput maxLength={100} value={purchaseNumber} onChange={e => setPurchaseNumber(e.target.value)} disabled={busy} /></label>
+        <label>{translate('warehouse.delivery.number')}<AntInput maxLength={100} value={deliveryNumber} onChange={e => setDeliveryNumber(e.target.value)} disabled={busy} /></label>
+      </div>}
       {busy && <p><LoadingStatus>{translate("warehouse.processing.document")}</LoadingStatus></p>}
-      {order.source_order_id && <p>{translate("warehouse.associated.original.order.id")}{order.source_order_id}</p>}
+      {order.source_order_id && (order.kind === "return" && order.type === "in" || !order.source_number) && <p>{translate("warehouse.associated.original.order.id")}{order.source_order_id}</p>}
       <label>{translate("warehouse.reason.for.operation")}<AntInput
           value={reason}
           maxLength={500}
@@ -125,40 +146,37 @@ export function OrderActions({ order, onSaved }) {
       {order.kind === "normal" && (
         <>
           <p>{translate("warehouse.the.original.order.price.will.be.used.for.returns.leaving.the")}</p>
-          {order.items.map((i) => (
-            <label key={i.id}>
-              {i.name}{translate("warehouse.refundable")}{" "}{addQuantity(i.quantity, -(i.returned_quantity || 0))}）
-              <FormField value={quantities[i.id] ?? ""} type="number" min="0" max={addQuantity(i.quantity, -(i.returned_quantity || 0))} label={translate("warehouse.return.quantity", { v0: i.name })}><AntInput
-                aria-label={translate("warehouse.return.quantity", { v0: i.name })}
-                type="number"
-                min="0"
-                step="0.0001"
-                max={addQuantity(i.quantity, -(i.returned_quantity || 0))}
-                value={quantities[i.id] ?? ""}
-                disabled={busy}
-                onChange={(e) =>
-                  setQuantities({
-                    ...quantities,
-                    [i.id]: e.target.value,
-                  })
-                }
-              /></FormField>
-            </label>
-          ))}
+          <div className="erp-table-wrap erp-table-mobile-stack">
+            <table className="erp-table data-table">
+              <thead><tr>{['warehouse.material','warehouse.unit.price','warehouse.returns.available','warehouse.returns.quantity'].map(key => <th key={key}>{translate(key)}</th>)}</tr></thead>
+              <tbody>{order.items.map(i => {
+                const remaining = addQuantity(i.quantity, -(i.returned_quantity || 0));
+                return <tr key={i.id}>
+                  <td className="erp-cell-main"><strong>{i.name}</strong><small className="muted"> {i.barcode}</small></td>
+                  <td data-label={translate('warehouse.unit.price')}>{currencySymbol()} {price(i.price)}</td>
+                  <td data-label={translate('warehouse.returns.available')}>{count(remaining)} {i.unit}</td>
+                  <td data-label={translate('warehouse.returns.quantity')}><AntInput type="number" min="0" max={remaining} step={i.current_unit_round_up ? 1 : '0.0001'}
+                    aria-label={translate('warehouse.return.quantity', { v0: i.name })}
+                    value={quantities[i.id] ?? ''} disabled={busy || remaining <= 0}
+                    onChange={e => setQuantities(current => ({...current, [i.id]: e.target.value}))} /></td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
           <AntButton type="primary"
             className="btn btn-primary"
             htmlType="button"
             disabled={busy}
             onClick={() => act("returns")}
-          >{translate("warehouse.confirm.return")}</AntButton>
+          >{translate(mode === "exchange" ? "warehouse.returns.sendExchange" : "warehouse.confirm.return")}</AntButton>
         </>
       )}
-      <AntButton type="default"
+      {!returnOnly && <AntButton type="default"
         className="btn"
         htmlType="button"
         disabled={busy}
         onClick={() => act("void")}
-      >{translate("warehouse.void.document")}</AntButton>
+      >{translate("warehouse.void.document")}</AntButton>}
       {error && (
         <p className="form-error" role="alert">
           {error}

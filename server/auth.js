@@ -291,7 +291,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
       const allowed = /\/cancel$/.test(path) ? ['purchase','sale'].some(key => hasPermission(req.user,key)) : hasPermission(req.user,'stock_approve');
       return allowed ? next() : res.status(403).json({error:'需要相应开单或出入库审核权限。'});
     }
-    if (read && (path === '/orders' || /^\/orders\/\d+$/.test(path)) && ['stock_approve','purchase','sale'].some(key => hasPermission(req.user,key))) return next();
+    if (read && (path === '/orders' || /^\/orders\/\d+$/.test(path)) && ['stock_approve','purchase','sale','corrections'].some(key => hasPermission(req.user,key))) return next();
     const legacyAllowed = (read && (
       ['/workspace','/data','/style','/warehouses','/categories','/contacts','/templates','/orders/export','/products','/orders','/dashboard'].includes(path) ||
       /^\/products\/barcode\/[^/]+$/.test(path) || /^\/products\/\d+$/.test(path) ||
@@ -319,7 +319,7 @@ export function installAuth(app, db, { publicOrigins = [] } = {}) {
           (req.method === 'DELETE' && /^\/products\/\d+$/.test(path)) ||
           (['POST','PUT'].includes(req.method) && /^\/categories(?:\/\d+(?:\/delete)?)?$/.test(path))) permission = 'products';
       if (post && path === '/orders') permission = req.body?.type === 'in' ? 'purchase' : req.body?.type === 'out' ? 'sale' : null;
-      if (post && /^\/orders\/\d+\/(void|returns)$/.test(path)) permission = 'corrections';
+      if (post && /^\/orders\/\d+\/(void|returns|exchange-receipt)$/.test(path)) permission = 'corrections';
       if ((read && path === '/transfers') ||
           (post && (path === '/transfers' || /^\/transfers\/[0-9a-f-]{36}\/void$/.test(path)))) permission = 'transfer';
       if ((read || post) && path === '/stocktakes') permission = 'stocktake';

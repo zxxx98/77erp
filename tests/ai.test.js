@@ -1804,3 +1804,24 @@ test('AI reads production order sales metadata and customer part number snapshot
   assert.equal(detail.customer_part_number, 'AI-CUST-PN-01');
   assert.ok(!JSON.stringify(detail).includes('cost_cents'));
 });
+
+test('order search identifies supplier exchanges and their posted replacement receipts', async t => {
+  const f = await fixture(t);
+  const post = async (path, body) => {
+    const reply = await f.request(f.admin, path, {request_id:randomUUID(), ...body});
+    assert.ok(reply.status < 300, JSON.stringify(reply.data));
+    return reply.data;
+  };
+  const source = await post('/orders', f.order());
+  await post(`/orders/${source.id}/approve`, {version:1});
+  const exchange = await post(`/orders/${source.id}/returns`, {reason:'同料补换',return_mode:'exchange',
+    items:[{product_id:1,quantity:1}], return_date:'2026-08-20'});
+  const receipt = await post(`/orders/${exchange.id}/exchange-receipt`, {});
+  f.use('search_orders', {warehouse_id:1});
+  assert.equal((await f.chat(f.admin)).status, 200);
+  const orders = JSON.parse(f.calls.at(-1).body.messages.filter(m => m.role === 'tool').at(-1).content);
+  const row = orders.find(o => o.id === exchange.id);
+  assert.deepEqual([row.return_mode,row.return_date,row.source_number,row.replacement_number], ['exchange','2026-08-20',source.number,receipt.number]);
+  assert.equal(orders.find(o => o.id === receipt.id).return_mode,'replacement');
+  assert.equal(row.total, undefined);
+});

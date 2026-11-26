@@ -139,7 +139,7 @@ export function installProductHistory(app, db) {
           ORDER BY created_at DESC,event_id DESC,event DESC
           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0),6)) END AS balance
       FROM events
-    ) SELECT * FROM balances WHERE CASE
+    ) SELECT balances.*, (SELECT return_mode FROM orders WHERE id=balances.order_id) AS return_mode FROM balances WHERE CASE
       WHEN event IN ('order','void') THEN 1
       WHEN event='price_change' THEN ${can('finance')}
       WHEN event IN ('stocktake','reduce','increase') THEN ${can('stocktake')}

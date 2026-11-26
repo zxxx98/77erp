@@ -8,8 +8,8 @@ import { Button as AntButton, Checkbox as AntCheckbox } from '../ui/controls.jsx
 import { TabBar } from 'antd-mobile';
 
 import { Select } from './../Dropdown.jsx';
-import { canViewProduction, canViewStock } from '../../shared/permissions.js';
-import { modeItems } from '../app/navigation.js';
+import { canViewProduction } from '../../shared/permissions.js';
+import { canNavigate, modeItems } from '../app/navigation.js';
 import { ModeSwitch } from '../app/ModeSwitch.jsx';
 import { useQuery, usePagedQuery, queryPath } from '../queries.js';
 import { LoadingIndicator, LoadingStatus } from '../Loading.jsx';
@@ -33,10 +33,10 @@ import { ProductBatchDialog } from '../pages/Products.jsx';
 import { orderStatusLabel } from '../features/OrderApprovals.jsx';
 import { OrderApprovalWorkspace } from '../features/OrderApprovalWorkspace.jsx';
 
-export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderAnnouncements, renderQuality, renderBom, renderPayroll, renderProcessRoutes, renderProduction, renderTodos, announcementCount, updateNotice }) {
+export function MobileShell({ mode, switchMode, user, data, page, navigate, openModal, openOrder, showProduct, showOrder, switchWarehouse, loading, switching, loadError, reload, onSaved, refreshing, loggingOut, logout, renderScanner, renderSupplierReturns, renderAnnouncements, renderQuality, renderBom, renderPayroll, renderProcessRoutes, renderProduction, renderTodos, announcementCount, updateNotice }) {
   useLocale();
   const { can } = usePermissions();
-  const tabs = modeItems(mode, key => key === 'stock_in_view' ? canViewStock(user,'in') : key === 'stock_out_view' ? canViewStock(user,'out') : key === 'production_view' ? canViewProduction(user) : can(key)).filter(item => item.mobile);
+  const tabs = modeItems(mode, key => canNavigate(user, key)).filter(item => item.mobile);
   const { online } = usePwa();
   const [updated, setUpdated] = useState(null);
   const dataRef = useRef(data);
@@ -93,9 +93,10 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
         {loadError && <div className="mw-stack"><Notice>{loadError}{ready ? translate("warehouse.the.last.read.data.is.currently.displayed") : ''}</Notice><Button icon={RefreshCw} busy={refreshing} onClick={reload}>{translate("warehouse.resync")}</Button></div>}
         {!ready && !loadError && <Empty title={translate("warehouse.waiting.to.connect.to.workspace")} />}
         {ready && <>
+          {page === 'supplier-returns' && renderSupplierReturns()}
           {page === 'overview' && <Dashboard data={data} openOrder={openOrder} onScan={() => navigate('scanner')} showProduct={showProduct} showOrder={showOrder} history={() => navigate('history')} />}
           {['products', 'inventory'].includes(page) && <Products key={`${data.warehouse_id}:${page}`} data={data} inventory={page === 'inventory'} showProduct={showProduct} openModal={openModal} onSaved={onSaved || reload} />}
-          {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} onChanged={reload} />}
+          {['history', 'purchases', 'sales'].includes(page) && <Orders key={`${data.warehouse_id}:${page}`} data={data} initial={page === 'purchases' ? 'in' : page === 'sales' ? 'out' : 'all'} openOrder={openOrder} showOrder={showOrder} onChanged={reload} navigate={navigate} />}
           {page === 'more' && <More mode={mode} user={user} data={data} navigate={navigate} openModal={openModal} loggingOut={loggingOut} logout={logout} />}
           {page === 'quality' && renderQuality()}
           {page === 'payroll' && renderPayroll()}
@@ -110,7 +111,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
       </>}
     </main>
     {page !== 'scanner' && <nav className="mw-tabs" aria-label={translate("warehouse.mobile.terminal.main.navigation")} inert={switching}>
-      <TabBar safeArea activeKey={['purchases', 'sales'].includes(page) ? 'history' : page} onChange={navigate}>
+      <TabBar safeArea activeKey={page === 'supplier-returns' ? 'more' : ['purchases', 'sales'].includes(page) ? 'history' : page} onChange={navigate}>
         {tabs.map(({ id, mobile: label, icon: Icon }) => <TabBar.Item key={id} title={active => <button type="button" aria-current={active ? 'page' : undefined} aria-label={label}><Icon size={23} /><span>{label}</span></button>} />)}
       </TabBar>
     </nav>}
@@ -277,11 +278,13 @@ function OrderSummary({ order, onOpen }) {
   </AntButton>;
 }
 
-function Orders({ data, initial, openOrder, showOrder, onChanged }) {
+function Orders({ data, initial, openOrder, showOrder, onChanged, navigate }) {
   useLocale();
+  const { user } = usePermissions();
   return <div className="mw-stack">
     <h1>{initial === 'in' ? translate("warehouse.stock.in") : initial === 'out' ? translate("warehouse.stock.out") : translate("warehouse.activity.history")}</h1>
     <div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>{translate("warehouse.new.stock.in")}</Button><Button permission="sale" primary icon={ArrowUpFromLine} onClick={() => openOrder('out')}>{translate("warehouse.new.stock.out")}</Button></div>
+    {canNavigate(user, 'supplier_return_view') && <Button onClick={() => navigate('supplier-returns')}>{translate('warehouse.returns.title')}</Button>}
     <OrderApprovalWorkspace data={data} type={initial} onChanged={onChanged} onCopy={order=>openOrder(order.type,null,{...order,resubmitted_from_id:order.id,id:undefined,name:''})}>
       <OrderRecords data={data} initial={initial} showOrder={showOrder} />
     </OrderApprovalWorkspace>
@@ -312,7 +315,7 @@ function OrderRecords({ data, initial, showOrder }) {
     try {
       const rows = await api('/orders/export');
       const cell = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-      const csv = '\uFEFF' + [[exportText("warehouse.document.no"), exportText("warehouse.type"), exportText("warehouse.business.partner"), exportText("warehouse.time"), exportText("warehouse.amount"),...["delivery_number","delivery_time","order_number"].map(key=>exportText(`warehouse.${key.replaceAll('_', '.')}`)),exportText('warehouse.status'),exportText('stockApproval.submitter'),exportText('stockApproval.approver'),exportText('stockApproval.approvedAt'),exportText('stockApproval.reason')], ...rows.map(o => [o.number, orderLabel(o, language), o.partner, o.created_at, Number(o.total).toFixed(2),o.delivery_number||"",o.delivery_time||"",o.order_number||"",orderStatusLabel(o,language),o.created_by_name || '',o.approved_by_name || '',o.approved_at || '',o.reject_reason || o.cancel_reason || ''])].map(row => row.map(cell).join(',')).join('\r\n');
+      const csv = '\uFEFF' + [[exportText("warehouse.document.no"), exportText("warehouse.type"), exportText("warehouse.business.partner"), exportText("warehouse.time"), exportText("warehouse.amount"),...["delivery_number","delivery_time","order_number"].map(key=>exportText(`warehouse.${key.replaceAll('_', '.')}`)),exportText('warehouse.returns.date'),exportText('warehouse.status'),exportText('stockApproval.submitter'),exportText('stockApproval.approver'),exportText('stockApproval.approvedAt'),exportText('stockApproval.reason')], ...rows.map(o => [o.number, orderLabel(o, language), o.partner, o.created_at, Number(o.total).toFixed(2),o.delivery_number||"",o.delivery_time||"",o.order_number||"",o.return_date||"",orderStatusLabel(o,language),o.created_by_name || '',o.approved_by_name || '',o.approved_at || '',o.reject_reason || o.cancel_reason || ''])].map(row => row.map(cell).join(',')).join('\r\n');
       await download(csv, '77erp-orders.csv', 'text/csv;charset=utf-8');
     } catch (e) { setExportError(e.message); }
     finally { setExporting(false); }
@@ -338,6 +341,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     <section className="mw-card"><div className="mw-account"><ShieldCheck size={28} /><div><h2>{user.name || user.username}</h2><p className="mw-muted">{translate("warehouse.account")}{user.username}</p><p className="mw-muted">{user.role === 'admin' ? translate("warehouse.administrator.account") : translate("warehouse.employee.account")}</p></div></div></section>
     <section className="mw-card mw-menu-group">
       {(user.role === 'admin' || user.permissions?.includes('ai')) && <Button icon={Bot} onClick={() => openModal({ kind: 'ai' })}>{translate("warehouse.ai.assistant")}</Button>}
+      {mode === 'warehouse' && canNavigate(user, 'supplier_return_view') && <Button onClick={() => navigate('supplier-returns')}>{translate('warehouse.returns.title')}</Button>}
       {mode === 'production' && can('quality') && <Button icon={FilePenLine} onClick={() => navigate('quality')}>{translate("warehouse.quality.online.acceptance")}</Button>}
       {mode === 'production' && can('finance') && <Button onClick={() => navigate('payroll')}>{translate('payroll.title')}</Button>}
       {mode === 'production' && can('bom') && <Button onClick={() => navigate('process-routes')}>{translate('route.title')}</Button>}

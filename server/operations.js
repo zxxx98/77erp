@@ -61,6 +61,8 @@ export function migrateOperations(db) {
       .map((c) => c.name),
   );
   for (const [name, definition] of Object.entries({
+    return_mode: "TEXT NOT NULL DEFAULT ''",
+    return_date: "TEXT NOT NULL DEFAULT ''",
     kind: "TEXT NOT NULL DEFAULT 'normal'",
     status: "TEXT NOT NULL DEFAULT 'active'",
     source_order_id: "INTEGER REFERENCES orders(id)",
@@ -70,6 +72,7 @@ export function migrateOperations(db) {
   }))
     if (!columns.has(name))
       db.exec(`ALTER TABLE orders ADD COLUMN ${name} ${definition}`);
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS active_exchange_receipt ON orders(source_order_id) WHERE return_mode='replacement' AND status='active'");
   if (!columns.has("stock_applied"))
     db.exec(
       "UPDATE orders SET stock_applied=0 WHERE note='演示单据（期初库存已结转）'",
@@ -139,7 +142,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             )
             .get(order.id)
         )
-          fail("此单据已有退货，请先作废关联退货单。");
+          fail(order.return_mode === 'exchange' ? '请先作废关联的补收入库单。' : '此单据已有退货，请先作废关联退货单。');
         if (db.prepare("SELECT 1 FROM payments WHERE order_id=? AND reversed_at IS NULL").get(order.id)) fail("请先撤销此单据的收付款记录，再作废单据。");
         for (const item of orderItems(order.id))
           changeStock(
@@ -161,6 +164,16 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         const reason = reasonOf(req.body),
           source = originalOrder(req.params.id);
         if (source.kind !== "normal") fail("此单据不支持采购或销售退货，请作废或另开出入库单。");
+        const mode = req.body.return_mode ?? 'return';
+        if (!['return','exchange'].includes(mode) || (mode === 'exchange' && source.type !== 'in'))
+          fail('换货仅适用于采购入库单。');
+        const at = new Date().toISOString();
+        const date = req.body.return_date ?? at.slice(0, 10);
+        if (!validInspectionDate(date)) fail('请填写有效的退货日期。');
+        const delivery = validateDeliveryFields({
+          order_number: req.body.order_number ?? source.order_number,
+          delivery_number: req.body.delivery_number ?? source.delivery_number,
+        });
         const selected = req.body.items;
         if (
           !Array.isArray(selected) ||
@@ -206,8 +219,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           const amount = allocate(remainingAmount, item.quantity, addQuantity(original.quantity, -returned));
           return { ...original, quantity: item.quantity, return_cost: cost, amount_cents: amount };
         });
-        const type = source.type === "in" ? "out" : "in",
-          at = new Date().toISOString();
+        const type = source.type === "in" ? "out" : "in";
         const number = nextDailyDocumentNumber(db, 'orders', 'TH', at);
         const total = items.reduce(
           (sum, i) => sum + i.amount_cents,
@@ -216,7 +228,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         if (!Number.isSafeInteger(total)) fail("退货金额过大。");
         const result = db
           .prepare(
-            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name) VALUES (?,?,?,?,?,?,'return',?,?,1,?,?,?)",
+            "INSERT INTO orders(number,type,partner,note,total,created_at,kind,source_order_id,partner_id,settlement_tracked,warehouse_id,created_by,created_by_name,return_mode,return_date,order_number,delivery_number) VALUES (?,?,?,?,?,?,'return',?,?,?,?,?,?,?,?,?,?)",
           )
           .run(
             number,
@@ -226,14 +238,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             total / 100,
             at,
             source.id,
-            source.partner_id,
+            source.partner_id, mode === "exchange" ? 0 : 1,
             source.warehouse_id,
             req.user.id, (req.user.name || req.user.username),
+            mode === 'exchange' ? 'exchange' : '', source.type === 'in' ? date : '', delivery.order_number, delivery.delivery_number,
           );
         for (const i of items) {
           const movedCost = changeStock(i.product_id, (type === "in" ? 1 : -1) * i.quantity, i.return_cost);
           db.prepare(
-            "INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,source_item_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,source_item_id,unit,unit_round_up,active_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
           ).run(
             result.lastInsertRowid,
             i.product_id,
@@ -242,13 +255,30 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
             i.quantity,
             i.price,
             source.type === "out" ? i.return_cost : movedCost,
-            i.amount_cents, i.id,
+            i.amount_cents, i.id, i.unit, i.unit_round_up, i.active_snapshot,
           );
         }
         return { id: Number(result.lastInsertRowid), number };
       }),
     ),
   );
+  app.post('/api/orders/:id/exchange-receipt', route(req => mutation(req, () => {
+    const order = originalOrder(req.params.id);
+    if (order.return_mode !== 'exchange' || db.prepare("SELECT 1 FROM orders WHERE source_order_id=? AND status='active'").get(order.id))
+      fail('请核对换货单状态，只有待收货的换货单可以收货。');
+    const at = new Date().toISOString();
+    const number = nextDailyDocumentNumber(db, 'orders', 'RK', at);
+    const id = Number(db.prepare(`INSERT INTO orders(number,type,kind,return_mode,source_order_id,partner,partner_id,total,
+      created_at,settlement_tracked,warehouse_id,created_by,created_by_name,order_number,delivery_number)
+      VALUES (?,'in','normal','replacement',?,?,?,?,?,0,?,?,?,?,?)`)
+      .run(number,order.id,order.partner,order.partner_id,order.total,at,order.warehouse_id,req.user.id,
+        req.user.name || req.user.username,order.order_number,order.delivery_number).lastInsertRowid);
+    for (const line of orderItems(order.id)) changeStock(line.product_id, line.quantity, line.cost_cents);
+    db.prepare(`INSERT INTO order_items(order_id,product_id,name,barcode,quantity,price,cost_cents,amount_cents,unit,unit_round_up,active_snapshot)
+      SELECT ?,product_id,name,barcode,quantity,price,cost_cents,amount_cents,unit,unit_round_up,active_snapshot
+      FROM order_items WHERE order_id=? ORDER BY id`).run(id, order.id);
+    return { id, number };
+  })));
   const adjustment = (batch, p, next, reason, kind) =>
     db
       .prepare(
@@ -441,7 +471,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     );
   const backup = () => ({
     format: "77erp-business",
-    version: 60,
+    version: 61,
     source_instance_id: db.prepare("SELECT value FROM app_metadata WHERE key='instance_id'").get().value,
     created_at: new Date().toISOString(),
     data: snapshot(),
@@ -450,11 +480,15 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     const validQuantity = validStoredQuantity;
     if (
       value?.format !== "77erp-business" ||
-      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60].includes(value.version) ||
+      ![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61].includes(value.version) ||
       !value.data
     )
       fail("不是支持的 77 ERP 业务备份文件。");
     const data = structuredClone(value.data);
+    if (value.version < 61) for (const order of data.orders || []) {
+      order.return_mode = '';
+      order.return_date = '';
+    }
     if (value.version < 60) {
       for (const order of data.production_orders || []) {
         order.order_number = '';
@@ -727,6 +761,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         fail("备份物料库存或条码无效。");
       barcodes.add(JSON.stringify([p.warehouse_id,p.barcode]));
     }
+    const activeReceipts = new Set();
     const numbers = new Set();
     for (const o of data.orders) {
       if (
@@ -769,6 +804,12 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         if (!source || source.id >= o.id || source.warehouse_id !== o.warehouse_id || source.type !== o.type || !['rejected','cancelled'].includes(source.status)) fail('备份重提来源无效。');
       }
       validateDeliveryFields(o);
+      if (!['','exchange','replacement'].includes(o.return_mode) ||
+          (o.return_date !== '' && (o.kind !== 'return' || !validInspectionDate(o.return_date))) ||
+          (o.return_mode && (o.settlement_tracked || !o.stock_applied || o.approval_origin !== 'legacy')) ||
+          (o.return_mode === 'replacement' && (o.kind !== 'normal' || o.type !== 'in')) ||
+          (o.return_mode === 'exchange' && (o.kind !== 'return' || o.type !== 'out' || !o.return_date)))
+        fail('备份退换货信息无效。');
       numbers.add(o.number);
       if (o.kind === "transfer") {
         if (o.source_order_id !== null || o.settlement_tracked !== 0 || Math.round(o.total * 100) !== 0 ||
@@ -786,6 +827,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
           (o.status === "active" && source.status === "void")
         )
           fail("备份退货关联无效。");
+      } else if (o.return_mode === 'replacement') {
+        const source = orders.get(o.source_order_id);
+        if (o.kind !== 'normal' || o.type !== 'in' || source?.return_mode !== 'exchange' ||
+            source.id >= o.id || source.warehouse_id !== o.warehouse_id || source.partner !== o.partner ||
+            source.partner_id !== o.partner_id || source.total !== o.total ||
+            (o.status === 'active' && (source.status !== 'active' || activeReceipts.has(source.id))))
+          fail('备份退换货信息无效。');
+        if (o.status === 'active') activeReceipts.add(source.id);
       } else if (o.source_order_id !== null) fail("备份原单关联无效。");
     }
     // A transfer is exactly two linked legs whose item sets mirror by barcode.
@@ -823,7 +872,7 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
         !validUnitPrice(i.price)
       )
         fail("备份单据明细无效。");
-      if (['normal', 'internal'].includes(orders.get(i.order_id).kind) && orderLineAmount(i) !== Math.round(i.quantity * i.price * 100))
+      if (orders.get(i.order_id).return_mode !== 'replacement' && ['normal', 'internal'].includes(orders.get(i.order_id).kind) && orderLineAmount(i) !== Math.round(i.quantity * i.price * 100))
         fail('备份原单明细金额无效。');
       if (![0,1].includes(i.active_snapshot) || typeof i.unit !== 'string' || i.unit.length > 30 || ![0,1].includes(i.unit_round_up) ||
           (['pending','rejected','cancelled'].includes(orders.get(i.order_id).status) && i.cost_cents !== null)) fail('备份单据快照无效。');
@@ -839,6 +888,14 @@ export function installOperations(app, db, { productValues, generateBarcode, cat
     for (const o of data.orders)
       if (!totals.has(o.id) || totals.get(o.id) !== Math.round(o.total * 100))
         fail("备份单据合计与明细不一致。");
+    const exchangeLines = new Map();
+    for (const i of data.order_items) if (orders.get(i.order_id).return_mode) {
+      if (!exchangeLines.has(i.order_id)) exchangeLines.set(i.order_id, []);
+      exchangeLines.get(i.order_id).push(JSON.stringify([i.product_id,i.quantity,i.price,i.amount_cents,i.cost_cents]));
+    }
+    for (const o of data.orders) if (o.return_mode === 'replacement' &&
+        JSON.stringify(exchangeLines.get(o.id)?.sort()) !== JSON.stringify(exchangeLines.get(o.source_order_id)?.sort()))
+      fail('备份退换货信息无效。');
     const returned = new Map(), returnedAmounts = new Map();
     for (const i of data.order_items) {
       const order = orders.get(i.order_id);

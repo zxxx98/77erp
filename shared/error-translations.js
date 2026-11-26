@@ -4,6 +4,11 @@ import { createValidationTranslator } from './error-translation-runtime.js';
 // System validation text only; never include stored business values in this catalog.
 export const validationMessages = {
   ...postProcessingMessages,
+  SUPPLIER_EXCHANGE_SOURCE: ['换货仅适用于采购入库单。', 'Select a purchase stock-in note for the exchange.', 'Chọn phiếu nhập mua hàng để đổi hàng.'],
+  SUPPLIER_RETURN_DATE: ['请填写有效的退货日期。', 'Enter a valid return date.', 'Nhập ngày trả hàng hợp lệ.'],
+  SUPPLIER_EXCHANGE_PENDING: ['请核对换货单状态，只有待收货的换货单可以收货。', 'Only an exchange awaiting replacements can be received.', 'Chỉ có thể nhập hàng đổi cho phiếu đang chờ nhận.'],
+  SUPPLIER_EXCHANGE_VOID: ['请先作废关联的补收入库单。', 'Void the linked replacement stock-in note first.', 'Hãy hủy phiếu nhập hàng đổi liên quan trước.'],
+  SUPPLIER_RETURN_BACKUP: ['备份退换货信息无效。', 'Invalid supplier return or exchange in the backup.', 'Thông tin trả hoặc đổi hàng trong bản sao lưu không hợp lệ.'],
   RETIRED_ADDITIONAL_OPERATIONS: ['附加工序功能已移除。', 'Additional operations have been removed.', 'Chức năng công đoạn bổ sung đã được loại bỏ.'],
   OPERATION_MATERIALS_UNSUPPORTED: ['工序报工不支持独立材料耗用。', 'Operation reports do not support independent material consumption.', 'Ghi nhận công đoạn không hỗ trợ tiêu hao vật tư độc lập.'],
   RETIRED_OPERATIONS_BACKUP: ['备份包含已移除的附加工序。', 'The backup contains removed additional operations.', 'Bản sao lưu chứa công đoạn bổ sung đã bị loại bỏ.'],

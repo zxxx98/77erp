@@ -1,3 +1,4 @@
+import { returnLinks } from './order-history.js';
 import { addQuantity } from '../shared/quantity.js';
 import { withCustomerPartNumbers } from './customer-part-numbers.js';
 import { orderLineAmount } from '../shared/money.js';
@@ -153,23 +154,28 @@ export function installQueries(app, db) {
       // Business direction folds returns into the side they correct, like the UI.
       if (business === 'in') clauses.push("((o.kind IN ('normal','internal') AND o.type='in') OR (o.kind='return' AND o.type='out'))");
       if (business === 'out') clauses.push("((o.kind IN ('normal','internal') AND o.type='out') OR (o.kind='return' AND o.type='in'))");
+      if (req.query.returnable === '1') clauses.push(`o.type='in' AND o.kind='normal' AND o.status='active' AND o.stock_applied=1
+        AND EXISTS (SELECT 1 FROM order_items i WHERE i.order_id=o.id AND ROUND(i.quantity - COALESCE((
+          SELECT SUM(r.quantity) FROM order_items r JOIN orders d ON d.id=r.order_id
+          WHERE d.source_order_id=o.id AND d.kind='return' AND d.status='active' AND r.product_id=i.product_id
+          AND (r.source_item_id=i.id OR r.source_item_id IS NULL)),0),4)>0)`);
       if (status) { clauses.push('o.status=?'); params.push(status); }
       if (from) { clauses.push('substr(o.created_at,1,10)>=?'); params.push(from); }
       if (to) { clauses.push('substr(o.created_at,1,10)<=?'); params.push(to); }
       if (partner) { clauses.push("o.partner LIKE ? ESCAPE '\\'"); params.push(pattern(partner)); }
       if (query) {
-        clauses.push(`(o.number LIKE ? ESCAPE '\\' OR o.partner LIKE ? ESCAPE '\\' OR EXISTS (
+        clauses.push(`(o.number LIKE ? ESCAPE '\\' OR o.partner LIKE ? ESCAPE '\\' OR o.order_number LIKE ? ESCAPE '\\' OR o.delivery_number LIKE ? ESCAPE '\\' OR EXISTS (
           SELECT 1 FROM order_items i WHERE i.order_id=o.id AND (i.name LIKE ? ESCAPE '\\' OR i.barcode LIKE ? ESCAPE '\\')))`);
         const value = pattern(query);
-        params.push(value, value, value, value);
+        params.push(value, value, value, value, value, value);
       }
       const where = clauses.join(' AND ');
       const total = db.prepare(`SELECT COUNT(*) AS n FROM orders o WHERE ${where}`).get(...params).n;
       const rows = db
-        .prepare(`SELECT o.* FROM orders o WHERE ${where} ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?`)
+        .prepare(`SELECT o.*, ${returnLinks} FROM orders o WHERE ${where} ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
       const aggregate = db.prepare(`SELECT
-        COALESCE(SUM(CASE WHEN o.status='active' AND o.kind NOT IN ('transfer','internal') THEN CASE WHEN o.kind='return' THEN -o.total ELSE o.total END ELSE 0 END),0) AS net_total,
+        COALESCE(SUM(CASE WHEN o.status='active' AND o.return_mode='' AND o.kind NOT IN ('transfer','internal') THEN CASE WHEN o.kind='return' THEN -o.total ELSE o.total END ELSE 0 END),0) AS net_total,
         COALESCE(SUM(o.status='active'),0) AS active_count,
         COALESCE(SUM(CASE WHEN o.status='active' THEN (SELECT SUM(i.quantity) FROM order_items i WHERE i.order_id=o.id) ELSE 0 END),0) AS quantity
         FROM orders o WHERE ${where}`).get(...params);
@@ -189,12 +195,12 @@ export function installQueries(app, db) {
       const raw = req.params.id;
       // /api/orders/export and future literal paths stay reachable.
       if (!/^\d+$/.test(raw)) return next();
-      const order = db.prepare('SELECT * FROM orders WHERE id=? AND warehouse_id=?').get(Number(raw), req.warehouse.id);
+      const order = db.prepare(`SELECT o.*, ${returnLinks} FROM orders o WHERE o.id=? AND o.warehouse_id=?`).get(Number(raw), req.warehouse.id);
       if (!order) return res.status(404).json({ error: '单据不存在。' });
       const returned = new Map(
         db
           .prepare(`SELECT i.product_id,i.source_item_id,SUM(i.quantity) AS quantity FROM order_items i JOIN orders o ON o.id=i.order_id
-            WHERE o.source_order_id=? AND o.status='active' GROUP BY i.product_id,i.source_item_id`)
+            WHERE o.source_order_id=? AND o.kind='return' AND o.status='active' GROUP BY i.product_id,i.source_item_id`)
           .all(order.id)
           .map((row) => [row.source_item_id == null ? `product:${row.product_id}` : `line:${row.source_item_id}`, row.quantity]),
       );
@@ -226,7 +232,7 @@ export function installQueries(app, db) {
       const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
       // Transfers never carry money, so they stay out of the trading trend.
       const trading = db
-        .prepare("SELECT type,kind,total,COALESCE(approved_at,created_at) AS created_at,status FROM orders WHERE warehouse_id=? AND substr(COALESCE(approved_at,created_at),1,10)>=?")
+        .prepare("SELECT type,kind,total,COALESCE(approved_at,created_at) AS created_at,status FROM orders WHERE warehouse_id=? AND return_mode='' AND substr(COALESCE(approved_at,created_at),1,10)>=?")
         .all(req.warehouse.id, since)
         .filter((order) => order.status === 'active' && !['transfer', 'internal'].includes(order.kind))
         .map((order) => ({

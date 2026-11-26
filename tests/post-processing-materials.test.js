@@ -320,7 +320,7 @@ for (const staged of [false, true]) test('post reports share the issued pool, re
   assert.deepEqual(stock(), warehouse);
   order = await f.mutate(order, '/finish', {});
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 60);
+  assert.equal(backup.version, 61);
   const tampered = structuredClone(backup);
   const row = tampered.data.production_operation_reports.find(row => row.id === first.id);
   const materials = JSON.parse(row.post_materials);
@@ -491,7 +491,7 @@ for (const staged of [false, true]) test('BOM inherits per-finished-unit post ma
   assert.equal(order.operation_routes[0].product_coefficient, 1);
   assert.deepEqual(order.items.map(row => row.total_planned_quantity), [5, 8]);
   const backup = f.ok(await f.request('/backup'));
-  assert.equal(backup.version, 60);
+  assert.equal(backup.version, 61);
   const tampered = structuredClone(backup);
   const config = JSON.parse(tampered.data.boms.find(row => row.id === bom.id).post_processing_operations);
   config[0].materials[0].quantity = 0;

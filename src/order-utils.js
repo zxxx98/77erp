@@ -1,13 +1,23 @@
 import { t as translate, getFormatLocale } from './i18n/index.js';
-export const orderLabel = (o, language) =>
-  `${o.kind === "internal" ? (o.type === "in" ? translate("warehouse.internal.stock.in", { lng: language }) : translate("warehouse.internal.stock.out", { lng: language })) : o.kind === "transfer" ? (o.type === "in" ? translate("warehouse.transfer.in", { lng: language }) : translate("warehouse.transfer.out", { lng: language })) : o.kind === "return" ? (o.type === "in" ? translate("warehouse.sales.return", { lng: language }) : translate("warehouse.purchase.return", { lng: language })) : o.type === "in" ? translate("warehouse.stock.in", { lng: language }) : translate("warehouse.stock.out", { lng: language })}${o.status === "void" ? translate("warehouse.voided.2", { lng: language }) : ""}`;
+const orderLabels = {
+  internal: { in: 'warehouse.internal.stock.in', out: 'warehouse.internal.stock.out' },
+  transfer: { in: 'warehouse.transfer.in', out: 'warehouse.transfer.out' },
+  return: { in: 'warehouse.sales.return', out: 'warehouse.purchase.return' },
+  normal: { in: 'warehouse.stock.in', out: 'warehouse.stock.out' },
+};
+export function orderLabel(order, lng) {
+  let key = (orderLabels[order.kind] || orderLabels.normal)[order.type];
+  if (order.return_mode === 'exchange') key = 'warehouse.returns.exchangeOut';
+  if (order.return_mode === 'replacement') key = 'warehouse.returns.receipt';
+  return translate(key, { lng }) + (order.status === 'void' ? translate('warehouse.voided.2', { lng }) : '');
+}
 export const businessType = (o) =>
   o.kind === "transfer" ? "transfer" : o.kind === "return" ? (o.type === "in" ? "out" : "in") : o.type;
 // Reports use the original business direction; returns reduce its amount.
 // Warehouse transfers move stock without money, so they stay out of the totals.
 export const reportOrders = (orders) =>
   orders
-    .filter((o) => o.status === "active" && !["transfer", "internal"].includes(o.kind))
+    .filter((o) => o.status === "active" && !o.return_mode && !["transfer", "internal"].includes(o.kind))
     .map((o) =>
       o.kind === "return"
         ? { ...o, type: o.type === "in" ? "out" : "in", total: -o.total }
@@ -15,3 +25,9 @@ export const reportOrders = (orders) =>
     );
 
 export const orderIconTone = order => ['void', 'rejected', 'cancelled'].includes(order.status) ? 'red' : order.status === 'active' ? 'green' : 'blue';
+
+export function supplierReturnStatus(order, lng) {
+  if (order.status === 'void') return translate('stockApproval.void', { lng });
+  if (order.return_mode === 'exchange') return translate(order.replacement_number ? 'warehouse.returns.received' : 'warehouse.returns.awaiting', { lng });
+  return translate('warehouse.returns.returned', { lng });
+}

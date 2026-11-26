@@ -475,8 +475,8 @@ test("existing order schema upgrades without changing stock and marks only seede
   first.db.close();
   const legacy = new DatabaseSync(path);
   for (const { name } of legacy.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND (name GLOB 'data_revision_*' OR name GLOB 'todo_*')").all()) legacy.exec(`DROP TRIGGER ${name}`);
-  legacy.exec("DROP INDEX orders_source_status; DROP INDEX orders_approval_queue");
-  for (const column of ["source_order_id", "kind", "status", "stock_applied", "void_reason", "voided_at"]) legacy.exec(`ALTER TABLE orders DROP COLUMN ${column}`);
+  legacy.exec("DROP INDEX orders_source_status; DROP INDEX orders_approval_queue; DROP INDEX active_exchange_receipt");
+  for (const column of ["source_order_id", "kind", "status", "stock_applied", "void_reason", "voided_at", "return_mode", "return_date"]) legacy.exec(`ALTER TABLE orders DROP COLUMN ${column}`);
   legacy.close();
   const migrated = createApp(path);
   try {
@@ -519,7 +519,7 @@ test('material returns increase inventory once, preserve average cost, reject st
 test('business backup uses production group aware format', async t => {
   const f = await fixture(t);
   const backup = (await f.request('/backup')).data;
-  assert.equal(backup.version, 60);
+  assert.equal(backup.version, 61);
   const legacy = structuredClone(backup); legacy.version = 36;
   assert.equal((await f.request('/backup/preview', { backup: legacy })).status, 200);
 });
@@ -555,4 +555,54 @@ for (const crossInstance of [false, true]) test(`production backup preserves sna
     const invalid=structuredClone(backup);invalid.data.production_batches[0][field]=value;
     assert.equal((await f.request('/backup/preview',{backup:invalid})).status,400);
   }
+});
+
+test('supplier exchange links stock-out and one full replacement receipt without creating settlement', async t => {
+  const f = await fixture(t);
+  const product = await f.makeProduct();
+  const source = (await f.request('/orders', { type: 'in', partner: '换货供应商', order_number: 'PO-1', delivery_number: 'DN-1',
+    items: [{ product_id: product, quantity: 3, price: 1.115 }, { product_id: product, quantity: 2, price: 5 }],
+  })).data;
+  const details = async id => (await f.request(`/orders/${id}`)).data.order;
+  const [first, second] = (await details(source.id)).items;
+  const items = [first,second].map(line => ({ product_id: product, source_item_id: line.id, quantity: 1 }));
+  const path = `/orders/${source.id}/returns`;
+  const body = { reason: '换同规格', return_mode: 'exchange', return_date: '2026-08-21', items };
+  assert.equal((await f.command(path, { ...body, return_date: '2026-02-30' })).status, 400);
+  const result = await f.command(path, body);
+  assert.equal(result.status, 200, JSON.stringify(result.data));
+  assert.equal(f.stock(product), 3);
+  const exchange = await details(result.data.id);
+  assert.deepEqual([exchange.order_number,exchange.delivery_number,exchange.return_date,exchange.source_number],
+    ['PO-1','DN-1','2026-08-21',source.number]);
+  assert.equal(exchange.replacement_number, null);
+  assert.equal((await f.request('/orders?returnable=1&q=PO-1')).data.total, 1);
+  assert.equal((await f.request('/orders?type=out&kind=return&q=DN-1')).data.total, 1);
+  const receive = `/orders/${exchange.id}/exchange-receipt`;
+  const sameRequest = { request_id: randomUUID() };
+  const [a,b] = await Promise.all([f.request(receive,sameRequest),f.request(receive,sameRequest)]);
+  assert.equal(a.status, 200, JSON.stringify(a.data));
+  assert.deepEqual(a.data,b.data);
+  assert.equal(f.stock(product),5);
+  assert.equal((await f.command(receive,{})).status,400);
+  assert.equal((await details(exchange.id)).replacement_number,a.data.number);
+  const replacement = await details(a.data.id);
+  assert.deepEqual(replacement.items.map(i => [i.quantity,i.cost_cents,i.amount_cents]),
+    exchange.items.map(i => [i.quantity,i.cost_cents,i.amount_cents]));
+  const finance = (await f.request('/finance')).data.orders;
+  assert.ok(!finance.some(o => [exchange.id,replacement.id].includes(o.id)));
+  const backup = (await f.request('/backup')).data;
+  const preview = await f.request('/backup/preview', { backup });
+  assert.equal(preview.status,200,JSON.stringify(preview.data));
+  assert.equal((await f.command('/backup/restore', {backup, ...preview.data, confirmation:'RESTORE_BUSINESS_DATA'})).status,200);
+  assert.equal((await details(exchange.id)).replacement_number, a.data.number);
+  const corrupt = structuredClone(backup);
+  corrupt.data.order_items.find(i => i.order_id === replacement.id).quantity++;
+  assert.equal((await f.request('/backup/preview',{ backup: corrupt })).status,400);
+  assert.equal((await f.command(`/orders/${exchange.id}/void`,{reason:'更正'})).status,400);
+  assert.equal((await f.command(`/orders/${replacement.id}/void`,{reason:'撤销补收'})).status,200);
+  assert.equal((await details(exchange.id)).replacement_number,null);
+  assert.equal((await f.command(`/orders/${exchange.id}/void`,{reason:'撤销换货'})).status,200);
+  assert.equal(f.stock(product),5);
+  assert.deepEqual((await details(source.id)).items.map(i => i.returned_quantity), [0,0]);
 });

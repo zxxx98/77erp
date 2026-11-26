@@ -12,10 +12,15 @@ import { Input } from '../ui/controls.jsx';
 import { Select } from '../Dropdown.jsx';
 import { ProductionApprovalDialog } from './ProductionApprovalDialog.jsx';
 import { money, price, count, dateTime, currencySymbol } from '../app/format.js';
-import { orderLabel } from '../order-utils.js';
+import { orderLabel, supplierReturnStatus } from '../order-utils.js';
 import './production-materials.css';
 
-export const orderStatusLabel = (order, language) => t(order.approval_origin === 'legacy' && order.status === 'active' ? 'stockApproval.legacy' : `stockApproval.${order.status}`, language ? {lng:language} : {});
+export function orderStatusLabel(order, lng) {
+  if (order.kind === 'return' && order.type === 'out') return supplierReturnStatus(order, lng);
+  if (order.return_mode === 'replacement' && order.status === 'active') return t('warehouse.returns.received', { lng });
+  const key = order.approval_origin === 'legacy' && order.status === 'active' ? 'legacy' : order.status;
+  return t(`stockApproval.${key}`, { lng });
+}
 const tone = status => status === 'pending' ? 'orange' : status === 'active' ? 'green' : 'gray';
 
 export function OrderApprovalContent({ order, onChanged, onCopy, onBusy }) {

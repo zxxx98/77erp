@@ -30,6 +30,8 @@ export const AnnouncementDetail = deferred(() => import('./pages/Announcements.j
 export const AnnouncementEditor = deferred(() => import('./pages/Announcements.jsx'), 'AnnouncementEditor');
 export const Products = deferred(() => import('./pages/Products.jsx'), 'Products');
 export const Inventory = deferred(() => import('./pages/Inventory.jsx'), 'Inventory');
+export const SupplierReturns = deferred(() => import('./pages/SupplierReturns.jsx'), 'SupplierReturns');
+export const SupplierReturnForm = deferred(() => import('./pages/SupplierReturns.jsx'), 'SupplierReturnForm');
 export const Orders = deferred(() => import('./pages/Orders.jsx'), 'Orders');
 export const Scanner = deferred(() => import('./pages/Scanner.jsx'), 'Scanner');
 export const ProductCodeModal = deferred(() => import('./features/ProductDialogs.jsx'), 'ProductCodeModal');

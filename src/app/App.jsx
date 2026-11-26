@@ -33,13 +33,13 @@ import {
   CircleCheck,
   X,
 } from 'lucide-react';
-import { navItems as allNavItems, modeHome, routeMode, navigationHash, modeItems } from './navigation.js';
+import { navItems as allNavItems, modeHome, canNavigate, routeMode, navigationHash, modeItems } from './navigation.js';
 import { ModeSwitch } from './ModeSwitch.jsx';
 import './mode-switch.css';
 import { mobileDevice } from '../device.js';
 import { useState, useEffect, useRef } from 'react';
 import { api, setWarehouseId, getWarehouseId } from '../api.js';
-import { hasPermission, canManage, usesProductionWorkspace, canViewProduction, canViewStock } from '../../shared/permissions.js';
+import { canManage, usesProductionWorkspace, canViewProduction } from '../../shared/permissions.js';
 import { useQuery } from '../queries.js';
 import { DataUpdateNotice, useDataUpdates } from '../DataUpdates.jsx';
 import { announcementsChanged, useAnnouncementQuery } from '../announcement-query.js';
@@ -66,6 +66,7 @@ import {
   DraftList,
   CategoryManager,
   ProductForm,
+  SupplierReturns, SupplierReturnForm,
   MobileOrderForm,
   CameraScanner,
   OrderForm,
@@ -109,7 +110,7 @@ function StandardApp({ admin, onLogout }) {
   const modeRef = useRef(mode);
   const lastPages = useRef(initialNavigation.pages);
   const [requestedPage, setPage] = useState(initialNavigation.page);
-  const allowedPages = modeItems(mode, key => key === 'stock_in_view' ? canViewStock(admin,'in') : key === 'stock_out_view' ? canViewStock(admin,'out') : key === 'production_view' ? canViewProduction(admin) : hasPermission(admin, key));
+  const allowedPages = modeItems(mode, key => canNavigate(admin, key));
   const page = allowedPages.some(item => item.id === requestedPage) ? requestedPage : (allowedPages.find(item => item.id !== 'more')?.id || 'more');
   const acceptedHash = useRef(location.hash || navigationHash(page, mode));
   useEffect(() => {
@@ -300,7 +301,7 @@ function StandardApp({ admin, onLogout }) {
     finally { setSwitching(false); setRefreshing(false); }
   };
   const user = data.user || admin;
-  const can = key => key === 'stock_in_view' ? canViewStock(user,'in') : key === 'stock_out_view' ? canViewStock(user,'out') : key === 'production_view' ? canViewProduction(user) : hasPermission(user, key);
+  const can = key => canNavigate(user, key);
   const manage = key => canManage(user, key);
   const summaryQuery = useQuery(mobileDevice || !can('basic_view') ? null : '/dashboard', data);
   const announcementQuery = useAnnouncementQuery(!can('basic_view') ? null : '/announcements/unread-count', data);
@@ -332,6 +333,7 @@ function StandardApp({ admin, onLogout }) {
     if (item.source === 'registration') navigate('production', { order: item.production_id });
     else navigate(['order_in','material_return','receipt','stage_receipt'].includes(item.kind) ? 'purchases' : 'sales', { approval: item.source === 'order' ? 'ordinary' : ['receipt','stage_receipt'].includes(item.source) ? 'receipts' : item.kind === 'material_return' ? 'returns' : 'issues', q: item.number });
   };
+  const renderSupplierReturns = () => <SupplierReturns key={data.warehouse_id} data={data} onNew={() => setModal({kind:'supplierReturn'})} showDetail={openOrderDetail} />;
   const visibleNav = modeItems(mode, can);
   const currentNav = navItems.find((n) => n.id === page);
   const updateNotice = updatesAvailable ? <DataUpdateNotice onRefresh={reload} busy={refreshing} disabled={!!modal} /> : null;
@@ -345,6 +347,7 @@ function StandardApp({ admin, onLogout }) {
         loggingOut={loggingOut} logout={logout}
         updateNotice={updateNotice}
         announcementCount={announcementCount}
+        renderSupplierReturns={renderSupplierReturns}
         renderTodos={() => <MyTodos data={data} onOpen={openTodo} />}
         renderAnnouncements={() => <Announcements data={data} openModal={setModal} />}
         renderQuality={() => can('quality') ? <Quality key={data.warehouse_id} data={data} initialArea="acceptances" onConfigure={() => setModal({ kind: 'settings', section: 'data' })} /> : <div className="info-box">{translate("system.if.you.do.not.have.quality.management.rights.please.contact.the")}</div>}
@@ -597,6 +600,7 @@ function StandardApp({ admin, onLogout }) {
                   }
                 />
               )}
+              {page === 'supplier-returns' && renderSupplierReturns()}
               {["purchases", "sales", "history"].includes(page) && (
                 <Orders
                   page={page}
@@ -624,6 +628,7 @@ function StandardApp({ admin, onLogout }) {
       </>}
       {mobileDevice && modal?.kind === 'warehousePicker' && <WarehousePicker data={data} switchWarehouse={switchWarehouse} onClose={() => setModal(null)} Modal={Modal} />}
       {mobileDevice && modal?.kind === 'drafts' && <DraftList data={data} userId={user.id} Modal={Modal} onClose={() => setModal(null)} onOpen={draft => setModal({ kind: 'order', type: draft.type, draft })} />}
+      {modal?.kind === 'supplierReturn' && can('corrections') && <SupplierReturnForm key={data.warehouse_id} data={data} onClose={() => setModal(null)} onSaved={saved} />}
       {modal?.kind === 'categories' && manage('products') && <CategoryManager categories={data.categories || []} onChanged={reload} onClose={() => setModal(null)} />}
       {can('products') && modal?.kind === "product" && (
         <ProductForm
@@ -651,7 +656,7 @@ function StandardApp({ admin, onLogout }) {
       {modal?.kind === 'announcementDetail' && <AnnouncementDetail id={modal.id} data={data} onClose={() => setModal(null)} onEdit={item => setModal({ kind: 'announcementEditor', item })} onSaved={announcementSaved} onRead={reload} />}
       {modal?.kind === 'announcementEditor' && user.role === 'admin' && <AnnouncementEditor key={modal.item?.id || 'new'} item={modal.item} onClose={() => setModal(null)} onSaved={announcementSaved} />}
       {modal?.kind === "detail" && (
-        mobileDevice ? <MobileOrderDetail order={modal.order} onCopy={order => openOrder(order.type,null,{...order,id:undefined,name:''})} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail onCopy={order => openOrder(order.type,null,{...order,id:undefined,name:''})} isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
+        mobileDevice ? <MobileOrderDetail key={modal.order.id} onViewOrder={openOrderDetail} order={modal.order} onCopy={order => openOrder(order.type,null,{...order,id:undefined,name:''})} Modal={Modal} onClose={() => setModal(null)} onSaved={saved} /> : <OrderDetail key={modal.order.id} onViewOrder={openOrderDetail} onCopy={order => openOrder(order.type,null,{...order,id:undefined,name:''})} isAdmin={isAdmin} order={modal.order} onClose={() => setModal(null)} onSaved={saved} />
       )}
       {["reduce", "increase"].includes(modal?.kind) && can('stocktake') && (
         <ReduceStockModal

@@ -143,7 +143,7 @@ export function settlement(db, order) {
   return settlementFromPaid(order, paid);
 }
 export function settlementFromPaid(order, paid) {
-  if (order.kind === 'internal') return { paid_cents: 0, due_cents: 0, payment_status: 'not_applicable', direction: order.type === 'out' ? 'receive' : 'pay' };
+  if (order.return_mode || order.kind === 'internal') return { paid_cents: 0, due_cents: 0, payment_status: 'not_applicable', direction: order.type === 'out' ? 'receive' : 'pay' };
   const total = Math.round(order.total * 100);
   return {
     paid_cents: paid,
@@ -374,7 +374,7 @@ export function installCommerce(app, db, { route, mutation }) {
           .get(req.params.id);
         if (
           !o ||
-          o.kind === 'internal' ||
+          o.return_mode || o.kind === 'internal' ||
           o.status !== "active" ||
           o.settlement_tracked ||
           req.body.confirmation !== "TRACK_SETTLEMENT"
@@ -447,7 +447,7 @@ export function installCommerce(app, db, { route, mutation }) {
     route((req) => {
       const orders = db
         .prepare(
-          "SELECT * FROM orders WHERE status='active' AND kind NOT IN ('transfer','internal') AND warehouse_id=? ORDER BY created_at DESC,id DESC",
+          "SELECT * FROM orders WHERE status='active' AND return_mode='' AND kind NOT IN ('transfer','internal') AND warehouse_id=? ORDER BY created_at DESC,id DESC",
         )
         .all(req.warehouse.id)
         .map((o) => ({ ...o, ...settlement(db, o) }));

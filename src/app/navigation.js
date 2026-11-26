@@ -1,5 +1,17 @@
 import { t as translate, getFormatLocale } from '../i18n/index.js';
-import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Warehouse, ScanLine, History, Megaphone, PackageCheck, Settings, ListTree, ClipboardList, Banknote } from 'lucide-react';
+import { LayoutDashboard, Box, ArrowDownToLine, ArrowUpFromLine, Undo2, Warehouse, ScanLine, History, Megaphone, PackageCheck, Settings, ListTree, ClipboardList, Banknote } from 'lucide-react';
+
+import { hasPermission, canViewProduction, canViewStock } from '../../shared/permissions.js';
+
+export function canNavigate(user, key) {
+  switch (key) {
+    case 'supplier_return_view': return canViewStock(user, 'in') || hasPermission(user, 'corrections');
+    case 'stock_in_view': return canViewStock(user, 'in');
+    case 'stock_out_view': return canViewStock(user, 'out');
+    case 'production_view': return canViewProduction(user);
+    default: return hasPermission(user, key);
+  }
+}
 
 export const navItems = [
   { id: 'todos', get name() { return translate('todos.title'); }, icon: ClipboardList, group: 'main', get mobile() { return translate('todos.title'); } },
@@ -7,6 +19,7 @@ export const navItems = [
   { id: 'products', permission: 'basic_view', get name() { return translate("system.materials"); }, icon: Box, mode: 'warehouse', group: 'main', get mobile() { return translate("system.material"); } },
   { id: 'purchases', permission: 'stock_in_view', get name() { return translate("system.stock.in"); }, icon: ArrowDownToLine, mode: 'warehouse', group: 'main' },
   { id: 'sales', permission: 'stock_out_view', get name() { return translate("system.stock.out"); }, icon: ArrowUpFromLine, mode: 'warehouse', group: 'main' },
+  { id: 'supplier-returns', permission: 'supplier_return_view', get name() { return translate('warehouse.returns.title'); }, icon: Undo2, mode: 'warehouse', group: 'main' },
   { id: 'inventory', permission: 'basic_view', get name() { return translate("system.inventory"); }, icon: Warehouse, mode: 'warehouse', group: 'main', get mobile() { return translate("system.stock"); } },
   { id: 'scanner', permission: 'basic_view', get name() { return translate("system.scanner"); }, icon: ScanLine, mode: 'warehouse', group: 'tools' },
   { id: 'history', permission: 'basic_view', get name() { return translate("system.activity.history"); }, icon: History, mode: 'warehouse', group: 'tools', get mobile() { return translate("system.document"); } },

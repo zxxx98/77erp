@@ -129,12 +129,14 @@ export function notificationMutation(db, req, fn) {
   const reduce = path.endsWith('/stock/reduce');
   const increase = path.endsWith('/stock/increase');
   let before = [];
-  if (correction) before = db.prepare('SELECT p.* FROM products p JOIN order_items i ON i.product_id=p.id WHERE i.order_id=?').all(req.params.id);
+  const replacement = path.endsWith('/exchange-receipt');
+  if (correction || replacement) before = db.prepare('SELECT p.* FROM products p JOIN order_items i ON i.product_id=p.id WHERE i.order_id=?').all(req.params.id);
   if (stocktake || reduce || increase) {
     const ids = reduce || increase ? [req.body.product_id] : Array.isArray(req.body.items) ? req.body.items.map(i => i?.product_id) : [];
     before = [...new Set(ids)].filter(Number.isSafeInteger).map(id => db.prepare('SELECT * FROM products WHERE id=?').get(id)).filter(Boolean);
   }
   const result = fn();
+  if (replacement) notifyStockChanges(db, req, before);
   if (correction) notifyOrder(db, req, path.endsWith('/returns') ? result.id : Number(req.params.id), path.endsWith('/returns') ? 'order_return' : 'order_void', before);
   if (stocktake || reduce || increase) {
     const items = before.map(p => ({ id: p.id, name: p.name, unit: p.unit, threshold: p.threshold, before_stock: p.stock, stock: db.prepare('SELECT stock FROM products WHERE id=?').get(p.id).stock }))
@@ -178,7 +180,7 @@ export function queueDailySummary(db, now = new Date()) {
       out_of_stock: db.prepare('SELECT COUNT(*) AS n FROM products WHERE warehouse_id=? AND active!=0 AND threshold>0 AND stock=0').get(w.id).n,
     }));
     const byWarehouse = new Map(rows.map(w => [w.id, w]));
-    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,COALESCE(approved_at,created_at) AS created_at FROM orders WHERE status='active' AND kind NOT IN ('transfer','internal') AND COALESCE(approved_at,created_at)>=? AND COALESCE(approved_at,created_at)<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
+    for (const o of db.prepare("SELECT warehouse_id,type,kind,total,COALESCE(approved_at,created_at) AS created_at FROM orders WHERE status='active' AND return_mode='' AND kind NOT IN ('transfer','internal') AND COALESCE(approved_at,created_at)>=? AND COALESCE(approved_at,created_at)<=?").all(new Date(now.getTime() - 48 * 3600000).toISOString(), now.toISOString())) {
       const row = byWarehouse.get(o.warehouse_id);
       if (!row || localParts(new Date(o.created_at), config.timezone).day !== day) continue;
       const returns = o.kind === 'return';

@@ -203,7 +203,7 @@ test('business backups preserve actor names and same-server template owners, but
   await source.command(employee.cookie, '/templates', templateBody);
   await source.command(employee.cookie, '/orders', templateBody);
   const backup = (await source.request(source.admin, '/backup')).data;
-  assert.equal(backup.version, 60);
+  assert.equal(backup.version, 61);
   assert.equal(backup.data.users, undefined);
   const restore = async (f, value) => {
     const preview = await f.request(f.admin, '/backup/preview', { backup: value });
@@ -266,7 +266,7 @@ const routeRoles = new Map(Object.entries({
   'get /api/payroll/members': 'admin', 'get /api/payroll': 'admin',
   'get /api/payroll/production-orders': 'admin', 'get /api/payroll/production-order': 'admin',
   'post /api/payments/:id/reverse': 'admin', 'get /api/finance': 'admin', 'get /api/reports/profit': 'admin',
-  'post /api/orders/:id/void': 'admin', 'post /api/orders/:id/returns': 'admin',
+  'post /api/orders/:id/exchange-receipt': 'admin', 'post /api/orders/:id/void': 'admin', 'post /api/orders/:id/returns': 'admin',
   'get /api/stocktakes': 'admin', 'post /api/stocktakes': 'admin',
   'post /api/stock/reduce': 'admin', 'post /api/stock/increase': 'admin',
   'get /api/stocktakes/multi/products': 'admin', 'post /api/stocktakes/multi/compare': 'admin',
