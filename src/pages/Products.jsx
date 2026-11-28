@@ -549,7 +549,6 @@ function Products({ data, search, setSearch, edit, showProduct, barcode, onCateg
         ) : !list.loading && !list.error && (
           <Empty
             title={translate("warehouse.material.not.found")}
-            description={translate("warehouse.please.adjust.the.search.conditions.or.add.new.materials")}
             action={
               <Button permission="products" icon={Plus} onClick={() => edit(null)}>{translate("warehouse.add.new.material")}</Button>
             }

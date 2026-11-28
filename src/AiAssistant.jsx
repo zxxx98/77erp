@@ -113,6 +113,10 @@ function ActionCard({ action, busy, confirm }) {
 function ActionPreview({ action, busy, confirm }) {
   useLocale();
   const p = action.preview, expired = action.expires_at < Date.now();
+  const confirmLabel = {
+    orders: 'stockApproval.submit',
+    quality_chart: 'system.confirm.to.save.chart',
+  }[action.kind] || 'system.confirm.execution.of.this.batch.of.operations';
   return <section className="ai-action">
     <h3>{{ update_products: translate("system.ai.products.preview"), orders: translate("system.batch.warehouse.entry.and.exit.preview"), import: translate("system.new.material.preview"), transfer: translate("system.warehouse.transfer.preview"), stocktake: translate("system.inventory.count.preview"), inspection: translate("system.set.verification.reminder.preview"), mark_inspected: translate("system.mark.verified.preview"), quality_chart: translate("system.quality.chart.configuration.preview") }[action.kind]} · {action.result ? translate("system.completed") : expired ? translate("system.expired") : translate("system.to.be.confirmed")}</h3>
     {action.kind === 'update_products' && <>
@@ -171,7 +175,10 @@ function ActionPreview({ action, busy, confirm }) {
       <div className="ai-table"><table><thead><tr>{[translate("system.material.barcode"), translate("system.unit"), translate("system.original.verification.date"), action.kind === 'inspection' ? translate("system.new.verification.date") : translate("system.next.verification.date"), translate("system.inspection.cycle")].map(s => <th key={s}>{s}</th>)}</tr></thead><tbody>{p.items.map(i => <tr key={i.product_id}><td>{i.name}<small>{i.barcode}</small></td><td>{i.unit}</td><td>{i.before_date || translate("system.not.configured")}</td><td>{i.after_date}</td><td>{i.interval ? translate("system.every", { v0: i.interval, v1: { day: translate("system.day"), month: translate("system.month"), year: translate("system.year") }[i.interval_unit] || translate("system.month") }) : translate("system.set.date.manually")}</td></tr>)}</tbody></table></div>
       <p>{action.kind === 'inspection' ? translate("system.after.confirmation.the.verification.reminder.will.be.updated.according.to.the") : translate("system.after.confirmation.the.last.verification.date.will.be.recorded.as.and", { v0: p.last_inspected_on })}</p>
     </>}
-    {!action.result && <><p>{translate("system.the.operator.is.the.currently.logged.in.user.confirm.after.checking")}</p><AntButton type="primary" htmlType="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>{action.kind==='quality_chart'?translate("system.confirm.to.save.chart"):translate("system.confirm.execution.of.this.batch.of.operations")}</AntButton></>}
+    {!action.result && <>
+      <p className="ai-hint">{translate("system.ai.previewExpiry")}</p>
+      <AntButton type="primary" htmlType="button" className="btn primary" disabled={busy || expired} onClick={() => confirm(action.id)}>{translate(confirmLabel)}</AntButton>
+    </>}
   </section>;
 }
 
@@ -312,26 +319,27 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
   }
   return <div className="ai-assistant">
     <aside className={`ai-sidebar ${showHistory ? 'is-open' : ''}`} aria-label={translate("system.conversation.history")}>
-      <div className="ai-brand"><span>77</span>ERP <AntButton type="text" htmlType="button" className="ai-icon ai-history-close" aria-label={translate("system.close.historical.conversation")} onClick={() => setShowHistory(false)}><X size={18} /></AntButton></div>
+      <div className="ai-sidebar-heading">
+        <h3>{translate("system.recent.conversations.all.repositories")}</h3>
+        <AntButton type="text" htmlType="button" className="ai-icon ai-history-close" aria-label={translate("system.close.historical.conversation")} onClick={() => setShowHistory(false)}><X size={18} /></AntButton>
+      </div>
       <AntButton type="text" htmlType="button" className="ai-new" disabled={busy} onClick={newThread}><Plus size={15} />{translate("system.start.a.new.conversation")}</AntButton>
-      <div className="ai-sidebar-caption">{translate("system.recent.conversations.all.repositories")}</div>
       <div className="ai-history-list">
-        {historyError ? <p className="ai-history-error" role="status">{historyError}<AntButton type="text" htmlType="button" className="ai-new" onClick={refreshHistory}>{translate("system.reload")}</AntButton></p> : history.length ? history.map(h => <AntButton type="text" htmlType="button" key={h.id} className={`ai-history-item ${thread.conversation_id === h.id ? 'active' : ''}`} disabled={busy} onClick={() => openThread(h.id)} title={h.title} aria-current={thread.conversation_id === h.id ? 'true' : undefined}><span>{h.title}</span><small>{new Date(h.created_at).toLocaleDateString(getFormatLocale())}</small></AntButton>) : <p className="ai-history-empty">{translate("system.once.you.start.a.chat.the.conversation.is.saved.here")}</p>}
+        {historyError ? <p className="ai-history-error" role="status">{historyError}<AntButton type="text" htmlType="button" className="ai-new" onClick={refreshHistory}>{translate("system.reload")}</AntButton></p> : history.length ? history.map(h => <AntButton type="text" htmlType="button" key={h.id} className={`ai-history-item ${thread.conversation_id === h.id ? 'active' : ''}`} disabled={busy} onClick={() => openThread(h.id)} title={h.title} aria-current={thread.conversation_id === h.id ? 'true' : undefined}><span>{h.title}</span><small>{new Date(h.created_at).toLocaleDateString(getFormatLocale())}</small></AntButton>) : <p className="ai-history-empty">{translate("system.ai.noConversations")}</p>}
       </div>
     </aside>
     <section className="ai-chat" aria-label={translate("system.ai.conversation")}>
       <div className="ai-context"><span className="ai-context-title"><Bot size={15} />{warehouseName || translate("system.current.warehouse")} · {mode === 'production' ? translate("system.production") : translate("system.warehouse")}</span><div className="ai-mobile-tools"><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.view.historical.conversations")} aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}><History size={18} /></AntButton><AntButton type="text" htmlType="button" className="ai-icon" aria-label={translate("system.start.a.new.conversation")} disabled={busy} onClick={newThread}><Plus size={19} /></AntButton></div></div>
       <div className="ai-feed" ref={feed}>
-        {!thread.messages.length && !busy && <div className="ai-welcome">
-          <h3>{translate("system.today.what.is.there")}{translate("system.can.i.help.you")}</h3>
-          <p>{mode === 'production' ? translate("system.query.batch.completion.progress.analyze.material.consumption.differences.and.calculate.material") : translate("system.check.inventory.organize.documents.and.import.materials")}</p>
+        {!thread.messages.length && !busy && <section className="ai-commands">
+          <h3>{translate("system.ai.quickCommands")}</h3>
           <div className="ai-suggestions">{[
             mode === 'production' ? [PackageSearch, translate("system.query.bom"), translate("system.what.boms.are.currently.in.the.warehouse.please.list.finished.product")] : [PackageSearch, translate("system.query.material.quantity"), translate("system.how.many.materials.are.currently.in.the.warehouse")],
             mode === 'production' ? [ArrowLeftRight, translate("system.query.tasks.to.be.produced"), translate("system.what.production.orders.are.currently.in.the.warehouse.to.be.produced")] : [ArrowLeftRight, translate("system.query.cross.warehouse.inventory"), translate("system.i.want.to.compare.the.material.inventory.of.different.warehouses.please")],
             [ChartColumn, translate("system.recommended.quality.chart"), translate("system.please.check.the.acceptance.data.saved.in.the.current.warehouse.recommend")],
             [FileSpreadsheet, translate("system.upload.the.form.and.add.new.materials"), translate("system.i.want.to.upload.a.table.to.add.a.new.material")],
           ].sort((a, b) => mode === 'production' ? Number(b[0] === ChartColumn) - Number(a[0] === ChartColumn) : 0).map(([Icon, label, value]) => <AntButton type="text" htmlType="button" key={label} onClick={() => suggest(value)}><Icon size={16} strokeWidth={1.75} /><span>{label}</span><ArrowUpRight size={14} /></AntButton>)}</div>
-        </div>}
+        </section>}
         <div className="ai-messages" aria-live="polite" aria-busy={busy}>
           {turns.map((turn, turnIndex) => <div className="ai-turn" key={turnIndex}>
           {turn.messages.map((m, i) => <div className={`ai-message ai-${m.role}`} key={i}>
@@ -368,7 +376,7 @@ export function AiAssistant({ onChanged, userId, warehouseName, mode = 'warehous
             setText(previous => `${previous}${previous ? '\n' : ''}${translate('system.ai.product.image.url')}：${url}`);
           });
         }} /><AntButton htmlType="button" disabled={busy} onClick={() => productImageInput.current?.click()}>{translate('system.ai.product.upload.image')}</AntButton><p>{translate('system.ai.product.image.help')}</p></>}<p>{translate("system.excel.csv.only.parses.the.first.worksheet.with.a.maximum.of")}</p><p>{translate("system.supports.selecting.or.pasting.jpg.png.and.webp.images.up.to")}</p></details>
-        <p className="ai-safety"><ShieldCheck size={12} />{translate("system.operations.involving.inventory.changes.will.be.performed.after.your.confirmation")}</p>
+        <p className="ai-safety"><ShieldCheck size={12} />{translate("system.ai.confirmationRequired")}</p>
       </div>
     </section>
   </div>;

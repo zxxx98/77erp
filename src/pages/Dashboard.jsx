@@ -17,7 +17,6 @@ import {
   Plus,
   ScanLine,
   ArrowRight,
-  ArrowDownToLine,
   ChevronRight,
   ArrowUpFromLine,
 } from 'lucide-react';
@@ -329,7 +328,6 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
       <div className="dashboard-middle">
         <Panel
           title={translate("warehouse.purchasing.and.sales.trends")}
-          subtitle={translate("warehouse.statistics.of.purchase.and.sales.amounts.by.date")}
           className="trend-panel"
           extra={
             <div className="segmented small">
@@ -372,13 +370,6 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               <span className="quick-action-label">{translate("warehouse.open.the.qr.code.scanning.workbench")}</span>
               <ArrowRight size={14} />
             </AntButton>
-            <AntButton type="text" htmlType="button" className="quick-action-item" hidden={!can("purchase")} onClick={() => openOrder("in")}>
-              <span className="quick-action-icon">
-                <ArrowDownToLine size={16} strokeWidth={1.75} />
-              </span>
-              <span className="quick-action-label">{translate("warehouse.new.stock.in")}</span>
-              <ChevronRight size={14} />
-            </AntButton>
             <AntButton type="text" htmlType="button" className="quick-action-item" hidden={!can("sale")} onClick={() => openOrder("out")}>
               <span className="quick-action-icon">
                 <ArrowUpFromLine size={16} strokeWidth={1.75} />
@@ -387,7 +378,6 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
               <ChevronRight size={14} />
             </AntButton>
           </div>
-          <p className="quick-panel-hint">{translate("warehouse.use.the.mobile.phone.camera.to.check.materials.and.process.incoming")}</p>
         </Panel>
       </div>
       <div className="dashboard-bottom">
@@ -476,7 +466,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                 ))}
               </tbody>
             </table>
-            {!filteredOrders.length && <Empty />}
+            {recentQuery.result && !filteredOrders.length && <Empty title={translate("warehouse.no.documents.yet")} />}
           </div>
         </Panel>
         <Panel
@@ -514,12 +504,7 @@ function Dashboard({ data, low, navigate, openOrder, showDetail }) {
                   </AntButton>
                 </div>
               ))
-            ) : (
-              <Empty
-                title={translate("warehouse.no.stock.alert.yet")}
-                description={translate("warehouse.all.materials.are.above.safety.stock")}
-              />
-            )}
+            ) : summary && <Empty title={translate("warehouse.no.stock.alert.yet")} />}
           </div>
           <AntButton type="text" htmlType="button"
             className="warning-all-button"

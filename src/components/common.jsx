@@ -1,7 +1,7 @@
 import { t as translate, getFormatLocale } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
 import { Pagination as AntPagination } from 'antd';
-import { Spin, Button as AntButton, Tag, Empty as AntEmpty } from '../ui/controls.jsx';
+import { Spin, Button as AntButton, Tag } from '../ui/controls.jsx';
 import { Popup } from 'antd-mobile';
 
 import { usePermissions } from '../permissions.jsx';
@@ -181,9 +181,9 @@ function Modal({ title, subtitle, children, onClose, wide = false, className = "
   return <div className={`modal-backdrop${drawer ? ' drawer-backdrop' : ''}`} {...backdropEvents}>{content}</div>;
 }
 
-function Empty({ title = translate("system.no.records"), description = translate("system.new.records.will.appear.here"), action }) {
+function Empty({ title = translate("system.no.records"), action, heading: Heading = 'h3' }) {
   useLocale();
-  return <AntEmpty description={<><h3>{title}</h3><p>{description}</p></>}>{action}</AntEmpty>;
+  return <div className="erp-empty"><Heading>{title}</Heading>{action}</div>;
 }
 
 function PageHeading({ title, description, children }) {

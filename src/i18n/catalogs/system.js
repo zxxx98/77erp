@@ -865,10 +865,10 @@ export default {
     "On confirmation, the last inspection date will be set to {{v0}}, and scheduled items will advance by their configured cycle.",
     "Sau khi xác nhận, ngày kiểm định gần nhất sẽ ghi nhận là {{v0}} và các vật tư định kỳ sẽ tự động tính kỳ tiếp theo theo chu kỳ đã cấu hình."
   ],
-  "system.the.operator.is.the.currently.logged.in.user.confirm.after.checking": [
-    "操作人是当前登录用户。核对全部明细后确认；预览15分钟内有效，业务数据变化需重新生成。继续聊天会取消本批未确认预览。",
-    "The operator is the currently logged in user. Confirm after checking all details; the preview is valid within 15 minutes, and changes in business data need to be regenerated. Continuing to chat will cancel this batch of unconfirmed previews.",
-    "Nhà điều hành là người dùng hiện đang đăng nhập. Xác nhận sau khi kiểm tra tất cả các chi tiết; bản xem trước có hiệu lực trong vòng 15 phút và các thay đổi trong dữ liệu doanh nghiệp cần được tạo lại. Tiếp tục trò chuyện sẽ hủy loạt bản xem trước chưa được xác nhận này."
+  "system.ai.previewExpiry": [
+    "预览有效期为 15 分钟。数据变化后需重新生成预览，发送新消息会取消未确认预览。",
+    "Previews expire after 15 minutes. Generate a new preview if the data changes. Sending a message cancels unconfirmed previews.",
+    "Bản xem trước hết hạn sau 15 phút. Tạo lại bản xem trước nếu dữ liệu thay đổi. Gửi tin nhắn mới sẽ hủy các bản xem trước chưa xác nhận."
   ],
   "system.confirm.to.save.chart": [
     "确认保存图表",
@@ -948,17 +948,17 @@ export default {
   "system.recent.conversations.all.repositories": [
     "最近对话 · 所有仓库",
     "Recent chats · All warehouses",
-    "Trò chuyện gần đây · Tất cả kho"
+    "Cuộc trò chuyện gần đây · Tất cả kho"
   ],
   "system.reload": [
     "重新加载",
     "Reload",
     "Tải lại"
   ],
-  "system.once.you.start.a.chat.the.conversation.is.saved.here": [
-    "开始聊天后，对话会保存在这里。",
-    "Chats appear here once you start a conversation.",
-    "Các cuộc trò chuyện sẽ được lưu tại đây sau khi bạn bắt đầu."
+  "system.ai.noConversations": [
+    "暂无对话",
+    "No conversations yet",
+    "Chưa có cuộc trò chuyện nào"
   ],
   "system.your.business.assistant": [
     "你的业务助手",
@@ -1000,25 +1000,10 @@ export default {
     "View history",
     "Xem lịch sử"
   ],
-  "system.today.what.is.there": [
-    "今天，有什么",
-    "How can I",
-    "Hôm nay tôi có thể"
-  ],
-  "system.can.i.help.you": [
-    "可以帮你？",
-    " help you?",
-    " giúp gì?"
-  ],
-  "system.query.batch.completion.progress.analyze.material.consumption.differences.and.calculate.material": [
-    "查询分批完工进度、分析耗料差异、测算备料和废料。",
-    "Check batch progress, material variance, requirements, and scrap.",
-    "Tra tiến độ lô, chênh lệch tiêu hao, dự trù nguyên liệu và phế liệu."
-  ],
-  "system.check.inventory.organize.documents.and.import.materials": [
-    "查库存、整理单据、导入物料。",
-    "Query stock, review documents, and import materials.",
-    "Tra tồn kho, tổng hợp chứng từ và nhập vật tư."
+  "system.ai.quickCommands": [
+    "快捷指令",
+    "Quick commands",
+    "Lệnh nhanh"
   ],
   "system.tell.me.your.requirements.and.we.ll.do.the.rest.together": [
     "把需求告诉我，剩下的一起完成。",
@@ -1152,8 +1137,8 @@ export default {
   ],
   "system.form.image.upload.instructions": [
     "表格 / 图片上传说明",
-    "Form/Image Upload Instructions",
-    "Hướng dẫn tải lên biểu mẫu/hình ảnh"
+    "Spreadsheet and image upload",
+    "Tải bảng tính và ảnh lên"
   ],
   "system.excel.csv.only.parses.the.first.worksheet.with.a.maximum.of": [
     "Excel / CSV 仅解析第一张工作表，最多1000行、5 MB；条码请设为文本以保留前导零。请说明数量是期初库存还是入出库数量。",
@@ -1165,10 +1150,10 @@ export default {
     "Supports selecting or pasting JPG, PNG, and WebP images, up to 3 images at a time, and a single original image up to 10 MB, automatically compressed. Pictures will be saved with the conversation and sent to the configured model; picture recognition requires the model to support picture input, with a maximum of 12 pictures per conversation.",
     "Hỗ trợ chọn hoặc dán hình ảnh JPG, PNG và WebP, tối đa 3 hình ảnh cùng một lúc và một hình ảnh gốc có dung lượng tối đa 10 MB, được nén tự động. Hình ảnh sẽ được lưu cùng với cuộc trò chuyện và gửi đến mô hình đã định cấu hình; nhận dạng hình ảnh yêu cầu mô hình hỗ trợ đầu vào hình ảnh, với tối đa 12 hình ảnh cho mỗi cuộc hội thoại."
   ],
-  "system.operations.involving.inventory.changes.will.be.performed.after.your.confirmation": [
-    "涉及库存变更的操作，将在你确认后执行",
-    "Operations involving inventory changes will be performed after your confirmation",
-    "Các hoạt động liên quan đến thay đổi hàng tồn kho sẽ được thực hiện sau khi bạn xác nhận"
+  "system.ai.confirmationRequired": [
+    "提交或修改业务数据前需确认",
+    "Submitting or changing records requires confirmation",
+    "Cần xác nhận trước khi gửi hoặc sửa dữ liệu"
   ],
   "system.scan": [
     "扫一扫",
@@ -2805,11 +2790,6 @@ export default {
     "Purchase, sale and inventory management system",
     "Hệ thống quản lý mua, bán và tồn kho"
   ],
-  "system.local.data.storage": [
-    "本地数据存储",
-    "local data storage",
-    "lưu trữ dữ liệu cục bộ"
-  ],
   "system.manage.business.data.finance.inventory.and.material.import": [
     "管理业务资料、财务、盘点与物料导入",
     "Manage business data, finance, inventory and material import",
@@ -2820,45 +2800,30 @@ export default {
     "Instructions for use",
     "Hướng dẫn sử dụng"
   ],
-  "system.material.archiving.barcode.identification.and.document.confirmation": [
-    "物料建档、条码识别和单据确认",
-    "Material archiving, barcode identification and document confirmation",
-    "Lưu trữ chứng từ, nhận dạng mã vạch và xác nhận chứng từ"
-  ],
   "system.create.material.file": [
     "建立物料档案",
-    "Create material file",
-    "Tạo tập tin vật tư"
+    "Create a material record",
+    "Tạo hồ sơ vật tư"
   ],
-  "system.add.name.reference.purchase.price.reference.sales.price.and.safety.stock": [
-    "添加名称、参考采购价、参考销售价和安全库存。条码可选填，留空保存时自动生成。",
-    "Add name, reference purchase price, reference sales price, and safety stock. The barcode is optional and will be automatically generated when you leave it blank and save.",
-    "Thêm tên, giá mua tham chiếu, giá bán tham chiếu và lượng hàng tồn kho an toàn. Mã vạch là tùy chọn và sẽ được tạo tự động khi bạn để trống và lưu."
+  "system.help.optionalBarcode": [
+    "条码可留空，保存时自动生成。",
+    "Leave the barcode blank to generate one when you save.",
+    "Để trống mã vạch nếu muốn hệ thống tự tạo mã khi lưu."
   ],
-  "system.scan.the.code.to.find.the.material": [
-    "扫码，找到物料",
-    "Scan barcode to find material",
-    "Quét mã để tìm vật tư"
+  "system.help.cameraAccess": [
+    "摄像头扫码需通过 HTTPS 或 localhost 打开，并允许浏览器使用摄像头。也可手动输入条码。",
+    "To scan, open the app over HTTPS or on localhost and allow camera access in your browser. You can also enter the barcode manually.",
+    "Để quét mã, mở ứng dụng qua HTTPS hoặc localhost và cấp quyền dùng camera cho trình duyệt. Bạn cũng có thể nhập mã vạch thủ công."
   ],
-  "system.turn.on.the.mobile.phone.camera.on.the.code.scanning.workbench": [
-    "在扫码工作台打开手机摄像头，将物料条码放入取景框。也可手动输入条码查询。",
-    "Open the phone camera in the Scanner and align the material barcode, or enter the barcode manually.",
-    "Mở camera điện thoại ở trang Quét mã và đưa mã vạch vật tư vào khung ngắm, hoặc nhập mã vạch thủ công."
+  "system.help.stockApproval": [
+    "出入库审核",
+    "Stock-in and stock-out approval",
+    "Duyệt nhập xuất kho"
   ],
-  "system.confirm.entry.or.exit": [
-    "确认入库或出库",
-    "Confirm stock-in or stock-out",
-    "Xác nhận nhập kho hoặc xuất kho"
-  ],
-  "system.add.quantities.and.confirm.documents.the.inventory.is.automatically.updated.and": [
-    "添加数量并确认单据，库存自动更新，每一笔操作都有记录。",
-    "Add quantities and confirm documents, the inventory is automatically updated, and every operation is recorded.",
-    "Thêm số lượng và xác nhận chứng từ, hàng tồn kho được cập nhật tự động và mọi thao tác đều được ghi lại."
-  ],
-  "system.it.is.currently.a.local.version.of.a.single.warehouse.and": [
-    "当前为单仓库本地版本，无登录权限。演示单据用于体验；正式使用前请备份或使用新的数据库。摄像头需 HTTPS 或 localhost。",
-    "It is currently a local version of a single warehouse and does not have login permissions. The demo document is for experience; please back up or use a new database before official use. The camera requires HTTPS or localhost.",
-    "Nó hiện là phiên bản cục bộ của một kho duy nhất và không có quyền đăng nhập. Chứng từ demo là để trải nghiệm; vui lòng sao lưu hoặc sử dụng cơ sở dữ liệu mới trước khi sử dụng chính thức. Máy ảnh yêu cầu HTTPS hoặc localhost."
+  "system.help.stockPosting": [
+    "普通出入库单审核通过后才更新库存。",
+    "Standard stock-in and stock-out documents update stock only after approval.",
+    "Tồn kho chỉ thay đổi sau khi chứng từ nhập xuất kho thông thường được duyệt."
   ],
   "system.go.to.materials.management": [
     "前往物料管理",
@@ -3211,9 +3176,9 @@ export default {
     "Đóng lời nhắc ứng dụng"
   ],
   "system.web.version.application": [
-    "网页版应用",
-    "Web version application",
-    "Ứng dụng phiên bản web"
+    "安装与更新",
+    "Installation and updates",
+    "Cài đặt và cập nhật"
   ],
   "system.currently.offline.confirm.business.operations.after.connecting.to.the.internet": [
     "当前离线，联网后确认业务操作。",

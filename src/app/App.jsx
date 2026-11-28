@@ -9,7 +9,6 @@ import { Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import {
-  Box,
   Bot,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -28,8 +27,6 @@ import {
   CircleHelp,
   LogOut,
   RefreshCw,
-  ShieldCheck,
-  PackageCheck,
   CircleCheck,
   X,
 } from 'lucide-react';
@@ -615,11 +612,7 @@ function StandardApp({ admin, onLogout }) {
                 <Scanner data={data} openOrder={openOrder} notify={notify} userKey={admin.id || admin.username} isAdmin={manage('business')} onSaved={async message => { notify(message); await reload(); }} manageStockQr={() => setModal({kind:"stockQr"})} />
               )}
               <footer className="page-footer">
-                <span>
-                  <span className="footer-brand">77 ERP</span>{translate("system.purchase.sale.and.inventory.management.system")}</span>
-                <span>
-                  <ShieldCheck size={13} />{" "}{translate("system.local.data.storage")}{" "}<i /> v{appVersion}
-                </span>
+                <span>v{appVersion}</span>
               </footer>
             </>
           )}
@@ -700,45 +693,21 @@ function StandardApp({ admin, onLogout }) {
       {modal?.kind === "help" && (
         <Modal
           title={translate("system.instructions.for.use")}
-          subtitle={translate("system.material.archiving.barcode.identification.and.document.confirmation")}
           onClose={() => setModal(null)}
         >
           <div className="help-content">
-            {[
-              [
-                Box,
-                "01",
-                translate("system.create.material.file"),
-                translate("system.add.name.reference.purchase.price.reference.sales.price.and.safety.stock"),
-              ],
-              [
-                ScanLine,
-                "02",
-                translate("system.scan.the.code.to.find.the.material"),
-                translate("system.turn.on.the.mobile.phone.camera.on.the.code.scanning.workbench"),
-              ],
-              [
-                PackageCheck,
-                "03",
-                translate("system.confirm.entry.or.exit"),
-                translate("system.add.quantities.and.confirm.documents.the.inventory.is.automatically.updated.and"),
-              ],
-            ].map(([Icon, number, title, text]) => (
-              <div className="help-step" key={number}>
-                <span>
-                  <Icon size={22} />
-                </span>
-                <div>
-                  <small>STEP {number}</small>
-                  <h3>{title}</h3>
-                  <p>{text}</p>
-                </div>
-              </div>
-            ))}
-            <div className="info-box">
-              <ShieldCheck size={18} />
-              <p>{translate("system.it.is.currently.a.local.version.of.a.single.warehouse.and")}</p>
-            </div>
+            <section>
+              <h3>{translate("system.create.material.file")}</h3>
+              <p>{translate("system.help.optionalBarcode")}</p>
+            </section>
+            <section>
+              <h3>{translate("warehouse.scanning.workbench")}</h3>
+              <p>{translate("system.help.cameraAccess")}</p>
+            </section>
+            <section>
+              <h3>{translate("system.help.stockApproval")}</h3>
+              <p>{translate("system.help.stockPosting")}</p>
+            </section>
           </div>
           <div className="modal-footer">
             <Button

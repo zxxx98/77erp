@@ -23,10 +23,11 @@ import { OfflineNotice, PwaActions, usePwa } from '../pwa/Pwa.jsx';
 import { draftScope, listDrafts, removeDraft } from '../pwa/drafts.js';
 import { download } from '../data-files.js';
 import { ProductImage } from '../ProductImage.jsx';
+import { Empty } from '../components/common.jsx';
 import { CustomerPartNumbersDetail } from '../CustomerPartNumbers.jsx';
 import { ProductHistory } from '../ProductHistory.jsx';
 import { evaluateStockExpression } from '../../shared/stock-compare.js';
-import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, Empty, money, price, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
+import { MobileButton as Button, MobileIcon, Notice, Chips, SearchField, ProductRow, money, price, count, dateTime, DetailRow, StockBadge } from './ui.jsx';
 import { InspectionPanel } from '../InspectionPanel.jsx';
 
 import { ProductBatchDialog } from '../pages/Products.jsx';
@@ -73,7 +74,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
     <div className="mw-topbar">
       <header className="mw-header" inert={switching}>
         <div className="mw-header-main">
-          {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label={translate("warehouse.return.to.workbench")} onClick={() => navigate('overview')} /><strong className="mw-modal-title">{translate("warehouse.scanning.workbench")}</strong></> : <>
+          {page === 'scanner' ? <><MobileIcon icon={ArrowLeft} label={translate("warehouse.return.to.workbench")} onClick={() => navigate('overview')} /><h1 className="mw-modal-title">{translate("warehouse.scanning.workbench")}</h1></> : <>
             <strong className="mw-wordmark">77 <span>ERP</span></strong>
             {can('basic_view') && <AntButton type="text" htmlType="button" className="mw-icon announcement-entry" aria-label={translate("warehouse.announcement.center")} onClick={() => navigate('announcements')} disabled={!ready}><Megaphone size={22} />{announcementCount > 0 && <span className="announcement-entry-count" aria-label={translate("warehouse.unread.announcements", { v0: announcementCount })}>{announcementCount > 99 ? '99+' : announcementCount}</span>}</AntButton>}
             {(productionScan ? canViewProduction(user) : can('basic_view')) && <MobileIcon icon={ScanLine} label={translate(productionScan ? 'production.scanProductionRegistrationQr' : 'warehouse.open.the.qr.code.scanning.workbench')} onClick={() => productionScan ? navigate('production', { scan: true }) : navigate('scanner')} disabled={!ready} />}
@@ -91,7 +92,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
       {updateNotice}
       {loading && !ready ? <div className="mw-empty" role="status"><LoadingIndicator size={64} /><p>{translate("warehouse.reading.inventory")}</p></div> : <>
         {loadError && <div className="mw-stack"><Notice>{loadError}{ready ? translate("warehouse.the.last.read.data.is.currently.displayed") : ''}</Notice><Button icon={RefreshCw} busy={refreshing} onClick={reload}>{translate("warehouse.resync")}</Button></div>}
-        {!ready && !loadError && <Empty title={translate("warehouse.waiting.to.connect.to.workspace")} />}
+        {!ready && !loadError && <Empty heading="h2" title={translate("warehouse.waiting.to.connect.to.workspace")} />}
         {ready && <>
           {page === 'supplier-returns' && renderSupplierReturns()}
           {page === 'overview' && <Dashboard data={data} openOrder={openOrder} onScan={() => navigate('scanner')} showProduct={showProduct} showOrder={showOrder} history={() => navigate('history')} />}
@@ -106,7 +107,7 @@ export function MobileShell({ mode, switchMode, user, data, page, navigate, open
           {page === 'scanner' && renderScanner()}
           {page === 'todos' && renderTodos()}
           {page === 'announcements' && renderAnnouncements()}
-          <div className="mw-refresh"><span className="mw-muted">{updated ? translate("warehouse.read.at", { v0: updated.toLocaleTimeString(getFormatLocale(), { hour12: false }) }) : translate("warehouse.data.is.saved.on.the.server")}</span><AntButton type="default" htmlType="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}{translate("warehouse.refresh.data")}</AntButton></div>
+          <div className="mw-refresh">{updated && <span className="mw-muted">{translate("warehouse.read.at", { v0: updated.toLocaleTimeString(getFormatLocale(), { hour12: false }) })}</span>}<AntButton type="default" htmlType="button" onClick={reload} disabled={refreshing || !online} aria-busy={refreshing}>{refreshing ? <LoadingIndicator size={20} /> : <RefreshCw size={15} />}{translate("warehouse.refresh.data")}</AntButton></div>
         </>}
       </>}
     </main>
@@ -136,8 +137,8 @@ function Dashboard({ data, openOrder, onScan, showProduct, showOrder, history })
     <div className="mw-stats">{stats.map(([label, value, Icon]) => <section className="mw-stat" key={label}><div><span className="mw-muted">{label}</span><Icon size={18} /></div><strong>{value}</strong></section>)}</div>
     <InspectionPanel key={data.warehouse_id} data={data} />
     <section className="mw-card mw-stack"><h2>{translate("warehouse.quick.operation.2")}</h2><Button primary icon={ScanLine} onClick={onScan}>{translate("warehouse.scan.material.barcode")}</Button><div className="mw-columns"><Button permission="purchase" icon={ArrowDownToLine} onClick={() => openOrder('in')}>{translate("warehouse.stock.in")}</Button><Button permission="sale" icon={ArrowUpFromLine} onClick={() => openOrder('out')}>{translate("warehouse.stock.out")}</Button></div></section>
-    <section className="mw-card mw-stack"><div className="mw-between"><h2>{translate("warehouse.stock.alert")}</h2><span className="mw-warning">{summary ? translate("warehouse.items.3", { v0: summary.products.low_stock + summary.products.out_of_stock }) : '—'}</span></div>{low.length ? low.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : <p className="mw-muted">{translate("warehouse.all.materials.are.in.sufficient.stock")}</p>}</section>
-    <section className="mw-card mw-stack"><h2>{translate("warehouse.latest.documents")}</h2>{recent.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{summary && !recent.length && <p className="mw-muted">{translate("warehouse.there.is.no.document.yet.create.the.first.receipt.document.to")}</p>}<Button onClick={history}>{translate("warehouse.view.all.documents")}</Button></section>
+    <section className="mw-card mw-stack"><div className="mw-between"><h2>{translate("warehouse.stock.alert")}</h2><span className="mw-warning">{summary ? translate("warehouse.items.3", { v0: summary.products.low_stock + summary.products.out_of_stock }) : '—'}</span></div>{low.length ? low.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} />) : summary && <p className="mw-muted">{translate("warehouse.no.stock.alert.yet")}</p>}</section>
+    <section className="mw-card mw-stack"><h2>{translate("warehouse.latest.documents")}</h2>{recent.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}{summary && !recent.length && <p className="mw-muted">{translate("warehouse.no.documents.yet")}</p>}<Button onClick={history}>{translate("warehouse.view.all.documents")}</Button></section>
   </div>;
 }
 
@@ -244,7 +245,7 @@ function Products({ data, inventory, showProduct, openModal, onSaved }) {
     )}
     {loading && !products.length && <LoadingStatus block>{translate("warehouse.reading.material.2")}</LoadingStatus>}
     <div className="mw-product-list" aria-busy={loading}>{products.map(p => <ProductRow key={p.id} product={p} onOpen={showProduct} selectable={batchSelecting} selected={selectedMap.has(p.id)} onToggle={toggleSelect} />)}</div>
-    {!loading && !products.length && !error && <Empty title={translate("warehouse.material.not.found.2")}>{translate("warehouse.try.adjusting.the.filter.conditions.or.adding.a.new.material.file")}</Empty>}
+    {!loading && !products.length && !error && <Empty heading="h2" title={translate("warehouse.material.not.found.2")} />}
     {result?.has_more && <Button busy={loading} onClick={loadMore}>{translate("warehouse.load.more.materials")}</Button>}
     {batchSelecting && manage('products') && (
       <div className="mw-batch-bar" role="region" aria-label={translate("warehouse.batch.operation.bar")}>
@@ -328,7 +329,9 @@ function OrderRecords({ data, initial, showOrder }) {
     <p className="mw-muted">{translate("warehouse.total.2")}{" "}{result ? result.total : '—'}{" "}{translate("warehouse.documents.loaded")}{" "}{orders.length}{" "}{translate("warehouse.documents")}</p>
     <Notice>{error || exportError}</Notice>{error && <Button onClick={retry}>{translate("warehouse.reload")}</Button>}{loading && <LoadingStatus>{translate("warehouse.reading.document")}</LoadingStatus>}
     {orders.length > 0 && <section className="mw-card mw-order-list">{orders.map(o => <OrderSummary key={o.id} order={o} onOpen={showOrder} />)}</section>}
-    {!loading && !orders.length && !error && <Empty title={translate("warehouse.no.documents.yet")}>{translate("warehouse.adjust.filter.conditions.or.create.your.first.document")}</Empty>}
+    {!loading && !orders.length && !error && <Empty heading="h2" title={translate(query.trim() || type !== initial || period !== 'all' || status !== 'all'
+      ? "warehouse.there.are.currently.no.documents.that.meet.the.criteria"
+      : "warehouse.no.documents.yet")} />}
     {result?.has_more && <Button busy={loading} onClick={loadMore}>{translate("warehouse.load.more.documents")}</Button>}
     {can('data_io') && <><ExportLanguageSelect value={exportLanguage} onChange={setExportLanguage} disabled={exporting} /><Button busy={exporting} disabled={!online} onClick={exportOrders}>{translate("warehouse.export.documents")}</Button></>}
   </div>;
@@ -361,7 +364,7 @@ function More({ mode, user, data, navigate, openModal, loggingOut, logout }) {
     </section>
     <section className="mw-card"><p className="mw-field-label">{translate("warehouse.server.address")}</p><p className="mw-muted mw-break">{location.origin}</p></section>
     <Button danger icon={LogOut} busy={loggingOut} onClick={() => { if (window.confirm(translate("warehouse.log.out.the.local.draft.of.this.account.will.be.cleared"))) logout(); }}>{translate("warehouse.log.out")}</Button>
-    <PwaActions /><p className="mw-muted mw-center">{translate("warehouse.77.erp.data.is.saved.on.the.server")}</p>
+    <PwaActions />
   </div>;
 }
 
@@ -380,7 +383,7 @@ export function DraftList({ data, userId, onOpen, onClose, Modal }) {
   const load = async () => { try { setDrafts(await listDrafts(scope)); } catch (e) { setError(localizeError(e.message)); } };
   useEffect(() => { load(); }, [userId, data.warehouse_id, data.instance_id]);
   return <Modal title={translate("warehouse.local.draft")} subtitle={data.settings.warehouse_name} onClose={onClose}><div className="form-body mw-stack"><p className="mw-muted">{translate("warehouse.drafts.are.only.saved.in.the.current.browser.and.ordinary.drafts")}</p><Notice>{error}</Notice>
-    {!drafts && !error && <p><LoadingStatus>{translate("warehouse.reading.draft")}</LoadingStatus></p>}{drafts?.length === 0 && <Empty title={translate("warehouse.no.draft.yet")}>{translate("warehouse.automatically.save.when.editing.inbound.and.outbound.documents")}</Empty>}
+    {!drafts && !error && <p><LoadingStatus>{translate("warehouse.reading.draft")}</LoadingStatus></p>}{drafts?.length === 0 && <Empty title={translate("warehouse.no.draft.yet")} />}
     {drafts?.map(draft => <section key={draft.id} className="mw-card mw-stack"><h2>{draft.type === 'in' ? translate("warehouse.stock.in") : translate("warehouse.stock.out")}{draft.pending ? translate("warehouse.results.to.be.confirmed") : ''}</h2><p>{draft.partner || translate("warehouse.correspondence.unit.not.filled.in")}</p><p className="mw-muted">{draft.items.length}{" "}{translate("warehouse.material.2")}{" "}{dateTime(draft.updatedAt)}</p><Button primary disabled={!can(draft.type === 'in' ? 'purchase' : 'sale')} onClick={() => onOpen(draft)}>{translate("warehouse.continue")}{draft.pending ? translate("warehouse.check") : translate("warehouse.edit")}</Button>{!draft.pending && <Button danger onClick={async () => { if (!window.confirm(translate("warehouse.delete.this.local.draft"))) return; try { await removeDraft(scope, draft.id); await load(); } catch (e) { setError(localizeError(e.message)); } }}>{translate("warehouse.delete.draft")}</Button>}</section>)}
   </div></Modal>;
 }

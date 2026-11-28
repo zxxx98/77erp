@@ -776,8 +776,8 @@ export default {
   ],
   "warehouse.there.are.currently.no.materials.that.meet.the.criteria": [
     "暂无符合条件的物料",
-    "There are currently no materials that meet the criteria",
-    "Hiện tại không có vật tư nào đáp ứng tiêu chí"
+    "No matching materials",
+    "Không có vật tư phù hợp"
   ],
   "warehouse.adjust.your.filters.to.see.other.inventory": [
     "调整筛选条件，查看其他库存。",
@@ -966,8 +966,8 @@ export default {
   ],
   "warehouse.there.are.currently.no.documents.that.meet.the.criteria": [
     "暂无符合条件的单据",
-    "There are currently no documents that meet the criteria.",
-    "Hiện tại không có chứng từ nào đáp ứng được tiêu chí."
+    "No matching documents",
+    "Không có chứng từ phù hợp"
   ],
   "warehouse.adjust.the.search.or.date.range.or.start.creating.a.document": [
     "调整搜索或日期范围，或开始创建单据。",
@@ -991,8 +991,8 @@ export default {
   ],
   "warehouse.scanning.workbench": [
     "扫码工作台",
-    "Scanner workspace",
-    "Bàn quét mã"
+    "Scanner",
+    "Quét mã"
   ],
   "warehouse.use.the.mobile.phone.camera.to.identify.material.barcodes.or.qr": [
     "使用手机摄像头识别物料条码或二维码标签，进行物料查询、入库或出库。",
@@ -1001,8 +1001,8 @@ export default {
   ],
   "warehouse.manage.incoming.and.outgoing.qr.codes": [
     "管理出入库二维码",
-    "Manage incoming and outgoing QR codes",
-    "Quản lý mã QR đến và đi"
+    "Manage stock-in and stock-out QR codes",
+    "Quản lý mã QR nhập xuất kho"
   ],
   "warehouse.scan.code.with.mobile.phone.camera": [
     "手机摄像头扫码",
@@ -1011,8 +1011,8 @@ export default {
   ],
   "warehouse.find.items": [
     "查找物料",
-    "Find items",
-    "Tìm mục"
+    "Find materials",
+    "Tìm vật tư"
   ],
   "warehouse.scan.code.to.store": [
     "扫码入库",
@@ -1044,10 +1044,10 @@ export default {
     "Open the mobile phone camera and put the material barcode or QR code into the viewfinder",
     "Mở camera điện thoại di động và đặt mã vạch hoặc mã QR vật tư vào kính ngắm"
   ],
-  "warehouse.the.qr.code.for.entering.and.exiting.the.warehouse.without.confirmation": [
-    "免确认出入库二维码将直接执行全部物料。",
-    "QR codes configured without confirmation immediately process every material in the document.",
-    "Mã QR không cần xác nhận sẽ thực hiện ngay toàn bộ vật tư trong chứng từ."
+  "warehouse.scan.autoSubmit": [
+    "扫描免二次确认的二维码会自动提交整单审核。审核通过后才更新库存。",
+    "Scanning a QR code that skips confirmation submits the full document for approval. Stock updates only after approval.",
+    "Khi quét mã QR miễn xác nhận lần hai, hệ thống tự gửi toàn bộ chứng từ để duyệt. Tồn kho chỉ thay đổi sau khi duyệt."
   ],
   "warehouse.turn.off.camera": [
     "关闭摄像头",
@@ -1073,11 +1073,6 @@ export default {
     "识别后自动返回查看物料",
     "Automatically return to view materials after identification",
     "Tự động quay lại xem vật tư sau khi nhận dạng"
-  ],
-  "warehouse.it.will.automatically.return.after.identification.the.qr.code.for.entering": [
-    "识别后自动返回；免确认出入库二维码会直接更新库存。",
-    "It will automatically return after identification; the QR code for entering and exiting the warehouse will directly update the inventory without confirmation.",
-    "Nó sẽ tự động quay trở lại sau khi nhận dạng; mã QR ra vào kho sẽ cập nhật trực tiếp tình trạng tồn kho mà không cần xác nhận."
   ],
   "warehouse.close.manual.input": [
     "收起手动输入",
@@ -1155,19 +1150,19 @@ export default {
     "Nhãn vật tư chỉ nhận dạng vật tư. Mã QR nhập xuất kho không cần xác nhận sẽ cập nhật ngay tồn kho của toàn bộ vật tư trong danh sách."
   ],
   "warehouse.recently.recognized": [
-    "最近识别",
-    "Recently recognized",
-    "Được công nhận gần đây"
+    "最近扫码",
+    "Recent scans",
+    "Mã đã quét"
   ],
   "warehouse.this.session": [
     "本次会话",
     "This session",
     "Phiên này"
   ],
-  "warehouse.the.scanned.materials.will.appear.here": [
-    "扫过的物料会出现在这里",
-    "The scanned materials will appear here",
-    "Các vật tư được quét sẽ xuất hiện ở đây"
+  "warehouse.scan.noRecentScans": [
+    "暂无扫码记录",
+    "No scans yet",
+    "Chưa có lượt quét nào"
   ],
   "warehouse.warehouse": [
     "仓库 #{{v0}}",
@@ -3415,9 +3410,9 @@ export default {
     "Cần xác nhận thứ hai"
   ],
   "warehouse.after.scanning.the.qr.code.the.entire.document.will.be.directly": [
-    "扫码后将直接生成整张单据并更新全部物料库存。",
-    "After scanning the QR code, the entire document will be directly generated and all material inventory will be updated.",
-    "Sau khi quét mã QR, toàn bộ vật tư sẽ được tạo trực tiếp và tất cả kho vật tư sẽ được cập nhật."
+    "扫码后自动提交整单审核。审核通过后才更新库存。",
+    "Scanning automatically submits the full document for approval. Stock updates only after approval.",
+    "Khi quét mã, hệ thống tự gửi toàn bộ chứng từ để duyệt. Tồn kho chỉ thay đổi sau khi duyệt."
   ],
   "warehouse.document.remarks": [
     "单据备注",

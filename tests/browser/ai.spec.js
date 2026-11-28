@@ -112,7 +112,7 @@ for (const device of [null, 'Pixel 7', 'iPhone 13']) test(`${device || 'desktop'
     expect(counted.products[0].stock).toBe(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.getByRole('button', { name: '开始新对话', exact: true }).click();
-    await expect(page.getByText('今天，有什么')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '快捷指令', exact: true })).toBeVisible();
     await page.screenshot({ path: `output/ai-design/welcome-${mobile ? 'mobile' : 'desktop'}.png` });
     if (mobile) await page.getByRole('button', { name: '查看历史对话' }).click();
     await page.locator('.ai-history-item').filter({ hasText: '导入上传表' }).first().click();

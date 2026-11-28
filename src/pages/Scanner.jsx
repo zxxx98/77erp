@@ -5,6 +5,7 @@ import { Form as AntForm } from 'antd';
 import { Button as AntButton, Input as AntInput } from '../ui/controls.jsx';
 
 import { usePermissions } from '../permissions.jsx';
+import { mobileDevice } from '../device.js';
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api.js';
 import { stockQrLabel } from '../stock-qr-client.js';
@@ -14,12 +15,9 @@ import {
   Search,
   ArrowDownToLine,
   ArrowUpFromLine,
-  ScanLine,
   Camera,
   ChevronDown,
-  ArrowRight,
   TriangleAlert,
-  CircleCheck,
   ChevronRight,
 } from 'lucide-react';
 import { CameraScanner, StockQrExecution } from '../LazyComponents.jsx';
@@ -84,13 +82,12 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
   };
   return (
     <>
-      <PageHeading
-        title={translate("warehouse.scanning.workbench")}
-      >
+      {!mobileDevice && <PageHeading title={translate("warehouse.scanning.workbench")}>
         {isAdmin && <Button onClick={manageStockQr}>{translate("warehouse.manage.incoming.and.outgoing.qr.codes")}</Button>}
-        <span className="scanner-ready">
-          <i />{translate("warehouse.scan.code.with.mobile.phone.camera")}</span>
-      </PageHeading>
+      </PageHeading>}
+      {mobileDevice && isAdmin && <div className="scanner-admin-actions">
+        <Button onClick={manageStockQr}>{translate("warehouse.manage.incoming.and.outgoing.qr.codes")}</Button>
+      </div>}
       <div className="scanner-layout">
         <section className="panel scanner-main">
           <div className="scanner-mode-tabs">
@@ -103,6 +100,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 key={id}
                 hidden={id !== 'query' && !can(id === 'in' ? 'purchase' : 'sale')}
                 disabled={stockBusy}
+                aria-pressed={mode === id}
                 className={mode === id ? "active" : ""}
                 onClick={() => {
                   setMode(id);
@@ -114,18 +112,6 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             ))}
           </div>
           <div className="scan-focus-area">
-            <div className="big-scanner-icon" aria-hidden="true">
-              <ScanLine size={24} strokeWidth={1.75} />
-            </div>
-            <h2>
-              {mode === "query"
-                ? translate("warehouse.scan.material.barcode")
-                : mode === "in"
-                  ? translate("warehouse.scan.incoming.materials")
-                  : translate("warehouse.scan.outbound.materials")}
-            </h2>
-            <p>{translate("warehouse.open.the.mobile.phone.camera.and.put.the.material.barcode.or")}</p>
-            {mode !== "query" && <p>{translate("warehouse.the.qr.code.for.entering.and.exiting.the.warehouse.without.confirmation")}</p>}
             <Button
               kind="primary"
               icon={Camera}
@@ -140,10 +126,11 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
             </Button>
             {camera && <CameraScanner onResult={scan} onClose={() => setCamera(false)}
               title={mode === 'query' ? translate("warehouse.scan.find.materials") : mode === 'in' ? translate("warehouse.scan.store") : translate("warehouse.scan.delivery")}
-              note={mode === 'query' ? translate("warehouse.automatically.return.to.view.materials.after.identification") : translate("warehouse.it.will.automatically.return.after.identification.the.qr.code.for.entering")}
+              note={translate(mode === 'query' ? "warehouse.automatically.return.to.view.materials.after.identification" : "warehouse.scan.autoSubmit")}
               onManual={() => { setCamera(false); setManual(true); requestAnimationFrame(() => input.current?.focus()); }} />}
             <AntButton type="text" htmlType="button"
               className="manual-entry-toggle"
+              aria-expanded={manual}
               onClick={() => setManual(!manual)}
             >
               {manual ? translate("warehouse.close.manual.input") : translate("warehouse.enter.barcode.manually")}
@@ -157,7 +144,6 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 }}
                 className="scanner-input"
               >
-                <ScanLine size={21} />
                 <AntInput
                   ref={input}
                   aria-label={translate("warehouse.material.barcode")}
@@ -165,10 +151,10 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
                 />
-                <AntButton type="default" htmlType="submit" disabled={!barcode || stockBusy}>{translate("warehouse.identify")}<ArrowRight size={16} />
-                </AntButton>
+                <AntButton type="default" htmlType="submit" disabled={!barcode || stockBusy}>{translate("warehouse.identify")}</AntButton>
               </AntForm>
             )}
+            {mode !== "query" && <p>{translate("warehouse.scan.autoSubmit")}</p>}
             {error && (
               <div className="form-error">
                 <TriangleAlert size={16} />
@@ -179,8 +165,6 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
           <StockQrExecution label={stockLabel} onLabelDone={() => setStockLabel(null)} mode={mode} userKey={userKey} data={data} Modal={Modal} onSaved={onSaved} onBusy={setStockBusy} />
           {product && (
             <div className="scan-result">
-              <div className="scan-result-label">
-                <CircleCheck size={16} />{translate("warehouse.material.identified")}</div>
               <div className="scan-result-product">
                 <ProductArt product={product} size="large" />
                 <div>
@@ -243,10 +227,7 @@ function Scanner({ data, openOrder, notify, userKey, isAdmin, manageStockQr, onS
                 ))}
               </div>
             ) : (
-              <div className="recent-scans-empty">
-                <ScanLine size={23} />
-                <p>{translate("warehouse.the.scanned.materials.will.appear.here")}</p>
-              </div>
+              <p className="recent-scans-empty">{translate("warehouse.scan.noRecentScans")}</p>
             )}
           </Panel>
         </div>

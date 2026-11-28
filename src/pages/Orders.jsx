@@ -278,7 +278,6 @@ function OrderRecords({ page, data, openOrder, showDetail, notify }) {
           {!filtered.length && (
             <Empty
               title={translate("warehouse.there.are.currently.no.documents.that.meet.the.criteria")}
-              description={translate("warehouse.adjust.the.search.or.date.range.or.start.creating.a.document")}
               action={
                 type && (
                   <Button permission={type === 'in' ? 'purchase' : 'sale'} icon={Plus} onClick={() => openOrder(type)}>{translate("warehouse.create.new.document")}</Button>

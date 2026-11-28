@@ -1,6 +1,6 @@
 import { t as translate, getFormatLocale, translateText } from '../i18n/index.js';
 import { useLocale } from '../i18n/react.jsx';
-import { Spin, Button as AntButton, Checkbox as AntCheckbox, Tag, Empty as AntEmpty } from '../ui/controls.jsx';
+import { Spin, Button as AntButton, Checkbox as AntCheckbox, Tag } from '../ui/controls.jsx';
 
 import { stockStatus, stockTone, money as formatMoney, moneyBase as formatMoneyBase, price as formatPrice, currencySymbol, baseCurrencySymbol } from '../app/format.js';
 import React, { useLayoutEffect, useRef } from 'react';
@@ -74,10 +74,6 @@ export function ProductRow({ product, onOpen, selectable = false, selected = fal
       <span className="mw-product-facts"><span>{translate("warehouse.stock")}{" "}{count(product.stock)} {product.unit}</span><span>{translate("warehouse.reference.sales.price")}{" "}{price(product.price)}</span></span>
     </AntButton>
   </article>;
-}
-export function Empty({ title = translate("warehouse.no.records"), children }) {
-  useLocale();
-  return <AntEmpty description={<><h2>{title}</h2>{children && <p className="mw-muted">{children}</p>}</>} />;
 }
 export function DetailRow({ label, children }) {
   useLocale();

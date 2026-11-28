@@ -223,7 +223,6 @@ function Inventory({ data, filter, setFilter, openOrder, openTransfer, reduceSto
           {!filtered.length && (
             <Empty
               title={translate("warehouse.there.are.currently.no.materials.that.meet.the.criteria")}
-              description={translate("warehouse.adjust.your.filters.to.see.other.inventory")}
             />
           )}
         </div>

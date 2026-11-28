@@ -109,7 +109,7 @@ export function PwaProvider({ children }) {
     {children}
     {(needRefresh || message) && <aside className="pwa-notice" aria-label={translate("system.application.status")} role="status">
       <span>{message || translate("system.new.version.is.ready")}</span>
-      {needRefresh && <AntButton type="default" htmlType="button" onClick={update}><RefreshCw size={17} />{translate("system.update.app")}</AntButton>}
+      {needRefresh && <AntButton type="primary" htmlType="button" onClick={update}><RefreshCw size={17} />{translate("system.update.app")}</AntButton>}
       <AntButton type="text" htmlType="button" className="pwa-notice-close" aria-label={translate("system.close.app.prompt")} onClick={() => { setMessage(''); setNeedRefresh(false); }}><X size={19} /></AntButton>
     </aside>}
   </Context.Provider>;
@@ -118,9 +118,10 @@ export function PwaProvider({ children }) {
 export function PwaActions() {
   useLocale();
   const { install, checkUpdate, update, needRefresh, online, offlineReady, registrationError, checking, standalone, installing, installationReported } = usePwa();
+  const status = online && (registrationError || (offlineReady && translate("system.the.app.is.ready.to.open.offline")));
   return <section className="mw-card mw-stack">
     <h2>{translate("system.web.version.application")}</h2>
-    <p className="mw-muted">{!online ? translate("system.currently.offline.confirm.business.operations.after.connecting.to.the.internet") : registrationError || (offlineReady ? translate("system.the.app.is.ready.to.open.offline") : translate("system.an.internet.connection.is.required.for.first.time.use"))}</p>
+    {status && <p className="mw-muted">{status}</p>}
     {!standalone && <AntButton type="default" htmlType="button" className="mw-button" onClick={install} disabled={installing} aria-busy={installing}>{installing ? <LoadingIndicator size={20} /> : <Download size={19} />}{installing ? translate("system.requesting.installation") : installationReported ? translate("system.view.installation.instructions") : translate("system.install.app")}</AntButton>}
     <AntButton type="default" htmlType="button" className="mw-button" disabled={checking || !online} aria-busy={checking} onClick={needRefresh ? update : checkUpdate}>{checking ? <LoadingIndicator size={20} /> : <RefreshCw size={19} />}{checking ? translate("system.checking") : needRefresh ? translate("system.update.app") : translate("system.check.for.updates")}</AntButton>
   </section>;
